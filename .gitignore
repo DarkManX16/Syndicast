@@ -3,6 +3,7 @@ dist/
 bin/
 .pseudotv/
 .dizquetv/
+.dizquetv-dev/
 web/public/bundle.js
 *.orig
 package-lock.json
