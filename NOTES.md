@@ -38,3 +38,18 @@ four of them twice.
 
 Cosmetic only, and the edits themselves are applied correctly. Fix is to
 normalise separators before adding to the set.
+
+### ffmpegPathLockDate reads backwards, and clearing it locks harder
+
+`isLocked()` in `src/services/ffmpeg-settings-service.js` treats a date in the
+**past** as locked and a date in the **future** as unlocked, which is the
+opposite of how the field name reads. `unlock()` correspondingly sets the date
+to `now + 24h`.
+
+The trap: clearing the field does not unlock it. `isNaN(undefined)` is true, so
+a missing value takes the locked branch. Same for `null`. The only supported
+way to unlock is starting with the `--unlock` flag, which is easy to miss since
+nothing in the UI mentions it.
+
+Worth renaming to something like `ffmpegPathUnlockedUntil`, and surfacing the
+unlock route in the settings page instead of leaving it a CLI-only affordance.
