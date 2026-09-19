@@ -20,7 +20,7 @@
 const path = require('path');
 var fs = require('fs');
 
-const TARGET_VERSION = 805;
+const TARGET_VERSION = 806;
 const DAY_MS = 1000 * 60 * 60 * 24;
 
 const STEPS = [
@@ -46,6 +46,7 @@ const STEPS = [
     [    802,    803, () => fixNonIntegerDurations() ],
     [    803,    805, (db) => addFFMpegLock(db) ],
     [    804,    805, (db) => addFFMpegLock(db) ],
+    [    805,    806, () => relativizeChannelImages() ],
 ]
 
 const { v4: uuidv4 } = require('uuid');
@@ -332,7 +333,7 @@ function commercialsRemover(db) {
                 console.log("Added provisional fallback to channel #" + channel.number + " " + channel.name + " . You might want to tweak this value in channel configuration.");
                 channel.offlineMode = "pic";
                 channel.fallback = [ ];
-                channel.offlinePicture = `http://localhost:${process.env.PORT}/images/generic-offline-screen.png`
+                channel.offlinePicture = '/images/generic-offline-screen.png'
                 channel.offlineSoundtrack = ''
             }
             if ( typeof(channel.disableFillerOverlay) === 'undefined' ) {
@@ -686,6 +687,75 @@ function addFPS(db) {
     let f = path.join(process.env.DATABASE, 'ffmpeg-settings.json');
     ffmpegSettings.maxFPS = 60;
     fs.writeFileSync( f, JSON.stringify( [ffmpegSettings] ) );
+}
+
+/*
+ * Channel images used to be stored as absolute URLs built from whatever host
+ * and port created the channel, so they broke whenever the server moved. Turn
+ * the ones that point at our own /images/ folder into plain paths.
+ *
+ * A URL is only rewritten when the file it names actually exists locally. That
+ * keeps Plex thumbnail URLs and any image the user hosts elsewhere untouched,
+ * since guessing wrong would silently break a working icon.
+ */
+function relativizeChannelImages() {
+    let imagesDir = path.join(process.env.DATABASE, 'images');
+
+    function toStoredPath(value) {
+        if ( (typeof(value) !== 'string') || (value === '') || value.startsWith('/') ) {
+            return value;
+        }
+        let parsed;
+        try {
+            parsed = new URL(value);
+        } catch (err) {
+            return value;
+        }
+        if (! parsed.pathname.startsWith('/images/') ) {
+            return value;
+        }
+        let local = path.join(imagesDir, decodeURIComponent(parsed.pathname.slice('/images/'.length)) );
+        if (! fs.existsSync(local) ) {
+            return value;
+        }
+        return parsed.pathname;
+    }
+
+    console.log("Making channel image URLs independent of host and port...");
+    let channels = path.join(process.env.DATABASE, 'channels');
+    if (! fs.existsSync(channels) ) {
+        return;
+    }
+    let channelFiles = fs.readdirSync(channels);
+    for (let i = 0; i < channelFiles.length; i++) {
+        if (path.extname( channelFiles[i] ) !== '.json') {
+            continue;
+        }
+        let channelPath = path.join(channels, channelFiles[i]);
+        let channel = JSON.parse(fs.readFileSync(channelPath, 'utf-8'));
+        let changed = false;
+
+        for (const key of ['icon', 'offlinePicture']) {
+            let next = toStoredPath(channel[key]);
+            if (next !== channel[key]) {
+                channel[key] = next;
+                changed = true;
+            }
+        }
+        if ( (typeof(channel.watermark) !== 'undefined') && (channel.watermark !== null) ) {
+            let next = toStoredPath(channel.watermark.url);
+            if (next !== channel.watermark.url) {
+                channel.watermark.url = next;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            console.log("Rewrote image URLs in channel : " + channelFiles[i] + "...");
+            fs.writeFileSync( channelPath, JSON.stringify(channel), 'utf-8');
+        }
+    }
+    console.log("Done making channel image URLs portable.");
 }
 
 function migrateWatermark(db, channelDB) {

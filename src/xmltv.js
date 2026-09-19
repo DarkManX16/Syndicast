@@ -1,5 +1,6 @@
 const XMLWriter = require('xml-writer')
 const fs = require('fs')
+const imageUrl = require('./image-url')
 
 module.exports = { WriteXMLTV: WriteXMLTV, shutdown: shutdown }
 
@@ -68,7 +69,7 @@ function _writeChannels(xw, channels) {
         xw.endElement()
         if (channels[i].icon) {
             xw.startElement('icon')
-            xw.writeAttribute('src', channels[i].icon)
+            xw.writeAttribute('src', imageUrl.forClient(channels[i].icon))
             xw.endElement()
         }
         xw.endElement()

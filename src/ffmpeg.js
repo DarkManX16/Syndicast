@@ -1,5 +1,6 @@
 const spawn = require('child_process').spawn
 const events = require('events')
+const imageUrl = require('./image-url')
 
 const MAXIMUM_ERROR_DURATION_MS = 60000;
 const REALLY_RIDICULOUSLY_HIGH_FPS_FOR_DIZQUETVS_USECASE = 120;
@@ -211,7 +212,7 @@ class FFMPEG extends events.EventEmitter {
                 ) {
                     pic = streamStats.placeholderImage;
                 } else if ( streamUrl.errorTitle == 'offline') {
-                    pic = `${this.channel.offlinePicture}`;
+                    pic = imageUrl.forLocalFfmpeg(this.channel.offlinePicture);
                 } else if ( this.opts.errorScreen == 'pic' ) {
                     pic = `${this.errorPicturePath}`;
                 }
@@ -322,7 +323,7 @@ class FFMPEG extends events.EventEmitter {
                 if (watermark.animated === true) {
                     ffmpegArgs.push('-ignore_loop', '0');
                 }
-                ffmpegArgs.push(`-i`, `${watermark.url}`  );
+                ffmpegArgs.push(`-i`, imageUrl.forLocalFfmpeg(watermark.url)  );
                 overlayFile = inputFiles++;
                 this.ensureResolution = true;
             }

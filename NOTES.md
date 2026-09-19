@@ -54,64 +54,48 @@ nothing in the UI mentions it.
 Worth renaming to something like `ffmpegPathUnlockedUntil`, and surfacing the
 unlock route in the settings page instead of leaving it a CLI-only affordance.
 
-### Channel icon URLs bake in the host and port that created them
+## Resolved
 
-When a channel is created, the UI stores an absolute URL for its icon and
-offline picture, built from whatever address the browser happened to be using:
+Kept here rather than deleted because every file involved is in the conflict
+set for the pending 1.7.0 merge, and this will need re-applying.
 
-```js
-// web/directives/channel-config.js:63, 72, 116
-scope.channel.icon = `${$location.protocol()}://${location.host}/images/dizquetv.png`
-```
+### Channel images no longer depend on the host and port that created them
 
-`location.host` includes the port, so the value is correct when written and
-rots afterwards. Serving on a different port, renaming the host, or moving
-between `localhost` and a LAN address all break it. The server does the same
-thing in `src/database-migration.js:335` and `src/dao/plex-server-db.js:38`,
-using `process.env.PORT`.
+Previously the UI and two server paths wrote absolute URLs built from whatever
+address happened to be in use, so a channel created on port 18000 stored
+`http://localhost:18000/images/dizquetv.png` and broke as soon as the server
+moved. XMLTV and M3U then handed that dead URL to Plex.
 
-This is not theoretical. A channel created while the server ran on port 18000
-stores:
+`icon`, `offlinePicture` and `watermark.url` now store a path such as
+`/images/dizquetv.png`. The awkward part is that consumers need different
+things from the same stored value, so `src/image-url.js` offers two resolvers:
 
-    icon = http://localhost:18000/images/dizquetv.png
+- `forClient()` prefixes `{{host}}`, which `src/api.js` substitutes per request
+  from `req.protocol` and `req.get('host')`. Used by `xmltv.js` and
+  `m3u-service.js`, so each client gets an address it can actually reach.
+- `forLocalFfmpeg()` prefixes `http://localhost:${process.env.PORT}`, because
+  ffmpeg runs on this machine and cannot resolve a client's hostname. Used by
+  `ffmpeg.js` for the offline picture and the watermark.
 
-and that URL no longer resolves once the server moves.
+Anything not starting with `/` passes through untouched, which is what keeps
+Plex thumbnail URLs working.
 
-Note that the many other `http://localhost:${process.env.PORT}` strings, in
-`video.js`, `ffmpeg.js`, `offline-player.js` and `plexTranscoder.js`, are fine.
-They are built fresh at request time and handed to a local ffmpeg process, so
-they never outlive the port they were built for. The bug is specifically about
-values written into stored channel data.
+Migration step 805 to 806 rewrites existing channels. It only touches a URL
+when the path starts with `/images/` **and** that file exists in the data
+folder, leaving anything else exactly as it was. That conservatism is
+deliberate: a channel carried 110 Plex thumbnail URLs with auth tokens, and a
+blanket rewrite would have destroyed them. Verified after migrating: the two
+fields changed, all 110 Plex URLs and the other 212 programs were byte
+identical.
 
-Fixing it properly means storing a relative path and resolving it per request,
-the way the M3U already does. It cannot simply become relative everywhere,
-because Plex and other clients fetch these URLs and need something absolute.
+Note that the `http://localhost:${process.env.PORT}` strings still present in
+`video.js`, `offline-player.js` and `plexTranscoder.js` are not part of this
+problem. They are built per request for a local ffmpeg process and never
+outlive the port they were built for.
 
-### XMLTV and M3U leak those stale URLs to clients
+### M3U placeholder entry points at a path that is served
 
-Both outputs use a `{{host}}` placeholder substituted per request from
-`req.protocol` and `req.get('host')` (`src/api.js:969` and `:1020`), so they
-correctly follow whatever address the client used. Channel icons bypass that:
-`src/xmltv.js:71` writes the stored `channel.icon` verbatim, and
-`src/services/m3u-service.js:55` interpolates it directly.
-
-Fetched from a server running on 18080, a single M3U line shows both
-behaviours at once:
-
-    url-tvg="http://localhost:18080/api/xmltv.xml"        <- correct
-    tvg-logo="http://localhost:18000/images/dizquetv.png" <- stale
-    http://localhost:18080/video?channel=1                <- correct
-
-So Plex gets a working guide and stream URL but a broken channel logo. Routing
-`channel.icon` through the same `{{host}}` mechanism would fix the output side,
-but only once the stored value is relative.
-
-### M3U fallback entry points at a path that is not served
-
-`src/services/m3u-service.js:60`, the placeholder entry emitted when no
-channels exist, uses `tvg-logo="{{host}}/resources/dizquetv.png"`. Nothing
-mounts `/resources` as static - `index.js` maps only `/favicon.svg` into that
-folder - so the URL 404s. `/images/dizquetv.png` is the served equivalent.
-
-Minor, since it only appears on a fresh install with no channels, but it is the
-first thing a new user's IPTV client would try to load.
+The no-channels entry in `m3u-service.js` pointed at `{{host}}/resources/...`,
+which 404s since nothing mounts `/resources` as static - `index.js` maps only
+`/favicon.svg` into that folder. It now uses `/images/dizquetv.png`, which
+`initDB` guarantees exists on every start.

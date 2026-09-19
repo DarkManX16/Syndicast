@@ -1,3 +1,5 @@
+const imageUrl = require('../image-url');
+
 /**
  * Manager and Generate M3U content
  *
@@ -52,12 +54,12 @@ class M3uService {
 
         for (var i = 0; i < channels.length; i++) {
             if (channels[i].stealth !== true) {
-                data += `#EXTINF:0 tvg-id="${channels[i].number}" CUID="${channels[i].number}" tvg-chno="${channels[i].number}" tvg-name="${channels[i].name}" tvg-logo="${channels[i].icon}" group-title="${channels[i].groupTitle}",${channels[i].name}\n`
+                data += `#EXTINF:0 tvg-id="${channels[i].number}" CUID="${channels[i].number}" tvg-chno="${channels[i].number}" tvg-name="${channels[i].name}" tvg-logo="${imageUrl.forClient(channels[i].icon)}" group-title="${channels[i].groupTitle}",${channels[i].name}\n`
                 data += `{{host}}/video?channel=${channels[i].number}\n`
             }
         }
         if (channels.length === 0) {
-            data += `#EXTINF:0 tvg-id="1" tvg-chno="1" tvg-name="Syndicast" tvg-logo="{{host}}/resources/dizquetv.png" group-title="Syndicast",Syndicast\n`
+            data += `#EXTINF:0 tvg-id="1" tvg-chno="1" tvg-name="Syndicast" tvg-logo="{{host}}/images/dizquetv.png" group-title="Syndicast",Syndicast\n`
             data += `{{host}}/setup\n`
         }
         let saveCacheThread = async() => {

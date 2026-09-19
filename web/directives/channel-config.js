@@ -60,7 +60,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.channel.fallback = [];
                 scope.channel.guideMinimumDurationSeconds = 5 * 60;
                 scope.isNewChannel = true
-                scope.channel.icon = `${$location.protocol()}://${location.host}/images/dizquetv.png`
+                scope.channel.icon = '/images/dizquetv.png'
                 scope.channel.groupTitle = "Syndicast";
                 scope.channel.disableFillerOverlay = true;
                 scope.channel.iconWidth = 120
@@ -69,7 +69,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.channel.startTime = new Date()
                 scope.channel.startTime.setMilliseconds(0)
                 scope.channel.startTime.setSeconds(0)
-                scope.channel.offlinePicture = `${$location.protocol()}://${location.host}/images/generic-offline-screen.png`
+                scope.channel.offlinePicture = '/images/generic-offline-screen.png'
                 scope.channel.offlineSoundtrack = ''
                 scope.channel.offlineMode = "pic";
                 if (scope.channel.startTime.getMinutes() < 30)
@@ -113,7 +113,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     scope.channel.fillerRepeatCooldown = 30 * 60 * 1000;
                 }
                 if (typeof(scope.channel.offlinePicture)==='undefined') {
-                    scope.channel.offlinePicture = `${$location.protocol()}://${location.host}/images/generic-offline-screen.png`
+                    scope.channel.offlinePicture = '/images/generic-offline-screen.png'
                     scope.channel.offlineSoundtrack = '';
                 }
                 if (typeof(scope.channel.fillerCollections)==='undefined') {

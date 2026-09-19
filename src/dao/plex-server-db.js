@@ -35,7 +35,7 @@ class PlexServerDB
                 channel.fallback = [];
                 if (channel.offlineMode != "pic") {
                     channel.offlineMode = "pic";
-                    channel.offlinePicture = `http://localhost:${process.env.PORT}/images/generic-offline-screen.png`;
+                    channel.offlinePicture = '/images/generic-offline-screen.png';
                 }
             }
             this.fixupProgramArray(channel.fallback, name,newServer, channelReport);
