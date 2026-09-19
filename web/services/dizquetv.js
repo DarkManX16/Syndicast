@@ -198,6 +198,10 @@ module.exports = function ($http, $q) {
             return f.data;
         },
 
+        saveFillerOrder: async (ids) => {
+            await $http.post('/api/fillers/order', { ids: ids });
+        },
+
         getFiller: async (id) => {
             let f = await $http.get(`/api/filler/${id}`);
             return f.data;

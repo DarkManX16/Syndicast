@@ -393,6 +393,18 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
        res.status(500).send("error");
       }
     })
+    router.post('/api/fillers/order', async (req, res) => {
+      try {
+        if (! Array.isArray(req.body.ids) ) {
+          return res.status(400).send("Expected { ids: [...] }");
+        }
+        await fillerDB.saveFillerOrder(req.body.ids);
+        return res.status(204).send({});
+      } catch(err) {
+        console.error(err);
+       res.status(500).send("error");
+      }
+    })
     router.get('/api/filler/:id', async (req, res) => {
       try {
         let id = req.params.id;

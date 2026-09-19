@@ -7,14 +7,42 @@ module.exports = function ($scope, $timeout, dizquetv) {
     $scope.refreshFiller = async () => {
         $scope.fillers = [ { id: '?', pending: true} ]
         $timeout();
-        let fillers = await dizquetv.getAllFillersInfo();
-        fillers.sort( (a,b) => {
-            return a.name > b.name;
-        } );
-        $scope.fillers = fillers;
+        // Order comes from the server, which sorts by stored rank.
+        $scope.fillers = await dizquetv.getAllFillersInfo();
         $timeout();
     }
     $scope.refreshFiller();
+
+    $scope.savingOrder = false;
+
+    let persistOrder = async () => {
+        $scope.savingOrder = true;
+        try {
+            await dizquetv.saveFillerOrder( $scope.fillers.map( (f) => f.id ) );
+        } catch (err) {
+            console.error("Unable to save filler order", err);
+            // Fall back to whatever the server actually has, so the page never
+            // shows an order that was not persisted.
+            await $scope.refreshFiller();
+        }
+        $scope.savingOrder = false;
+        $timeout();
+    }
+
+    // Runs after the dropped copy has been inserted, so this splice removes the
+    // original and leaves the array in its final order.
+    $scope.fillerMoved = (index) => {
+        $scope.fillers.splice(index, 1);
+        persistOrder();
+    }
+
+    $scope.sortFillersByName = (descending) => {
+        $scope.fillers.sort( (a, b) => {
+            let r = (a.name || "").localeCompare(b.name || "");
+            return descending ? -r : r;
+        } );
+        persistOrder();
+    }
 
     let feedToFillerConfig = () => {};
     let feedToDeleteFiller = feedToFillerConfig;

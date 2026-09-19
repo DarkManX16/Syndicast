@@ -46,13 +46,21 @@ class FillerDB {
         if (typeof(id) === 'undefined') {
             throw Error("Mising filler id");
         }
+        fixup(json);
+        if (typeof(json.rank) !== 'number') {
+            // The filler editor posts only name and content. Without this the
+            // list would lose its position every time someone edited its clips.
+            let existing = await this.getFiller(id);
+            if (existing !== null && typeof(existing.rank) === 'number') {
+                json.rank = existing.rank;
+            }
+        }
         let f = path.join(this.folder, `${id}.json` );
         try {
             await new Promise( (resolve, reject) => {
                 let data = undefined;
                 try {
                     //id is determined by the file name, not the contents
-                    fixup(json);
                     delete json.id;
                     data = JSON.stringify(json);
                 } catch (err) {
@@ -73,8 +81,36 @@ class FillerDB {
     async createFiller(json) {
         let id = uuidv4();
         fixup(json);
+        if (typeof(json.rank) !== 'number') {
+            json.rank = await this.$nextRank();
+        }
         await this.saveFiller(id, json);
         return id;
+    }
+
+    async $nextRank() {
+        let fillers = await this.getAllFillers();
+        let max = -1;
+        for (let i = 0; i < fillers.length; i++) {
+            if (typeof(fillers[i].rank) === 'number' && fillers[i].rank > max) {
+                max = fillers[i].rank;
+            }
+        }
+        return max + 1;
+    }
+
+    async saveFillerOrder(ids) {
+        if (!Array.isArray(ids)) {
+            throw Error("Expected an array of filler ids");
+        }
+        for (let i = 0; i < ids.length; i++) {
+            let filler = await this.getFiller(ids[i]);
+            if (filler === null) {
+                continue;
+            }
+            filler.rank = i;
+            await this.saveFiller(ids[i], filler);
+        }
     }
 
     async getFillerChannels(id) {
@@ -147,7 +183,10 @@ class FillerDB {
     
     async getAllFillers() {
         let ids = await this.getAllFillerIds();
-        return await Promise.all( ids.map( async (c) => this.getFiller(c) ) );
+        let fillers = await Promise.all( ids.map( async (c) => this.getFiller(c) ) );
+        // Ordering lives here rather than in a page controller so that every
+        // caller - the filler page, the channel config dropdown - agrees.
+        return fillers.filter( (f) => f !== null ).sort(compareFillerOrder);
     }
 
     async getAllFillersInfo() {
@@ -197,6 +236,20 @@ function fixup(json) {
     if (typeof(json.name) === 'undefined') {
         json.name = "Unnamed Filler";
     }
+    if (typeof(json.rank) !== 'number' || isNaN(json.rank)) {
+        delete json.rank;
+    }
+}
+
+// Lists that predate ranking have none, so they sort alphabetically after the
+// ranked ones and get real ranks the first time the user reorders anything.
+function compareFillerOrder(a, b) {
+    let ar = (typeof(a.rank) === 'number') ? a.rank : Number.MAX_SAFE_INTEGER;
+    let br = (typeof(b.rank) === 'number') ? b.rank : Number.MAX_SAFE_INTEGER;
+    if (ar !== br) {
+        return ar - br;
+    }
+    return (a.name || "").localeCompare(b.name || "");
 }
 
 module.exports = FillerDB;
