@@ -30,9 +30,9 @@ function video( channelService, fillerDB, db, programmingService, activeChannelS
             return
         }
 
-        console.log(`\r\nStream starting. Channel: 1 (dizqueTV)`)
+        console.log(`\r\nStream starting. Channel: 1 (Syndicast)`)
 
-        let ffmpeg = new FFMPEG_TEXT(ffmpegSettings, 'dizqueTV (No Channels Configured)', 'Configure your channels using the dizqueTV Web UI')
+        let ffmpeg = new FFMPEG_TEXT(ffmpegSettings, 'Syndicast (No Channels Configured)', 'Configure your channels using the Syndicast Web UI')
 
         ffmpeg.on('data', (data) => { res.write(data) })
 
@@ -47,7 +47,7 @@ function video( channelService, fillerDB, db, programmingService, activeChannelS
 
         res.on('close', () => { // on HTTP close, kill ffmpeg
             ffmpeg.kill()
-            console.log(`\r\nStream ended. Channel: 1 (dizqueTV)`)
+            console.log(`\r\nStream ended. Channel: 1 (Syndicast)`)
         })
     })
     // Continuously stream video to client. Leverage ffmpeg concat for piecing together videos

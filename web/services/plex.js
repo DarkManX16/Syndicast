@@ -5,7 +5,7 @@ module.exports = function ($http, $window, $interval) {
         login: async () => {
             const headers = {
                 'Accept': 'application/json',
-                'X-Plex-Product': 'dizqueTV',
+                'X-Plex-Product': 'Syndicast',
                 'X-Plex-Version': 'Plex OAuth',
                 'X-Plex-Client-Identifier': 'rg14zekk3pa5zp4safjwaa8z',
                 'X-Plex-Model': 'Plex OAuth'

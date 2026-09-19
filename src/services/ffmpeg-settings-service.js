@@ -92,7 +92,7 @@ function fixupFFMPEGSettings(ffmpeg) {
 }
 
 //These checks are good but might not be enough, as long as we are letting the
-//user choose any path and we are making dizqueTV execute, it is too risky,
+//user choose any path and we are making Syndicast execute, it is too risky,
 //hence why we are also adding the lock feature on top of these checks.
 function isValidFilePath(filePath) {
     const normalizedPath = path.normalize(filePath);

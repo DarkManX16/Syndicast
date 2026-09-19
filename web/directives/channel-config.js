@@ -61,7 +61,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.channel.guideMinimumDurationSeconds = 5 * 60;
                 scope.isNewChannel = true
                 scope.channel.icon = `${$location.protocol()}://${location.host}/images/dizquetv.png`
-                scope.channel.groupTitle = "dizqueTV";
+                scope.channel.groupTitle = "Syndicast";
                 scope.channel.disableFillerOverlay = true;
                 scope.channel.iconWidth = 120
                 scope.channel.iconDuration = 60
@@ -106,7 +106,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     ||
                     (scope.channel.groupTitle === '')
                 ) {
-                    scope.channel.groupTitle = "dizqueTV";
+                    scope.channel.groupTitle = "Syndicast";
                 }
 
                 if (typeof(scope.channel.fillerRepeatCooldown) === 'undefined') {

@@ -378,7 +378,7 @@ class TVGuideService extends events.EventEmitter
         let result = {};
         if (channels.length == 0) {
             let channel = {
-                name: "dizqueTV",
+                name: "Syndicast",
                 icon: FALLBACK_ICON,
             }
             result[1] = {

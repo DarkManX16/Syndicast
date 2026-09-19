@@ -38,9 +38,9 @@ jobs:
       with:
         tag_name: ${{ inputs.release }}
         files: |
-          ./dist/dizquetv-win-x64.exe
-          ./dist/dizquetv-win-x86.exe
-          ./dist/dizquetv-linux-x64
-          ./dist/dizquetv-macos-x64
+          ./dist/syndicast-win-x64.exe
+          ./dist/syndicast-win-x86.exe
+          ./dist/syndicast-linux-x64
+          ./dist/syndicast-macos-x64
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

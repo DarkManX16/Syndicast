@@ -53,7 +53,7 @@ const { v4: uuidv4 } = require('uuid');
 function createDeviceId(db) {
     let deviceId = db['client-id'].find();
     if (deviceId.length == 0) {
-        let clientId = uuidv4().replace(/-/g,"").slice(0,16) + "-org-dizquetv-" + process.platform
+        let clientId = uuidv4().replace(/-/g,"").slice(0,16) + "-org-syndicast-" + process.platform
         let dev = {
             clientId: clientId,
         }
@@ -369,7 +369,7 @@ function initDB(db, channelDB, dir ) {
                     console.log("Done migrating db to version : " + dbVersion.version);
 
                 } catch (e) {
-                    console.log("Error during migration. Sorry, we can't continue. Wiping out your .dizquetv folder might be a workaround, but that means you lose all your settings.", e);
+                    console.log("Error during migration. Sorry, we can't continue. Wiping out your data folder might be a workaround, but that means you lose all your settings.", e);
                     throw Error("Migration error, step=" + dbVersion.version);
                 }
             }
@@ -833,7 +833,7 @@ function addImageCache(db) {
 function addGroupTitle() {
 
     function migrateChannel(channel) {
-        channel.groupTitle= "dizqueTV";
+        channel.groupTitle= "Syndicast";
         return channel;
     }
 

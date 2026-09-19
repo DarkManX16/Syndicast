@@ -9,7 +9,7 @@ class PlexTranscoder {
         this.device = "channel-" + channel.number;
         this.deviceName = this.device;
         this.clientIdentifier = clientId;
-        this.product = "dizqueTV";
+        this.product = "Syndicast";
         
         this.settings = settings
 

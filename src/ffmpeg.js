@@ -553,7 +553,7 @@ class FFMPEG extends events.EventEmitter {
         }
 
         ffmpegArgs.push(`-metadata`,
-                        `service_provider="dizqueTV"`,
+                        `service_provider="Syndicast"`,
                         `-metadata`,
                         `service_name="${this.channel.name}"`,
                         );

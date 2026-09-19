@@ -193,7 +193,7 @@ module.exports = function (plex, dizquetv, $timeout) {
                             }
                         }
                         connection.arGuide = false
-                        connection.arChannels = false // should not be enabled unless dizqueTV tuner already added to plex
+                        connection.arChannels = false // should not be enabled unless Syndicast tuner already added to plex
                         await dizquetv.addPlexServer(connection);
                     } catch (err) {
                         scope.serverError = "Could not add Plex server: There was an error.";

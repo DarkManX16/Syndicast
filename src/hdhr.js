@@ -53,7 +53,7 @@ function hdhr(db, channelDB) {
           }
         }
         if (lineup.length === 0)
-            lineup.push({ GuideNumber: '1', GuideName: 'dizqueTV', URL: `${req.protocol}://${req.get('host')}/setup` })
+            lineup.push({ GuideNumber: '1', GuideName: 'Syndicast', URL: `${req.protocol}://${req.get('host')}/setup` })
         res.send(JSON.stringify(lineup))
     })
 
@@ -63,14 +63,14 @@ function hdhr(db, channelDB) {
 function getDevice(db, host) {
     let hdhrSettings = db['hdhr-settings'].find()[0]
     var device = {
-        FriendlyName: "dizqueTV",
-        Manufacturer: "dizqueTV - Silicondust",
-        ManufacturerURL: "https://github.com/vexorian/dizquetv",
+        FriendlyName: "Syndicast",
+        Manufacturer: "Syndicast - Silicondust",
+        ManufacturerURL: "https://github.com/DarkManX16/syndicast",
         ModelNumber: "HDTC-2US",
         FirmwareName: "hdhomeruntc_atsc",
         TunerCount: hdhrSettings.tunerCount,
         FirmwareVersion: "20170930",
-        DeviceID: 'dizqueTV',
+        DeviceID: 'Syndicast',
         DeviceAuth: "",
         BaseURL: `${host}`,
         LineupURL: `${host}/lineup.json`
@@ -85,7 +85,7 @@ function getDevice(db, host) {
       </specVersion>
       <device>
       <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
-      <friendlyName>dizqueTV</friendlyName>
+      <friendlyName>Syndicast</friendlyName>
       <manufacturer>Silicondust</manufacturer>
       <modelName>HDTC-2US</modelName>
       <modelNumber>HDTC-2US</modelNumber>

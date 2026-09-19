@@ -17,9 +17,9 @@ class Plex {
         }
         this._headers = {
             'Accept': 'application/json',
-            'X-Plex-Device': 'dizqueTV',
-            'X-Plex-Device-Name': 'dizqueTV',
-            'X-Plex-Product': 'dizqueTV',
+            'X-Plex-Device': 'Syndicast',
+            'X-Plex-Device-Name': 'Syndicast',
+            'X-Plex-Product': 'Syndicast',
             'X-Plex-Version': '0.1',
             'X-Plex-Client-Identifier': 'rg14zekk3pa5zp4safjwaa8z',
             'X-Plex-Platform': 'Chrome',

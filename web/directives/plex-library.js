@@ -105,7 +105,7 @@ module.exports = function (plex, dizquetv, $timeout, commonProgramTools) {
                 scope.plexServer = scope.currentOrigin.server;
                 scope.origins.push( {
                     "type": "dizquetv",
-                    "name" : "dizqueTV - Custom Shows",
+                    "name" : "Syndicast - Custom Shows",
                 } );
                 updateLibrary(scope.plexServer)
             })

@@ -9,7 +9,7 @@
     },
     "tvGuide": {
       "no_channels": "No channels configured",
-      "no_channels_summary": "Use the dizqueTV web UI to configure channels.",
+      "no_channels_summary": "Use the Syndicast web UI to configure channels.",
       "xmltv_updated": "XMLTV updated at server time {{t}}"
     }
 }

@@ -1,89 +1,109 @@
-# dizqueTV 1.5.5
-![Discord](https://img.shields.io/discord/711313431457693727?logo=discord&logoColor=fff&style=flat-square) ![GitHub top language](https://img.shields.io/github/languages/top/vexorian/dizquetv?logo=github&style=flat-square) ![Docker Pulls](https://img.shields.io/docker/pulls/vexorian/dizquetv?logo=docker&logoColor=fff&style=flat-square)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/syndicast-logo-dark.svg">
+    <img src="assets/syndicast-logo.svg" alt="Syndicast" width="420">
+  </picture>
+</p>
 
-Create live TV channel streams from media on your Plex servers.
+<p align="center"><strong>Turn your media library into live TV.</strong></p>
 
-**dizqueTV** ( *dis·keˈtiːˈvi* )  is a fork of the project previously-known as [pseudotv-plex](https://gitlab.com/DEFENDORe/pseudotv-plex) or [pseudotv](https://github.com/DEFENDORe/pseudotv). New repository because of lack of activity from the main repository and the name change is because projects with the old name already existed and were created long before this approach and it was causing confusion. You can migrate from pseudoTV 0.0.51 to dizqueTV by renaming the .pseudotv folder to .dizquetv and running the new executable (or doing a similar trick with the volumes used by the docker containers).
-
-<img src="https://raw.githubusercontent.com/vexorian/dizquetv/main/resources/dizquetv.png" width="200">
-
-Configure your channels, programs, commercials and settings using the dizqueTV web UI.
-
-Access your channels by adding the spoofed dizqueTV HDHomerun tuner to Plex, Jellyfin or emby or utilize the M3U Url with any 3rd party IPTV player app.
-
-EPG (Guide Information) data is stored to `.dizquetv/xmltv.xml`
+Syndicast turns the movies and shows you already own into always-on
+TV channels. Build a '90s sitcom channel, a Saturday-morning cartoon
+block, or a 24/7 horror marathon, then tune in from Plex, Jellyfin,
+Emby, or any IPTV player. No endless scrolling, no deciding what to
+watch. Just turn it on and see what's playing.
 
 ## Features
-- A wide variety of options for the clients where you can play the TV channels, since it both spoofs a HDHR tuner and a IPTV channel list.
-- Ease of setup for xteve and Plex playback by mocking a HDHR server.
-- Configure your channels once, and play them just the same in any of the other devices.
-- Customize your channels and what they play. Make them display their logo while they play. Play filler content (&quot;commercials&quot;, music videos, prerolls, channel branding videos) at specific times to pad time.
-- Docker image and prepackage binaries for Windows, Linux and Mac.
-- Supports nvidia for hardware encoding, including in docker.
-- Select media (desired programs and commercials) across multiple Plex servers
-- Includes a WEB TV Guide where you can even play channels in your desktop by using your local media player.
-- Subtitle support.
-- Auto deinterlace any Plex media not marked `"scanType": "progressive"`
-- Can be configured to completely force Direct play, if you are ready for the caveats.
-- It's up to you if the channels have a life of their own and act as if they continued playing when you weren't watching them or if you want "on-demand" channels that stop their schedules while not being watched.
 
-## Limitations
+- Build channels from your Plex library
+- Create as many channels as you like, with custom schedules and time slots
+- Add filler like commercials, trailers, and bumpers between shows
+- Works as an HDHomeRun tuner in Plex, Jellyfin, and Emby
+- Provides M3U playlist and XMLTV guide links for IPTV apps
+- Give each channel its own logo and on-screen watermark
 
-- If you want to play the TV channels in Plex using the spoofed HDHR, Plex pass is required.
-- dizqueTV does not currently watch your Plex server for media updates/changes. You must manually remove and re-add your programs for any changes to take effect. Same goes for Plex server changes (changing IP, port, etc).. You&apos;ll have to update the server settings manually in that case.
-- Most players (including Plex) will break after switching episodes if video / audio format is too different. dizqueTV can  be configured to use ffmpeg transcoding to prevent this, but that costs resources.
-- If you configure Plex DVR, it will always be recording and transcoding the channel&apos;s contents.
-- In its current state, dizquetv is intended for private use only and you should be discouraged from running dizqueTV in any capacity where other users can have access to dizqueTV's ports. You can use Plex's iptv player feature to share dizqueTV streams or you'll have to come up with some work arounds to make sure that streams can be played without ever actually exposing the dizquetv port to the outside world. Please use it with care, consider exposing dizqueTV's ports as something only advanced users who know what they are doing should try.
+## Quick Start
 
-## Releases
+Run Syndicast with Docker:
 
-- https://github.com/vexorian/dizquetv/releases
+```bash
+docker run -d --name syndicast \
+  -p 8000:8000 \
+  -v syndicast-data:/home/node/app/.syndicast \
+  darkmannx16/syndicast:latest
+```
 
-## Wiki
+Then open `http://localhost:8000`, connect your Plex server, and start
+building channels.
 
-- For setup instructions, check [the wiki](https://github.com/vexorian/dizquetv/wiki)
+### Switching from dizqueTV?
 
-
-## App Preview
-<img src="https://raw.githubusercontent.com/vexorian/dizquetv/main/docs/channels.png" width="500">
-<br/>
-<img src="https://raw.githubusercontent.com/vexorian/dizquetv/main/docs/channel-config.png" width="500">
-<br/>
-<img src="https://raw.githubusercontent.com/vexorian/dizquetv/main/docs/plex-guide.png" width="500">
-<br/>
-<img src="https://raw.githubusercontent.com/vexorian/dizquetv/main/docs/plex-stream.png" width="500">
+Stop dizqueTV first, then start Syndicast with your old data folder
+mounted at `/home/node/app/.dizquetv` (or run it from the folder that
+contains `.dizquetv`). Syndicast will find your channels and settings
+and keep using them. Plex will see Syndicast as a new tuner, so add it
+again under Live TV & DVR.
 
 ## Development
-Building/Packaging Binaries: (uses `browserify`, `babel` and `pkg`)
+
+Run from source. Requires Node.js and a checkout of this repo.
+
+Install dependencies:
+
+```bash
+npm install
 ```
+
+Build the web UI (compiles `web/app.js` into `web/public/bundle.js`):
+
+```bash
+npm run build
+```
+
+Start the server. Passing an explicit port and data folder keeps a
+development instance from colliding with a normal install:
+
+```bash
+node index.js -p 18000 -d ./.dizquetv-dev
+```
+
+Then open `http://localhost:18000`.
+
+For live development, run these in two terminals. The first rebuilds
+the web UI on save, the second restarts the server on save:
+
+```bash
+npm run dev-client
+npm run dev-server
+```
+
+`dev-server` uses the default port and data folder. To point it at the
+development ones, pass them through with an extra `--`, which stops
+nodemon from claiming the flags as its own:
+
+```bash
+npm run dev-server -- -- -p 18000 -d ./.dizquetv-dev
+```
+
+To build distributable binaries:
+
+```bash
 npm run build
 npm run compile
 npm run package
 ```
 
-Live Development: (using `nodemon` and `watchify`)
-```
-npm run dev-client
-npm run dev-server
-```
+## Roadmap
 
-## Contribute
+- Jellyfin as a media source
 
-* Pull requests welcome but please read the [Code of Conduct](CODE_OF_CONDUCT.md) and the [Pull Request Template](pull_request_template.md) first.
-* Tip Jar: https://buymeacoffee.com/vexorian
+## Credits
+
+Syndicast is a fork of [dizqueTV](https://github.com/vexorian/dizquetv)
+by vexorian, which itself grew out of pseudotv-plex. Huge thanks to
+everyone whose work made this project possible.
 
 ## License
 
- * Original pseudotv-Plex code was released under [MIT license (c) 2020 Dan Ferguson](https://github.com/DEFENDORe/pseudotv/blob/665e71e24ee5e93d9c9c90545addb53fdc235ff6/LICENSE)
- * dizqueTV's improvements are released under zlib license (c) 2020 Victor Hugo Soliz Kuncar
- * FontAwesome: [https://fontawesome.com/license/free](https://archive.fo/PRqis)
- * Bootstrap: https://github.com/twbs/bootstrap/blob/v4.4.1/LICENSE
-
-## Thanks
-
- * DEFENDORe , George and everyone that worked on PseudoTV
- * Ahmed Said Al-Busaidi , for reporting exploits in advance before publishing in exploit-db.
- * Nathan for working on automation addons.
- * Timebomb, Rafael for the contributions during dizqueTV's active days.
- 
- 
+Syndicast is released under the same license as dizqueTV. See
+[LICENSE](LICENSE) for details.

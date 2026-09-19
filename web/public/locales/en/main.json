@@ -24,7 +24,7 @@
         "ok": "ok",
         "error": "error",
         "ui_bad": "If a Plex server configuration has problems with the UI route, the channel editor won't be able to access its content.",
-        "backend_bad": "If a Plex server configuration has problems with the backend route, dizqueTV won't be able to play its content.",
+        "backend_bad": "If a Plex server configuration has problems with the backend route, Syndicast won't be able to play its content.",
         "plex_transcoder_settings": "Plex Transcoder Settings",
         "update": "Update",
         "reset_options": "Reset Options",
@@ -72,6 +72,6 @@
         "refresh_timer": "Refresh Timer (hours)",
         "refresh_timer_note": "How often should the xmltv file be updated.",
         "image_cache": "Image Cache",
-        "image_cache_note": "If enabled the pictures used for Movie and TV Show posters will be cached in dizqueTV's .dizqueTV folder and will be delivered by dizqueTV's server instead of requiring calls to Plex. Note that using fixed xmltv location in Plex (as opposed to url) will not work correctly in this case."
+        "image_cache_note": "If enabled the pictures used for Movie and TV Show posters will be cached in Syndicast's .syndicast folder and will be delivered by Syndicast's server instead of requiring calls to Plex. Note that using fixed xmltv location in Plex (as opposed to url) will not work correctly in this case."
     }
 }

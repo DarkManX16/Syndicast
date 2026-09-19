@@ -37,7 +37,7 @@ const onShutdown = require("node-graceful-shutdown").onShutdown;
 
 console.log(
 `         \\
-   dizqueTV ${constants.VERSION_NAME}
+   Syndicast ${constants.VERSION_NAME}
 .------------.
 |:::///### o |
 |:::///###   |
@@ -48,7 +48,7 @@ console.log(
 const NODE = parseInt( process.version.match(/^[^0-9]*(\d+)\..*$/)[1] );
 
 if (NODE < 12) {
-    console.error(`WARNING: Your nodejs version ${process.version} is lower than supported. dizqueTV has been tested best on nodejs 12.16.`);
+    console.error(`WARNING: Your nodejs version ${process.version} is lower than supported. Syndicast has been tested best on nodejs 12.16.`);
 }
 
 unlockPath = false;
@@ -63,7 +63,13 @@ for (let i = 0, l = process.argv.length; i < l; i++) {
     }
 }
 
-process.env.DATABASE = process.env.DATABASE ||  path.join(".", ".dizquetv")
+if (!process.env.DATABASE) {
+    // New installs use .syndicast. If only an older .dizquetv folder exists, keep
+    // using it so people switching over keep their channels and settings.
+    const syndicastDir = path.join(".", ".syndicast");
+    const legacyDir = path.join(".", ".dizquetv");
+    process.env.DATABASE = (!fs.existsSync(syndicastDir) && fs.existsSync(legacyDir)) ? legacyDir : syndicastDir;
+}
 process.env.PORT = process.env.PORT || 8000
 
 if (!fs.existsSync(process.env.DATABASE)) {

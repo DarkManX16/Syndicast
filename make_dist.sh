@@ -1,9 +1,9 @@
 #!/bin/sh
 MODE=${1:-all}
-WIN64=dizquetv-win-x64.exe
-WIN32=dizquetv-win-x86.exe
-MACOSX=dizquetv-macos-x64
-LINUX64=${LINUXBUILD:-dizquetv-linux-x64}
+WIN64=syndicast-win-x64.exe
+WIN32=syndicast-win-x86.exe
+MACOSX=syndicast-macos-x64
+LINUX64=${LINUXBUILD:-syndicast-linux-x64}
 
 rm -R ./dist/*
 npm run build || exit 1

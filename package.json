@@ -1,6 +1,6 @@
 {
-  "name": "dizquetv",
-  "version": "1.0.0",
+  "name": "syndicast",
+  "version": "0.1.0",
   "description": "Create LiveTV channels from your Plex media",
   "main": "index.js",
   "scripts": {
@@ -11,7 +11,7 @@
     "dev-server": "nodemon index.js --ignore ./web/ --ignore ./db/ --ignore ./xmltv.xml",
     "compile": "babel index.js -d dist && babel src -d dist/src",
     "package": "sh ./make_dist.sh",
-    "clean": "del-cli --force ./bin ./dist ./.dizquetv ./web/public/bundle.js"
+    "clean": "del-cli --force ./bin ./dist ./.dizquetv ./.syndicast ./web/public/bundle.js"
   },
   "author": "vexorian",
   "license": "Zlib",

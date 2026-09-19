@@ -38,9 +38,9 @@
 
                     <div class='form-group'>
                         <label class='form-label' >Channel Group:</label>
-                        <input type="text" class='form-control' ng-model="channel.groupTitle" id='groupTitle' placeholder="dizqueTV"  aria-describedby="groupTitleHelp"></input>
+                        <input type="text" class='form-control' ng-model="channel.groupTitle" id='groupTitle' placeholder="Syndicast"  aria-describedby="groupTitleHelp"></input>
 
-                        <small id='groupTitleHelp' class="text-muted" for='channelNumber'>This is used by iptv clients to categorize the channels. You can leave it as dizqueTV if you don&apos;t need this sort of classification.</small>
+                        <small id='groupTitleHelp' class="text-muted" for='channelNumber'>This is used by iptv clients to categorize the channels. You can leave it as Syndicast if you don&apos;t need this sort of classification.</small>
                     </div>
 
                     <div>
@@ -259,7 +259,7 @@
                                                 <i class='fas fa-recycle'></i> Replicate
                                             </button>
                                     </div>
-                                    <p ng-show='showHelp.check'>Makes multiple copies of the schedule and plays them in sequence. Normally this isn&apos;t necessary, because dizqueTV will always play the schedule back from the beginning when it finishes. But creating replicas is a useful intermediary step sometimes before applying other transformations. Note that because very large channels can be problematic, the number of replicas will be limited to avoid creating really large channels.</p>
+                                    <p ng-show='showHelp.check'>Makes multiple copies of the schedule and plays them in sequence. Normally this isn&apos;t necessary, because Syndicast will always play the schedule back from the beginning when it finishes. But creating replicas is a useful intermediary step sometimes before applying other transformations. Note that because very large channels can be problematic, the number of replicas will be limited to avoid creating really large channels.</p>
                                 </div>
 
                                 <div ng-class="toolWide()" style="padding: 5px;"  ng-show="hasPrograms() && hasAdvancedTools()">
