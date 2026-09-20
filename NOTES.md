@@ -81,6 +81,28 @@ rather than assuming:
 require('net').createServer().listen(18000, '0.0.0.0')
 ```
 
+### Comparators that only work by accident
+
+Left alone deliberately, but worth knowing about if any of this is touched.
+
+Three comparators never return 0 for equal elements, so `cmp(a,b)` and
+`cmp(b,a)` both return 1 when two items tie:
+
+- `src/api.js`, channels by number
+- `src/services/m3u-service.js`, channels by number
+- `web/directives/channel-config.js`, the `a.c` branch
+
+That is formally an inconsistent comparator, but all three sort on values that
+are unique in practice, so nothing misbehaves today.
+
+Worse, and more interesting: the one in `src/api.js` runs on the result of
+`getAllChannelNumbers()`, which is an array of plain integers, not objects. It
+compares `a.number` against `b.number`, both of which are `undefined` on a
+number primitive, so it is a complete no-op and always has been. `/api/channels`
+is correctly ordered only because the DAO now sorts before it returns. If
+someone ever removes that DAO sort believing the endpoint sorts for itself, the
+ordering silently breaks again.
+
 ## Testing notes
 
 ### createLineup can be exercised directly
@@ -135,6 +157,22 @@ Note that the `http://localhost:${process.env.PORT}` strings still present in
 `video.js`, `offline-player.js` and `plexTranscoder.js` are not part of this
 problem. They are built per request for a local ffmpeg process and never
 outlive the port they were built for.
+
+### Channel order is consistent across every consumer
+
+`getAllChannelNumbers()` enumerated the channels folder with `fs.readdir` and
+returned whatever order that gave. Channel files are named `<number>.json`, so
+that order is lexicographic: with channels 1, 2, 3, 10, 11, 20 and 100 on disk,
+readdir yields 1, 10, 100, 11, 2, 20, 3.
+
+The M3U and the API happened to sort afterwards, but two consumers did not: the
+HDHomeRun lineup in `src/hdhr.js`, which is what Plex, Jellyfin and Emby read,
+and the XMLTV guide build in `index.js`. So the same install advertised
+channels in one order over M3U and a different one to a tuner client.
+
+The DAO now sorts numerically, which is the one place every consumer passes
+through. Verified against a folder of seven channels spanning single, double
+and triple digits.
 
 ### M3U placeholder entry points at a path that is served
 

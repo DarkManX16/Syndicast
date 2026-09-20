@@ -100,6 +100,10 @@ class ChannelDB {
                         }
                     }
                 }
+                // readdir returns filenames lexicographically, so 10.json sorts
+                // before 2.json. Sorting here rather than in each caller keeps
+                // the HDHR lineup and XMLTV guide agreeing with the M3U and API.
+                channelNumbers.sort( (a, b) => a - b );
                 resolve (channelNumbers);
             });
         });
