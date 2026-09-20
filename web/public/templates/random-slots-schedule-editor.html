@@ -56,12 +56,23 @@
                             </select>
                         </div>
                         <div class='form-group col-md-1'>
+                            <label ng-if="$index==0" for="seasons{{$index}}">Seasons</label>
+                            <button id='seasons{{$index}}' class='btn btn-link form-control'
+                                ng-show="canShowSlot(slot)"
+                                ng-disabled="!canConstrainSeasons(slot)"
+                                title="{{ seasonsDisabledReason(slot) || 'Choose which seasons this show uses' }}"
+                                ng-click='toggleSeasonEditor(slot.showId)' >
+                                <i class='fa fa-layer-group'
+                                   ng-class="{'text-info': constraintFor(slot.showId).excludeSeasons.length > 0}"></i>
+                            </button>
+                        </div>
+                        <div class='form-group col-md-1'>
                             <label ng-if="$index==0" for="delete{{$index}}">-</label>
                             <button id='delete{{$index}}' class='btn btn-link form-control' ng-click='deleteSlot($index)' >
                                 <i class='text-danger fa fa-trash-alt'></i>
                             </button>
                         </div>
-                        <div class='form-group col-md-2'>
+                        <div class='form-group col-md-1'>
                         </div>
                         <div class='form-group col-md-7' ng-if="schedule.randomDistribution == 'weighted'" >
                             <label ng-if="$index==0" for="weightRange{{$index}}">Weight</label>
@@ -80,7 +91,47 @@
                         </div>
 
 
-                        
+
+                        <div class='col-md-12' ng-if="openSeasonEditor === slot.showId && canConstrainSeasons(slot)"
+                             style="background: rgba(0,0,0,.04); padding: 8px; margin-bottom: 8px;">
+                            <div class='small text-muted' style="margin-bottom: 6px;">
+                                Season settings are stored against <b>{{ slot.showId }}</b>, not this slot.
+                                <span ng-show="slotsSharingShow(slot.showId) > 1">
+                                    <b class="text-warning">{{ slotsSharingShow(slot.showId) }} slots use this show</b>,
+                                    and they all share these settings and a single episode position.
+                                </span>
+                                <span ng-show="slotsSharingShow(slot.showId) <= 1">
+                                    If you add another slot for this show later, it will share these settings.
+                                </span>
+                            </div>
+
+                            <div class='small' style="margin-bottom: 4px;"><b>Exclude seasons</b></div>
+                            <div style="margin-bottom: 8px;">
+                                <label ng-repeat="s in seasonsAvailable(slot.showId)"
+                                       class='small' style="margin-right: 12px;">
+                                    <input type="checkbox"
+                                        ng-checked="isSeasonExcluded(slot.showId, s)"
+                                        ng-click="toggleSeason(slot.showId, s)" ></input>
+                                    Season {{s}}
+                                </label>
+                            </div>
+
+                            <div class='small' style="margin-bottom: 4px;">
+                                <b>Start from season</b>
+                                <span class='text-muted'>- jumps the position once, then resumes normally.
+                                Earlier seasons stay in rotation.</span>
+                            </div>
+                            <div>
+                                <button class='btn btn-sm btn-outline-secondary'
+                                    ng-repeat="s in seasonsAvailable(slot.showId)"
+                                    style="margin-right: 6px;"
+                                    ng-class="{'active': constraintFor(slot.showId).startSeason === s}"
+                                    ng-click="setStartSeason(slot.showId, s)">S{{s}}</button>
+                                <button class='btn btn-sm btn-link'
+                                    ng-show="constraintFor(slot.showId).startSeason !== undefined"
+                                    ng-click="setStartSeason(slot.showId, null)">clear</button>
+                            </div>
+                        </div>
 
                     </div>
                     <div class="form-row">

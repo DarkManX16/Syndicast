@@ -197,6 +197,14 @@ module.exports = function ($timeout, dizquetv, getShowData) {
                     delete scope.schedule.slots[i].weightPercentage;
                 }
                 res.schedule = scope.schedule;
+                // startSeason is a one-off seek. The lineup it produced is now the
+                // resume point, so clearing it here keeps earlier seasons reachable
+                // instead of pinning every future run to the same season.
+                if (typeof(res.schedule.showConstraints) === 'object') {
+                    for (const showId of Object.keys(res.schedule.showConstraints)) {
+                        delete res.schedule.showConstraints[showId].startSeason;
+                    }
+                }
                 return res;
             }
 
@@ -306,6 +314,99 @@ module.exports = function ($timeout, dizquetv, getShowData) {
 
             scope.canShowSlot = (slot) => {
                 return (slot.showId != 'flex.') && !(slot.showId.startsWith('redirect.'));
+            }
+
+            /*
+             * Season constraints are stored against the show rather than the slot,
+             * because the episode cursor is shared by every slot naming that show.
+             * Storing them per slot would imply an independence that does not exist.
+             */
+            scope.openSeasonEditor = null;
+
+            scope.seasonsAvailable = (showId) => {
+                let seasons = {};
+                for (let i = 0; i < scope.programs.length; i++) {
+                    let p = scope.programs[i];
+                    if (p.type !== 'episode') {
+                        continue;
+                    }
+                    if (getShowData(p).showId !== showId) {
+                        continue;
+                    }
+                    seasons[ (typeof(p.season) === 'number') ? p.season : 0 ] = true;
+                }
+                return Object.keys(seasons).map( (s) => parseInt(s, 10) ).sort( (a,b) => a - b );
+            }
+
+            scope.canConstrainSeasons = (slot) => {
+                return scope.canShowSlot(slot)
+                    && (slot.order === 'next')
+                    && (scope.seasonsAvailable(slot.showId).length > 1);
+            }
+
+            scope.seasonsDisabledReason = (slot) => {
+                if (! scope.canShowSlot(slot)) {
+                    return "";
+                }
+                if (slot.order === 'shuffle') {
+                    return "Season settings apply to Play Next only. Shuffle stores its position "
+                         + "in a way that changes meaning when the episode count changes.";
+                }
+                return "";
+            }
+
+            let constraintFor = (showId) => {
+                if (typeof(scope.schedule.showConstraints) === 'undefined') {
+                    scope.schedule.showConstraints = {};
+                }
+                if (typeof(scope.schedule.showConstraints[showId]) === 'undefined') {
+                    scope.schedule.showConstraints[showId] = { excludeSeasons: [] };
+                }
+                let c = scope.schedule.showConstraints[showId];
+                if (! Array.isArray(c.excludeSeasons) ) {
+                    c.excludeSeasons = [];
+                }
+                return c;
+            }
+            scope.constraintFor = constraintFor;
+
+            scope.toggleSeasonEditor = (showId) => {
+                scope.openSeasonEditor = (scope.openSeasonEditor === showId) ? null : showId;
+            }
+
+            scope.isSeasonExcluded = (showId, season) => {
+                return constraintFor(showId).excludeSeasons.indexOf(season) !== -1;
+            }
+
+            scope.toggleSeason = (showId, season) => {
+                let c = constraintFor(showId);
+                let i = c.excludeSeasons.indexOf(season);
+                if (i === -1) {
+                    c.excludeSeasons.push(season);
+                } else {
+                    c.excludeSeasons.splice(i, 1);
+                }
+                scope.refreshSlots();
+            }
+
+            scope.setStartSeason = (showId, season) => {
+                let c = constraintFor(showId);
+                if ( (season === null) || (typeof(season) === 'undefined') ) {
+                    delete c.startSeason;
+                } else {
+                    c.startSeason = season;
+                }
+                scope.refreshSlots();
+            }
+
+            scope.slotsSharingShow = (showId) => {
+                let n = 0;
+                for (let i = 0; i < scope.schedule.slots.length; i++) {
+                    if (scope.schedule.slots[i].showId === showId) {
+                        n++;
+                    }
+                }
+                return n;
             }
 
             scope.refreshSlots = () => {
