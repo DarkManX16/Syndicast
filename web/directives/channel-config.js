@@ -1812,7 +1812,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
     }
 }
 function validURL(url) {
-    return /^(ftp|http|https):\/\/[^ "]+$/.test(url);
+    // Channel images are stored as root-relative paths so they survive the
+    // server moving to a different host or port - see src/image-url.js - so a
+    // path is as valid here as a full URL.
+    return /^(ftp|http|https):\/\/[^ "]+$/.test(url) || /^\/[^ "]*$/.test(url);
 }
 
 function checkChannelNumber(number) {
