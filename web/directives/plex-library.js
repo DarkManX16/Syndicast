@@ -124,6 +124,48 @@ module.exports = function (plex, dizquetv, $timeout, commonProgramTools) {
                         })
 
             }
+            scope.libraryFilter = { text: "" };
+
+            scope.isFiltering = () => {
+                return (scope.libraryFilter.text || "").trim() !== "";
+            }
+
+            /*
+             * Marks every loaded node that matches, plus any ancestor of a match,
+             * so the path down to a hit stays visible instead of the parent
+             * vanishing and taking the match with it.
+             *
+             * The flag is $$ prefixed because selected items are copied with
+             * angular.toJson, which strips $$ keys. A single $ would be carried
+             * into saved channel and custom show data.
+             */
+            function markFilterMatches(nodes, query) {
+                if (! Array.isArray(nodes) ) {
+                    return false;
+                }
+                let anyMatched = false;
+                for (const node of nodes) {
+                    let self = scope.displayTitle(node).toLowerCase().indexOf(query) !== -1;
+                    let child = markFilterMatches(node.nested, query);
+                    node.$$filterMatch = self || child;
+                    if (node.$$filterMatch) {
+                        anyMatched = true;
+                    }
+                }
+                return anyMatched;
+            }
+
+            scope.applyLibraryFilter = () => {
+                let query = (scope.libraryFilter.text || "").trim().toLowerCase();
+                if (query !== "") {
+                    markFilterMatches(scope.libraries, query);
+                }
+            }
+
+            scope.nodeVisible = (node) => {
+                return (! scope.isFiltering()) || (node.$$filterMatch === true);
+            }
+
             scope.fillNestedIfNecessary = async (x, isLibrary) => {
                 if (typeof(x.nested) === 'undefined') {
                     x.nested = await plex.getNested(scope.plexServer, x, isLibrary, scope.errors);
@@ -138,6 +180,9 @@ module.exports = function (plex, dizquetv, $timeout, commonProgramTools) {
                             }
                         }
                     }
+                    // Children that arrive while a filter is active need marking
+                    // too, or expanding a node would show nothing.
+                    scope.applyLibraryFilter();
                 }
             }
             scope.getNested = (list, isLibrary) => {

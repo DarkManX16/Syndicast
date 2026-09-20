@@ -43,8 +43,17 @@
                         </button>    
                         Content:
                     </label>
+                    <div class="mb-3" ng-show="currentOrigin.type=='plex'">
+                        <label for="libraryFilter" class="form-label small">
+                            Filter <span class="text-muted">- narrows what is already loaded, matching anywhere in the title</span>
+                        </label>
+                        <input type="text" class="form-control form-control-sm" id="libraryFilter"
+                            placeholder="Filter loaded items..."
+                            ng-model="libraryFilter.text" ng-change="applyLibraryFilter()" ></input>
+                    </div>
+
                     <ul ng-show="currentOrigin.type=='plex' " class="list-group list-group-root plex-panel" ng-init="setHeight = {'height': height + 'px'}" ng-style="setHeight" lazy-img-container>
-                        <li class="list-group-item" ng-repeat="a in libraries">
+                        <li class="list-group-item" ng-repeat="a in libraries | filter:nodeVisible">
                             <div class="flex-container library-item-hover {{ displayImages ? 'w_images' : 'wo_images' }}" ng-click="getNested(a, true);">
                                 <span class="fa {{ a.collapse ? 'fa-chevron-down' : 'fa-chevron-right' }} tab"></span>
                                 <img ng-if="displayImages" lazy-img="{{a.icon}}" ></img>
@@ -55,7 +64,7 @@
                             </div>
                             <ul ng-if="a.collapse" class="list-group">
                                 <li class="list-group-item {{ b.type !== 'movie' ? 'list-group-item-secondary' : 'list-group-item-video' }}"
-                                    ng-repeat="b in a.nested">
+                                    ng-repeat="b in a.nested | filter:nodeVisible">
                                     <div class="flex-container library-item-hover"
                                         ng-click="b.type !== 'movie' ? getNested(b) : selectItem(b, true)">
                                         <span ng-if="b.type !== 'movie'" class="tab"></span>
@@ -76,7 +85,7 @@
                                         </span>
                                     </div>
                                     <ul ng-if="b.collapse" class="list-group">
-                                        <li ng-repeat="c in b.nested"
+                                        <li ng-repeat="c in b.nested | filter:nodeVisible"
                                             class="list-group-item {{ c.type !== 'movie' && c.type !== 'episode' && c.type !== 'track' ? 'list-group-item-dark' : 'list-group-item-video' }}">
                                             <div class="flex-container library-item-hover"
                                                 ng-click="c.type !== 'movie' && c.type !== 'episode' && c.type !== 'track' ? getNested(c) : selectItem(c, true)">
@@ -103,7 +112,7 @@
                                             </div>
                                             <ul ng-if="c.collapse" class="list-group">
                                                 <li class="list-group-item list-group-item-video"
-                                                    ng-repeat="d in c.nested">
+                                                    ng-repeat="d in c.nested | filter:nodeVisible">
                                                     <div class="flex-container library-item-hover" ng-click="selectItem(d, true)">
 
                                                         <img ng-if="displayImages" lazy-img="{{d.episodeIcon}}" ></img>
