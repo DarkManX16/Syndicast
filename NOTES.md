@@ -1,5 +1,56 @@
 # Notes
 
+## Feature roadmap
+
+Intended work. **Nothing in this section is built yet** - it is a statement of
+direction, not of state. The Known issues section below is separate and covers
+defects in what already ships.
+
+### Blocks system
+
+The original reason for the fork.
+
+- [ ] Timed Flex Blocks - time-scoped filler switching by time of day and day of week
+- [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
+      and per block
+- [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL)
+- [ ] Midrolls
+- [ ] Block schedule manager
+
+### Scheduling
+
+- [ ] Season exclusion / season start
+- [ ] Sign-ons and sign-offs
+- [ ] Random slot pad times below their duration
+- [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
+
+### Media handling
+
+- [ ] Per-channel transcoding configs, so channels can use different video and audio formats
+- [ ] Fix NVIDIA / h264_nvenc encoder issues
+- [ ] Aspect ratio stretch without having to disable "normalize resolution"
+- [ ] Fix 10-15 second bumpers repeating before episodes
+
+### Library management
+
+- [ ] Swap out episodes of a show, and plug library items in anywhere
+- [ ] Info panel and thumbnail per item
+- [ ] Jellyfin as a media source
+
+### Interface
+
+- [ ] Profiles for specific looks
+- [ ] Custom TV guides
+- [ ] UI customization and cosmetic theming
+
+### Infrastructure
+
+- [ ] Public channel sharing without exposing an IP
+- [ ] Easier version updates
+- [ ] Fix random crashes during streaming
+- [ ] Fix time slots breaking across daylight savings
+- [ ] Keep a safer version of editing the ffmpeg path in the UI
+
 ## Known issues / future work
 
 ### Rebrand artwork does not reach existing installs
