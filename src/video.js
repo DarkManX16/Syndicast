@@ -18,7 +18,7 @@ async function shutdown() {
     stopPlayback = true;
 }
 
-function video( channelService, fillerDB, db, programmingService, activeChannelService, programPlayTimeDB ) {
+function video( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB ) {
     var router = express.Router()
 
     router.get('/setup', (req, res) => {
@@ -303,7 +303,7 @@ function video( channelService, fillerDB, db, programmingService, activeChannelS
         if ( (prog == null) || (typeof(prog) === 'undefined') || (prog.program == null) || (typeof(prog.program) == "undefined") ) {
             throw "No video to play, this means there's a serious unexpected bug or the channel db is corrupted."
         }
-        let fillers = await fillerDB.getFillersFromChannel(brandChannel);
+        let fillers = await fillerService.getFillersFromChannel(brandChannel);
         try {
             let lineup = helperFuncs.createLineup(programPlayTimeDB, prog, brandChannel, fillers, isFirst)
             lineupItem = lineup.shift();

@@ -20,7 +20,7 @@
 const path = require('path');
 var fs = require('fs');
 
-const TARGET_VERSION = 806;
+const TARGET_VERSION = 807;
 const DAY_MS = 1000 * 60 * 60 * 24;
 
 const STEPS = [
@@ -47,6 +47,9 @@ const STEPS = [
     [    803,    805, (db) => addFFMpegLock(db) ],
     [    804,    805, (db) => addFFMpegLock(db) ],
     [    805,    806, () => relativizeChannelImages() ],
+    // Upstream numbered this 900 to 1000 and paired it with an ffmpeg path
+    // migration from a commit we did not take, so it keeps our numbering.
+    [    806,    807, () => fixFillerModes() ],
 ]
 
 const { v4: uuidv4 } = require('uuid');
@@ -680,6 +683,25 @@ function extractFillersFromChannels() {
     }
     console.log("Done extracting fillers from channels.");
    
+}
+
+function fixFillerModes() {
+    console.log("Fixing filler modes...");
+    let fillers = path.join(process.env.DATABASE, 'filler');
+    let fillerFiles = fs.readdirSync(fillers);
+
+    for (let i = 0; i < fillerFiles.length; i++) {
+        if (path.extname( fillerFiles[i] ) === '.json') {
+            console.log("Migrating filler : " + fillerFiles[i] +"..." );
+            let fillerPath = path.join(fillers, fillerFiles[i]);
+            let filler = JSON.parse(fs.readFileSync(fillerPath, 'utf-8'));
+            if ( typeof(filler.mode) !== "string" )  {
+                filler.mode = "custom";
+            }
+            fs.writeFileSync( fillerPath, JSON.stringify(filler), 'utf-8');
+        }
+    }
+    console.log("Done fixing filler modes.");
 }
 
 function addFPS(db) {

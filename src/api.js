@@ -5,7 +5,6 @@ const fs = require('fs')
 const constants = require('./constants');
 const JSONStream = require('JSONStream');
 const FFMPEGInfo = require('./ffmpeg-info');
-const PlexServerDB = require('./dao/plex-server-db');
 const Plex = require("./plex.js");
 
 const timeSlotsService = require('./services/time-slots-service');
@@ -24,10 +23,9 @@ function safeString(object) {
 }
 
 module.exports = { router: api }
-function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService ) {
+function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService ) {
     let m3uService = _m3uService;
     const router = express.Router()
-    const plexServerDB = new PlexServerDB(channelService, fillerDB, customShowDB, db);
 
     router.get('/api/version', async (req, res) => {
       try {
@@ -216,6 +214,19 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
             );
         }
     })
+
+    // Used by the filler editor to list Plex playlists and collections. This is
+    // additive: the rest of the UI still talks to Plex directly and the UI Route
+    // setting is unaffected.
+    router.get('/api/plex-server/:serverName64/:path(*)', async (req, res) => {
+      try {
+        let result = await plexProxyService.get(req.params.serverName64, req.params.path);
+        res.status(200).send(result);
+      } catch (err) {
+          console.error("Could not use plex proxy.", err);
+          res.status(404).send("Could not call plex server.");
+      }
+    });
 
 
     // Channels
@@ -427,7 +438,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
         if (typeof(id) === 'undefined') {
           return res.status(400).send("Missing id");
         }
-        await fillerDB.saveFiller(id, req.body );
+        await fillerService.saveFiller(id, req.body );
         return res.status(204).send({});
       } catch(err) {
         console.error(err);
@@ -436,7 +447,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     })
     router.put('/api/filler', async (req, res) => {
       try {
-        let uuid = await fillerDB.createFiller(req.body );
+        let uuid = await fillerService.createFiller(req.body );
         return res.status(201).send({id: uuid});
       } catch(err) {
         console.error(err);
@@ -449,7 +460,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
         if (typeof(id) === 'undefined') {
           return res.status(400).send("Missing id");
         }
-        await fillerDB.deleteFiller(id);
+        await fillerService.deleteFiller(id);
         return res.status(204).send({});
       } catch(err) {
         console.error(err);
@@ -463,7 +474,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
         if (typeof(id) === 'undefined') {
           return res.status(400).send("Missing id");
         }
-        let channels = await fillerDB.getFillerChannels(id);
+        let channels = await fillerService.getFillerChannels(id);
         if (channels == null) {
             return res.status(404).send("Filler not found");
         }

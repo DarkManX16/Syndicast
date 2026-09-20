@@ -1,4 +1,4 @@
-module.exports = function ($timeout, commonProgramTools, getShowData) {
+module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) {
     return {
         restrict: 'E',
         templateUrl: 'templates/filler-config.html',
@@ -11,35 +11,23 @@ module.exports = function ($timeout, commonProgramTools, getShowData) {
             scope.showTools = false;
             scope.showPlexLibrary = false;
             scope.content = [];
-            scope.filteredContent = [];
-            scope.searchText = "";
             scope.visible = false;
             scope.error = undefined;
+            scope.modes = [ {
+                name: "import",
+                description: "Collection/Playlist from Plex",
+            }, {
+                name: "custom",
+                description: "Custom List of Clips",
+            } ];
+            scope.servers = [];
+            scope.libraries = [];
+            scope.sources = [];
 
-            function applyFilter() {
-                let query = (scope.searchText || "").trim().toLowerCase();
-                // Unfiltered keeps the same array reference so drag-and-drop still
-                // operates on the real list rather than a copy of it.
-                scope.filteredContent = (query === "")
-                    ? scope.content
-                    : scope.content.filter( (c) => c.$searchText.indexOf(query) !== -1 );
-            }
-
-            // $index is each item's position in the unfiltered list, which is what
-            // delete and reorder act on. It has to be rebuilt after every mutation,
-            // otherwise a filtered view would delete the wrong row.
             function refreshContentIndexes() {
                 for (let i = 0; i < scope.content.length; i++) {
                     scope.content[i].$index = i;
-                    scope.content[i].$searchText = scope.getText(scope.content[i]).toLowerCase();
                 }
-                applyFilter();
-            }
-
-            scope.searchChanged = applyFilter;
-
-            scope.isFiltered = () => {
-                return (scope.searchText || "").trim() !== "";
             }
 
             scope.contentSplice = (a,b) => {
@@ -69,21 +57,173 @@ module.exports = function ($timeout, commonProgramTools, getShowData) {
                 console.log("movedFunction(" + index + ")");
             }
 
+            scope.serverChanged = async () => {
+                if (scope.server === "") {
+                    scope.libraryKey = "";
+                    return;
+                }
+                scope.loadingLibraries = true;
+                try {
+                    let libraries = (await dizquetv.getFromPlexProxy(scope.server, "/library/sections")).Directory;
+                    if ( typeof(libraries) === "undefined") {
+                        libraries = []
+                    }
+                    let officialLibraries = libraries.map( (library) => {
+                        return {
+                            "key" : library.key,
+                            "description" : library.title,
+                        }
+                    } );
+
+                    let defaultLibrary = {
+                            "key": "",
+                            "description" : "Select a Library...",
+                        }
+                    let playlists = [
+                        {
+                            "key": "$PLAYLISTS",
+                            "description" : "Playlists",
+                        }
+                    ];
+                    let combined = officialLibraries.concat(playlists);
+                    if (! combined.some( (library) => library.key === scope.libraryKey) ) {
+                        scope.libraryKey = "";
+                        scope.libraries = [defaultLibrary].concat(combined);
+                    } else {
+                        scope.libraries = combined;
+                    }
+                } catch (err) {
+                    scope.libraries = [ { name: "", description: "Unable to load libraries"} ];
+                    scope.libraryKey = ""
+                    throw err;
+                } finally {
+                    scope.loadingLibraries = false;
+                    $timeout( () => {}, 0);
+                }
+            }
 
 
-            scope.linker( (filler) => {
+            scope.libraryChanged = async () => {
+                if (scope.libraryKey == null) {
+                    throw Error(`null libraryKey? ${scope.libraryKey} ${new Date().getTime()} `);
+                }
+                if (scope.libraryKey === "") {
+                    scope.sourceKey = "";
+                    return;
+                }
+                scope.loadingCollections = true;
+                try {
+                    let collections;
+                    if (scope.libraryKey === "$PLAYLISTS") {
+                        collections = (await dizquetv.getFromPlexProxy(scope.server, `/playlists`)).Metadata;
+                    } else {
+                        collections = (await dizquetv.getFromPlexProxy(scope.server, `/library/sections/${scope.libraryKey}/collections`));
+                        collections = collections.Metadata
+                    }
+                    if (typeof(collections) === "undefined") {
+                        //when the library has no collections it returns size=0
+                        //and no array
+                        collections = [];
+                    }
+                    let officialCollections = collections.map( (col) => {
+                        return {
+                            "key" : col.key,
+                            "description" : col.title,
+                        }
+                    } );
+                    let defaultSource = {
+                        "key": "",
+                        "description" : "Select a Source...",
+                    };
+                    if (officialCollections.length == 0) {
+                        defaultSource = {
+                            "key": "",
+                            "description" : "(No collections/lists found)",
+                        }
+                    }
+                    if (! officialCollections.some( (col) => col.key === scope.sourceKey ) ) {
+                        scope.sourceKey = "";
+                        scope.sources = [defaultSource].concat(officialCollections);
+                    } else {
+                        scope.sources = officialCollections;
+                    }
+                } catch (err) {
+                    scope.sources = [ { name: "", description: "Unable to load collections"} ];
+                    scope.sourceKey = "";
+                    throw err;
+                } finally {
+                    scope.loadingCollections = false;
+                    $timeout( () => {}, 0);
+                }
+            }
+
+            let reloadServers = async() => {
+                scope.loadingServers = true;
+                try {
+                    let servers = await dizquetv.getPlexServers();
+                    scope.servers = servers.map( (s) => {
+                        return {
+                            "name" : s.name,
+                            "description" : `Plex - ${s.name}`,
+                        }
+                    } );
+                    let defaultServer = {
+                        name: "",
+                        description: "Select a Plex server..."
+                    };
+                    if (! scope.servers.some( (server) => server.name === scope.server) ) {
+                        scope.server = "";
+                        scope.servers = [defaultServer].concat(scope.servers);
+                    }
+                } catch (err) {
+                    scope.server = "";
+                    scope.servers = [ {name:"", description:"Could not load servers"} ];
+                    throw err;
+                } finally {
+                    scope.loadingServers = false;
+                    $timeout( () => {}, 0);
+                }
+
+                await scope.serverChanged();
+                await scope.libraryChanged();
+
+            };
+
+
+
+
+            scope.linker( async (filler) => {
+
                 if ( typeof(filler) === 'undefined') {
                     scope.name = "";
                     scope.content = [];
                     scope.id = undefined;
                     scope.title = "Create Filler List";
+                    scope.mode = "import";
+                    scope.server = "";
+                    scope.libraryKey = "";
+                    scope.sourceKey = "";
                 } else {
                     scope.name = filler.name;
                     scope.content = filler.content;
                     scope.id = filler.id;
                     scope.title = "Edit Filler List";
+                    scope.mode = filler.mode;
+                    scope.server = filler?.import?.serverName;
+                    if ( typeof(scope.server) !== "string" ) {
+                        scope.server = "";
+                    }
+                    scope.libraryKey = filler?.import?.meta?.libraryKey;
+                    if ( typeof(scope.libraryKey) !== "string" ) {
+                        scope.libraryKey = "";
+                    }
+                    scope.sourceKey = filler?.import?.key;
+                    if ( typeof(scope.sourceKey) !== "string" ) {
+                        scope.sourceKey = "";
+                    }
                 }
-                scope.searchText = "";
+                await reloadServers();
+                scope.source = "";
                 refreshContentIndexes();
                 scope.visible = true;
             } );
@@ -96,8 +236,17 @@ module.exports = function ($timeout, commonProgramTools, getShowData) {
                 if ( (typeof(scope.name) === 'undefined') || (scope.name.length == 0) ) {
                     scope.error = "Please enter a name";
                 }
-                if ( scope.content.length == 0) {
-                    scope.error = "Please add at least one clip.";
+                if ( scope?.mode === "import" ) {
+                    if ( (typeof(scope?.server) !== "string" ) || (scope?.server === "") ) {
+                        scope.error = "Please select a server"
+                    }
+                    if ( (typeof(scope?.source) !== "string" ) && (scope?.source === "") ) {
+                        scope.error = "Please select a source."
+                    }
+                 } else {
+                    if ( scope.content.length == 0) {
+                        scope.error = "Please add at least one clip.";
+                    }
                 }
                 if (typeof(scope.error) !== 'undefined') {
                     $timeout( () => {
@@ -106,15 +255,30 @@ module.exports = function ($timeout, commonProgramTools, getShowData) {
                     return;
                 }
                 scope.visible = false;
-                scope.onDone( {
+                let object = {
                     name: scope.name,
                     content: scope.content.map( (c) => {
                         delete c.$index
-                        delete c.$searchText
                         return c;
                     } ),
                     id: scope.id,
-                } );
+                    mode: scope.mode,
+
+                };
+                if (object.mode === "import") {
+                    object.content = [];
+                    //In reality  dizqueTV only needs to know the server name
+                    //and the source key, the meta object is for extra data
+                    //that is useful for external things like this UI.
+                    object.import = {
+                        serverName : scope.server,
+                        key: scope.sourceKey,
+                        meta: {
+                            libraryKey : scope.libraryKey,
+                        }
+                    }
+                }
+                scope.onDone( object );
             }
             scope.getText = (clip) => {
                 let show = getShowData(clip);
