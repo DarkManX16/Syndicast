@@ -17,7 +17,8 @@
         
                         <div class="flex-container">
                             <div class="programming-counter small" ng-show="content.length > 0">
-                                <span class="small"><b>Total:</b> {{content.length}}</span>
+                                <span class="small" ng-hide="isFiltered()"><b>Total:</b> {{content.length}}</span>
+                                <span class="small" ng-show="isFiltered()"><b>Showing:</b> {{filteredContent.length}} of {{content.length}}</span>
                             </div>
                             <div class='flex-pull-right' ></div>
                             <div>
@@ -76,6 +77,23 @@
                         </div>
         
                         
+                        <div class="form-group" ng-show="content.length > 0" style="margin-bottom: 0.5rem;">
+                            <input type="text" class="form-control form-control-sm" id="showSearch"
+                                placeholder="Search programs..."
+                                ng-model="searchText" ng-change="searchChanged()" ></input>
+                        </div>
+
+                        <div ng-show="isFiltered()" class="small text-muted" style="margin-bottom: 0.5rem;">
+                            The X numbers still show each program's position in the full list, so
+                            they will skip while filtering. Drag-to-reorder is disabled for the
+                            same reason - the positions shown do not run in order. Clear the
+                            search to reorder.
+                        </div>
+
+                        <div ng-show="isFiltered() &amp;&amp; filteredContent.length === 0">
+                            <p class="text-center text-info">No programs match "{{searchText}}".</p>
+                        </div>
+
                         <div ng-show="content.length === 0">
                             <p class="text-center text-info">Click the <span class="fa fa-plus"></span> to import show content from your Plex server(s).</p>
                         </div>
@@ -87,10 +105,12 @@
                     vs-repeat-reinitialized="vsReinitialized(event, startIndex, endIndex)"
                     ng-init="setUpWatcher()"
                     dnd-drop="dropFunction(index , item)"
+                    dnd-disable-if="isFiltered()"
                     dnd-list=""
 
                 >
-                    <div class="list-group-item flex-container show-row"  style="cursor: default; height:1.1em; overflow:hidden" ng-repeat="x in content" track-by="x.$index"  dnd-draggable="x"
+                    <div class="list-group-item flex-container show-row"  style="cursor: default; height:1.1em; overflow:hidden" ng-repeat="x in filteredContent" track-by="x.$index"  dnd-draggable="x"
+                        dnd-disable-if="isFiltered()"
                         dnd-effect-allowed="move"
                         dnd-moved="movedFunction(x.$index)"
                         >
