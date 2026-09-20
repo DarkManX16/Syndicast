@@ -36,7 +36,17 @@ count. See the shuffleOrder entry under Known issues.
 - [ ] Per-channel transcoding configs, so channels can use different video and audio formats
 - [ ] Fix NVIDIA / h264_nvenc encoder issues
 - [ ] Aspect ratio stretch without having to disable "normalize resolution"
-- [ ] Fix 10-15 second bumpers repeating before episodes
+- [ ] Fix very short items repeating or being skipped next to Flex
+
+      Items under roughly 20 seconds, placed adjacent to Flex in the lineup,
+      either play about three times over or get skipped entirely. This is a
+      playback problem, not a filler-selection one: the 1.6.0 filler algorithm
+      does not touch it, and it happens to items already placed in the
+      programming rather than to items being chosen. Most likely in the concat
+      or transition handling, where a very short item interacts badly with the
+      black-frame interlude and the buffer boundaries. Reproduce with a
+      deliberately short item next to Flex before attempting any fix -
+      guessing at the layer here would be expensive.
 
 ### Library management
 
