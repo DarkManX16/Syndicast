@@ -54,6 +54,39 @@ nothing in the UI mentions it.
 Worth renaming to something like `ffmpegPathUnlockedUntil`, and surfacing the
 unlock route in the settings page instead of leaving it a CLI-only affordance.
 
+### Port 18000 is unbindable on this Windows machine
+
+`node index.js -p 18000` fails with `EACCES`, even though the port is not in
+`netsh int ipv4 show excludedportrange protocol=tcp` (which lists only
+50000-50059) and sits outside the dynamic range, 1024 plus 13977. Something
+else, most likely Hyper-V or Docker, holds a reservation that does not show up
+in the usual places.
+
+18080, 19000, 17000, 8123 and 9500 all bind fine, so development moved to
+18080. `.claude/launch.json` and the README still say 18000, deliberately: the
+reservation may not survive a reboot, and changing them would be churn if it
+clears. Check with a bind test before assuming it is still broken:
+
+```js
+require('net').createServer().listen(18000, '0.0.0.0')
+```
+
+## Testing notes
+
+### createLineup can be exercised directly
+
+`helperFuncs.createLineup(programPlayTime, obj, channel, fillers, isFirst)` is
+exported and has no I/O of its own, so filler selection can be tested without
+playback, ffmpeg or a real channel. Pass a stub for `programPlayTime` exposing
+`getProgramLastPlayTime(channelId, programKey)`, an `obj` of
+`{timeElapsed, program}` where the program is `{isOffline: true, duration}`,
+and fillers shaped `{id, content, weight, cooldown}`.
+
+Running it a few hundred times and counting titles is enough to characterise
+the picker statistically. That is how the 1.6.0 filler algorithm was verified:
+600 lineups showed every pick going to never-played clips, and once all had
+played, the longest idle took 67 percent against 33 for the next.
+
 ## Resolved
 
 Kept here rather than deleted because every file involved is in the conflict
@@ -99,3 +132,22 @@ The no-channels entry in `m3u-service.js` pointed at `{{host}}/resources/...`,
 which 404s since nothing mounts `/resources` as static - `index.js` maps only
 `/favicon.svg` into that folder. It now uses `/images/dizquetv.png`, which
 `initDB` guarantees exists on every start.
+
+### validURL rejected the paths the icon change introduced
+
+Storing channel images as paths broke saving any channel through the UI.
+`validURL` in `channel-config.js` requires a scheme, so `/images/dizquetv.png`
+failed with "Please enter a valid image URL" and the save never ran. It now
+accepts a root-relative path as well.
+
+The cause is worth more than the fix. The icon change was verified through
+XMLTV output, M3U output and the browser rendering the image, all of which
+read the value. Nothing exercised the path that *writes* it, so a validation
+sitting directly in front of the save went unnoticed for two commits.
+
+It also survived a first test attempt, because that test called a
+`scope.saveChannel()` that does not exist. The optional-call guard meant
+nothing ran and no error was raised, which read as a pass. The real entry
+point is `scope._onDone(channel)`, bound to the Save button in
+`channel-config.html`. When testing through a scope, confirm the function
+being called actually exists.
