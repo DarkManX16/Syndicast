@@ -7,15 +7,42 @@ module.exports = function ($scope, $timeout, dizquetv) {
     $scope.refreshShow = async () => {
         $scope.shows = [ { id: '?', pending: true} ]
         $timeout();
-        let shows = await dizquetv.getAllShowsInfo();
-        shows.sort( (a,b) => {
-            return a.name > b.name;
-        } );
-
-        $scope.shows = shows;
+        // Order comes from the server, which sorts by stored rank.
+        $scope.shows = await dizquetv.getAllShowsInfo();
         $timeout();
     }
     $scope.refreshShow();
+
+    $scope.savingOrder = false;
+
+    let persistOrder = async () => {
+        $scope.savingOrder = true;
+        try {
+            await dizquetv.saveShowOrder( $scope.shows.map( (s) => s.id ) );
+        } catch (err) {
+            console.error("Unable to save custom show order", err);
+            // Fall back to whatever the server actually has, so the page never
+            // shows an order that was not persisted.
+            await $scope.refreshShow();
+        }
+        $scope.savingOrder = false;
+        $timeout();
+    }
+
+    // Runs after the dropped copy has been inserted, so this splice removes the
+    // original and leaves the array in its final order.
+    $scope.showMoved = (index) => {
+        $scope.shows.splice(index, 1);
+        persistOrder();
+    }
+
+    $scope.sortShowsByName = (descending) => {
+        $scope.shows.sort( (a, b) => {
+            let r = (a.name || "").localeCompare(b.name || "");
+            return descending ? -r : r;
+        } );
+        persistOrder();
+    }
 
     
     

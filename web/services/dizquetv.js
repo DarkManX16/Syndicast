@@ -254,6 +254,10 @@ module.exports = function ($http, $q) {
         /*======================================================================
         * Custom Show stuff
         */
+        saveShowOrder: async (ids) => {
+            await $http.post('/api/shows/order', { ids: ids });
+        },
+
         getAllShowsInfo: async () => {
         let f = await $http.get('/api/shows');
             return f.data;

@@ -7,30 +7,54 @@
         <button class="pull-right btn btn-sm btn-primary" ng-click="selectShow(-1)">
             <span class="fa fa-plus"></span>
         </button>
+        <button class="pull-right btn btn-sm btn-secondary" style="margin-right: 5px;"
+            ng-show="shows.length > 1" ng-disabled="savingOrder"
+            title="Sort by name, Z to A" ng-click="sortShowsByName(true)">
+            <i class='fa fa-sort-alpha-up'></i> Z-A
+        </button>
+        <button class="pull-right btn btn-sm btn-secondary" style="margin-right: 5px;"
+            ng-show="shows.length > 1" ng-disabled="savingOrder"
+            title="Sort by name, A to Z" ng-click="sortShowsByName(false)">
+            <i class='fa fa-sort-alpha-down'></i> A-Z
+        </button>
     </h5>
     <table class="table">
-        <tr>
-            <th>Name</th>
-            <th width="40">Clips</th>
-            <th style='width:2em'></th>
-        </tr>
-        <tr ng-if="shows.length === 0">
-            <td colspan="3">
-                <p class="text-center text-danger">No Custom Shows set. Click the <span class="fa fa-plus"></span> to add custom shows.</p>
-            </td>
-        </tr>
-        <tr class='show-row' ng-repeat="x in shows" ng-click="selectShow($index)" style="cursor: pointer; height: 3em"  >
-            <td style='height: 3em'>
-                <div class="loader" ng-if="x.pending"></div>
-                <span ng-show="!x.pending">{{x.name}}</span>
-            </td>
-            <td>{{x.count}}</td>
-            <td>
-                <button class='btn btn-link' title='Delete...' ng-click='deleteShow($index)' >
-                    <i class='fas fa-trash-alt text-danger'></i>
-                </button>
-            </td>
-        </tr>
+        <thead>
+            <tr>
+                <th style='width:2em'></th>
+                <th>Name</th>
+                <th width="40">Clips</th>
+                <th style='width:2em'></th>
+            </tr>
+        </thead>
+        <tbody dnd-list="shows">
+            <tr class="dndPlaceholder"><td colspan="4">&nbsp;</td></tr>
+            <tr ng-if="shows.length === 0">
+                <td colspan="4">
+                    <p class="text-center text-danger">No Custom Shows set. Click the <span class="fa fa-plus"></span> to add custom shows.</p>
+                </td>
+            </tr>
+            <tr class='show-row' ng-repeat="x in shows" ng-click="selectShow($index)" style="cursor: pointer; height: 3em"
+                dnd-draggable="x"
+                dnd-effect-allowed="move"
+                dnd-moved="showMoved($index)"
+                >
+                <td dnd-handle style='cursor: move; color: #999;' title='Drag to reorder'
+                    ng-click="$event.stopPropagation()">
+                    <i class='fas fa-grip-vertical'></i>
+                </td>
+                <td dnd-nodrag style='height: 3em'>
+                    <div class="loader" ng-if="x.pending"></div>
+                    <span ng-show="!x.pending">{{x.name}}</span>
+                </td>
+                <td dnd-nodrag>{{x.count}}</td>
+                <td dnd-nodrag>
+                    <button class='btn btn-link' title='Delete...' ng-click='deleteShow($index)' >
+                        <i class='fas fa-trash-alt text-danger'></i>
+                    </button>
+                </td>
+            </tr>
+        </tbody>
     </table>
 
 
