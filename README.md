@@ -85,7 +85,7 @@ server, which removes the UI Route setting, and moving the ffmpeg path out of th
 docker run -d --name syndicast \
   -p 8000:8000 \
   -v syndicast-data:/home/node/app/.syndicast \
-  YOUR_DOCKERHUB_USERNAME/syndicast:latest
+  darkmannx16/syndicast:latest
 ```
 
 Then open `http://localhost:8000`, connect your Plex server, and start
@@ -97,7 +97,7 @@ For NVIDIA hardware encoding, use the `latest-nvidia` tag and add
 ### Windows, macOS, and Linux
 
 Download the app for your system from the
-[Releases page](https://github.com/YOUR_GITHUB_USERNAME/syndicast/releases),
+[Releases page](https://github.com/DarkManX16/Syndicast/releases),
 run it, and open `http://localhost:8000`. Your settings are saved in a
 `.syndicast` folder inside the folder you run it from.
 
