@@ -44,6 +44,43 @@
                         Content:
                     </label>
                     <div class="mb-3" ng-show="currentOrigin.type=='plex'">
+                        <label for="libraryKeywords" class="form-label small">
+                            Keywords <span class="text-muted">- searches the library on the server, matching word beginnings</span>
+                        </label>
+                        <input type="text" class="form-control form-control-sm" id="libraryKeywords"
+                            ng-disabled="keywordLibrary === null"
+                            placeholder="{{ keywordPlaceholder() }}"
+                            ng-model="keywords.text" ng-change="keywordsChanged()" ></input>
+                        <div class="small text-muted" ng-show="keywordSearching">Searching...</div>
+                    </div>
+
+                    <ul class="list-group list-group-root plex-panel" ng-if="keywordResults !== null"
+                        ng-show="currentOrigin.type=='plex'" style="max-height: 200px; overflow-y: auto;">
+                        <li class="list-group-item" ng-if="keywordResults.length === 0">
+                            <span class="small text-info">
+                                No results for "{{keywords.text}}" in {{keywordLibrary.title}}.
+                                Keywords matches word beginnings, so try the start of a word.
+                            </span>
+                        </li>
+                        <li class="list-group-item {{ r.type !== 'movie' ? 'list-group-item-secondary' : 'list-group-item-video' }}"
+                            ng-repeat="r in keywordResults">
+                            <div class="flex-container library-item-hover"
+                                ng-click="r.type !== 'movie' ? getNested(r) : selectItem(r, true)">
+                                <img ng-if="displayImages" lazy-img="{{ r.type === 'episode' ? r.episodeIcon : r.icon }}" ></img>
+                                <span class="flex-grow-1">{{ displayTitle(r) }}</span>
+                                <span ng-if="r.type === 'movie'">{{r.durationStr}}</span>
+                                <span class="flex-pull-right" ng-if="r.type === 'movie'">
+                                    <span class="fa fa-plus-circle btn"></span>
+                                </span>
+                                <span ng-if="r.type === 'show' || r.type === 'collection' || r.type === 'artist'"
+                                    class="flex-pull-right" ng-click="$event.stopPropagation(); selectShow(r);">
+                                    <span class="fa fa-plus-circle btn"></span>
+                                </span>
+                            </div>
+                        </li>
+                    </ul>
+
+                    <div class="mb-3" ng-show="currentOrigin.type=='plex'">
                         <label for="libraryFilter" class="form-label small">
                             Filter <span class="text-muted">- narrows what is already loaded, matching anywhere in the title</span>
                         </label>

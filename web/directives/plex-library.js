@@ -166,6 +166,76 @@ module.exports = function (plex, dizquetv, $timeout, commonProgramTools) {
                 return (! scope.isFiltering()) || (node.$$filterMatch === true);
             }
 
+            /*
+             * Keywords asks Plex itself, scoped to one library, using its title=
+             * parameter. That matches word beginnings only, unlike the Filter
+             * above, which is why they are separate boxes.
+             */
+            scope.keywords = { text: "" };
+            scope.keywordLibrary = null;
+            scope.keywordResults = null;
+            scope.keywordSearching = false;
+
+            let keywordSeq = 0;
+            let keywordTimer = null;
+            const KEYWORD_DEBOUNCE_MS = 300;
+
+            scope.keywordPlaceholder = () => {
+                if (scope.keywordLibrary === null) {
+                    return "Expand a library first - Keywords searches inside one library";
+                }
+                return "Search " + scope.keywordLibrary.title + " on the server...";
+            }
+
+            scope.keywordsChanged = () => {
+                if (keywordTimer !== null) {
+                    $timeout.cancel(keywordTimer);
+                }
+                // One request after typing stops, rather than one per keystroke.
+                keywordTimer = $timeout(runKeywordSearch, KEYWORD_DEBOUNCE_MS);
+            }
+
+            async function runKeywordSearch() {
+                keywordTimer = null;
+                let query = (scope.keywords.text || "").trim();
+                let library = scope.keywordLibrary;
+                if ( (query === "") || (library === null) ) {
+                    scope.keywordResults = null;
+                    scope.keywordSearching = false;
+                    return;
+                }
+                // Debouncing cuts the number of requests but cannot order them.
+                // Only the newest search is allowed to write its results, so a
+                // slow earlier response landing late is discarded.
+                let seq = ++keywordSeq;
+                scope.keywordSearching = true;
+                let results = null;
+                try {
+                    results = await plex.getNested(
+                        scope.plexServer,
+                        { key: library.key + "?title=" + encodeURIComponent(query) },
+                        false,
+                        scope.errors
+                    );
+                } catch (err) {
+                    console.error("Keyword search failed", err);
+                    results = [];
+                }
+                if (seq !== keywordSeq) {
+                    return;
+                }
+                scope.keywordResults = results;
+                scope.keywordSearching = false;
+                $timeout();
+            }
+
+            scope.clearKeywords = () => {
+                scope.keywords.text = "";
+                keywordSeq++;
+                scope.keywordResults = null;
+                scope.keywordSearching = false;
+            }
+
             scope.fillNestedIfNecessary = async (x, isLibrary) => {
                 if (typeof(x.nested) === 'undefined') {
                     x.nested = await plex.getNested(scope.plexServer, x, isLibrary, scope.errors);
@@ -189,6 +259,16 @@ module.exports = function (plex, dizquetv, $timeout, commonProgramTools) {
                 $timeout(async () => {
                     await scope.fillNestedIfNecessary(list, isLibrary);
                     list.collapse = !list.collapse
+                    if (isLibrary) {
+                        // Keywords searches one library, so expanding one picks
+                        // the target; collapsing it gives the box nothing to aim at.
+                        if (list.collapse) {
+                            scope.keywordLibrary = list;
+                        } else if (scope.keywordLibrary === list) {
+                            scope.keywordLibrary = null;
+                            scope.clearKeywords();
+                        }
+                    }
                     scope.$apply()
                 }, 0)
             }
