@@ -220,7 +220,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     // setting is unaffected.
     router.get('/api/plex-server/:serverName64/:path(*)', async (req, res) => {
       try {
-        let result = await plexProxyService.get(req.params.serverName64, req.params.path);
+        let result = await plexProxyService.get(req.params.serverName64, req.params.path, req.query);
         res.status(200).send(result);
       } catch (err) {
           console.error("Could not use plex proxy.", err);

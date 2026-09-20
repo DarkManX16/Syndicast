@@ -8,11 +8,11 @@ class PlexProxyService extends events.EventEmitter {
         this.plexServerDB = plexServerDB;
     }
 
-    async get(serverName64, path) {
+    async get(serverName64, path, query) {
         let plexServer = await getPlexServer64(this.plexServerDB, serverName64);
         // A potential area of improvement is to reuse the client when possible
         let client = new Plex(plexServer);
-        return { MediaContainer: await client.Get("/" + path) };
+        return { MediaContainer: await client.Get("/" + path + buildQueryString(query)) };
     }
 
     async getKeyMediaContents(serverName, key) {
@@ -27,6 +27,33 @@ class PlexProxyService extends events.EventEmitter {
 
         return metadata;
     }
+}
+
+/*
+ * Plex takes most of its useful options as query parameters - title filters,
+ * container paging - so a proxy that only forwards the path silently drops
+ * them and returns an unfiltered result, which looks like the filter simply
+ * not working.
+ */
+function buildQueryString(query) {
+    if ( (typeof(query) !== 'object') || (query === null) ) {
+        return "";
+    }
+    let params = new URLSearchParams();
+    for (const key of Object.keys(query)) {
+        // The token comes from the stored server, never from the caller.
+        if (key.toLowerCase() === 'x-plex-token') {
+            continue;
+        }
+        let value = query[key];
+        if (Array.isArray(value)) {
+            value.forEach( (v) => params.append(key, v) );
+        } else {
+            params.append(key, value);
+        }
+    }
+    let s = params.toString();
+    return (s === "") ? "" : ("?" + s);
 }
 
 function fillerMapper(serverName, plexMetadata) {
