@@ -28,6 +28,54 @@ with its own name and its own roadmap.
 - **Subtitles, automatic deinterlacing, and optional direct play.**
 - **NVIDIA hardware encoding**, including in Docker.
 - **Runs anywhere:** Docker, or standalone apps for Windows, macOS, and Linux.
+- **Find things without scrolling.** Filler lists and custom shows can run to hundreds of
+  items, so their editors have a search box. The Plex library browser has two: a Filter that
+  narrows what is already on screen, and a Keywords box that asks Plex itself.
+- **Keep your lists in order.** Drag filler lists and custom shows into whatever order suits
+  you, or sort them A–Z, and the order sticks everywhere they appear.
+- **Filler straight from Plex.** Point a filler list at a Plex playlist or collection instead
+  of picking every clip by hand.
+- **Durations at a glance** in the custom show editor, so a mis-tagged file stands out in a
+  list of two hundred.
+
+## Differences from dizqueTV
+
+Syndicast forked from dizqueTV's `main` branch, which carries version 1.5.5. The 1.6.0 and
+1.7.0 releases were tagged on a line that was never merged back into `main`, so some of the
+work below is those releases brought across rather than anything new.
+
+### Added
+
+- Drag-to-reorder and A–Z / Z–A sorting for filler lists and custom shows, stored so every
+  page that lists them agrees (`8c2d308`, `3dc0940`)
+- Search filters in the filler list and custom show editors, matching anywhere in the title
+  (`6f8e31b`, `824618f`)
+- A Filter box in the Plex library browser that narrows what is already loaded, and a
+  Keywords box that searches a library on the Plex server (`e7874f3`, `5b1b37c`)
+- Per-program durations in the custom show editor (`9ac2769`)
+
+### Brought across from dizqueTV 1.6 and 1.7
+
+- Filler picks content that has never played before, and otherwise whatever has gone longest
+  without playing (`1171f22`, from 1.6.0)
+- Channels can be saved with a start time in the future (`13ce26f`, from 1.6.0)
+- Filler lists can import a Plex playlist or collection (`951a436`, from 1.7.0)
+
+Two 1.7.0 changes were deliberately left out: routing the UI's Plex requests through the
+server, which removes the UI Route setting, and moving the ffmpeg path out of the UI.
+
+### Fixed
+
+- Channels were listed in filename order, so the HDHomeRun lineup and XMLTV guide could
+  disagree with the M3U and the web UI once you passed nine channels (`39ecb45`)
+- Channel icons stored the host and port that created them, so they broke when the server
+  moved, and XMLTV and M3U handed those dead URLs to Plex (`604a4e5`)
+- The filler and custom show pages tried to sort by name with a comparator returning a
+  boolean instead of a number, which cannot reorder anything (`8c2d308`, `3dc0940`)
+- The M3U entry shown when no channels exist pointed at a path the server does not serve
+  (`604a4e5`)
+- The Plex proxy dropped query parameters, so any filter sent through it was ignored
+  (`da6f733`)
 
 ## Quick Start
 
