@@ -119,7 +119,7 @@
                         </div>
                         <div ng-style="programSquareStyle(x, false)" ></div>
                         <div class="title" >
-                            {{ getProgramDisplayTitle(x) }}
+                            {{ getProgramDisplayTitle(x) }} <span class="text-muted">{{ durationSummary(x) }}</span>
                         </div>
                         <div class="flex-pull-right">
                             <button class="btn btn-sm btn-link" ng-click="contentSplice(x.$index,1)">

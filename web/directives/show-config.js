@@ -166,6 +166,19 @@ module.exports = function ($timeout, commonProgramTools) {
                 return date.toISOString().substr(11, 8);
             }
 
+            // Rough duration beside each title, so an episode that is wildly
+            // shorter or longer than its neighbours stands out in a long list.
+            scope.durationSummary = (program) => {
+                let ms = program.duration;
+                if ( (typeof(ms) !== 'number') || isNaN(ms) || (ms <= 0) ) {
+                    return "";
+                }
+                if (ms < 60000) {
+                    return "(" + Math.max(1, Math.round(ms / 1000)) + " secs)";
+                }
+                return "(" + Math.round(ms / 60000) + " mins)";
+            }
+
             let interpolate = ( () => {
                 let h = 60*60*1000 / 6;
                 let ix = [0, 1*h, 2*h, 4*h, 8*h, 24*h];
