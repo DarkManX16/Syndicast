@@ -54,18 +54,28 @@ nothing in the UI mentions it.
 Worth renaming to something like `ffmpegPathUnlockedUntil`, and surfacing the
 unlock route in the settings page instead of leaving it a CLI-only affordance.
 
-### Port 18000 is unbindable on this Windows machine
+### Windows NAT can grab port 18000, giving EACCES with nothing listening
 
-`node index.js -p 18000` fails with `EACCES`, even though the port is not in
+`node index.js -p 18000` fails with `EACCES` while the port looks completely
+free: nothing is listening, it is absent from
 `netsh int ipv4 show excludedportrange protocol=tcp` (which lists only
-50000-50059) and sits outside the dynamic range, 1024 plus 13977. Something
-else, most likely Hyper-V or Docker, holds a reservation that does not show up
-in the usual places.
+50000-50059), and it sits outside the dynamic range of 1024 plus 13977.
 
-18080, 19000, 17000, 8123 and 9500 all bind fine, so development moved to
-18080. `.claude/launch.json` and the README still say 18000, deliberately: the
-reservation may not survive a reboot, and changing them would be churn if it
-clears. Check with a bind test before assuming it is still broken:
+The cause is the Windows NAT service reserving port ranges for Hyper-V, WSL
+and Docker. Those reservations do not appear in the usual places, which is why
+every check says the port is available. Restarting the service releases them,
+from an elevated prompt:
+
+```
+net stop winnat
+net start winnat
+```
+
+It can reclaim the range again later, so this may need repeating. 18080,
+19000, 17000, 8123 and 9500 were all free when 18000 was not, and development
+moved to 18080. `.claude/launch.json` and the README still say 18000
+deliberately, since the reservation is transient. Confirm with a bind test
+rather than assuming:
 
 ```js
 require('net').createServer().listen(18000, '0.0.0.0')
