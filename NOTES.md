@@ -23,6 +23,13 @@ The original reason for the fork.
 - [ ] Sign-ons and sign-offs
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
+- [ ] Rerun - *blocked on per-slot constraints*
+- [ ] Shuffle - *blocked on per-slot constraints*
+- [ ] Ordered shuffle - *blocked on per-slot constraints*
+
+The three blocked items need orderers keyed by slot rather than by show, and
+shuffle progress needs a representation that survives a changing candidate
+count. See the shuffleOrder entry under Known issues.
 
 ### Media handling
 
@@ -42,6 +49,15 @@ The original reason for the fork.
 - [ ] Profiles for specific looks
 - [ ] Custom TV guides
 - [ ] UI customization and cosmetic theming
+- [ ] Channel detail page: now playing with progress, total runtime, program count,
+      stream mode and transcode config, plus a library browsable by type - movies,
+      shows, artists, music videos, other - with durations and artwork
+
+The channel detail page is mostly display layer over data the API already returns,
+so it carries little risk to existing behaviour. The one real constraint is scale:
+a channel here already holds 9712 programs, so artwork needs lazy loading rather
+than rendering every tile up front. It should be drawn to Syndicast's own identity
+rather than copying the layout of other projects.
 
 ### Infrastructure
 
@@ -131,6 +147,39 @@ rather than assuming:
 ```js
 require('net').createServer().listen(18000, '0.0.0.0')
 ```
+
+### Shuffle progress is stored, and it is seeded over the candidate count
+
+Worth stating plainly because the two orderers in `show-orderers.js` differ and
+the difference is easy to miss.
+
+*Play Next* keeps no stored position. `getShowOrderer` rediscovers it each run by
+scanning the sorted episode list for `show.founder`, which is just the first
+program of that show in the channel's current lineup. Nothing persists.
+
+*Shuffle* does persist. `getShowShuffler` writes its cursor onto every program it
+emits:
+
+```js
+prog.shuffleOrder = position;
+```
+
+That program goes into the lineup and is saved with the channel. The permutation
+is seeded from the show id plus a generation number, where the generation is
+`Math.floor(position / n)` and `n` is the number of candidate episodes.
+
+So a saved `shuffleOrder` only means anything relative to the `n` it was produced
+under. Change the candidate count - which is exactly what a season filter does -
+and the same number selects a different episode, silently. Measured with twelve
+episodes against the same saved position of 7:
+
+    all 12 episodes   : S3E4 -> S1E1 -> S3E2 -> S3E3 -> S3E1
+    season 2 removed  : S3E3 -> S3E4 -> S3E2 -> S1E2 -> S1E1
+
+This is why season constraints ship for Play Next first. Constrained shuffle is
+not a filter on top of the existing mechanism; it needs a progress
+representation that survives `n` changing, or an explicit decision to reshuffle
+when constraints change.
 
 ### Comparators that only work by accident
 
