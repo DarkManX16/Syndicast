@@ -23,11 +23,33 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
             scope.servers = [];
             scope.libraries = [];
             scope.sources = [];
+            scope.filteredContent = [];
+            scope.searchText = "";
 
+            function applyFilter() {
+                let query = (scope.searchText || "").trim().toLowerCase();
+                // Unfiltered keeps the same array reference so drag-and-drop still
+                // operates on the real list rather than a copy of it.
+                scope.filteredContent = (query === "")
+                    ? scope.content
+                    : scope.content.filter( (c) => c.$searchText.indexOf(query) !== -1 );
+            }
+
+            // $index is each item's position in the unfiltered list, which is what
+            // delete and reorder act on. It has to be rebuilt after every mutation,
+            // otherwise a filtered view would delete the wrong row.
             function refreshContentIndexes() {
                 for (let i = 0; i < scope.content.length; i++) {
                     scope.content[i].$index = i;
+                    scope.content[i].$searchText = scope.getText(scope.content[i]).toLowerCase();
                 }
+                applyFilter();
+            }
+
+            scope.searchChanged = applyFilter;
+
+            scope.isFiltered = () => {
+                return (scope.searchText || "").trim() !== "";
             }
 
             scope.contentSplice = (a,b) => {
@@ -224,6 +246,7 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                 }
                 await reloadServers();
                 scope.source = "";
+                scope.searchText = "";
                 refreshContentIndexes();
                 scope.visible = true;
             } );
@@ -259,6 +282,7 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                     name: scope.name,
                     content: scope.content.map( (c) => {
                         delete c.$index
+                        delete c.$searchText
                         return c;
                     } ),
                     id: scope.id,
