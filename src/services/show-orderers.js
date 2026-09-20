@@ -32,7 +32,67 @@ function shuffle(array, lo, hi, randomOverride ) {
 }
 
 
-function getShowOrderer(show) {
+function seasonOf(program) {
+    return (typeof(program.season) === 'number') ? program.season : 0;
+}
+
+/*
+ * A season constraint is { excludeSeasons: [..], startSeason: n }, both
+ * optional. Only "Play Next" honours it: shuffle seeds its permutation over the
+ * candidate count and stores the resulting position on each program, so
+ * changing that count silently changes what a saved position means.
+ */
+function applySeasonExclusions(sortedPrograms, constraint) {
+    if ( (typeof(constraint) !== 'object') || (constraint === null) ) {
+        return sortedPrograms;
+    }
+    if (! Array.isArray(constraint.excludeSeasons) ) {
+        return sortedPrograms;
+    }
+    let excluded = {};
+    constraint.excludeSeasons.forEach( (s) => { excluded[s] = true; } );
+    let kept = sortedPrograms.filter( (p) => excluded[ seasonOf(p) ] !== true );
+    // Excluding everything would leave the slot with nothing to play, which is
+    // worse than ignoring a constraint the user can see and change.
+    return (kept.length === 0) ? sortedPrograms : kept;
+}
+
+/*
+ * Where to resume. startSeason is a one-off seek rather than a filter, so it
+ * chooses a position and then the caller forgets it; earlier seasons stay
+ * reachable on later passes.
+ */
+function resumePosition(candidates, founder, constraint) {
+    if ( (typeof(constraint) === 'object') && (constraint !== null)
+         && (typeof(constraint.startSeason) === 'number') ) {
+        for (let i = 0; i < candidates.length; i++) {
+            if ( seasonOf(candidates[i]) >= constraint.startSeason ) {
+                return i;
+            }
+        }
+        return 0;
+    }
+    if (typeof(founder) === 'undefined') {
+        return 0;
+    }
+    let founderOrder = getShowData(founder).order;
+    for (let i = 0; i < candidates.length; i++) {
+        if ( getShowData(candidates[i]).order === founderOrder ) {
+            return i;
+        }
+    }
+    // The founder is gone, usually because its season was excluded. Take the
+    // nearest surviving episode forward, and wrap deliberately rather than
+    // letting a scan fall off the end onto the finale.
+    for (let i = 0; i < candidates.length; i++) {
+        if ( getShowData(candidates[i]).order > founderOrder ) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+function getShowOrderer(show, constraint) {
     if (typeof(show.orderer) === 'undefined') {
 
         let sortedPrograms = JSON.parse( JSON.stringify(show.programs) );
@@ -42,28 +102,17 @@ function getShowOrderer(show) {
             return showA.order - showB.order;
         });
 
-        let position = 0;
-        while (
-            (position + 1 < sortedPrograms.length )
-            &&
-            (
-                getShowData(show.founder).order
-                !==
-                getShowData(sortedPrograms[position]).order
-            )
-        ) {
-            position++;
-        }
-
+        let candidates = applySeasonExclusions(sortedPrograms, constraint);
+        let position = resumePosition(candidates, show.founder, constraint);
 
         show.orderer = {
 
             current : () => {
-                return sortedPrograms[position];
+                return candidates[position];
             },
 
             next: () => {
-                position = (position + 1) % sortedPrograms.length;
+                position = (position + 1) % candidates.length;
             },
 
         }

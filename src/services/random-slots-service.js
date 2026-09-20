@@ -100,6 +100,19 @@ module.exports = async( programs, schedule  ) => {
     let showsById = {};
     let shows = [];
 
+    /*
+     * Season constraints are keyed by show, not by slot, because the orderer is
+     * cached per show and shared by every slot naming it. Storing them per slot
+     * would let one slot's filter silently apply to another.
+     */
+    function constraintForShow(showId) {
+        if ( (typeof(schedule.showConstraints) !== 'object')
+             || (schedule.showConstraints === null) ) {
+            return undefined;
+        }
+        return schedule.showConstraints[showId];
+    }
+
     function getNextForSlot(slot, remaining) {
         //remaining doesn't restrict what next show is picked. It is only used
         //for shows with flexible length (flex and redirects)
@@ -120,7 +133,7 @@ module.exports = async( programs, schedule  ) => {
         } else if (slot.order === 'shuffle') {
             return orderers.getShowShuffler(show).current();
         } else if (slot.order === 'next') {
-            return orderers.getShowOrderer(show).current();
+            return orderers.getShowOrderer(show, constraintForShow(slot.showId)).current();
         }
     }
     
@@ -132,7 +145,7 @@ module.exports = async( programs, schedule  ) => {
         if (slot.order === 'shuffle') {
             return orderers.getShowShuffler(show).next();
         } else if (slot.order === 'next') {
-            return orderers.getShowOrderer(show).next();
+            return orderers.getShowOrderer(show, constraintForShow(slot.showId)).next();
         }
     }
 
