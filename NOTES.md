@@ -109,31 +109,6 @@ Affects `initDB()` in `index.js`. Workaround is to delete the stale files from
 Worth deciding whether the app should overwrite these on version change, or
 leave it manual so users keep any artwork they replaced themselves.
 
-### Guide requests an unresolved Angular binding when no channels exist
-
-With no channels configured, the browser issues a request for the literal
-string `{{channels[channelNumber].icon}}` and gets a 404. The binding in
-`web/public/views/guide.html` is never resolved because there is no channel to
-bind to, so the placeholder is used as an image URL.
-
-Pre-existing dizqueTV behaviour, not introduced by the rebrand. Harmless today
-(one failed request on an empty guide) but it pollutes the network log and
-would confuse anyone debugging a real image problem. Needs an `ng-if` or
-equivalent guard.
-
-There is a second one, in the watermark preview at
-`web/public/templates/channel-config.html`:
-
-```html
-<img src='{{ getWatermarkSrc() }}' ...>
-```
-
-which requests `/%7B%7B%20getWatermarkSrc()%20%7D%7D`. Both are the same
-mistake - a plain `src` carrying an interpolation, which the browser resolves
-before Angular does - so `ng-src` is the real fix for both, and the
-empty-channel explanation above only describes when the first one is most
-visible.
-
 ### Branding script counts the same file more than once
 
 `syndicast-branding/apply-branding.js` tracks written files in a `Set`, but
@@ -351,6 +326,40 @@ played, the longest idle took 67 percent against 33 for the next.
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
 
+### Guide requested an unresolved Angular binding
+
+Resolved, and worth keeping because the first diagnosis was wrong.
+
+The symptom was a 404 for the literal string `{{channels[channelNumber].icon}}`
+on the guide page. That was written up here as an empty-guide problem - no
+channel to bind to, so the placeholder gets used as an image URL - with an
+`ng-if` guard suggested as the fix.
+
+The real cause has nothing to do with there being no channels. A plain `src`
+carrying an interpolation is resolved by the browser *before* Angular runs, so
+the request for the literal text fires on every load whether or not a channel
+exists. `ng-src` exists precisely for this: it holds the attribute back until
+the expression has a value.
+
+Enumerating the class rather than the reported symptom turned up three, not
+one:
+
+- `web/public/views/guide.html`, the channel icon - the reported 404
+- `web/public/templates/channel-config.html`, the watermark preview, requesting
+  `/%7B%7B%20getWatermarkSrc()%20%7D%7D` on every visit to a channel's
+  properties
+- `web/public/views/guide.html`, the play-channel button's `href`. An anchor
+  does not fetch, so it produced no 404 and would never have been noticed from
+  the network log, but a click landing before interpolation navigates to the
+  literal. Converted to `ng-href` for the same reason.
+
+Everything else under `web/public` already used `ng-src` or `ng-href`. The
+check that settles it:
+
+```
+grep -rnP "(?<!ng-)(src|href)=['\"][^'\"]*\{\{" --include=*.html web/public
+```
+
 ### Channel images no longer depend on the host and port that created them
 
 Previously the UI and two server paths wrote absolute URLs built from whatever
@@ -447,12 +456,21 @@ the channel list read `channel.icon` directly and would still get the bad
 value. And it hides the defect, so the next writer that slips through looks
 like it works.
 
-If a net is wanted, the cheap one is at the write boundary, not the read:
-`saveChannel` / `saveChannelSync` in `src/dao/channel-db.js` are the single
-place every channel write passes through, and a pure string check there - warn
-when `icon`, `offlinePicture` or `watermark.url` is stored as an absolute URL
-under `/images/` - costs no I/O, rewrites nothing, and makes a future slip
-loud on the first save rather than silent forever.
+The net that was added instead sits at the write boundary.
+`validateChannelJson` in `src/dao/channel-db.js` is called by both
+`saveChannel` and `saveChannelSync`, which makes it the one place every channel
+write passes through. It warns when `icon`, `offlinePicture` or
+`watermark.url` is saved as an absolute URL whose path is under `/images/`,
+naming the channel, the field and the path it should have been.
+
+It rewrites nothing, deliberately. Correcting the value would mean guessing
+whether a remote URL under `/images/` is stale or intended, and a wrong guess
+silently serves the wrong image - the same objection that rules out doing it on
+read. Being loud is the whole job. It costs one `new URL()` per image field per
+save and touches no disk, so it is safe in a way the read-time version is not.
+
+It does not fire on anything in the data folder today, which is the point: it
+exists for the third writer, whenever that turns up.
 
 ### Small things in the upload path, left alone deliberately
 

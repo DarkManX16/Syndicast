@@ -1,6 +1,49 @@
 const path = require('path');
 var fs = require('fs');
- 
+
+/*
+ * Channel images are stored as paths like "/images/dizquetv.png" so they
+ * survive the server moving, and src/image-url.js resolves them per consumer.
+ * Twice now a writer has stored an absolute URL instead: first the UI building
+ * one from location.host, then the upload endpoint building one from the
+ * request's host. Both went unnoticed for months, because nothing complains -
+ * the resolvers pass an absolute value straight through, by design, so that
+ * Plex thumbnail URLs keep working.
+ *
+ * So complain here. Every channel write goes through validateChannelJson, which
+ * makes this the one place that sees them all. It is a string check that
+ * rewrites nothing: correcting the value here would have to guess whether a
+ * remote URL under /images/ is stale or deliberate, and guessing wrong silently
+ * serves the wrong image. Being loud is the whole job.
+ */
+function warnAboutAbsoluteImages(json) {
+    const fields = [
+        [ 'icon', json.icon ],
+        [ 'offlinePicture', json.offlinePicture ],
+        [ 'watermark.url', (json.watermark || {}).url ],
+    ];
+    for (const [name, value] of fields) {
+        if (typeof(value) !== 'string') {
+            continue;
+        }
+        let parsed;
+        try {
+            parsed = new URL(value);
+        } catch (err) {
+            continue;   // a stored path, which is what we want
+        }
+        if (! parsed.pathname.startsWith('/images/') ) {
+            continue;   // some other host's image, deliberately left alone
+        }
+        console.error(
+            `Channel ${json.number}: ${name} was saved as an absolute URL, `
+            + `"${value}". It should be the path "${parsed.pathname}". Whatever `
+            + `wrote it has pinned this image to one address, and clients on any `
+            + `other address will not be able to load it.`
+        );
+    }
+}
+
 class ChannelDB {
 
     constructor(folder) {
@@ -70,6 +113,7 @@ class ChannelDB {
         if ( isNaN(json.number)) {
             throw Error("channel.number must be a integer");
         }
+        warnAboutAbsoluteImages(json);
     }
 
     async deleteChannel(number) {

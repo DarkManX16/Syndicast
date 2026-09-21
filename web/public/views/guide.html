@@ -29,7 +29,7 @@
         <tr ng-mouseover="channels[channelNumber].mouse=true" ng-mouseleave="channels[channelNumber].mouse=false"  ng-repeat="channelNumber in channelNumbers track by $index" ng-Class="{'even' : ($index % 2==0), 'odd' : ($index % 2==1) }" >
             <td title='{{channels[channelNumber].altTitle}}' class='even channel-number' colspan="{{channelNumberColspan}}" >
                 <div>
-                    <a role="button" href='/media-player/{{channelNumber}}.m3u' title="{{'guide.attempt_to_play_channel' | i18next: {title: channels[channelNumber].altTitle} }}" class='btn btn-sm btn-outline-primary play-channel'  ng-show='channels[channelNumber].mouse'>
+                    <a role="button" ng-href='/media-player/{{channelNumber}}.m3u' title="{{'guide.attempt_to_play_channel' | i18next: {title: channels[channelNumber].altTitle} }}" class='btn btn-sm btn-outline-primary play-channel'  ng-show='channels[channelNumber].mouse'>
                         <span class='fa fa-play'></span>
                     </a>
                     <span ng-hide='channels[channelNumber].mouse' >
@@ -38,7 +38,7 @@
                 </div>
             </td>
             <td title='{{channels[channelNumber].altTitle}}' class='even channel-icon' colspan="{{channelIconColspan}}" >
-                <img src='{{channels[channelNumber].icon}}' alt='{{channels[channelNumber].name}}' ng-click='channels[channelNumber].mouse=true'  ></img>
+                <img ng-src='{{channels[channelNumber].icon}}' alt='{{channels[channelNumber].name}}' ng-click='channels[channelNumber].mouse=true'  ></img>
             </td>
 
             <td class='odd program' colspan="{{totalSpan}}" ng-if="channels[channelNumber].loading">
