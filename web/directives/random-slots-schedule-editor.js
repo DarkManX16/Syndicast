@@ -28,6 +28,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
                 showsById = {};
                 shows = [];
                 scope.openSeasonEditor = null;
+                scope.slotFilter = "";
                 scope.schedule = {
                     maxDays: 365,
                     flexPreference : "distribute",
@@ -75,15 +76,45 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
 
             }
 
-            getTitle = (index) => {
-                let showId = scope.schedule.slots[index].showId;
+            let getTitle = (slot) => {
                 for (let i = 0; i < scope.showOptions.length; i++) {
-                    if (scope.showOptions[i].id == showId) {
+                    if (scope.showOptions[i].id == slot.showId) {
                         return scope.showOptions[i].description;
                     }
                 }
                 return "Unknown";
             }
+
+            /*
+             * Narrowing the row list, the same way the time slots editor does. The
+             * filtered list is a separate array and the real one is never reordered
+             * or reduced by it.
+             */
+            scope.visibleSlots = [];
+
+            function applyFilter() {
+                let terms = (scope.slotFilter || "").toLowerCase().split(/\s+/)
+                    .filter( (x) => x !== "" );
+                if (terms.length === 0) {
+                    scope.visibleSlots = scope.schedule.slots;
+                    return;
+                }
+                scope.visibleSlots = scope.schedule.slots.filter( (s) => {
+                    let text = ( (s.showId === 'flex.') ? "Flex" : getTitle(s) ).toLowerCase();
+                    return terms.every( (term) => text.indexOf(term) !== -1 );
+                } );
+            }
+            scope.filterChanged = applyFilter;
+
+            scope.isFiltered = () => {
+                return (scope.slotFilter || "").trim() !== "";
+            }
+
+            scope.clearFilter = () => {
+                scope.slotFilter = "";
+                applyFilter();
+            }
+
             scope.isWeekly = () => {
                 return (scope.schedule.period === WEEK);
             };
@@ -96,6 +127,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
                         cooldown : 0,
                     }
                 );
+                //A new slot is Flex, which almost never matches whatever is being
+                //filtered for, so it would be added out of sight.
+                scope.clearFilter();
             }
             scope.timeColumnClass = () => {
                 return { "col-md-1": true};
@@ -237,6 +271,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
                 if (scope.hadBackup) {
                     loadBackup(backup);
                 }
+                applyFilter();
 
                 scope.visible = true;
                 if (instant) {
@@ -275,8 +310,20 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
                 }
             }
 
-            scope.deleteSlot = (index) => {
-                scope.schedule.slots.splice(index, 1);
+            /*
+             * Addressed by the slot object rather than by a template $index, which
+             * under a filter is a position in the visible subset and would delete
+             * the wrong row.
+             */
+            scope.deleteSlot = (slot) => {
+                let i = scope.schedule.slots.indexOf(slot);
+                if (i !== -1) {
+                    scope.schedule.slots.splice(i, 1);
+                    if (scope.openSeasonEditor === slot) {
+                        scope.openSeasonEditor = null;
+                    }
+                    scope.refreshSlots();
+                }
             }
 
             scope.hasTimeError = (slot) => {
@@ -405,6 +452,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
             }
 
             scope.refreshSlots = () => {
+                applyFilter();
                 let sum = 0;
                 for (let i = 0; i < scope.schedule.slots.length; i++) {
                     sum += scope.schedule.slots[i].weight;

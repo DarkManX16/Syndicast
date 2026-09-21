@@ -13,14 +13,36 @@
                 </div>
 
                 <div class="modal-body" ng-show='! loading' >
-                    <div class="form-row" ng-repeat = "slot in schedule.slots" track-by = "$index">
+                    <div class="form-row" ng-show="schedule.slots.length > 0" style="margin-bottom: 6px;">
+                        <div class='form-group col-md-5' style="margin-bottom: 4px;">
+                            <input type="text" class="form-control form-control-sm" id="slotFilter"
+                                placeholder="Filter slots - a show name, a day, or both"
+                                ng-model="slotFilter" ng-change="filterChanged()" ></input>
+                        </div>
+                        <div class='form-group col-md-7' style="margin-bottom: 4px;">
+                            <span class='small text-muted' ng-hide="isFiltered()">
+                                <b>Total:</b> {{schedule.slots.length}} slots
+                            </span>
+                            <span class='small text-muted' ng-show="isFiltered()">
+                                <b>Showing:</b> {{visibleSlots.length}} of {{schedule.slots.length}}
+                                <button class='btn btn-sm btn-link' style="padding: 0 0 0 6px;"
+                                    ng-click="clearFilter()">clear</button>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div ng-show="isFiltered() && visibleSlots.length === 0">
+                        <p class="text-center text-info">No slots match "{{slotFilter}}".</p>
+                    </div>
+
+                    <div class="form-row" ng-repeat = "slot in visibleSlots">
                         <div class='form-group' ng-class='timeColumnClass()' >
                             <label ng-if="$index==0" for="showTime{{$index}}">Time</label>
 
                             <button
                                 type="button"
                                 class="btn btn-outline-secondary form-control"
-                                ng-click="editTime($index)"
+                                ng-click="editTime(slot)"
                             >
                                 {{ displayTime(slot.time) }}
                             </button>
@@ -61,24 +83,43 @@
 
                         <div class='form-group col-md-1'>
                             <label ng-if="$index==0" for="delete{{$index}}">-</label>
-                            <button id='delete{{$index}}' class='btn btn-link form-control' ng-click='deleteSlot($index)' >
+                            <button id='delete{{$index}}' class='btn btn-link form-control' ng-click='deleteSlot(slot)' >
                                 <i class='text-danger fa fa-trash-alt'></i>
                             </button>
                         </div>
 
                         <div class='col-md-12' ng-if="openSeasonEditor === slot && canConstrainSeasons(slot)"
                              style="background: rgba(0,0,0,.04); padding: 8px; margin-bottom: 8px;">
+                            <div ng-if="isWeekly()" style="margin-bottom: 8px;">
+                                <span class='small'><b>Apply to</b></span>
+                                <button class='btn btn-sm'
+                                    ng-repeat="d in seasonDayList track by d.day"
+                                    style="margin-left: 4px;"
+                                    ng-class="{'btn-info': d.selected, 'btn-outline-secondary': !d.selected}"
+                                    ng-disabled="!d.available || d.isSelf"
+                                    title="{{ d.isSelf ? 'The slot you are editing is always included' : (d.available ? 'Use the same seasons on ' + d.name : 'No slot for this show at this time on ' + d.name) }}"
+                                    ng-click="toggleSeasonDay(slot, d)">{{d.name}}</button>
+                                <button class='btn btn-sm btn-link' style="margin-left: 6px;"
+                                    ng-click="selectAllSeasonDays(slot)">all days</button>
+                                <button class='btn btn-sm btn-link'
+                                    ng-show="seasonGroupSize() > 1"
+                                    ng-click="selectOnlyThisDay(slot)">only this day</button>
+                            </div>
+
                             <div class='small text-muted' style="margin-bottom: 6px;">
-                                These seasons apply to <b>this slot</b>. Other slots using
-                                <b>{{ slot.showId }}</b> can ask for a different range.
+                                <span ng-show="seasonGroupSize() > 1">
+                                    Editing <b class="text-info">{{ seasonGroupSize() }} slots</b> -
+                                    the days picked above, at this time of day.
+                                </span>
+                                <span ng-show="seasonGroupSize() <= 1">
+                                    Editing <b>this slot</b> alone.
+                                </span>
+                                Other slots using <b>{{ slot.showId }}</b> can ask for a
+                                different range.
                                 <span ng-show="slotsSharingPosition(slot) > 1">
                                     <b class="text-info">{{ slotsSharingPosition(slot) }} slots</b>
-                                    currently ask for this same range, so they advance through
-                                    it together rather than each starting over.
-                                </span>
-                                <span ng-show="slotsSharingPosition(slot) <= 1">
-                                    Any other slot set to the same range will advance through it
-                                    together with this one.
+                                    in all ask for this same range, so they advance through it
+                                    together rather than each starting over.
                                 </span>
                             </div>
 

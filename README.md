@@ -30,7 +30,11 @@ with its own name and its own roadmap.
 - **Runs anywhere:** Docker, or standalone apps for Windows, macOS, and Linux.
 - **Find things without scrolling.** Filler lists and custom shows can run to hundreds of
   items, so their editors have a search box. The Plex library browser has two: a Filter that
-  narrows what is already on screen, and a Keywords box that asks Plex itself.
+  narrows what is already on screen, and a Keywords box that asks Plex itself. The time and
+  random slot editors have one too, matching on show name and day.
+- **Different seasons on different days.** Give each time slot its own seasons of a show —
+  seasons 1–6 on weeknights, 7–9 on Fridays. Slots set to the same seasons move through
+  them together, and a day picker sets a whole weekday block at once.
 - **Keep your lists in order.** Drag filler lists and custom shows into whatever order suits
   you, or sort them A–Z, and the order sticks everywhere they appear.
 - **Filler straight from Plex.** Point a filler list at a Plex playlist or collection instead
@@ -53,6 +57,11 @@ work below is those releases brought across rather than anything new.
 - A Filter box in the Plex library browser that narrows what is already loaded, and a
   Keywords box that searches a library on the Plex server (`e7874f3`, `5b1b37c`)
 - Per-program durations in the custom show editor (`9ac2769`)
+- Per-slot season settings, so one time slot can run seasons 1–6 of a show while another
+  runs 7–9. Slots asking for the same seasons keep a shared episode position, so a
+  weekday block still advances as one thread (`4b0fb56`)
+- A day picker and a row filter in the slot editors, so setting a range across
+  Monday–Thursday is one edit rather than four found among hundreds of rows
 
 ### Brought across from dizqueTV 1.6 and 1.7
 

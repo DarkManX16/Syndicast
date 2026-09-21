@@ -27,6 +27,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 showsById = {};
                 shows = [];
                 scope.openSeasonEditor = null;
+                scope.seasonGroup = [];
+                scope.seasonDayList = [];
+                scope.slotFilter = "";
                 scope.schedule = {
                     period : DAY,
                     lateness : 0,
@@ -73,10 +76,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 }
             }
 
-            let getTitle = (index) => {
-                let showId = scope.schedule.slots[index].showId;
+            let getTitle = (slot) => {
                 for (let i = 0; i < scope.showOptions.length; i++) {
-                    if (scope.showOptions[i].id == showId) {
+                    if (scope.showOptions[i].id == slot.showId) {
                         return scope.showOptions[i].description;
                     }
                 }
@@ -113,15 +115,67 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     }
                     scope.schedule.slots = newSlots;
                 }
+                //The slot list was rebuilt, so anything pointing into the old one
+                //is stale.
+                scope.openSeasonEditor = null;
+                scope.seasonGroup = [];
+                scope.seasonDayList = [];
                 scope.refreshSlots();
             }
-            scope.editTime = (index) => {
-                let t = scope.schedule.slots[index].time;
+            /*
+             * Narrowing the row list. A weekly schedule holds seven copies of every
+             * slot - a 48 slot channel becomes 336 rows - so finding the few that
+             * need changing is most of the work of changing them.
+             *
+             * The filtered list is a separate array and the real one is never
+             * reordered or reduced by it. Matching runs over the show's display name
+             * and the slot's own time label, and every word typed has to appear
+             * somewhere in that, so "aqua fri" finds the Friday Aqua Teen rows
+             * without having to type the words between.
+             */
+            scope.visibleSlots = [];
+
+            function slotSearchText(slot) {
+                let name = (slot.showId === 'flex.') ? "Flex" : getTitle(slot);
+                return ( name + " " + scope.displayTime(slot.time) ).toLowerCase();
+            }
+
+            function applyFilter() {
+                let terms = (scope.slotFilter || "").toLowerCase().split(/\s+/)
+                    .filter( (x) => x !== "" );
+                if (terms.length === 0) {
+                    scope.visibleSlots = scope.schedule.slots;
+                    return;
+                }
+                scope.visibleSlots = scope.schedule.slots.filter( (s) => {
+                    let text = slotSearchText(s);
+                    return terms.every( (term) => text.indexOf(term) !== -1 );
+                } );
+            }
+            scope.filterChanged = applyFilter;
+
+            scope.isFiltered = () => {
+                return (scope.slotFilter || "").trim() !== "";
+            }
+
+            scope.clearFilter = () => {
+                scope.slotFilter = "";
+                applyFilter();
+            }
+
+            /*
+             * Rows are addressed by the slot object, not by the position the
+             * template happened to render them at. The list can be filtered, so a
+             * template $index is a position in the visible subset and acting on it
+             * would hit the wrong slot. The time editor serialises what it is given,
+             * so the index is resolved here and travels as a number.
+             */
+            scope.editTime = (slot) => {
                 scope._editedTime = {
-                    time: t,
-                    index : index,
+                    time: slot.time,
+                    index : scope.schedule.slots.indexOf(slot),
                     isWeekly : scope.isWeekly(),
-                    title : getTitle(index),
+                    title : getTitle(slot),
                 };
             }
             scope.finishedTimeEdit = (slot) => {
@@ -142,6 +196,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     showId: "flex.",
                     order: "next"
                 } );
+                //A new slot is Flex, which almost never matches whatever is being
+                //filtered for, so it would be added out of sight.
+                scope.slotFilter = "";
                 scope.refreshSlots();
             }
             scope.displayTime = (t) => {
@@ -262,6 +319,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 if (scope.hadBackup) {
                     loadBackup(backup);
                 }
+                applyFilter();
 
                 scope.visible = true;
                 if (instant) {
@@ -301,8 +359,15 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 }
             }
 
-            scope.deleteSlot = (index) => {
-                scope.schedule.slots.splice(index, 1);
+            scope.deleteSlot = (slot) => {
+                let i = scope.schedule.slots.indexOf(slot);
+                if (i !== -1) {
+                    scope.schedule.slots.splice(i, 1);
+                    if (scope.openSeasonEditor === slot) {
+                        scope.openSeasonEditor = null;
+                    }
+                    applyFilter();
+                }
             }
 
             scope.hasTimeError = (slot) => {
@@ -392,8 +457,152 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 return seasonConstraints.isConstrained(slot);
             }
 
+            /*
+             * Which days an edit writes to.
+             *
+             * A weekly schedule is built by cloning each slot across the seven
+             * days, so the rows meaning "this show, at this time" are the ones
+             * sharing a time of day. Editing seasons one row at a time makes the
+             * common case - a range for the weekdays and another for Friday - five
+             * separate edits found among hundreds of rows.
+             *
+             * The group starts as the days whose slot already asks for the same
+             * seasons. Fresh clones all match, so they keep moving together until a
+             * day is deliberately peeled off. Joining a day gives it the current
+             * range right away, so what is selected and what is stored never
+             * disagree. Leaving a day is not destructive: it keeps the range it has
+             * and simply stops following.
+             */
+            scope.seasonGroup = [];
+            scope.seasonDayList = [];
+
+            let dayOf = (slot) => {
+                return Math.floor(slot.time / DAY);
+            }
+
+            let siblingOnDay = (slot, day) => {
+                let t = slot.time % DAY;
+                for (let i = 0; i < scope.schedule.slots.length; i++) {
+                    let s = scope.schedule.slots[i];
+                    if ( (s.showId === slot.showId) && (s.order === slot.order)
+                         && ( (s.time % DAY) === t ) && (dayOf(s) === day) ) {
+                        return s;
+                    }
+                }
+                return null;
+            }
+
+            //Rebuilt on open and on change rather than from the template, because
+            //ng-repeat over a function returning fresh objects re-renders on every
+            //digest.
+            let rebuildSeasonDays = () => {
+                let slot = scope.openSeasonEditor;
+                scope.seasonDayList = [];
+                if ( (slot === null) || ! scope.isWeekly() ) {
+                    return;
+                }
+                for (let day = 0; day < 7; day++) {
+                    let s = siblingOnDay(slot, day);
+                    scope.seasonDayList.push( {
+                        day: day,
+                        name: WEEK_DAYS[day].substring(0,3),
+                        available: (s !== null),
+                        selected: (s !== null) && (scope.seasonGroup.indexOf(day) !== -1),
+                        isSelf: (s === slot),
+                    } );
+                }
+            }
+
+            //Every slot the open panel writes to. Outside a weekly schedule there
+            //are no sibling days, so this is just the slot itself.
+            let groupSlots = (slot) => {
+                if (! scope.isWeekly() ) {
+                    return [ slot ];
+                }
+                let r = [];
+                for (let i = 0; i < scope.seasonGroup.length; i++) {
+                    let s = siblingOnDay(slot, scope.seasonGroup[i]);
+                    if ( (s !== null) && (r.indexOf(s) === -1) ) {
+                        r.push(s);
+                    }
+                }
+                if (r.indexOf(slot) === -1) {
+                    r.push(slot);
+                }
+                return r;
+            }
+
+            let spreadToGroup = (slot) => {
+                let group = groupSlots(slot);
+                for (let i = 0; i < group.length; i++) {
+                    seasonConstraints.copyRange(slot, group[i]);
+                }
+            }
+
+            //The panel asks this on every digest. The group always holds the edited
+            //slot's own day, so the selection length is the answer and there is no
+            //need to walk the slot list for it.
+            scope.seasonGroupSize = () => {
+                return scope.isWeekly() ? scope.seasonGroup.length : 1;
+            }
+
+            scope.toggleSeasonDay = (slot, entry) => {
+                //The row being edited is always written to, so its own day cannot
+                //be switched off.
+                if (! entry.available || entry.isSelf) {
+                    return;
+                }
+                let i = scope.seasonGroup.indexOf(entry.day);
+                if (i === -1) {
+                    scope.seasonGroup.push(entry.day);
+                    seasonConstraints.copyRange( slot, siblingOnDay(slot, entry.day) );
+                } else {
+                    scope.seasonGroup.splice(i, 1);
+                }
+                rebuildSeasonDays();
+                scope.refreshSlots();
+            }
+
+            scope.selectAllSeasonDays = (slot) => {
+                for (let day = 0; day < 7; day++) {
+                    let s = siblingOnDay(slot, day);
+                    if (s === null) {
+                        continue;
+                    }
+                    if (scope.seasonGroup.indexOf(day) === -1) {
+                        scope.seasonGroup.push(day);
+                    }
+                    seasonConstraints.copyRange(slot, s);
+                }
+                rebuildSeasonDays();
+                scope.refreshSlots();
+            }
+
+            //Narrow to the row being edited without touching what the other days
+            //already hold.
+            scope.selectOnlyThisDay = (slot) => {
+                scope.seasonGroup = [ dayOf(slot) ];
+                rebuildSeasonDays();
+            }
+
             scope.toggleSeasonEditor = (slot) => {
-                scope.openSeasonEditor = (scope.openSeasonEditor === slot) ? null : slot;
+                if (scope.openSeasonEditor === slot) {
+                    scope.openSeasonEditor = null;
+                    scope.seasonGroup = [];
+                    scope.seasonDayList = [];
+                    return;
+                }
+                scope.openSeasonEditor = slot;
+                scope.seasonGroup = [];
+                if (scope.isWeekly()) {
+                    for (let day = 0; day < 7; day++) {
+                        let s = siblingOnDay(slot, day);
+                        if ( (s !== null) && seasonConstraints.sameRange(s, slot) ) {
+                            scope.seasonGroup.push(day);
+                        }
+                    }
+                }
+                rebuildSeasonDays();
             }
 
             scope.isSeasonExcluded = (slot, season) => {
@@ -409,6 +618,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     c.excludeSeasons.splice(i, 1);
                 }
                 seasonConstraints.tidy(slot);
+                spreadToGroup(slot);
+                rebuildSeasonDays();
                 scope.refreshSlots();
             }
 
@@ -420,6 +631,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     c.startSeason = season;
                 }
                 seasonConstraints.tidy(slot);
+                spreadToGroup(slot);
+                rebuildSeasonDays();
                 scope.refreshSlots();
             }
 
@@ -431,6 +644,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
             scope.refreshSlots = () => {
                 scope.badTimes = false;
+                applyFilter();
                 //"Bubble sort ought to be enough for anybody"
                 for (let i = 0; i < scope.schedule.slots.length; i++) {
                     for (let j = i+1; j < scope.schedule.slots.length; j++) {

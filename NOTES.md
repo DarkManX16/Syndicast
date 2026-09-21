@@ -21,7 +21,8 @@ The original reason for the fork.
 ### Scheduling
 
 - [x] Season exclusion / season start, per slot, for Play Next
-- [ ] Setting a season range across a group of slots in one go
+- [x] Setting a season range across a group of slots in one go, and a filter for
+      finding the slots to set it on
 - [ ] Sign-ons and sign-offs
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
@@ -39,12 +40,13 @@ for the two shuffle ones is somewhere to keep progress per position. That work
 also fixes a rough edge in what already ships, so it is one item rather than
 two - see the per-position stored progress entry under Known issues.
 
-The grouped-editing item is the cost of per-slot settings meeting a weekly
-period. Switching a schedule from daily to weekly clones every slot across
-seven days, so a 48 slot channel becomes 336, and setting one show's range for
-Monday through Thursday means finding and editing four entries in that list.
-The setting is on the right object; the editor just has no way to say "these
-slots" yet.
+Grouped editing was the cost of per-slot settings meeting a weekly period.
+Switching a schedule from daily to weekly clones every slot across seven days,
+so a 48 slot channel becomes 336 rows, and setting one show's range for Monday
+through Thursday meant finding and editing four of them by hand. The season
+panel now carries a day picker, and the row list a filter. See the slot editing
+entry under Known issues for why the picker works on times of day rather than
+on shows.
 
 ### Media handling
 
@@ -118,6 +120,19 @@ Pre-existing dizqueTV behaviour, not introduced by the rebrand. Harmless today
 (one failed request on an empty guide) but it pollutes the network log and
 would confuse anyone debugging a real image problem. Needs an `ng-if` or
 equivalent guard.
+
+There is a second one, in the watermark preview at
+`web/public/templates/channel-config.html`:
+
+```html
+<img src='{{ getWatermarkSrc() }}' ...>
+```
+
+which requests `/%7B%7B%20getWatermarkSrc()%20%7D%7D`. Both are the same
+mistake - a plain `src` carrying an interpolation, which the browser resolves
+before Angular does - so `ng-src` is the real fix for both, and the
+empty-channel explanation above only describes when the first one is most
+visible.
 
 ### Branding script counts the same file more than once
 
@@ -261,6 +276,37 @@ Build them together. Whichever ships first will pick the key, the storage and
 the invalidation rule for the other, and if the second is added later against a
 different representation the channel ends up carrying two disagreeing records of
 where a show is. That is a worse bug than either of the ones being fixed.
+
+### Editing slots when there are hundreds of them
+
+Two decisions in the slot editors are worth stating, because both look
+arbitrary until the alternative is spelled out.
+
+**The day picker groups by time of day, not by show.** A weekly schedule is
+built by cloning each slot across the seven days, so the rows that mean "this
+show, at this time" are the ones sharing a time of day. Grouping by show
+instead would sweep in a second, unrelated airing - a show at 08:00 and again
+at 20:00 - and there is no way to tell from the data which of those the user
+meant. Same time of day is the set the clone actually created, so it is the one
+that can be explained in a sentence.
+
+The group opens holding the days that already ask for the same seasons, which
+for untouched clones is all seven. Joining a day copies the current range onto
+it immediately, so the selection and the stored data never disagree. Leaving a
+day is deliberately not destructive: it keeps whatever range it has and just
+stops following.
+
+**Rows are addressed by the slot object, never by a template `$index`.** Under
+a filter, `$index` is a position in the visible subset, so `deleteSlot($index)`
+on the second visible row of a filtered list would delete the second row of the
+*full* list. Measured before the change: filtering to the three Friday Aqua
+Teen rows and deleting the second would have removed Thursday's 12:30 Futurama
+slot instead.
+
+The awkward case is the time editor, which serialises the object it is handed
+(`onDone(JSON.parse(angular.toJson(slot)))`), so a slot reference cannot
+survive the round trip. `editTime` therefore resolves the real index from the
+slot and sends that number, rather than letting the template supply one.
 
 ### Comparators that only work by accident
 

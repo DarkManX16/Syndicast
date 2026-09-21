@@ -68,6 +68,23 @@ module.exports = function () {
         return keyOf(read(slot)) !== "";
     }
 
+    function sameRange(a, b) {
+        return keyOf( read(a) ) === keyOf( read(b) );
+    }
+
+    //Give a slot the same seasons as another one. Copied rather than shared:
+    //they are separate slots and editing one later must not move the other.
+    function copyRange(fromSlot, toSlot) {
+        if (fromSlot === toSlot) {
+            return;
+        }
+        if (! isConstrained(fromSlot) ) {
+            delete toSlot.seasons;
+            return;
+        }
+        toSlot.seasons = JSON.parse( JSON.stringify( read(fromSlot) ) );
+    }
+
     //How many slots in this schedule share the slot's episode position.
     function sharingPosition(slots, slot) {
         let key = keyOf( read(slot) );
@@ -135,6 +152,8 @@ module.exports = function () {
         edit: edit,
         tidy: tidy,
         isConstrained: isConstrained,
+        sameRange: sameRange,
+        copyRange: copyRange,
         sharingPosition: sharingPosition,
         adoptShowConstraints: adoptShowConstraints,
         clearStartSeasons: clearStartSeasons,
