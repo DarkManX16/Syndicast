@@ -321,6 +321,60 @@ the picker statistically. That is how the 1.6.0 filler algorithm was verified:
 600 lineups showed every pick going to never-played clips, and once all had
 played, the longest idle took 67 percent against 33 for the next.
 
+## Model guide
+
+Which model to hand a piece of work to. This is a cost and quality split, not a
+statement that one model cannot do the other's job.
+
+### The default split: investigate on Opus 5, implement on Sonnet 5
+
+Investigation is where a wrong answer is expensive, because everything built on
+top of it inherits the mistake. The season work is the example: its value was
+almost entirely in the reading - finding that `getShowOrderer` cached the
+orderer on the show and silently ignored the constraint after the first call,
+and that Play Next has no stored cursor to preserve. Once that was written
+down, the change itself was mechanical. A wrong read would have produced a
+confident, working implementation of the wrong thing.
+
+So: **Opus 5 to investigate and to decide the shape. Sonnet 5 to build it once
+the shape is settled and written down.** The handover point is a design that
+names the files, the data shape and the verification - roughly the level of
+detail the reports in this file carry.
+
+**Haiku is not used on this project.**
+
+### Work that stays on Opus 5 end to end
+
+Some items cannot be split, because the implementation *is* the design - the
+first real decision is made in the code, and there is no settled shape to hand
+over. These stay on Opus 5 for both halves:
+
+- **Per-position stored progress.** The representation is the whole problem.
+  See its entry above: whichever half ships first picks the key, the storage
+  and the invalidation rule for the other.
+- **Rerun, shuffle and ordered shuffle.** They depend on stored progress and
+  inherit the same decision.
+- **Very short items repeating or being skipped next to Flex.** A diagnosis
+  problem in the concat or transition handling, with no reproduction yet. The
+  roadmap entry already says guessing at the layer here would be expensive.
+- **Random crashes during streaming.** Intermittent, no reproduction, so it is
+  diagnosis all the way down.
+- **The Blocks scheduling core.** The original reason for the fork, and it has
+  to attach to the existing lineup pipeline without disturbing slots, filler or
+  the orderers. The surrounding UI is ordinary work and can go to Sonnet 5 once
+  the core is settled.
+
+The common thread: reach for Opus when the risk is *choosing wrong*, not when
+the work is merely large.
+
+### Fable 5.1
+
+Fable costs extra on the Pro plan, so it is not part of the normal rotation.
+Reserve it for at most a single Blocks design pass - the one session where the
+shape of the whole system is being decided and a better answer pays for itself
+across everything built on it afterwards. Not for implementation, not for
+investigation that Opus 5 already handles well.
+
 ## Resolved
 
 Kept here rather than deleted because every file involved is in the conflict
