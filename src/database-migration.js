@@ -20,7 +20,7 @@
 const path = require('path');
 var fs = require('fs');
 
-const TARGET_VERSION = 807;
+const TARGET_VERSION = 808;
 const DAY_MS = 1000 * 60 * 60 * 24;
 
 const STEPS = [
@@ -50,6 +50,16 @@ const STEPS = [
     // Upstream numbered this 900 to 1000 and paired it with an ffmpeg path
     // migration from a commit we did not take, so it keeps our numbering.
     [    806,    807, () => fixFillerModes() ],
+    /*
+     * 805 to 806 took channel images off absolute URLs, but the upload endpoint
+     * kept handing the UI a URL built from the request's host, so a logo
+     * uploaded after that migration ran was stored absolute all over again. The
+     * endpoint returns a path now; this catches the channels already carrying
+     * one. Same rule and same fields, so it runs the same function rather than
+     * a second copy of it - it leaves a value alone unless it is a URL under
+     * /images/ with the file actually present.
+     */
+    [    807,    808, () => relativizeChannelImages() ],
 ]
 
 const { v4: uuidv4 } = require('uuid');

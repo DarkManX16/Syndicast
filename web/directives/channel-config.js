@@ -1777,11 +1777,18 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
 
 
 
+            /*
+             * The upload endpoint returns a path, which is what gets stored. It
+             * used to return a URL built from the address the upload arrived on,
+             * and these two assignments stored it verbatim - the two writers the
+             * move to stored paths missed, because neither builds a URL here to
+             * be found by searching for one.
+             */
             scope.logoOnChange = (event) => {
                 const formData = new FormData();
                 formData.append('image', event.target.files[0]);
                 dizquetv.uploadImage(formData).then((response) => {
-                    scope.channel.icon = response.data.fileUrl;
+                    scope.channel.icon = response.data.filePath;
                 })
             }
 
@@ -1789,7 +1796,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 const formData = new FormData();
                 formData.append('image', event.target.files[0]);
                 dizquetv.uploadImage(formData).then((response) => {
-                    scope.channel.watermark.url = response.data.fileUrl;
+                    scope.channel.watermark.url = response.data.filePath;
                 })
             }
 

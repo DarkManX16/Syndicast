@@ -385,6 +385,93 @@ Note that the `http://localhost:${process.env.PORT}` strings still present in
 problem. They are built per request for a local ffmpeg process and never
 outlive the port they were built for.
 
+**That fix missed two writers, and the miss is the interesting part.** It
+searched for the bad *construction* - `${location.protocol()}://${location.host}`
+- and corrected all four places that matched. But `/api/upload/image` returned
+
+```js
+fileUrl: `${req.protocol}://${req.get('host')}/images/uploads/${logo.name}`
+```
+
+and `channel-config.js` stored that verbatim into `channel.icon` and
+`watermark.url`. Those two writers build no URL of their own, so no search for
+one could have found them. A logo uploaded after 805 to 806 had run was stored
+absolute all over again, and the resolvers passed it straight through - the
+same dead URL handed to Plex that the whole change existed to prevent. It was
+found by noticing a stale `localhost:18080` request in the browser console,
+four months of wall-clock luck after the fact.
+
+The endpoint returns `filePath`, a path, and is renamed from `fileUrl` so an
+unconverted caller fails loudly rather than storing a path under a name that
+says URL. The filename is URL-encoded, which matters because uploads really do
+carry spaces. Migration 807 to 808 re-runs `relativizeChannelImages` for
+channels already carrying one - same rule, same fields, so it calls the same
+function rather than keeping a second copy of it, and it is idempotent.
+
+The lesson, which generalises past this bug: **when fixing a class of bug,
+enumerate every writer of the data, not every construction of the bad value.**
+There were six writers of these three fields. Listing them takes one grep and
+would have caught all six in the first pass.
+
+A read-time safety net in the resolvers was considered and rejected. See the
+next entry.
+
+### A read-time net in the image resolvers is not worth it
+
+Tempting, since the migration's rule is right there: on output, if a value is
+an absolute URL whose path is under `/images/` and the file exists locally,
+rewrite it. Any future writer that slips through would be corrected before
+anything saw it.
+
+It should not be added.
+
+The rule cannot tell a stale local URL from a legitimate remote one. It looks
+at the pathname and at whether some local file happens to share the name.
+Measured against the real data folder:
+
+    http://localhost:18080/images/uploads/dizquetv.png  -> rewritten   (wanted)
+    http://plex.local:32400/images/uploads/dizquetv.png -> rewritten   (wrong)
+    http://cdn.example.com/images/dizquetv.png          -> rewritten   (wrong)
+
+The last two are remote images silently replaced by whatever this machine has
+under that name. The migration accepts that risk deliberately, but it accepts
+it *once*, under supervision, on a pass whose output can be diffed - which is
+exactly what was done, both times. Running it on every read makes it permanent,
+silent and unreviewable.
+
+Three smaller objections on top. It puts a filesystem stat inside what is now a
+pure string function, which is the property that makes the resolvers testable
+without a data folder. It fixes the output while leaving the stored value
+wrong, and only four call sites go through the resolvers - the UI preview and
+the channel list read `channel.icon` directly and would still get the bad
+value. And it hides the defect, so the next writer that slips through looks
+like it works.
+
+If a net is wanted, the cheap one is at the write boundary, not the read:
+`saveChannel` / `saveChannelSync` in `src/dao/channel-db.js` are the single
+place every channel write passes through, and a pure string check there - warn
+when `icon`, `offlinePicture` or `watermark.url` is stored as an absolute URL
+under `/images/` - costs no I/O, rewrites nothing, and makes a future slip
+loud on the first save rather than silent forever.
+
+### Small things in the upload path, left alone deliberately
+
+Found while tracing the stale icon URL. None of them are the bug, and none are
+fixed.
+
+`web/services/dizquetv.js` defines `addChannelWatermark`, which POSTs to
+`/api/channel/watermark`. That route does not exist in `src/api.js`, and
+nothing calls the function. Dead code aimed at a missing endpoint.
+
+`index.js` mounts `/images` twice over the same directory, at lines 299 and
+301. Harmless, and predates the fork.
+
+`/api/upload/image` calls `logo.mv(...)` without a callback and without
+awaiting it, then sends a success response regardless. express-fileupload
+returns a promise when given no callback, so a failed move is an unhandled
+rejection and the client is told the upload worked. Never observed in practice,
+but the success response is not evidence of a successful write.
+
 ### Channel order is consistent across every consumer
 
 `getAllChannelNumbers()` enumerated the channels folder with `fs.readdir` and

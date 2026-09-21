@@ -385,7 +385,18 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
                     name: logo.name,
                     mimetype: logo.mimetype,
                     size: logo.size,
-                    fileUrl: `${req.protocol}://${req.get('host')}/images/uploads/${logo.name}`
+                    /*
+                     * A path, not a URL. This used to be built from
+                     * req.get('host'), so an uploaded logo was pinned to
+                     * whichever address happened to upload it and kept pointing
+                     * there after the server moved - the same breakage channel
+                     * images were taken off absolute URLs to avoid. Callers
+                     * store this, and src/image-url.js resolves it per
+                     * consumer. Renamed from fileUrl so a caller that has not
+                     * been updated fails loudly rather than storing a path
+                     * under a name that says URL.
+                     */
+                    filePath: `/images/uploads/${encodeURIComponent(logo.name)}`
                 }
             });
         }
