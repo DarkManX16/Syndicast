@@ -54,9 +54,9 @@ module.exports = async( programs, schedule  ) => {
     if (typeof(schedule) === 'undefined') {
         return { userError: 'Expected a schedule' };
     }
-    if (typeof(schedule.timeZoneOffset) === 'undefined') {
-        return { userError: 'Expected a time zone offset' };
-    }
+    // timeZoneOffset is no longer read. The offset is resolved per slot
+    // occurrence instead of being captured once, so a schedule that still
+    // carries the field is accepted and the field ignored.
     //verify that the schedule is in the correct format
     if (! Array.isArray(schedule.slots) ) {
         return { userError: 'Expected a "slots" array in schedule' };
@@ -78,7 +78,12 @@ module.exports = async( programs, schedule  ) => {
         ) {
             return { userError: "Slot times should be a integer number of milliseconds between 0 and period-1, inclusive" };
         }
-        schedule.slots[i].time = ( schedule.slots[i].time  + 10*schedule.period + schedule.timeZoneOffset*MINUTE) % schedule.period;
+        // Slot times stay in local wall-clock terms. They used to be flattened
+        // to UTC here using a single offset captured at generation time, which
+        // made every occurrence after a daylight savings change land an hour
+        // away from the time the user asked for. The offset is now resolved per
+        // occurrence, inside the loop, so nothing is pre-flattened.
+        schedule.slots[i].time = ( schedule.slots[i].time + 10*schedule.period ) % schedule.period;
     }
     schedule.slots.sort( (a,b) => {
         return (a.time - b.time);
@@ -194,13 +199,29 @@ module.exports = async( programs, schedule  ) => {
         }
     }
 
+    /*
+     * How far an instant sits into its local period, resolving the timezone
+     * offset for that instant rather than for whenever the schedule was made.
+     * This is what keeps a slot on the wall-clock time it was set to across a
+     * daylight savings change.
+     *
+     * Consequences, which follow local time honestly rather than being
+     * special-cased: on the spring-forward day the skipped local hour never
+     * occurs, so a slot inside it does not air that day. On the autumn day the
+     * repeated hour occurs twice, so a slot inside it airs twice.
+     */
+    function localMsIntoPeriod(instant) {
+        let offsetMs = (new Date(instant)).getTimezoneOffset() * MINUTE;
+        let local = instant - offsetMs;
+        return ( (local % schedule.period) + schedule.period ) % schedule.period;
+    }
+
     let s = schedule.slots;
     let ts = (new Date() ).getTime();
-    let curr = ts - ts % (schedule.period);
+    let curr = ts - localMsIntoPeriod(ts);
     let t0 = curr + s[0].time;
     let p = [];
     let t = t0;
-    let wantedFinish = t % schedule.period;
     let hardLimit = t0 + schedule.maxDays * DAY;
 
     let pushFlex = (d) => {
@@ -238,7 +259,7 @@ module.exports = async( programs, schedule  ) => {
             continue;
         }
 
-        let dayTime = t % schedule.period;
+        let dayTime = localMsIntoPeriod(t);
         let slot = null;
         let remaining = null;
         let late = null;
@@ -267,6 +288,28 @@ module.exports = async( programs, schedule  ) => {
         if (slot == null) {
             throw Error("Unexpected. Unable to find slot for time of day " + t + " " + dayTime);
         }
+
+        /*
+         * remaining is the wall-clock distance to the next slot boundary, but t
+         * advances in real time. Across a daylight savings change those differ
+         * by an hour, and since a quiet slot is filled with one flex block of
+         * exactly this length, an uncorrected value overshoots the next
+         * boundary and skips that slot for the day.
+         */
+        if (remaining !== null) {
+            let boundaryLocal = (dayTime + remaining) % schedule.period;
+            let drift = localMsIntoPeriod(t + remaining) - boundaryLocal;
+            if (drift > schedule.period / 2) {
+                drift -= schedule.period;
+            } else if (drift < -schedule.period / 2) {
+                drift += schedule.period;
+            }
+            let corrected = remaining - drift;
+            // The loop only advances when it is handed a positive duration, so a
+            // correction that cancels the interval entirely would stall it.
+            remaining = (corrected > constants.SLACK) ? corrected : remaining;
+        }
+
         let item = getNextForSlot(slot, remaining);
 
         if (late >= schedule.lateness + constants.SLACK ) {
