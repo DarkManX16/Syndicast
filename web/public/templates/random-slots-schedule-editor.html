@@ -60,10 +60,10 @@
                             <button id='seasons{{$index}}' class='btn btn-link form-control'
                                 ng-show="canShowSlot(slot)"
                                 ng-disabled="!canConstrainSeasons(slot)"
-                                title="{{ seasonsDisabledReason(slot) || 'Choose which seasons this show uses' }}"
-                                ng-click='toggleSeasonEditor(slot.showId)' >
+                                title="{{ seasonsDisabledReason(slot) || 'Choose which seasons this slot uses' }}"
+                                ng-click='toggleSeasonEditor(slot)' >
                                 <i class='fa fa-layer-group'
-                                   ng-class="{'text-info': constraintFor(slot.showId).excludeSeasons.length > 0}"></i>
+                                   ng-class="{'text-info': hasSeasonConstraint(slot)}"></i>
                             </button>
                         </div>
                         <div class='form-group col-md-1'>
@@ -92,16 +92,19 @@
 
 
 
-                        <div class='col-md-12' ng-if="openSeasonEditor === slot.showId && canConstrainSeasons(slot)"
+                        <div class='col-md-12' ng-if="openSeasonEditor === slot && canConstrainSeasons(slot)"
                              style="background: rgba(0,0,0,.04); padding: 8px; margin-bottom: 8px;">
                             <div class='small text-muted' style="margin-bottom: 6px;">
-                                Season settings are stored against <b>{{ slot.showId }}</b>, not this slot.
-                                <span ng-show="slotsSharingShow(slot.showId) > 1">
-                                    <b class="text-warning">{{ slotsSharingShow(slot.showId) }} slots use this show</b>,
-                                    and they all share these settings and a single episode position.
+                                These seasons apply to <b>this slot</b>. Other slots using
+                                <b>{{ slot.showId }}</b> can ask for a different range.
+                                <span ng-show="slotsSharingPosition(slot) > 1">
+                                    <b class="text-info">{{ slotsSharingPosition(slot) }} slots</b>
+                                    currently ask for this same range, so they advance through
+                                    it together rather than each starting over.
                                 </span>
-                                <span ng-show="slotsSharingShow(slot.showId) <= 1">
-                                    If you add another slot for this show later, it will share these settings.
+                                <span ng-show="slotsSharingPosition(slot) <= 1">
+                                    Any other slot set to the same range will advance through it
+                                    together with this one.
                                 </span>
                             </div>
 
@@ -110,8 +113,8 @@
                                 <label ng-repeat="s in seasonsAvailable(slot.showId)"
                                        class='small' style="margin-right: 12px;">
                                     <input type="checkbox"
-                                        ng-checked="isSeasonExcluded(slot.showId, s)"
-                                        ng-click="toggleSeason(slot.showId, s)" ></input>
+                                        ng-checked="isSeasonExcluded(slot, s)"
+                                        ng-click="toggleSeason(slot, s)" ></input>
                                     Season {{s}}
                                 </label>
                             </div>
@@ -125,11 +128,11 @@
                                 <button class='btn btn-sm btn-outline-secondary'
                                     ng-repeat="s in seasonsAvailable(slot.showId)"
                                     style="margin-right: 6px;"
-                                    ng-class="{'active': constraintFor(slot.showId).startSeason === s}"
-                                    ng-click="setStartSeason(slot.showId, s)">S{{s}}</button>
+                                    ng-class="{'active': seasonsOf(slot).startSeason === s}"
+                                    ng-click="setStartSeason(slot, s)">S{{s}}</button>
                                 <button class='btn btn-sm btn-link'
-                                    ng-show="constraintFor(slot.showId).startSeason !== undefined"
-                                    ng-click="setStartSeason(slot.showId, null)">clear</button>
+                                    ng-show="seasonsOf(slot).startSeason !== undefined"
+                                    ng-click="setStartSeason(slot, null)">clear</button>
                             </div>
                         </div>
 

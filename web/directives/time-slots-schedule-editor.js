@@ -1,5 +1,5 @@
 
-module.exports = function ($timeout, dizquetv, getShowData ) {
+module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) {
     const DAY = 24*60*60*1000;
     const WEEK = 7 * DAY;
     const WEEK_DAYS = [ "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday" ];
@@ -26,6 +26,7 @@ module.exports = function ($timeout, dizquetv, getShowData ) {
             function reset() {
                 showsById = {};
                 shows = [];
+                scope.openSeasonEditor = null;
                 scope.schedule = {
                     period : DAY,
                     lateness : 0,
@@ -44,6 +45,10 @@ module.exports = function ($timeout, dizquetv, getShowData ) {
                 if (typeof(scope.schedule.pad) == 'undefined') {
                     scope.schedule.pad = 1;
                 }
+                //Schedules written before season settings moved onto the slot
+                //carried one entry per show. Fold those onto the slots so the
+                //editor shows what the generator will actually do.
+                seasonConstraints.adoptShowConstraints(scope.schedule);
                 let slots = scope.schedule.slots;
                 for (let i = 0; i < slots.length; i++) {
                     let found = false;
@@ -222,14 +227,7 @@ module.exports = function ($timeout, dizquetv, getShowData ) {
 
                 res.schedule = scope.schedule;
                 delete res.schedule.fake;
-                // startSeason is a one-off seek. The lineup it produced is now the
-                // resume point, so clearing it here keeps earlier seasons reachable
-                // instead of pinning every future run to the same season.
-                if (typeof(res.schedule.showConstraints) === 'object') {
-                    for (const showId of Object.keys(res.schedule.showConstraints)) {
-                        delete res.schedule.showConstraints[showId].startSeason;
-                    }
-                }
+                seasonConstraints.clearStartSeasons(res.schedule);
                 return res;
             }
 
@@ -341,9 +339,14 @@ module.exports = function ($timeout, dizquetv, getShowData ) {
             }
 
             /*
-             * Season constraints are stored against the show rather than the slot,
-             * because the episode cursor is shared by every slot naming that show.
-             * Storing them per slot would imply an independence that does not exist.
+             * Season settings belong to the slot, so one day of the week can run a
+             * different range of a show than another. Slots that ask for the same
+             * seasons still share one episode position, which is what lets a
+             * weekday block advance as a single thread.
+             *
+             * The open panel is held by slot reference rather than by index:
+             * refreshSlots sorts the array in place, and the objects survive that
+             * while their positions do not.
              */
             scope.openSeasonEditor = null;
 
@@ -379,58 +382,51 @@ module.exports = function ($timeout, dizquetv, getShowData ) {
                 return "";
             }
 
-            let constraintFor = (showId) => {
-                if (typeof(scope.schedule.showConstraints) === 'undefined') {
-                    scope.schedule.showConstraints = {};
-                }
-                if (typeof(scope.schedule.showConstraints[showId]) === 'undefined') {
-                    scope.schedule.showConstraints[showId] = { excludeSeasons: [] };
-                }
-                let c = scope.schedule.showConstraints[showId];
-                if (! Array.isArray(c.excludeSeasons) ) {
-                    c.excludeSeasons = [];
-                }
-                return c;
-            }
-            scope.constraintFor = constraintFor;
-
-            scope.toggleSeasonEditor = (showId) => {
-                scope.openSeasonEditor = (scope.openSeasonEditor === showId) ? null : showId;
+            //Read-only, and safe to call from the template: it will not create
+            //the settings it is asked about.
+            scope.seasonsOf = (slot) => {
+                return seasonConstraints.read(slot);
             }
 
-            scope.isSeasonExcluded = (showId, season) => {
-                return constraintFor(showId).excludeSeasons.indexOf(season) !== -1;
+            scope.hasSeasonConstraint = (slot) => {
+                return seasonConstraints.isConstrained(slot);
             }
 
-            scope.toggleSeason = (showId, season) => {
-                let c = constraintFor(showId);
+            scope.toggleSeasonEditor = (slot) => {
+                scope.openSeasonEditor = (scope.openSeasonEditor === slot) ? null : slot;
+            }
+
+            scope.isSeasonExcluded = (slot, season) => {
+                return seasonConstraints.read(slot).excludeSeasons.indexOf(season) !== -1;
+            }
+
+            scope.toggleSeason = (slot, season) => {
+                let c = seasonConstraints.edit(slot);
                 let i = c.excludeSeasons.indexOf(season);
                 if (i === -1) {
                     c.excludeSeasons.push(season);
                 } else {
                     c.excludeSeasons.splice(i, 1);
                 }
+                seasonConstraints.tidy(slot);
                 scope.refreshSlots();
             }
 
-            scope.setStartSeason = (showId, season) => {
-                let c = constraintFor(showId);
+            scope.setStartSeason = (slot, season) => {
+                let c = seasonConstraints.edit(slot);
                 if ( (season === null) || (typeof(season) === 'undefined') ) {
                     delete c.startSeason;
                 } else {
                     c.startSeason = season;
                 }
+                seasonConstraints.tidy(slot);
                 scope.refreshSlots();
             }
 
-            scope.slotsSharingShow = (showId) => {
-                let n = 0;
-                for (let i = 0; i < scope.schedule.slots.length; i++) {
-                    if (scope.schedule.slots[i].showId === showId) {
-                        n++;
-                    }
-                }
-                return n;
+            //Slots naming the same show with the same seasons advance one
+            //position between them, so the panel can say how many it is setting.
+            scope.slotsSharingPosition = (slot) => {
+                return seasonConstraints.sharingPosition(scope.schedule.slots, slot);
             }
 
             scope.refreshSlots = () => {

@@ -38,10 +38,42 @@ function seasonOf(program) {
 
 /*
  * A season constraint is { excludeSeasons: [..], startSeason: n }, both
- * optional. Only "Play Next" honours it: shuffle seeds its permutation over the
- * candidate count and stores the resulting position on each program, so
- * changing that count silently changes what a saved position means.
+ * optional, and it comes from a slot rather than from a show. Only "Play Next"
+ * honours it: shuffle seeds its permutation over the candidate count and stores
+ * the resulting position on each program, so changing that count silently
+ * changes what a saved position means.
  */
+
+/*
+ * Which episode position a slot uses. Slots naming the same show and asking for
+ * the same seasons share one position, so a weekday block advances as a single
+ * thread; slots asking for different seasons each get their own. The key is
+ * derived from the constraint rather than from the slot, so it survives slots
+ * being reordered, retimed or deleted.
+ *
+ * startSeason is part of the key. It is a one-off seek, and two slots seeking
+ * different places are asking for different positions - leaving it out would
+ * hand both of them whichever seek happened to be applied first.
+ *
+ * A constraint that asks for nothing keys the same as no constraint at all, so
+ * an empty one cannot split a position that would otherwise be shared.
+ */
+function constraintKey(constraint) {
+    if ( (typeof(constraint) !== 'object') || (constraint === null) ) {
+        return "";
+    }
+    let excluded = Array.isArray(constraint.excludeSeasons)
+        ? constraint.excludeSeasons.slice().sort( (a,b) => a - b )
+        : [];
+    let start = (typeof(constraint.startSeason) === 'number')
+        ? constraint.startSeason
+        : null;
+    if ( (excluded.length === 0) && (start === null) ) {
+        return "";
+    }
+    return JSON.stringify( [ excluded, start ] );
+}
+
 function applySeasonExclusions(sortedPrograms, constraint) {
     if ( (typeof(constraint) !== 'object') || (constraint === null) ) {
         return sortedPrograms;
@@ -81,9 +113,11 @@ function resumePosition(candidates, founder, constraint) {
             return i;
         }
     }
-    // The founder is gone, usually because its season was excluded. Take the
-    // nearest surviving episode forward, and wrap deliberately rather than
-    // letting a scan fall off the end onto the finale.
+    // The founder is not in this candidate list. There is one founder per show
+    // but a show can now carry several positions, so at most one of them can
+    // match it - every other one lands here and resumes at the nearest episode
+    // its own seasons allow. Wrap deliberately rather than letting a scan fall
+    // off the end onto the finale.
     for (let i = 0; i < candidates.length; i++) {
         if ( getShowData(candidates[i]).order > founderOrder ) {
             return i;
@@ -93,7 +127,11 @@ function resumePosition(candidates, founder, constraint) {
 }
 
 function getShowOrderer(show, constraint) {
-    if (typeof(show.orderer) === 'undefined') {
+    let key = constraintKey(constraint);
+    if (typeof(show.orderers) === 'undefined') {
+        show.orderers = {};
+    }
+    if (typeof(show.orderers[key]) === 'undefined') {
 
         let sortedPrograms = JSON.parse( JSON.stringify(show.programs) );
         sortedPrograms.sort((a, b) => {
@@ -105,7 +143,7 @@ function getShowOrderer(show, constraint) {
         let candidates = applySeasonExclusions(sortedPrograms, constraint);
         let position = resumePosition(candidates, show.founder, constraint);
 
-        show.orderer = {
+        show.orderers[key] = {
 
             current : () => {
                 return candidates[position];
@@ -117,7 +155,7 @@ function getShowOrderer(show, constraint) {
 
         }
     }
-    return show.orderer;
+    return show.orderers[key];
 }
 
 

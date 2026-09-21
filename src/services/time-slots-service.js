@@ -118,16 +118,23 @@ module.exports = async( programs, schedule  ) => {
     let shows = [];
 
     /*
-     * Season constraints are keyed by show, not by slot, because the orderer is
-     * cached per show and shared by every slot naming it. Storing them per slot
-     * would let one slot's filter silently apply to another.
+     * Season settings belong to the slot, so one day of the week can run a
+     * different range of a show than another. Slots asking for the same seasons
+     * still share an episode position - see constraintKey in show-orderers.
+     *
+     * Schedules written before this carried one entry per show in
+     * schedule.showConstraints. Those are still read, so a channel saved under
+     * the old shape keeps working without a migration step.
      */
-    function constraintForShow(showId) {
+    function constraintForSlot(slot) {
+        if ( (typeof(slot.seasons) === 'object') && (slot.seasons !== null) ) {
+            return slot.seasons;
+        }
         if ( (typeof(schedule.showConstraints) !== 'object')
              || (schedule.showConstraints === null) ) {
             return undefined;
         }
-        return schedule.showConstraints[showId];
+        return schedule.showConstraints[slot.showId];
     }
 
     function getNextForSlot(slot, remaining) {
@@ -151,7 +158,7 @@ module.exports = async( programs, schedule  ) => {
         } else if (slot.order === 'shuffle') {
             return orderers.getShowShuffler(show).current();
         } else if (slot.order === 'next') {
-            return orderers.getShowOrderer(show, constraintForShow(slot.showId)).current();
+            return orderers.getShowOrderer(show, constraintForSlot(slot)).current();
         }
     }
     
@@ -163,7 +170,7 @@ module.exports = async( programs, schedule  ) => {
         if (slot.order === 'shuffle') {
             return orderers.getShowShuffler(show).next();
         } else if (slot.order === 'next') {
-            return orderers.getShowOrderer(show, constraintForShow(slot.showId)).next();
+            return orderers.getShowOrderer(show, constraintForSlot(slot)).next();
         }
     }
 

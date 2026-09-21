@@ -2,9 +2,10 @@
 
 ## Feature roadmap
 
-Intended work. **Nothing in this section is built yet** - it is a statement of
-direction, not of state. The Known issues section below is separate and covers
-defects in what already ships.
+Intended work, mostly a statement of direction rather than of state. **An
+unticked box is not built.** A ticked one is, and says what actually shipped,
+which is not always the whole of what the line originally asked for. The Known
+issues section below is separate and covers defects in what already ships.
 
 ### Blocks system
 
@@ -19,17 +20,31 @@ The original reason for the fork.
 
 ### Scheduling
 
-- [ ] Season exclusion / season start
+- [x] Season exclusion / season start, per slot, for Play Next
+- [ ] Setting a season range across a group of slots in one go
 - [ ] Sign-ons and sign-offs
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
-- [ ] Rerun - *blocked on per-slot constraints*
-- [ ] Shuffle - *blocked on per-slot constraints*
-- [ ] Ordered shuffle - *blocked on per-slot constraints*
+- [ ] Rerun
+- [ ] Per-position stored progress, which also lets a secondary Play Next range
+      continue across a regeneration instead of restarting
+- [ ] Shuffle - *blocked on per-position stored progress*
+- [ ] Ordered shuffle - *blocked on per-position stored progress*
 
-The three blocked items need orderers keyed by slot rather than by show, and
-shuffle progress needs a representation that survives a changing candidate
-count. See the shuffleOrder entry under Known issues.
+Orderers are no longer keyed by show. `getShowOrderer` keys them by show plus
+the seasons asked for, so slots wanting different ranges of one show get
+different episode positions while slots wanting the same range still advance
+together. That was the half of the blocker the three items shared; what is left
+for the two shuffle ones is somewhere to keep progress per position. That work
+also fixes a rough edge in what already ships, so it is one item rather than
+two - see the per-position stored progress entry under Known issues.
+
+The grouped-editing item is the cost of per-slot settings meeting a weekly
+period. Switching a schedule from daily to weekly clones every slot across
+seven days, so a 48 slot channel becomes 336, and setting one show's range for
+Monday through Thursday means finding and editing four entries in that list.
+The setting is on the right object; the editor just has no way to say "these
+slots" yet.
 
 ### Media handling
 
@@ -167,6 +182,17 @@ the difference is easy to miss.
 scanning the sorted episode list for `show.founder`, which is just the first
 program of that show in the channel's current lineup. Nothing persists.
 
+Having nothing to persist is what let per-slot season settings ship without new
+state, and it is also where they are weakest. A show can now carry several
+positions but still has exactly one founder, so at most one of them resumes on
+the founder itself; the rest fall to the "nearest episode forward" branch and
+resume at the start of the range they are allowed. That is stable and
+repeatable - re-running the tool twice gives the same answer - but which
+position gets the exact match depends on which slot happens to come first in
+the previous lineup. Every other range restarts at its own beginning instead of
+continuing. Fixing that needs somewhere to record progress per position, which
+is the same thing constrained shuffle needs - see the next entry.
+
 *Shuffle* does persist. `getShowShuffler` writes its cursor onto every program it
 emits:
 
@@ -186,10 +212,55 @@ episodes against the same saved position of 7:
     all 12 episodes   : S3E4 -> S1E1 -> S3E2 -> S3E3 -> S3E1
     season 2 removed  : S3E3 -> S3E4 -> S3E2 -> S1E2 -> S1E1
 
-This is why season constraints ship for Play Next first. Constrained shuffle is
-not a filter on top of the existing mechanism; it needs a progress
-representation that survives `n` changing, or an explicit decision to reshuffle
-when constraints change.
+This is why season settings are Play Next only. Constrained shuffle is not a
+filter on top of the existing mechanism; it needs a progress representation that
+survives `n` changing, or an explicit decision to reshuffle when constraints
+change. The control stays disabled for shuffle slots, with that reason in its
+tooltip.
+
+### Per-position stored progress, which fixes two things at once
+
+Two defects above look unrelated and are not. Both should be fixed by one piece
+of work, and doing either alone is a false economy.
+
+The defects:
+
+- A Play Next slot asking for a range other than the one the founder falls in
+  restarts at the beginning of its range every time the lineup is regenerated,
+  rather than continuing. Only one range per show can resume exactly, because a
+  show has one founder and several positions.
+- Constrained shuffle cannot ship at all, because `shuffleOrder` is an index
+  into a permutation of `n` items and a season filter changes `n`.
+
+What they share is the absence of anywhere to put progress that belongs to a
+*position* rather than to a show. The founder is per show. `shuffleOrder` is
+per program but means nothing without the `n` it was produced under. Neither
+survives one show carrying several ranges.
+
+So the same three decisions serve both:
+
+- **Key.** `(showId, constraintKey(constraint))` - the key already exists, in
+  `show-orderers.js`, and already groups slots the way progress would need to be
+  grouped.
+- **Storage.** The schedule is the honest place. It already round-trips as
+  `channel.scheduleBackup`, and unlike program tags it does not get thinned by
+  `removeDuplicates`, which keys on `showId|order` and would silently drop one
+  range's record whenever two ranges overlap on an episode. The cost is that the
+  services would have to return the updated schedule and the editors merge it
+  back, instead of the editor overwriting with its own copy as `doIt` does now.
+- **Shape.** Episode identity, never an index. `getShowData(p).order` is
+  `season * 1000000 + episode` and stays meaningful when the candidate set
+  changes, which is exactly the property `shuffleOrder` lacks.
+
+The payloads differ, and that is the whole of the difference: Play Next needs
+the last episode emitted, shuffle needs the set already emitted this pass plus
+the seed, so an unplayed candidate can be picked deterministically without
+re-deriving a permutation over a count that has moved.
+
+Build them together. Whichever ships first will pick the key, the storage and
+the invalidation rule for the other, and if the second is added later against a
+different representation the channel ends up carrying two disagreeing records of
+where a show is. That is a worse bug than either of the ones being fixed.
 
 ### Comparators that only work by accident
 

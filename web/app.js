@@ -37,6 +37,7 @@ app.service('dizquetv',         require('./services/dizquetv'))
 app.service('resolutionOptions', require('./services/resolution-options'))
 app.service('getShowData', require('./services/get-show-data'))
 app.service('commonProgramTools', require('./services/common-program-tools'))
+app.service('seasonConstraints', require('./services/season-constraints'))
 
 app.directive('plexSettings',   require('./directives/plex-settings'))
 app.directive('ffmpegSettings', require('./directives/ffmpeg-settings'))
