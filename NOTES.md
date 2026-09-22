@@ -9,7 +9,9 @@ issues section below is separate and covers defects in what already ships.
 
 ### Blocks system
 
-The original reason for the fork.
+The original reason for the fork. Design approved, not yet built: see
+[docs/blocks-spec.md](docs/blocks-spec.md) for the full spec, stages and
+acceptance tests.
 
 - [ ] Timed Flex Blocks - time-scoped filler switching by time of day and day of week
 - [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
