@@ -44,6 +44,75 @@ function warnAboutAbsoluteImages(json) {
     }
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/*
+ * Day-parts form one continuous weekly chain, so a malformed start does not
+ * fail loudly on its own - it just makes some stretch of the week resolve to a
+ * day-part nobody meant. Complain here, at the one place every channel write
+ * passes through, for the same reason the image check above lives here.
+ *
+ * Warn-only, and it rewrites nothing. A start that cannot be parsed is ignored
+ * by the resolver, which is the conservative answer; guessing what was meant
+ * would silently play the wrong filler for hours.
+ */
+function warnAboutDayParts(json) {
+    if (typeof(json.dayParts) === 'undefined') {
+        return;
+    }
+    const complain = (message) => {
+        console.error(`Channel ${json.number}: ${message}`);
+    };
+    if (! Array.isArray(json.dayParts) ) {
+        complain(`dayParts was saved as ${typeof(json.dayParts)} rather than an array. It will be ignored and the channel's Flex tab used instead.`);
+        return;
+    }
+    let seenStarts = {};
+    for (let i = 0; i < json.dayParts.length; i++) {
+        const dayPart = json.dayParts[i];
+        const label = `day-part ${i}` + ( (dayPart != null) && dayPart.name ? ` ("${dayPart.name}")` : '' );
+        if (dayPart == null) {
+            complain(`${label} is empty.`);
+            continue;
+        }
+        if (! Array.isArray(dayPart.starts) || (dayPart.starts.length === 0) ) {
+            complain(`${label} has no start times, so it never airs.`);
+            continue;
+        }
+        for (let j = 0; j < dayPart.starts.length; j++) {
+            const start = dayPart.starts[j];
+            if (start == null) {
+                complain(`${label} start ${j} is empty.`);
+                continue;
+            }
+            if (! Array.isArray(start.days) || (start.days.length === 0) ) {
+                complain(`${label} start ${j} names no days, so it never airs.`);
+                continue;
+            }
+            if ( (typeof(start.time) !== 'number')
+                || isNaN(start.time)
+                || (start.time < 0)
+                || (start.time >= DAY_MS)
+            ) {
+                complain(`${label} start ${j} has time ${start.time}, which should be a number of milliseconds from midnight between 0 and ${DAY_MS - 1}. It will be ignored.`);
+                continue;
+            }
+            for (const day of start.days) {
+                if ( (typeof(day) !== 'number') || ! Number.isInteger(day) || (day < 0) || (day > 6) ) {
+                    complain(`${label} start ${j} names day ${day}, which should be an integer from 0 (Sunday) to 6. It will be ignored.`);
+                    continue;
+                }
+                const key = `${day}|${start.time}`;
+                if (typeof(seenStarts[key]) !== 'undefined') {
+                    complain(`${label} starts at the same moment as ${seenStarts[key]} (day ${day}, ${start.time}ms). The chain cannot run two day-parts at once, so the one declared first wins and the other never airs at that time.`);
+                    continue;
+                }
+                seenStarts[key] = label;
+            }
+        }
+    }
+}
+
 class ChannelDB {
 
     constructor(folder) {
@@ -114,6 +183,7 @@ class ChannelDB {
             throw Error("channel.number must be a integer");
         }
         warnAboutAbsoluteImages(json);
+        warnAboutDayParts(json);
     }
 
     async deleteChannel(number) {

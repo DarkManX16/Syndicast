@@ -6,6 +6,7 @@ const constants = require('./constants')
 const fs = require('fs')
 const ProgramPlayer = require('./program-player');
 const channelCache  = require('./channel-cache')
+const dayParts = require('./day-parts');
 const wereThereTooManyAttempts = require('./throttler');
 
 module.exports = { router: video, shutdown: shutdown }
@@ -303,9 +304,14 @@ function video( channelService, fillerService, db, programmingService, activeCha
         if ( (prog == null) || (typeof(prog) === 'undefined') || (prog.program == null) || (typeof(prog.program) == "undefined") ) {
             throw "No video to play, this means there's a serious unexpected bug or the channel db is corrupted."
         }
-        let fillers = await fillerService.getFillersFromChannel(brandChannel);
+        // Every list this channel could draw from, which for a channel without
+        // day-parts is exactly the list on its Flex tab.
+        let fillers = await fillerService.getFillersFromCollections(
+            brandChannel,
+            dayParts.allFillerCollections(brandChannel)
+        );
         try {
-            let lineup = helperFuncs.createLineup(programPlayTimeDB, prog, brandChannel, fillers, isFirst)
+            let lineup = helperFuncs.createLineup(programPlayTimeDB, prog, brandChannel, fillers, isFirst, t0)
             lineupItem = lineup.shift();
         } catch (err) {
             console.log("Error when attempting to pick video: " +err.stack);

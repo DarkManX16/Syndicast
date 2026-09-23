@@ -9,11 +9,18 @@ issues section below is separate and covers defects in what already ships.
 
 ### Blocks system
 
-The original reason for the fork. Design approved, not yet built: see
-[docs/blocks-spec.md](docs/blocks-spec.md) for the full spec, stages and
-acceptance tests.
+The original reason for the fork. See [docs/blocks-spec.md](docs/blocks-spec.md)
+for the full spec, stages and acceptance tests.
 
 - [ ] Timed Flex Blocks - time-scoped filler switching by time of day and day of week
+
+      Stage 1's core is built and its acceptance rows pass, but there is no way
+      to configure a day-part from the UI yet, so the box stays unticked. The
+      resolver is `src/day-parts.js`, pure and free of I/O; `createLineup` takes
+      a `t0` and resolves the mix when it fills a break. `channel.dayParts` is
+      an optional field, so nothing needed migrating and a channel without one
+      takes the same code path it always did.
+
 - [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
       and per block
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL)
@@ -285,6 +292,23 @@ The awkward case is the time editor, which serialises the object it is handed
 survive the round trip. `editTime` therefore resolves the real index from the
 slot and sends that number, rather than letting the template supply one.
 
+### The play-time cache is loaded without being awaited
+
+`index.js` calls `initializeProgramPlayTimeDB()` at line 130 without awaiting
+it, and the express app is wired up immediately after. A stream that starts
+before the load finishes reads an empty cache, so a clip or a filler list looks
+like it has never played and its cooldown is ignored for that pick.
+
+Pre-existing, never observed, and the window is the time it takes to read one
+small JSON file per remembered program. Worth knowing because per-list cooldowns
+now come out of the same store, so the race covers them too - it just widens
+what a badly-timed first pick can forget, rather than introducing anything new.
+
+Left alone deliberately. Awaiting it delays server start behind a directory
+walk that scales with the number of remembered programs, which on this install
+is most of a 39,999 program channel, and the failure it prevents is one slightly
+wrong filler pick in the first moments after a restart.
+
 ### Comparators that only work by accident
 
 Left alone deliberately, but worth knowing about if any of this is touched.
@@ -311,12 +335,41 @@ ordering silently breaks again.
 
 ### createLineup can be exercised directly
 
-`helperFuncs.createLineup(programPlayTime, obj, channel, fillers, isFirst)` is
-exported and has no I/O of its own, so filler selection can be tested without
+`helperFuncs.createLineup(programPlayTime, obj, channel, fillers, isFirst, t0)`
+is exported and has no I/O of its own, so filler selection can be tested without
 playback, ffmpeg or a real channel. Pass a stub for `programPlayTime` exposing
-`getProgramLastPlayTime(channelId, programKey)`, an `obj` of
-`{timeElapsed, program}` where the program is `{isOffline: true, duration}`,
-and fillers shaped `{id, content, weight, cooldown}`.
+`getProgramLastPlayTime(channelId, programKey)` and `update(channelId,
+programKey, t)`, an `obj` of `{timeElapsed, program, programIndex}` where the
+program is `{isOffline: true, duration}`, and fillers shaped
+`{id, content, weight, cooldown}`.
+
+`t0` is the instant the decision is being made at, and `programIndex` addresses
+`channel.programs`. Both only matter on a channel with day-parts: the resolver
+uses `programIndex` to find the program after the break and takes its context.
+Omit `t0` and it defaults to now.
+
+Two things make measuring proportions awkward, and both have a way round.
+Passing `isFirst` true disables the longest-idle branch, which leaves the list
+weights governing on their own - that is how the 70/30 and 95/5 mixes in the
+stage 1 acceptance table were confirmed to land on exactly 70/30 and 95/5. And
+naming every clip after the list it belongs to makes a pick's true owner
+unambiguous, which is what caught the attribution defect below.
+
+### Comparing a filler change against the version before it
+
+The picker is auto-seeded, so old and new cannot be compared call for call.
+Three things together are enough to show a change did not disturb channels it
+was not meant to touch, and all three were used for day-parts:
+
+- An **exact-equality** case. One list, one clip shorter than the break, and
+  `isFirst` false leaves nothing random in the pick, so the emitted item must
+  match field for field.
+- A **distribution** comparison at large N. 40,000 picks against the previous
+  commit's `helperFuncs.js` and `channel-cache.js`, extracted with `git show`
+  into a scratch directory, agreed within 0.22 points on every clip.
+- An **identity** check on the input. `dayParts.allFillerCollections` returns
+  the channel's own array by reference when there are no day-parts, so the
+  picker provably runs on the same object it always did.
 
 Running it a few hundred times and counting titles is enough to characterise
 the picker statistically. That is how the 1.6.0 filler algorithm was verified:
@@ -381,6 +434,52 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### Filler list cooldowns are persisted, and were being credited to the wrong list
+
+Per-clip last-played times have always been persisted, to
+`<data folder>/play-cache/<channel>/<base64 key>.json`, and loaded at boot.
+Per-**list** times were not: they sat in a plain object in `channel-cache.js`
+and were forgotten on every restart. CN Groovies' 3000 second cooldown never
+survived one. Day-parts lean on list cooldowns, so that had to stop being true.
+
+They now go into the same store, under `!fillerList!|<id>`. That key cannot
+collide with a program: `getProgramKey` always opens with `!unknown!` or `plex`,
+which the real data folder confirms - the keys on disk look like
+`plex|Thats So Disney/Nick Picks|/library/metadata/171404`. Reusing the store
+means no new DAO, no new folder, no migration, and one source of truth instead
+of two.
+
+**The interesting part is what persisting it exposed.** Which list a clip is
+credited to was assigned twice:
+
+```js
+pick.fillerId = minPickFillerId;   // the longest-idle clip's real list
+...
+pick.fillerId = fillerId;          // the list that won the weighted draw
+```
+
+The second overwrote the first unconditionally, so every clip chosen by the
+longest-idle branch was credited to whichever list happened to win the draw.
+Measured over 596 picks: 183 went through that branch, 54 were credited to a
+list the clip does not belong to. Nine percent. The first assignment also wrote
+onto the clip sitting in the filler list itself, before the clone.
+
+This was invisible precisely *because* list cooldowns were forgotten on restart -
+a wrong credit had no lasting consequence. Persisting them would have made it
+permanent: a list held in cooldown having never played, another free to play
+again having just played. So it is not a cleanup that happened to be nearby, it
+is a prerequisite. Re-measured after the fix: 0 wrong out of 1,983.
+
+It does change filler behaviour on channels with no day-parts, which is the one
+thing stage 1 was otherwise careful not to do. Worth stating plainly rather than
+leaving it to be discovered.
+
+Finding it was the enumerate-the-writers habit paying off again - the one the
+image URL fix learned the hard way, further down this section. One grep for the
+per-list play time turned up exactly one writer and one reader, which is what
+made it safe to move the storage; the same grep for `fillerId` turned up the two
+assignments sitting one line apart.
 
 ### Guide requested an unresolved Angular binding
 

@@ -6,6 +6,7 @@ module.exports = {
 }
 
 let channelCache = require('./channel-cache');
+let dayParts = require('./day-parts');
 const INFINITE_TIME = new Date().getTime() + 10*365*24*60*60*1000; //10 years from the initialization of the server. I dunno, I just wanted it to be a high time without it stopping being human readable if converted to date.
 const SLACK = require('./constants').SLACK;
 const randomJS = require("random-js");
@@ -63,7 +64,16 @@ function getCurrentProgramAndTimeElapsed(date, channel) {
     return { program: channel.programs[currentProgramIndex], timeElapsed: timeElapsed, programIndex: currentProgramIndex }
 }
 
-function createLineup(programPlayTime, obj, channel, fillers, isFirst) {
+/*
+ * t0 is the instant this decision is being made at. It is only consulted when
+ * filling a break on a channel that has day-parts; everything else ignores it.
+ * The single caller always supplies it, and the fallback is here so that a test
+ * harness exercising the picker does not have to.
+ */
+function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
+    if (typeof(t0) !== 'number') {
+        t0 = (new Date()).getTime();
+    }
     let timeElapsed = obj.timeElapsed
     // Start time of a file is never consistent unless 0. Run time of an episode can vary. 
     // When within 30 seconds of start time, just make the time 0 to smooth things out
@@ -98,7 +108,23 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst) {
             if ( (channel.offlineMode === 'clip') && (channel.fallback.length != 0) ) {
                 special = JSON.parse(JSON.stringify(channel.fallback[0]));
             }
-            let randomResult = pickRandomWithMaxDuration(programPlayTime, channel, fillers, remaining + (isFirst? (7*24*60*60*1000) : 0) , isFirst );
+            /*
+             * Only the filler mix is time-scoped. Channel Fallback above, the
+             * per-clip repeat cooldown and "hide watermark during filler" all
+             * stay channel-wide, so they are read the same way whether or not
+             * this channel has day-parts.
+             *
+             * resolveCollections returns null unless a day-part actually
+             * applies, and then the picker runs on the very array it was
+             * handed. That is the whole of the guarantee that a channel without
+             * day-parts behaves as it did before.
+             */
+            let mix = fillers;
+            let collections = dayParts.resolveCollections(channel, t0, obj);
+            if (collections !== null) {
+                mix = applyMix(fillers, collections);
+            }
+            let randomResult = pickRandomWithMaxDuration(programPlayTime, channel, mix, remaining + (isFirst? (7*24*60*60*1000) : 0) , isFirst );
             filler = randomResult.filler;
             if (filler == null && (typeof(randomResult.minimumWait) !== undefined) && (remaining > randomResult.minimumWait) ) {
                 remaining = randomResult.minimumWait;
@@ -178,6 +204,37 @@ function weighedPick(a, total) {
     return random.bool(a, total);
 }
 
+/*
+ * fillers carries loaded content for every list the channel can reach, because
+ * loading it is asynchronous and this function is not. The mix says which of
+ * those lists to draw from now, and with what weight and cooldown - so the
+ * weights that came attached to fillers are ignored in favour of the mix's own.
+ *
+ * A list the mix names but that failed to load is dropped rather than included
+ * empty; filler-service has already logged why it could not be read.
+ */
+function applyMix(fillers, collections) {
+    let contentById = {};
+    for (let i = 0; i < fillers.length; i++) {
+        contentById[ fillers[i].id ] = fillers[i].content;
+    }
+    let mix = [];
+    for (let i = 0; i < collections.length; i++) {
+        let collection = collections[i];
+        let content = contentById[ collection.id ];
+        if (typeof(content) === 'undefined') {
+            continue;
+        }
+        mix.push( {
+            id: collection.id,
+            content: content,
+            weight: collection.weight,
+            cooldown: collection.cooldown,
+        } );
+    }
+    return mix;
+}
+
 function pickRandomWithMaxDuration(programPlayTime, channel, fillers, maxDuration, isFirst) {
     let list = [];
     for (let i = 0; i < fillers.length; i++) {
@@ -241,7 +298,7 @@ function pickRandomWithMaxDuration(programPlayTime, channel, fillers, maxDuratio
                 timeSince = 0;
                 //Can't pick from this filler list due to cooldown
             } else if (!pickedList) {
-                let t1 = channelCache.getFillerLastPlayTime( channel.number, fillers[j].id );
+                let t1 = channelCache.getFillerLastPlayTime( programPlayTime, channel.number, fillers[j].id );
                 let timeSince = ( (t1 == 0) ?  D :  (t0 - t1) );
                 if (timeSince + SLACK >= fillers[j].cooldown) {
                     //should we pick this list?
@@ -294,14 +351,29 @@ function pickRandomWithMaxDuration(programPlayTime, channel, fillers, maxDuratio
      }
     }
     let pick = pick1;
+    /*
+     * Which list the clip is credited to has to follow the clip. fillerId names
+     * the list that won the weighted draw, which is right for pick1 but not for
+     * minPick - the longest-idle clip can come from any list. The two used to be
+     * assigned in that order, so the second assignment silently overwrote the
+     * first and credited the wrong list. Measured at 9 percent of picks.
+     *
+     * That is invisible while list cooldowns live only in memory, because a
+     * restart forgets them. They are persisted now, so a mis-credited list stays
+     * mis-credited: one held in cooldown having never played, another free to
+     * play again having just played.
+     */
+    let pickFillerId = fillerId;
     let Q = Math.max(30, Math.ceil(10* Math.log(minPickSet) / Math.log(2) ) );
     if (!isFirst && (minPick != null) && weighedPick(10,Q) ) {
         pick = minPick;
-        pick.fillerId = minPickFillerId;
+        pickFillerId = minPickFillerId;
     }
     if (pick != null) {
+        // Cloned before anything is written to it. The assignment used to land
+        // on the clip sitting in the filler list itself.
         pick = JSON.parse( JSON.stringify(pick) );
-        pick.fillerId = fillerId;
+        pick.fillerId = pickFillerId;
     }
     
    

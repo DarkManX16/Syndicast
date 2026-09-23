@@ -2,7 +2,6 @@ const SLACK = require('./constants').SLACK;
 
 let cache = {};
 
-let fillerPlayTimeCache = {};
 let configCache = {};
 let numbers = null;
 
@@ -119,8 +118,19 @@ function getProgramKey(program) {
 }
 
 
-function getFillerKey(channelId, fillerId) {
-    return channelId + "|" + fillerId;
+/*
+ * Per-list last-play times are kept in the same store as per-clip ones, under a
+ * key that cannot collide with a real program: getProgramKey always opens with
+ * "!unknown!" or "plex", never this.
+ *
+ * They used to live in a plain object in this module, so a list cooldown was
+ * forgotten on every restart - CN Groovies' 3000 second cooldown never survived
+ * one. Day-parts lean on list cooldowns, so that had to stop being true. Reusing
+ * the program store gets the on-disk layout and the load-at-boot for free, and
+ * leaves one source of truth rather than two.
+ */
+function getFillerPlayTimeKey(fillerId) {
+    return "!fillerList!|" + fillerId;
 }
 
 
@@ -134,7 +144,11 @@ function recordProgramPlayTime(programPlayTime, channelId, lineupItem, t0) {
     }
     setProgramLastPlayTime(programPlayTime, channelId, lineupItem, t0 + remaining);
     if (typeof(lineupItem.fillerId) !== 'undefined') {
-        fillerPlayTimeCache[ getFillerKey(channelId, lineupItem.fillerId) ] = t0 + remaining;
+        programPlayTime.update(
+            channelId,
+            getFillerPlayTimeKey(lineupItem.fillerId),
+            t0 + remaining
+        );
     }
 }
 
@@ -148,13 +162,11 @@ function getProgramLastPlayTime(programPlayTime, channelId, program) {
     return programPlayTime.getProgramLastPlayTime(channelId, programKey);
 }
 
-function getFillerLastPlayTime(channelId, fillerId) {
-    let v = fillerPlayTimeCache[ getFillerKey(channelId, fillerId) ];
-    if (typeof(v) === 'undefined') {
-        return 0;
-    } else {
-        return v;
-    }
+function getFillerLastPlayTime(programPlayTime, channelId, fillerId) {
+    return programPlayTime.getProgramLastPlayTime(
+        channelId,
+        getFillerPlayTimeKey(fillerId)
+    );
 }
 
 function recordPlayback(programPlayTime, channelId, t0, lineupItem) {

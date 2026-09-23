@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: design approved, not yet built
+Syndicast · `blocks` branch · Status: stage 1 core built; stage 1 UI next
 
 ## Summary
 
@@ -82,15 +82,37 @@ Each stage ships and is useful on its own. Model per the Model guide in NOTES.md
 
 Replaces the single channel Flex with a time-scoped chain. Solves Nick Picks outright, plus Adult Swim and CN City Day/Night.
 
-- **Core (Opus 5):** the resolver. Pass `t0` and `programIndex` into `createLineup` at `video.js:306` and resolve the mix there. The daylight-saving option. Persistence.
+- **Core (Opus 5):** the resolver. Pass `t0` and `programIndex` into `createLineup` at `video.js:306` and resolve the mix there. The neighbour-context break rule, over day-part contexts. The daylight-saving option. Persistence.
 - **UI (Sonnet 5):** a day-part list in the channel editor, reusing the existing Flex list/weight/cooldown editor for each mix. A start-time editor with the daylight-saving toggle and computed times. A simple weekly strip showing which day-part covers when. A "convert to day-parts" action that turns the channel's current Flex into a single all-week day-part as a starting point.
 - Channels without day-parts are untouched.
+
+The stored shape, which the core reads and the UI writes. It is an optional field
+on the channel, so there is nothing to migrate: absent or empty means the channel
+uses its Flex tab exactly as before.
+
+```js
+channel.dayParts = [{
+  id, name,
+  guideName,                                        // stored, wired up in stage 2
+  fillerCollections: [ { id, weight, cooldown } ],  // same shape as channel.fillerCollections
+  starts: [ { days: [1,2,3,4,5], time: 21600000, shiftWithDst: false } ]
+}]
+```
+
+`days` are 0 (Sunday) to 6 and `time` is milliseconds from local midnight.
+`fillerRepeatCooldown` is **not** part of a mix: it is a per-clip cooldown, and
+clip cooldowns stay channel-wide and shared across contexts.
+
+`src/day-parts.js` is pure and does no I/O, so the editor can call
+`effectiveStartTime(start, instant)` for its computed times rather than keeping a
+second copy of the daylight-saving arithmetic. `src/dao/channel-db.js` warns on
+malformed or colliding starts at save; it rewrites nothing.
 
 ### Stage 2 — Blocks with airings
 
 Adds Toonami, Miguzi, Cartoon Cartoons Friday, Cartoon Theatre, and the midnight run.
 
-- **Core (Opus 5):** block airings in the resolver, the neighbour-context break rule, and per-context guide names (generalising `guideFlexPlaceholder`).
+- **Core (Opus 5):** block airings in the resolver, extending the neighbour-context break rule to block contexts, and per-context guide names (generalising `guideFlexPlaceholder`).
 - **UI (Sonnet 5):** a block editor — name, mix, airings — with overlap validation.
 
 ### Stage 3 — Block Schedule Manager (Sonnet 5)
@@ -189,12 +211,16 @@ Built from the real channels. A stage merges only when its tests pass.
 ## Open questions
 
 1. **Per-pair bumpers** (stage 5). The lineup varies by day, so the set of adjacent pairs across a week is large — on the order of a hundred — and there are many two-show bumpers. Hand-entered pair rules won't scale. Intended shape instead: pair bumpers live in a filler list, and each clip carries the two shows it names. That mapping is proposed automatically by matching clip titles against the channel's shows, with a review screen to fix what it gets wrong — a one-time pass rather than ongoing per-pair configuration. When no pair clip matches the real neighbours, it falls back to the per-show mapping, then to a general list. Settled at the stage 5 design session.
-2. **Long breaks spanning several contexts.** A verification task during stage 1: check how `createLineup` is re-invoked during a long break before relying on the neighbour rule there.
-3. **Per-list cooldown persistence.** Fix in stage 1. Per-list last-played lives in memory and resets on restart, so CN Groovies' 3000s cooldown is forgotten each time, and day-parts lean on list cooldowns.
+2. **Long breaks spanning several contexts.** Settled during stage 1, by measurement rather than by reading. `createLineup` is re-invoked **once per filler clip**, each time with a fresh wall-clock `t0` — a two hour break produced 48 calls and no cache hits, because `getCurrentLineupItem` returns null as soon as a clip is exhausted. Across all of them `programIndex` never moves, so the neighbour the rule reads is the same on the first call and the last. A long break therefore plays **one** mix throughout, even where it spans a boundary, which is what "the filler starts after the 2:30 show" requires. The clock only re-enters for a break with no program neighbour, and there it should: nothing anchors it, so an all-Flex channel does change mix partway through.
+3. **Per-list cooldown persistence.** Fixed in stage 1. Per-list last-played now lives in the same store as per-clip times (`<data>/play-cache/<channel>/`), under a key that cannot collide with a program key, so it is loaded at boot like everything else there. No new DAO and no migration.
+
+   Fixing it exposed a defect underneath. Which list a clip is credited to was assigned twice, and the second assignment overwrote the first, so a clip chosen by the longest-idle branch was credited to whichever list happened to win the weighted draw — measured at 9 percent of picks. That was invisible while list cooldowns were forgotten on restart. Persisting them would have made it permanent, so it was fixed in the same pass.
 4. **One-off airings.** Deferred. Adding a single-date option to an airing is small and non-breaking later, and leaving it out keeps the stage 2 editor simpler. Revisit when a one-off marathon is actually wanted.
 
 ## Notes
 
+- **The neighbour-context break rule is stage 1, not stage 2.** It was listed under stage 2 originally, but stage 1's own acceptance rows need it: *"break after the last 90s Nick show → Nick at Nite"* only resolves that way if the break takes its context from the show that follows it. A clock rule gives the outgoing mix there. `programIndex` has no other purpose than finding that neighbour, and stage 1 is the stage that asks for it. Stage 2 extends the same rule to block contexts.
+- **For the mix alone, both branches of the break rule land on the incoming context**, so stage 1 only computes that side. The branches are still written as two in this spec because stage 5 picks a different transition sequence for a boundary than for a break inside one context.
 - **Saturday 12am needs no configuration.** There is no Adult Swim start on Saturday, so the weekday day-part that began Friday 6am simply runs on — which is the wanted mix. This also confirms that inheriting the previous day-part across days is the right fallback. Saturday 3am needs one start, with a Powerhouse-only mix, running until CN City Day at 6am. If Saturday overnight should carry its own name in the guide and the Block Schedule Manager, add a 12am start with the same mix purely for the label.
 - **Blocks never restrict manual scheduling.** They only decide which filler plays. Inserting items anywhere in the lineup, reordering it, and building an all-day marathon by hand all keep working exactly as they do now. An overlay can't take that away, because it never touches the lineup.
 - Adult Swim starts Sunday at 10pm but Monday–Thursday nights at 12am. The continuous chain expresses that irregularity with no special case — Sunday's 10pm start simply runs until Monday's 6am start.

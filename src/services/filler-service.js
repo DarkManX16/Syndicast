@@ -78,7 +78,19 @@ class FillerService extends events.EventEmitter {
         return content;
     }
 
-    async getFillersFromChannel(channel) {
+    /*
+     * Loads content for an explicit set of collections rather than reading
+     * channel.fillerCollections itself. Day-parts mean the set of lists a
+     * channel can draw from is wider than the list on its Flex tab, and the
+     * picker is synchronous, so video.js loads the union up front and lets
+     * createLineup choose from it. channel is still passed so a list that
+     * cannot be read names the channel it was referenced from.
+     *
+     * This replaces getFillersFromChannel, rather than wrapping it, so that a
+     * caller arriving with the 1.7.0 merge fails loudly instead of quietly
+     * loading only the Flex tab's lists on a channel that has day-parts.
+     */
+    async getFillersFromCollections(channel, fillerCollections) {
 
         let loadChannelFiller = async(fillerEntry) => {
             let content = [];
@@ -97,7 +109,7 @@ class FillerService extends events.EventEmitter {
             }
         };
         return await Promise.all(
-            channel.fillerCollections.map(loadChannelFiller)
+            fillerCollections.map(loadChannelFiller)
         );
     }
 
