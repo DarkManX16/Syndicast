@@ -333,6 +333,37 @@ ordering silently breaks again.
 
 ## Testing notes
 
+### `npm test` runs the blocks suite
+
+`test/` holds the stage 1 verification for day-parts.
+
+```
+npm test
+```
+
+runs every file in the directory and prints one combined pass/fail count (34
+checks as of stage 1). Three files, matching the three things stage 1 needed
+proving:
+
+- `blocks-acceptance.js` - the stage 1 rows from
+  [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance table, transcribed
+  into one array, `ROWS`. **Stage 2 adds its rows to this same array**, tagged
+  `row(2, ...)`, rather than starting a parallel file - see the comment at the
+  end of `ROWS` for where new fixtures and helpers go.
+- `blocks-unchanged.js` - the guarantee that a channel without day-parts is
+  unaffected, as self-contained assertions rather than a diff against a
+  historical commit (see below).
+- `blocks-persistence.js` - the long-break and cooldown-persistence findings
+  from the Resolved section below, plus the filler attribution regression.
+
+`test/support.js` holds the shared fixtures, builders and the `Suite`
+check/report harness. `test/run.js` is what `npm test` calls; it requires each
+file above and aggregates their results. Nothing here touches ffmpeg, a data
+folder or a running server, and there is no test runner dependency to
+install - it is plain Node, in keeping with the rest of the project having
+none either. Each file also runs standalone, e.g. `node
+test/blocks-acceptance.js`, while developing just that piece.
+
 ### createLineup can be exercised directly
 
 `helperFuncs.createLineup(programPlayTime, obj, channel, fillers, isFirst, t0)`
@@ -355,6 +386,10 @@ stage 1 acceptance table were confirmed to land on exactly 70/30 and 95/5. And
 naming every clip after the list it belongs to makes a pick's true owner
 unambiguous, which is what caught the attribution defect below.
 
+These builders - `clip`, `show`, `flex`, `mix`, `freshStore` - are not just
+prose convention any more; they are the literal functions in
+`test/support.js`, shared by every file in the suite above.
+
 ### Comparing a filler change against the version before it
 
 The picker is auto-seeded, so old and new cannot be compared call for call.
@@ -375,6 +410,17 @@ Running it a few hundred times and counting titles is enough to characterise
 the picker statistically. That is how the 1.6.0 filler algorithm was verified:
 600 lineups showed every pick going to never-played clips, and once all had
 played, the longest idle took 67 percent against 33 for the next.
+
+The committed `test/blocks-unchanged.js` proves the same three guarantees but
+does not keep the git-show comparison itself. Pinned to a commit, it would
+either go stale as history moves past it or break outright if that commit
+were ever rewritten, to reprove something that only needs proving once per
+change to this code path, not replayed on every future `npm test`. It keeps
+the exact-equality and identity checks as they were, and replaces the
+distribution diff against old code with a tolerance-banded check against the
+configured weights instead - a smoke test that day-parts hasn't disturbed the
+picker, not a restatement of the picker's own statistical behaviour, which the
+acceptance suite's weight rows already cover.
 
 ## Model guide
 

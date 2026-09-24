@@ -4,7 +4,7 @@
   "description": "Create LiveTV channels from your Plex media",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node test/run.js",
     "start": "node index.js",
     "build": "browserify ./web/app.js -o ./web/public/bundle.js",
     "dev-client": "watchify ./web/app.js -o ./web/public/bundle.js",
