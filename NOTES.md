@@ -44,17 +44,16 @@ for the full spec, stages and acceptance tests.
       pre-existing and unrelated to this change, confirmed by reproducing it
       against the old code directly.)
 
-- [ ] Blocks with airings - a named, possibly-repeating stretch of programming
+- [x] Blocks with airings - a named, possibly-repeating stretch of programming
       (Toonami, Miguzi) that overrides the day-part while it airs
 
-      Stage 2's core is built and its acceptance rows pass, but there is no
-      block editor yet, so the box stays unticked - the same reason stage 1's
-      box stayed unticked between its core and its UI. `channel.blocks` is
-      the same shape as `channel.dayParts` (name, mix, optional guide name)
-      plus `airings`: one or more `(days, start, end)` spans, crossing
-      midnight when the end is earlier than the start. Still an optional
-      field with nothing to migrate, so a channel without one takes the same
-      path it always did.
+      Stage 2 ships: the resolver (core) and a "Blocks" tab in the channel
+      editor (UI) - the same core-then-UI split stage 1 went through.
+      `channel.blocks` is the same shape as `channel.dayParts` (name, mix,
+      optional guide name) plus `airings`: one or more `(days, start, end)`
+      spans, crossing midnight when the end is earlier than the start. Still
+      an optional field with nothing to migrate, so a channel without one
+      takes the same path it always did.
 
       `src/day-parts.js` (kept its name; renaming it would have churned every
       one of its five callers mid-stage for no behavioural reason) now checks
@@ -64,9 +63,9 @@ for the full spec, stages and acceptance tests.
       once. The neighbour-context break rule extends to blocks for free:
       `resolveContext` is what changed, not the rule that calls it with the
       neighbour's start time. Two overlapping airings from different blocks -
-      a state the still-unbuilt editor is meant to prevent - resolve to
-      whichever block was declared first, the same tie-break `pickPoint`
-      already used for two colliding day-part starts.
+      a state the editor now prevents interactively - resolve to whichever
+      block was declared first, the same tie-break `pickPoint` already used
+      for two colliding day-part starts.
 
       Per-context guide names turned out not to reach the guide through
       `createLineup` at all - the earlier investigation that shaped this
@@ -93,13 +92,34 @@ for the full spec, stages and acceptance tests.
       a hand-edited channel file), a warning in `validateChannelJson`
       (`warnAboutBlocks` in `src/dao/channel-db.js`, mirroring
       `warnAboutDayParts` - warns, rewrites nothing, and is the one place
-      every channel write passes through regardless of source), and eventual
-      interactive prevention in the block editor, which is UI and hasn't been
-      built. The warning is computed at `shiftWithDst: false` for every
-      airing; a pair that only overlaps because daylight saving has carried
-      one of them into the other is real but rarer, and isn't caught - the
-      resolver's tie-break is correct either way, so this is a diagnostic,
-      not the safety net.
+      every channel write passes through regardless of source), and
+      interactive prevention in the "Blocks" tab itself - a live message on
+      any overlapping airing plus a hard block on Save, checked against the
+      same pairwise-span logic as `warnAboutBlocks` (different blocks only;
+      one block's own airings never conflict with each other) but
+      implemented fresh in `channel-config.js` rather than sharing that code,
+      since the editor's copy runs against in-progress edits rather than a
+      channel already read from disk. The DAO warning is computed at
+      `shiftWithDst: false` for every airing; a pair that only overlaps
+      because daylight saving has carried one of them into the other is real
+      but rarer, and isn't caught - the resolver's tie-break is correct
+      either way, so this is a diagnostic, not the safety net.
+
+      The UI is a "Blocks" tab in `web/directives/channel-config.js` /
+      `channel-config.html`, mirroring the "Day-Parts" tab field for field: a
+      list of blocks, each with a name, guide name, a `filler-mix-editor` for
+      its mix, and its `airings` (day toggles, start and end hour/minute
+      pairs, and the same "shift with daylight saving" checkbox and computed
+      display the Day-Parts tab already has). A new airing defaults to a
+      1-hour span rather than a day-part start's safe zero-length default,
+      since `start === end` never airs. The weekly strip - shared with the
+      Day-Parts tab, since it shows the whole resolved schedule, day-parts
+      and blocks together - predates blocks and keyed segments by
+      `channel.dayParts.indexOf(dayPart)`; now that `resolveContext` can
+      return a block, that's fixed to classify the resolved context against
+      both `channel.dayParts` and `channel.blocks` and give blocks their own
+      color palette, so a block reads as visually distinct from a day-part
+      instead of colouring as "none".
 
       Stage 2's acceptance rows were added to the same `ROWS` array in
       `test/blocks-acceptance.js` stage 1 used, tagged `row(2, ...)`, per that
@@ -112,7 +132,11 @@ for the full spec, stages and acceptance tests.
       Guide-name resolution has its own file, `test/blocks-guide.js`, driven
       directly against `TVGuideService#getChannelPrograms` the same
       I/O-free way `test/blocks-acceptance.js` drives `createLineup` - see
-      NOTES.md's testing notes.
+      NOTES.md's testing notes. The editor itself has no automated tests, the
+      same as the Day-Parts tab before it: verified instead against the dev
+      fixture channel by hand - added overlapping and non-overlapping blocks,
+      confirmed the strip colors and labels them correctly, and confirmed
+      Save is blocked while an overlap exists and succeeds once it's fixed.
 
 - [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
       and per block
