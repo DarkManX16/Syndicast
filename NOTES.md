@@ -149,6 +149,21 @@ for the full spec, stages and acceptance tests.
 - [x] Season exclusion / season start, per slot, for Play Next
 - [x] Setting a season range across a group of slots in one go, and a filter for
       finding the slots to set it on
+- [ ] Save time-slot editing progress without generating a lineup
+
+      `channel.scheduleBackup` already round-trips the schedule -
+      `onTimeSlotsDone` in `web/directives/channel-config.js` writes it - but
+      only alongside a regenerated lineup: `finished` in
+      `time-slots-schedule-editor.js` calls `onDone` with the result of
+      `doIt`, which builds the new `channel.programs` and the schedule to
+      back it up in the same call. Cancelling or closing mid-edit loses
+      whatever was changed; there is no draft save. So the actual gap is
+      narrow - a way to persist progress without generating - but the UI has
+      to close it visibly: once a saved schedule can exist without a lineup
+      built from it, the two can disagree, where today they are always in
+      sync by construction (`scheduleBackup` is never written except
+      alongside the programs it produced).
+
 - [ ] Sign-ons and sign-offs
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
@@ -414,6 +429,22 @@ The awkward case is the time editor, which serialises the object it is handed
 (`onDone(JSON.parse(angular.toJson(slot)))`), so a slot reference cannot
 survive the round trip. `editTime` therefore resolves the real index from the
 slot and sends that number, rather than letting the template supply one.
+
+### Time slots have no daylight-saving toggle, and won't
+
+Day-parts and blocks each carry a per-start "shift with daylight saving"
+option (see docs/blocks-spec.md's Decisions table); slots deliberately don't
+get one. A slot's wall-clock time is meant to stay fixed everywhere, so there
+is no boundary case that should shift and nothing to make opt-in.
+
+`localMsIntoPeriod` in `src/services/time-slots-service.js` resolves the UTC
+offset per instant rather than once for the whole schedule, which is what
+keeps a slot on the wall-clock time it was set to across a change - its own
+comment states the two consequences of following local time honestly instead
+of special-casing it: on the spring-forward day the skipped local hour never
+occurs, so a slot inside it does not air that day; on the autumn day the
+repeated hour occurs twice, so a slot inside it airs twice. Both are accepted,
+not treated as bugs to fix.
 
 ### The play-time cache is loaded without being awaited
 
