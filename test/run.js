@@ -7,6 +7,7 @@ const suites = [
     './blocks-acceptance',
     './blocks-unchanged',
     './blocks-persistence',
+    './blocks-guide',
 ];
 
 (async () => {

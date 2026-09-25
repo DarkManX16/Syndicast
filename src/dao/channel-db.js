@@ -45,6 +45,7 @@ function warnAboutAbsoluteImages(json) {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
 
 /*
  * Day-parts form one continuous weekly chain, so a malformed start does not
@@ -108,6 +109,111 @@ function warnAboutDayParts(json) {
                     continue;
                 }
                 seenStarts[key] = label;
+            }
+        }
+    }
+}
+
+/*
+ * Blocks, warned about at the same write boundary and for the same reason as
+ * day-parts above. The one check day-parts doesn't need: airings of two
+ * different blocks may not overlap, per the spec - the editor is meant to
+ * prevent this interactively, but this is the one place every write passes
+ * through regardless of how it got here (a hand-edited channel file, an API
+ * write), so it needs its own check rather than relying on the editor alone.
+ *
+ * Warn-only, and it rewrites nothing, same rule as warnAboutDayParts. An
+ * overlap that slips through is still resolved deterministically -
+ * day-parts.js's blockContextAt gives it to whichever block was declared
+ * first - this only makes sure that isn't happening silently.
+ */
+function warnAboutBlocks(json) {
+    if (typeof(json.blocks) === 'undefined') {
+        return;
+    }
+    const complain = (message) => {
+        console.error(`Channel ${json.number}: ${message}`);
+    };
+    if (! Array.isArray(json.blocks) ) {
+        complain(`blocks was saved as ${typeof(json.blocks)} rather than an array. It will be ignored and the channel's day-parts (or Flex tab) used instead.`);
+        return;
+    }
+    const badTime = (t) => (typeof(t) !== 'number') || isNaN(t) || (t < 0) || (t >= DAY_MS);
+    // Every valid airing's occupied span this week, in week-position terms,
+    // carried alongside the block it belongs to - collected first so overlap
+    // can be checked pairwise afterwards, across every block at once rather
+    // than one at a time.
+    //
+    // Computed at shift = 0 (standard time): a pair that only overlaps
+    // because one of them is shiftWithDst and the season has carried it into
+    // the other is a real case, but a rarer one, that this check does not
+    // catch. The resolver's own tie-break is correct either way; this is a
+    // diagnostic, not the safety net.
+    let spans = [];
+    for (let i = 0; i < json.blocks.length; i++) {
+        const block = json.blocks[i];
+        const label = `block ${i}` + ( (block != null) && block.name ? ` ("${block.name}")` : '' );
+        if (block == null) {
+            complain(`${label} is empty.`);
+            continue;
+        }
+        if (! Array.isArray(block.airings) || (block.airings.length === 0) ) {
+            complain(`${label} has no airings, so it never airs.`);
+            continue;
+        }
+        for (let j = 0; j < block.airings.length; j++) {
+            const airing = block.airings[j];
+            const airingLabel = `${label} airing ${j}`;
+            if (airing == null) {
+                complain(`${airingLabel} is empty.`);
+                continue;
+            }
+            if (! Array.isArray(airing.days) || (airing.days.length === 0) ) {
+                complain(`${airingLabel} names no days, so it never airs.`);
+                continue;
+            }
+            if (badTime(airing.start)) {
+                complain(`${airingLabel} has start ${airing.start}, which should be a number of milliseconds from midnight between 0 and ${DAY_MS - 1}. It will be ignored.`);
+                continue;
+            }
+            if (badTime(airing.end)) {
+                complain(`${airingLabel} has end ${airing.end}, which should be a number of milliseconds from midnight between 0 and ${DAY_MS - 1}. It will be ignored.`);
+                continue;
+            }
+            if (airing.start === airing.end) {
+                complain(`${airingLabel} has the same start and end, so it never airs.`);
+                continue;
+            }
+            let span = airing.end - airing.start;
+            if (span < 0) {
+                span += DAY_MS;   // crosses midnight; belongs to its start day, same as the resolver
+            }
+            for (const day of airing.days) {
+                if ( (typeof(day) !== 'number') || ! Number.isInteger(day) || (day < 0) || (day > 6) ) {
+                    complain(`${airingLabel} names day ${day}, which should be an integer from 0 (Sunday) to 6. It will be ignored.`);
+                    continue;
+                }
+                const from = day * DAY_MS + airing.start;
+                spans.push( { from: from, to: from + span, blockIndex: i, label: airingLabel } );
+            }
+        }
+    }
+    // Circular overlap: a span may already run past the end of the week (one
+    // starting late Saturday and crossing into Sunday), so each pair is also
+    // checked one week off in both directions - the same wraparound
+    // day-parts.js's spanCovers reads at resolve time.
+    const overlaps = (a, b) => (a.from < b.to) && (b.from < a.to);
+    const collide = (a, b) => overlaps(a, b)
+        || overlaps(a, { from: b.from - WEEK_MS, to: b.to - WEEK_MS })
+        || overlaps(a, { from: b.from + WEEK_MS, to: b.to + WEEK_MS });
+    for (let i = 0; i < spans.length; i++) {
+        for (let j = i + 1; j < spans.length; j++) {
+            const a = spans[i], b = spans[j];
+            if (a.blockIndex === b.blockIndex) {
+                continue;   // one block's own airings never conflict with each other
+            }
+            if (collide(a, b)) {
+                complain(`${a.label} overlaps ${b.label}. Airings of different blocks may not overlap; whichever is declared first wins there and the other's mix never plays at that moment.`);
             }
         }
     }
@@ -184,6 +290,7 @@ class ChannelDB {
         }
         warnAboutAbsoluteImages(json);
         warnAboutDayParts(json);
+        warnAboutBlocks(json);
     }
 
     async deleteChannel(number) {

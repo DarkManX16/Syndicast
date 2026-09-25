@@ -29,6 +29,12 @@ function ownerOf(title) {
     '2000s Nick', '2000s Nick IDs', 'music videos', 'Friday Nick at Nite',
     'Powerhouse', 'CN Groovies', 'Adult Swim', 'Toonami AcTN',
     'CN City Day', 'CN City Night',
+    // --- Stage 2: block-only lists. Toonami and Miguzi also draw on
+    // Powerhouse/CN City Day above - stage 2's "every rule fully specifies
+    // its mix" decision means a block names a base list alongside its own
+    // rather than inheriting it, so those lists appear in two different
+    // mixes at two different weights.
+    'Toonami promos', 'Miguzi', 'CCF',
 ].forEach((id) => defineList(id, 4));
 
 // The union video.js would load: content for every list a channel can reach.
@@ -79,9 +85,51 @@ const ccn = channelOf(20, 'CCN', [
       starts: [{ days: [6], time: 19 * HOUR, shiftWithDst: true }] },
 ]);
 
+// --- Stage 2: blocks, layered on top of the same CCN day-part chain above.
+// Blocks are added as a property after construction, the same way `plain`
+// below overrides its own fillerCollections - channelOf has no notion of
+// blocks, by design: stage 1 shipped and is in use before blocks existed.
+ccn.blocks = [
+    { name: 'Toonami', fillerCollections: mix([['Powerhouse', 30], ['Toonami promos', 70]]),
+      airings: [
+          // The weekday afternoon run. Thursday is deliberately absent - the
+          // spec's own acceptance row exists to prove day-filtering on an
+          // airing, the same property a day-part start's `days` already has.
+          { days: [1, 2, 3, 5], start: 14 * HOUR + 30 * MIN, end: 17 * HOUR },
+          // The Saturday midnight run - the spec's own example of one block
+          // with two airings sharing a single mix ("so the mix is edited in
+          // one place"). Ends exactly where the existing 'Saturday overnight'
+          // day-part above picks up, at 3am, so the two hand off cleanly.
+          { days: [6], start: 1 * HOUR, end: 3 * HOUR },
+      ] },
+    // Cartoon Cartoons Friday. Starts the instant Friday's Toonami airing
+    // ends, so the break between Toonami's last show and CCF's first
+    // resolves to CCF via the ordinary incoming-neighbour rule, without
+    // falling through to the Weekday day-part in between.
+    { name: 'CCF', fillerCollections: mix([['CCF', 100]]),
+      airings: [ { days: [5], start: 17 * HOUR, end: 20 * HOUR } ] },
+    // Saturday afternoon, entirely inside CN City Day's day-part window.
+    { name: 'Miguzi', fillerCollections: mix([['CN City Day', 70], ['Miguzi', 30]]),
+      airings: [ { days: [6], start: 15 * HOUR, end: 16 * HOUR } ] },
+];
+
 const plain = channelOf(30, 'Plain', undefined);
 delete plain.dayParts;
 plain.fillerCollections = mix([['Powerhouse', 50], ['CN Groovies', 50]]);
+
+// Supplementary: two blocks whose airings overlap - a state the editor (a
+// later session) is meant to prevent, and channel-db.js's warnAboutBlocks
+// complains about, but the resolver still needs a deterministic answer if one
+// slips through regardless - a hand-edited channel file, say. The
+// first-declared block wins, the same rule pickPoint already uses when two
+// day-part starts land on the same moment.
+const overlapping = channelOf(50, 'Overlap', []);
+overlapping.blocks = [
+    { name: 'First', fillerCollections: mix([['Powerhouse', 100]]),
+      airings: [ { days: [1], start: 10 * HOUR, end: 12 * HOUR } ] },
+    { name: 'Second', fillerCollections: mix([['CN Groovies', 100]]),
+      airings: [ { days: [1], start: 11 * HOUR, end: 13 * HOUR } ] },
+];
 
 // ------------------------------------------------------------------ runner
 //
@@ -178,9 +226,14 @@ const ROWS = [
         ['Toonami AcTN'],
         () => draw(ccn, at('2026-01-04T00:00:00'))),
 
+    // An explicit short break, not the 60-minute default: stage 2 gives
+    // Toonami a midnight-run airing starting at 1:00am (below), so the
+    // default would land this row's neighbour exactly on that boundary and
+    // it would stop testing what it claims to - day-part carryover, clear of
+    // any block. 15 minutes keeps the neighbour well before 1am.
     row(1, 'CCN | Sat 12:00am | Powerhouse 95% / CN Groovies 5% - the weekday day-part still running from Friday',
         ['Powerhouse', 'CN Groovies'],
-        () => draw(ccn, at('2026-01-17T00:00:00'))),
+        () => draw(ccn, at('2026-01-17T00:00:00'), { breakMins: 15 })),
 
     row(1, 'CCN | Sat 3:00am | Powerhouse only',
         ['Powerhouse'],
@@ -215,11 +268,70 @@ const ROWS = [
         ['Adult Swim'],
         () => draw(ccn, at('2026-01-06T00:00:00'), { noNeighbour: true, breakMins: 600 })),
 
-    // --- Stage 2 rows go here. Add fixtures (Toonami, CCF, ...) above the ---
-    // --- ROWS array, then row(2, ...) entries below, following the same  ---
-    // --- draw()/breakEndingAt() pattern - or a new helper, if a stage 2  ---
-    // --- scenario (an overrun, a break between two named shows) needs    ---
-    // --- one, added next to draw() above.                                ---
+    // --- Stage 2: docs/blocks-spec.md "Stage 2" acceptance table ---
+    //
+    // Toonami's weekday airing is [14:30, 17:00) - see the ccn.blocks
+    // fixture above. The first two rows below are the ones that actually
+    // discriminate a neighbour-based resolver from a clock-based one, in
+    // opposite directions: this one puts the neighbour *inside* the window
+    // while the break itself sits outside it.
+    row(2, 'CCN | Wed, break between the 2:30 and 3:00 shows | Toonami - Powerhouse 30% / Toonami promos 70%',
+        ['Powerhouse', 'Toonami promos'],
+        () => breakEndingAt(ccn, at('2026-01-07T15:00:00'))),
+
+    row(2, 'CCN | Thu, same break | Weekday day-part - Toonami doesn\'t air Thursday',
+        ['Powerhouse', 'CN Groovies'],
+        () => breakEndingAt(ccn, at('2026-01-08T15:00:00'))),
+
+    // The other direction: the break itself sits inside Toonami's clock
+    // window (16:52-17:00), but the neighbour starts right on the window's
+    // exclusive end, so the correct answer is the Weekday day-part - a
+    // clock-based resolver evaluated at the break would wrongly say Toonami.
+    row(2, 'CCN | Mon, break after the 4:30 show | Weekday day-part',
+        ['Powerhouse', 'CN Groovies'],
+        () => breakEndingAt(ccn, at('2026-01-05T17:00:00'))),
+
+    // Same answer as the row above under this resolver, and also under a
+    // clock-based one - the break has clearly moved past 17:00 either way,
+    // so this row alone would not catch a clock-based implementation. It is
+    // still transcribed because the spec's acceptance table lists it, and
+    // because it confirms findNextProgram's duration-accumulation walk (which
+    // is all "overrun" ever is, this far down the pipeline: a longer
+    // recorded duration on whatever program came before) is not thrown off
+    // by an unusually large one.
+    row(2, 'CCN | Mon, 4:30 show overruns to 5:05, break after it | Weekday day-part',
+        ['Powerhouse', 'CN Groovies'],
+        () => breakEndingAt(ccn, at('2026-01-05T17:05:00'))),
+
+    // Toonami's other airing - one block, two airings, one mix, per the spec.
+    // Without it this moment would resolve to the Weekday day-part left
+    // running over from Friday (stage 1's own "Sat 12:00am" row), so this
+    // also proves a block outranks a day-part it would otherwise fall back to.
+    row(2, 'CCN | Sat 1:00am | Toonami (midnight run airing)',
+        ['Powerhouse', 'Toonami promos'],
+        () => draw(ccn, at('2026-01-03T01:00:00'))),
+
+    // A short break, not the 60-minute default: Miguzi's window is itself
+    // only an hour wide, so the default would let the neighbour land past it.
+    row(2, 'CCN | Sat 3:00pm | CN City Day 70% / Miguzi 30%',
+        ['CN City Day', 'Miguzi'],
+        () => draw(ccn, at('2026-01-03T15:00:00'), { breakMins: 15 })),
+
+    // Block-to-block: the incoming context is CCF, not Toonami (which just
+    // ended) and not the Weekday day-part (which never actually governs this
+    // moment, since CCF's airing starts the instant Toonami's does).
+    row(2, 'CCN | Fri, break between Toonami\'s last show and CCF\'s first | CCF',
+        ['CCF'],
+        () => breakEndingAt(ccn, at('2026-01-09T17:00:00'))),
+
+    // --- Supplementary stage 2 coverage: not literal spec rows. ---
+
+    // Two different blocks whose airings overlap - see the `overlapping`
+    // fixture above. 11:30 sits inside both First [10,12) and Second [11,13);
+    // the first-declared one wins.
+    row(2, 'Two blocks with overlapping airings resolve to whichever is declared first',
+        ['Powerhouse'],
+        () => breakEndingAt(overlapping, at('2026-01-05T11:30:00'))),
 ];
 
 module.exports = async function run() {

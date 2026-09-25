@@ -1,5 +1,6 @@
 const events = require('events')
 const constants = require("../constants");
+const dayParts = require('../day-parts');
 const  FALLBACK_ICON = "https://raw.githubusercontent.com/vexorain/dizquetv/main/resources/dizquetv.png";
 const throttle = require('./throttle');
 
@@ -340,6 +341,24 @@ class TVGuideService extends events.EventEmitter
                         start = newStart;
                     }
                 }
+                /*
+                 * The context governing this melded Flex run, resolved the same
+                 * way the picker resolves a break: from the real program after
+                 * it, found here by scanning this guide build's own program
+                 * list (the picker instead walks channel.programs - a different
+                 * shape, so this is its own scan rather than a shared one, but
+                 * the decision made from the result is the same function,
+                 * dayParts.resolveBreakContext).
+                 *
+                 * Found once for the whole run, not once per split chunk below,
+                 * for the same reason the picker's neighbour does not move
+                 * across a long break: a run spanning a boundary shows one
+                 * name throughout. Skipped entirely for a channel with no
+                 * overlay, so this costs nothing beyond two cheap array checks
+                 * on the common case.
+                 */
+                let channelHasOverlay = dayParts.hasOverlay(channel);
+                let neighbourStart = channelHasOverlay ? nextRealStart(programs, i, channel) : null;
                 while( start < t1 && duration > 0) {
                     let d = Math.min(duration, constants.TVGUIDE_MAXIMUM_FLEX_DURATION);
                     if (duration - constants.TVGUIDE_MAXIMUM_FLEX_DURATION <= constants.TVGUIDE_MAXIMUM_PADDING_LENGTH_MS) {
@@ -352,9 +371,19 @@ class TVGuideService extends events.EventEmitter
                             duration: d,
                         }
                     }
+                    // No neighbour found (a run with nothing real anywhere in
+                    // this build's window) falls back to the clock, same as
+                    // the picker - and, also like the picker, is read fresh
+                    // per chunk here, so a run long enough to be split shows
+                    // the context changing as the displayed chunks cross a
+                    // boundary, at the chunk granularity the guide already
+                    // displays at.
+                    let context = channelHasOverlay
+                        ? dayParts.resolveBreakContext(channel, start, neighbourStart)
+                        : null;
                     duration -= d;
                     start += d;
-                    result.programs.push( makeEntry(channel,x) );
+                    result.programs.push( makeEntry(channel, x, context) );
                 }
             } else {
                             result.programs.push( makeEntry(channel, programs[i] ) );
@@ -527,6 +556,24 @@ function isProgramFlex(program, channel) {
     return program.isOffline || program.duration <= getChannelStealthDuration(channel)
 }
 
+/*
+ * The start time of the first non-Flex entry after index i in this guide
+ * build's own program list - the guide's equivalent of day-parts.js's
+ * findNextProgram, over the shape this function already has on hand rather
+ * than over channel.programs. It only sees as far as this build's own window
+ * goes: a Flex run still open at that edge is treated the same as one with no
+ * neighbour at all, which is conservative and self-corrects on the next
+ * periodic refresh once real programming has entered the window.
+ */
+function nextRealStart(programs, fromIndex, channel) {
+    for (let i = fromIndex + 1; i < programs.length; i++) {
+        if (! isProgramFlex(programs[i].program, channel)) {
+            return programs[i].start;
+        }
+    }
+    return null;
+}
+
 function clone(o) {
     return JSON.parse( JSON.stringify(o) );
 }
@@ -539,17 +586,19 @@ function makeChannelEntry(channel) {
     }
 }
 
-function makeEntry(channel, x) {
+function makeEntry(channel, x, context) {
     let title = undefined;
     let icon = undefined;
     let sub = undefined;
     if (isProgramFlex(x.program, channel)) {
-        if ( (typeof(channel.guideFlexPlaceholder) === 'string')
-         && channel.guideFlexPlaceholder !== "") {
-            title = channel.guideFlexPlaceholder;
-        } else {
-            title = channel.name;
-        }
+        // context is whichever block or day-part getChannelPrograms already
+        // resolved for this entry (or undefined, from a call site that has no
+        // notion of one - guideNameFor treats that exactly like null). Stage
+        // 2 generalises guideFlexPlaceholder per NOTES.md; the fallback chain
+        // itself is unchanged, so a channel with no overlay - or an overlay
+        // whose context has no guideName of its own - gets exactly the title
+        // it always did.
+        title = dayParts.guideNameFor(channel, context);
         icon = channel.icon;
     } else {
         title = x.program.showTitle;

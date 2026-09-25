@@ -44,6 +44,76 @@ for the full spec, stages and acceptance tests.
       pre-existing and unrelated to this change, confirmed by reproducing it
       against the old code directly.)
 
+- [ ] Blocks with airings - a named, possibly-repeating stretch of programming
+      (Toonami, Miguzi) that overrides the day-part while it airs
+
+      Stage 2's core is built and its acceptance rows pass, but there is no
+      block editor yet, so the box stays unticked - the same reason stage 1's
+      box stayed unticked between its core and its UI. `channel.blocks` is
+      the same shape as `channel.dayParts` (name, mix, optional guide name)
+      plus `airings`: one or more `(days, start, end)` spans, crossing
+      midnight when the end is earlier than the start. Still an optional
+      field with nothing to migrate, so a channel without one takes the same
+      path it always did.
+
+      `src/day-parts.js` (kept its name; renaming it would have churned every
+      one of its five callers mid-stage for no behavioural reason) now checks
+      block airings before the day-part chain, so a block always outranks
+      whichever day-part it overlaps - `resolveContext` is the one function
+      both the picker and the guide read a context from, so this is decided
+      once. The neighbour-context break rule extends to blocks for free:
+      `resolveContext` is what changed, not the rule that calls it with the
+      neighbour's start time. Two overlapping airings from different blocks -
+      a state the still-unbuilt editor is meant to prevent - resolve to
+      whichever block was declared first, the same tie-break `pickPoint`
+      already used for two colliding day-part starts.
+
+      Per-context guide names turned out not to reach the guide through
+      `createLineup` at all - the earlier investigation that shaped this
+      session found XMLTV/the web guide/the API guide all go through
+      `TVGuideService#getChannelPrograms` instead, which never calls the
+      picker. That needed its own hook: `getChannelPrograms` now finds the
+      real program after each melded Flex run itself (scanning the guide
+      build's own program list, since it doesn't have `channel.programs` and
+      a `programIndex` to walk the way the picker does) and resolves a
+      context from it via the same `resolveBreakContext` the picker calls,
+      new in `day-parts.js` to hold the "given a neighbour or none, which
+      instant do we resolve at" decision both call sites share. `guideName`
+      is strictly opt-in - a block or day-part with none falls through to
+      `guideFlexPlaceholder` then the channel name, exactly as before - so no
+      existing channel's guide changes until someone types a name into the
+      new field. One real constraint surfaced doing this: a break under
+      `TVGUIDE_MAXIMUM_PADDING_LENGTH_MS` (30 minutes) is melded into the
+      neighbouring show as padding and never becomes its own guide entry, so
+      an ordinary commercial break never shows a block's guide name - only a
+      long one (an overnight stretch, a gap between blocks) does.
+
+      Airing overlap is checked in three places with three different jobs,
+      not one: the resolver's tie-break above (must always answer, even from
+      a hand-edited channel file), a warning in `validateChannelJson`
+      (`warnAboutBlocks` in `src/dao/channel-db.js`, mirroring
+      `warnAboutDayParts` - warns, rewrites nothing, and is the one place
+      every channel write passes through regardless of source), and eventual
+      interactive prevention in the block editor, which is UI and hasn't been
+      built. The warning is computed at `shiftWithDst: false` for every
+      airing; a pair that only overlaps because daylight saving has carried
+      one of them into the other is real but rarer, and isn't caught - the
+      resolver's tie-break is correct either way, so this is a diagnostic,
+      not the safety net.
+
+      Stage 2's acceptance rows were added to the same `ROWS` array in
+      `test/blocks-acceptance.js` stage 1 used, tagged `row(2, ...)`, per that
+      file's own comment on where they go. Adding them exposed that one
+      existing stage 1 row (`CCN | Sat 12:00am`) used the default 60-minute
+      break, which happened to land its neighbour exactly on the new Toonami
+      block's 1am start - a fixture collision from two rows independently
+      choosing round numbers, not a resolver regression; narrowed to an
+      explicit 15-minute break so it keeps testing what it always claimed to.
+      Guide-name resolution has its own file, `test/blocks-guide.js`, driven
+      directly against `TVGuideService#getChannelPrograms` the same
+      I/O-free way `test/blocks-acceptance.js` drives `createLineup` - see
+      NOTES.md's testing notes.
+
 - [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
       and per block
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL)
@@ -124,6 +194,12 @@ rather than copying the layout of other projects.
 - [ ] Easier version updates
 - [ ] Fix random crashes during streaming
 - [ ] Fix time slots breaking across daylight savings
+- [ ] Per-channel timezone. Slots, day-parts and blocks all read the *host
+      machine's* local clock (`new Date(instant)`'s own fields and
+      `getTimezoneOffset()`, in `time-slots-service.js` and `day-parts.js`
+      alike) - fine for one operator running their own channels, but if
+      Syndicast ever gets users, this is what would let someone in London run
+      a London channel on a server anywhere.
 - [ ] Keep a safer version of editing the ffmpeg path in the UI
 
 ## Known issues / future work
@@ -364,20 +440,31 @@ ordering silently breaks again.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (34
-checks as of stage 1). Three files, matching the three things stage 1 needed
-proving:
+runs every file in the directory and prints one combined pass/fail count (51
+checks as of stage 2). Four files:
 
-- `blocks-acceptance.js` - the stage 1 rows from
-  [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance table, transcribed
-  into one array, `ROWS`. **Stage 2 adds its rows to this same array**, tagged
-  `row(2, ...)`, rather than starting a parallel file - see the comment at the
-  end of `ROWS` for where new fixtures and helpers go.
-- `blocks-unchanged.js` - the guarantee that a channel without day-parts is
-  unaffected, as self-contained assertions rather than a diff against a
-  historical commit (see below).
+- `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
+  [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance tables, transcribed
+  into one array, `ROWS`, stage 2's tagged `row(2, ...)` and appended rather
+  than started as a parallel file - see the comment at the end of `ROWS` for
+  where a future stage's fixtures and helpers go. Stage 2's own fixture
+  (`ccn.blocks`) is layered onto the same `ccn` channel object stage 1's rows
+  already use, which is exactly what caught the one fixture collision noted
+  above: adding a block can change what an *existing* row resolves to, if
+  that row's neighbour happens to land inside the new block's airing.
+- `blocks-unchanged.js` - the guarantee that a channel with neither day-parts
+  nor blocks is unaffected, as self-contained assertions rather than a diff
+  against a historical commit (see below), extended for stage 2 to check
+  blocks alone and day-parts alone don't intervene on each other.
 - `blocks-persistence.js` - the long-break and cooldown-persistence findings
   from the Resolved section below, plus the filler attribution regression.
+- `blocks-guide.js` - per-context guide names, driven directly against
+  `TVGuideService#getChannelPrograms` rather than `createLineup`, since the
+  guide doesn't run through the picker at all (see the Blocks with airings
+  roadmap entry above). Its own file because the fixture shape doesn't travel:
+  a guide build's program list is a windowed `{start, program}` array it
+  builds itself, not the cyclic `channel.programs` the other three files
+  drive through `createLineup`.
 
 `test/support.js` holds the shared fixtures, builders and the `Suite`
 check/report harness. `test/run.js` is what `npm test` calls; it requires each

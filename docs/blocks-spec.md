@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stage 1 complete; stage 2 next
+Syndicast · `blocks` branch · Status: stage 2 core built; stage 2 UI next
 
 ## Summary
 
