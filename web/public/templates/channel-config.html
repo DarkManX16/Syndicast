@@ -686,12 +686,15 @@
 
                     <p class="text-center text-muted small">
                         Each day-part runs until the next one starts, so there are no end times to set.
-                        Time-bounded blocks like Toonami are coming in stage 2, and will override the day-part while they air.
+                        Time-bounded blocks (Blocks tab) override the day-part while they air.
                     </p>
 
                     <div ng-show="channel.dayParts.length === 0">
-                        <p class="text-center text-info">
+                        <p class="text-center text-info" ng-if="channel.blocks.length === 0">
                             This channel has no day-parts yet, so its Flex tab is used exactly as it is today.
+                        </p>
+                        <p class="text-center text-info" ng-if="channel.blocks.length > 0">
+                            This channel has no day-parts, so its Flex tab is the base filler &mdash; blocks (Blocks tab) still override it while they air.
                         </p>
                         <div class="text-center">
                             <button class="btn btn-sm btn-warning" type="button" ng-click="convertToDayParts()">
@@ -700,7 +703,7 @@
                         </div>
                     </div>
 
-                    <div ng-show="channel.dayParts.length > 0">
+                    <div ng-show="channelHasOverlay()">
                         <h6>Weekly overview</h6>
                         <div class="dp-week-row" ng-repeat="row in weeklyStripDays">
                             <span class="dp-week-row-label">{{row.name}}</span>
@@ -712,7 +715,7 @@
                             </div>
                         </div>
                         <div style="margin: 6px 0 14px 0;">
-                            <span ng-repeat="entry in dayPartLegendEntries" class="small" style="margin-right: 12px; display: inline-block;">
+                            <span ng-repeat="entry in scheduleLegendEntries" class="small" style="margin-right: 12px; display: inline-block;">
                                 <span class="dp-legend-swatch {{entry.colorClass}}"></span>{{entry.name}}
                             </span>
                         </div>
@@ -726,8 +729,8 @@
                                 <input type="text" class="form-control form-control-sm" ng-model="dayPart.name" ng-change="rebuildWeeklyStrip()"></input>
                             </div>
                             <div class="form-group col-md-5">
-                                <label class="small">Guide name <span class="text-muted">(used starting in stage 2)</span></label>
-                                <input type="text" class="form-control form-control-sm" ng-model="dayPart.guideName" placeholder="Leave empty to use the day-part name"></input>
+                                <label class="small">Guide name</label>
+                                <input type="text" class="form-control form-control-sm" ng-model="dayPart.guideName" placeholder="Leave empty to use the channel's guide name"></input>
                             </div>
                             <div class="form-group col-md-1" style="text-align: right;">
                                 <label class="small">&nbsp;</label>
@@ -786,6 +789,113 @@
                     </div>
 
                     <button type="button" class="btn btn-sm btn-warning" ng-click="addDayPart()">+ Add day-part</button>
+                </div>
+
+                <!--
+                    ============= TAB: BLOCKS =========================
+                                                                             -->
+                <div class="modal-body" ng-if="tab == 'blocks'">
+                    <div class='text-center text-warning' ng-show="channel.onDemand.isOnDemand">
+                        <i class='fas fa-exclamation-triangle'></i> Blocks don&apos;t apply to on-demand channels; this channel always uses its Flex tab.
+                    </div>
+
+                    <p class="text-center text-muted small">
+                        A block overrides the day-part (or Flex) while it airs. Airings of different blocks may not overlap &mdash;
+                        see the Day-Parts tab for the weekly overview of how day-parts and blocks combine.
+                    </p>
+
+                    <small class="text-danger d-block text-center" ng-show="error.blocks">{{error.blocks}}</small>
+
+                    <div ng-show="channel.blocks.length === 0">
+                        <p class="text-center text-info">
+                            This channel has no blocks yet.
+                        </p>
+                    </div>
+
+                    <div class="dp-daypart-card" ng-repeat="block in channel.blocks">
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label class="small">Name</label>
+                                <input type="text" class="form-control form-control-sm" ng-model="block.name" ng-change="rebuildWeeklyStrip()"></input>
+                            </div>
+                            <div class="form-group col-md-5">
+                                <label class="small">Guide name</label>
+                                <input type="text" class="form-control form-control-sm" ng-model="block.guideName" placeholder="Leave empty to use the channel's guide name"></input>
+                            </div>
+                            <div class="form-group col-md-1" style="text-align: right;">
+                                <label class="small">&nbsp;</label>
+                                <button class="btn btn-link form-control" ng-click="deleteBlock(block)" title="Delete this block">
+                                    <i class='text-danger fa fa-trash-alt'></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <h6>Mix</h6>
+                        <filler-mix-editor mix="block.fillerCollections" filler-options="fillerOptions"></filler-mix-editor>
+
+                        <h6 style="margin-top: 10px;">Airings</h6>
+                        <div class="dp-start-row" ng-repeat="airing in block.airings">
+                            <div class="form-row">
+                                <div class="form-group col-md-7">
+                                    <label class="small d-block">Days</label>
+                                    <button type="button" class="btn btn-sm"
+                                        ng-repeat="day in dpWeekDays"
+                                        ng-class="{'btn-info': isAiringDaySelected(airing, day), 'btn-outline-secondary': !isAiringDaySelected(airing, day)}"
+                                        style="margin-right: 2px;"
+                                        ng-click="toggleAiringDay(airing, day)">{{day.name}}</button>
+                                </div>
+                                <div class="form-group col-md-1" style="text-align:right;">
+                                    <label class="small d-block">&nbsp;</label>
+                                    <button class="btn btn-link form-control" ng-click="deleteAiring(block, airing)" title="Delete this airing">
+                                        <i class='text-danger fa fa-trash-alt'></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group col-md-2">
+                                    <label class="small">Start hour</label>
+                                    <select class="custom-select custom-select-sm form-control"
+                                        ng-model="airingStartHourModel" ng-init="airingStartHourModel = airingFieldHour(airing, 'start')"
+                                        ng-change="setAiringFieldHour(airing, 'start', airingStartHourModel)"
+                                        ng-options="o.id as o.description for o in dpHourOptions"></select>
+                                </div>
+                                <div class="form-group col-md-2">
+                                    <label class="small">Start minute</label>
+                                    <select class="custom-select custom-select-sm form-control"
+                                        ng-model="airingStartMinuteModel" ng-init="airingStartMinuteModel = airingFieldMinute(airing, 'start')"
+                                        ng-change="setAiringFieldMinute(airing, 'start', airingStartMinuteModel)"
+                                        ng-options="o.id as o.description for o in dpMinuteOptions"></select>
+                                </div>
+                                <div class="form-group col-md-2">
+                                    <label class="small">End hour</label>
+                                    <select class="custom-select custom-select-sm form-control"
+                                        ng-model="airingEndHourModel" ng-init="airingEndHourModel = airingFieldHour(airing, 'end')"
+                                        ng-change="setAiringFieldHour(airing, 'end', airingEndHourModel)"
+                                        ng-options="o.id as o.description for o in dpHourOptions"></select>
+                                </div>
+                                <div class="form-group col-md-2">
+                                    <label class="small">End minute</label>
+                                    <select class="custom-select custom-select-sm form-control"
+                                        ng-model="airingEndMinuteModel" ng-init="airingEndMinuteModel = airingFieldMinute(airing, 'end')"
+                                        ng-change="setAiringFieldMinute(airing, 'end', airingEndMinuteModel)"
+                                        ng-options="o.id as o.description for o in dpMinuteOptions"></select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group col-md-12">
+                                    <label class="small">
+                                        <input type="checkbox" ng-model="airing.shiftWithDst" ng-change="rebuildWeeklyStrip()"></input>
+                                        &nbsp;Shift with daylight saving
+                                    </label>
+                                    <span class="small text-muted">&nbsp;&mdash;&nbsp;{{airingRangeDisplay(airing)}}</span>
+                                    <div class="small text-danger" ng-show="airingOverlapMessage(block, airing)">{{airingOverlapMessage(block, airing)}}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" ng-click="addAiring(block)">+ Add airing</button>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-warning" ng-click="addBlock()">+ Add block</button>
                 </div>
 
                 <!--

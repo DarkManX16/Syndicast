@@ -454,6 +454,15 @@ div.programming-programs div.list-group-item {
 .dp-color-7 { background-color: #ff9da7; }
 .dp-color-none { background-color: #dee2e6; }
 
+.bl-color-0 { background-color: #1b9e77; }
+.bl-color-1 { background-color: #d95f02; }
+.bl-color-2 { background-color: #7570b3; }
+.bl-color-3 { background-color: #e7298a; }
+.bl-color-4 { background-color: #66a61e; }
+.bl-color-5 { background-color: #e6ab02; }
+.bl-color-6 { background-color: #a6761d; }
+.bl-color-7 { background-color: #666666; }
+
 .dp-daypart-card {
   border: 1px solid #dee2e6;
   border-radius: 4px;

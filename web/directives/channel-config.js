@@ -58,6 +58,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.channel.watermark = defaultWatermark();
                 scope.channel.fillerCollections = []
                 scope.channel.dayParts = []
+                scope.channel.blocks = []
                 scope.channel.guideFlexPlaceholder = "";
                 scope.channel.fillerRepeatCooldown = 30 * 60 * 1000;
                 scope.channel.fallback = [];
@@ -136,6 +137,20 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         dayPart.id = newDayPartId();
                     }
                 } );
+                if (typeof(scope.channel.blocks)==='undefined' || scope.channel.blocks == null) {
+                    scope.channel.blocks = [];
+                }
+                scope.channel.blocks.forEach( (block) => {
+                    if (typeof(block.fillerCollections) === 'undefined' || block.fillerCollections == null) {
+                        block.fillerCollections = [];
+                    }
+                    if (typeof(block.airings) === 'undefined' || block.airings == null) {
+                        block.airings = [];
+                    }
+                    if (typeof(block.id) === 'undefined' || block.id == null) {
+                        block.id = newBlockId();
+                    }
+                } );
                 if (typeof(scope.channel.fallback)==='undefined') {
                     scope.channel.fallback = [];
                     scope.channel.offlineMode = "pic";
@@ -188,6 +203,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
              */
             function newDayPartId() {
                 return 'dp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+            }
+
+            // Same purpose as newDayPartId, for a block row.
+            function newBlockId() {
+                return 'bl_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
             }
 
             function defaultWatermark() {
@@ -258,13 +278,16 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
 
 
             // Every mix a channel carries: its own Flex tab, plus one per
-            // day-part. Kept as a lookup rather than a stored list so a day-part
-            // added or removed mid-edit is picked up without anyone remembering
-            // to refresh a cache.
+            // day-part, plus one per block. Kept as a lookup rather than a
+            // stored list so a day-part or block added or removed mid-edit is
+            // picked up without anyone remembering to refresh a cache.
             let allMixes = (channel) => {
                 let mixes = [ channel.fillerCollections ];
                 (channel.dayParts || []).forEach( (dayPart) => {
                     mixes.push(dayPart.fillerCollections);
+                } );
+                (channel.blocks || []).forEach( (block) => {
+                    mixes.push(block.fillerCollections);
                 } );
                 return mixes;
             }
@@ -300,6 +323,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 { name: "Programming", id: "programming" },
                 { name: "Flex", id: "flex" },
                 { name: "Day-Parts", id: "dayparts" },
+                { name: "Blocks", id: "blocks" },
                 { name: "EPG", id: "epg" },
                 { name: "FFmpeg", id: "ffmpeg" },
                 { name: "On-demand", id: "ondemand" },
@@ -1088,6 +1112,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     ) {
                         scope.error.fallback = 'Either add a fallback clip or change the fallback mode to Picture.';
                         scope.error.tab = "flex";
+                    } else if ( scope.hasBlockOverlaps() ) {
+                        scope.error.blocks = "Two blocks have airings that overlap. Fix them on the Blocks tab before saving.";
+                        scope.error.tab = "blocks";
                     } else {
                         scope.error.any = false;
                         for (let i = 0; i < scope.channel.programs.length; i++) {
@@ -1115,6 +1142,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                                 cloned.fillerCollections = cleanMix(cloned.fillerCollections);
                                 (cloned.dayParts || []).forEach( (dayPart) => {
                                     dayPart.fillerCollections = cleanMix(dayPart.fillerCollections);
+                                } );
+                                (cloned.blocks || []).forEach( (block) => {
+                                    block.fillerCollections = cleanMix(block.fillerCollections);
                                 } );
                                 await scope.onDone(cloned)
                                 s = null;
@@ -1457,9 +1487,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             refreshFillerOptions();
 
             /*
-             * Day-parts (stage 1 UI - see docs/blocks-spec.md). The resolver
-             * itself lives in src/day-parts.js and is untouched here; this is
-             * only the editor for channel.dayParts.
+             * Day-parts and blocks (stage 1 and stage 2 UI - see
+             * docs/blocks-spec.md). The resolver itself lives in
+             * src/day-parts.js and is untouched here; this is only the editor
+             * for channel.dayParts and channel.blocks.
              */
             scope.dpWeekDays = [
                 { id: 0, name: 'Sun' },
@@ -1598,21 +1629,223 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.rebuildWeeklyStrip();
             }
 
-            // A small fixed palette, cycled by day-part index. Kept as CSS
-            // classes (dp-color-0..7) rather than inline colors so the strip
-            // reads consistently with the rest of the UI's theming.
+            /*
+             * Blocks (stage 2 UI - see docs/blocks-spec.md). Mirrors the
+             * day-part functions above field-for-field; the difference is
+             * that an airing carries a start AND an end rather than a single
+             * starting instant, and that different blocks' airings may not
+             * overlap, which day-parts structurally can't (see
+             * hasBlockOverlaps further down).
+             */
+            scope.addBlock = () => {
+                scope.channel.blocks.push( {
+                    id: newBlockId(),
+                    name: "New Block",
+                    guideName: "",
+                    fillerCollections: [],
+                    airings: [],
+                } );
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.deleteBlock = (block) => {
+                let i = scope.channel.blocks.indexOf(block);
+                if (i !== -1) {
+                    scope.channel.blocks.splice(i, 1);
+                }
+                scope.rebuildWeeklyStrip();
+            }
+
+            // Defaults to a 1-hour span rather than day-part starts' safe
+            // zero-length "time: 0": an airing with start === end never airs
+            // (see warnAboutBlocks in src/dao/channel-db.js), so a freshly
+            // added airing should already be a valid, visible one.
+            scope.addAiring = (block) => {
+                block.airings.push( { days: [], start: 0, end: 60*60*1000, shiftWithDst: false } );
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.deleteAiring = (block, airing) => {
+                let i = block.airings.indexOf(airing);
+                if (i !== -1) {
+                    block.airings.splice(i, 1);
+                }
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.isAiringDaySelected = (airing, day) => {
+                return airing.days.indexOf(day.id) !== -1;
+            }
+
+            scope.toggleAiringDay = (airing, day) => {
+                let i = airing.days.indexOf(day.id);
+                if (i === -1) {
+                    airing.days.push(day.id);
+                } else {
+                    airing.days.splice(i, 1);
+                }
+                scope.rebuildWeeklyStrip();
+            }
+
+            // field is 'start' or 'end' - an airing has both, where a
+            // day-part start only ever has the one, so these take the field
+            // name rather than being two more copies of startHour/
+            // startMinute/setStartHour/setStartMinute above.
+            scope.airingFieldHour = (airing, field) => {
+                return Math.floor( (airing[field] || 0) / (60*60*1000) );
+            }
+            scope.airingFieldMinute = (airing, field) => {
+                return Math.floor( ( (airing[field] || 0) % (60*60*1000) ) / (60*1000) );
+            }
+            scope.setAiringFieldHour = (airing, field, h) => {
+                airing[field] = h * 60*60*1000 + scope.airingFieldMinute(airing, field) * 60*1000;
+                scope.rebuildWeeklyStrip();
+            }
+            scope.setAiringFieldMinute = (airing, field, m) => {
+                airing[field] = scope.airingFieldHour(airing, field) * 60*60*1000 + m * 60*1000;
+                scope.rebuildWeeklyStrip();
+            }
+
+            // Same computed-time approach as startTimeDisplay above, reusing
+            // dayParts.effectiveStartTime rather than a second copy of the
+            // daylight-saving arithmetic - called once for each end of the
+            // airing and joined into one line.
+            scope.airingRangeDisplay = (airing) => {
+                if ( (typeof(airing.start) !== 'number') || isNaN(airing.start)
+                    || (typeof(airing.end) !== 'number') || isNaN(airing.end)
+                ) {
+                    return '';
+                }
+                let atWinter = (time) => clockString( dayParts.effectiveStartTime( { time: time, shiftWithDst: airing.shiftWithDst }, dstWinterRef ) );
+                let atSummer = (time) => clockString( dayParts.effectiveStartTime( { time: time, shiftWithDst: airing.shiftWithDst }, dstSummerRef ) );
+                let winter = atWinter(airing.start) + ' - ' + atWinter(airing.end);
+                if (airing.shiftWithDst !== true) {
+                    return winter;
+                }
+                let summer = atSummer(airing.start) + ' - ' + atSummer(airing.end);
+                if (summer === winter) {
+                    return winter;
+                }
+                return winter + ' in winter, ' + summer + ' in summer';
+            }
+
+            /*
+             * Interactive overlap prevention - the spec's "airings of
+             * different blocks may not overlap; the editor validates this."
+             * Mirrors warnAboutBlocks in src/dao/channel-db.js: every valid
+             * airing's occupied span this week in week-position terms,
+             * computed at shiftWithDst false (the same deliberate
+             * simplification that DAO check makes), checked pairwise across
+             * different blocks only - one block's own airings never conflict
+             * with each other. Kept separate from that DAO copy rather than
+             * sharing it, since this one runs against in-progress edits (a
+             * half-filled airing) rather than a channel already read from
+             * disk.
+             */
+            let blockAiringSpans = () => {
+                let spans = [];
+                (scope.channel.blocks || []).forEach( (block, blockIndex) => {
+                    (block.airings || []).forEach( (airing) => {
+                        if ( ! Array.isArray(airing.days)
+                            || (typeof(airing.start) !== 'number') || isNaN(airing.start)
+                            || (typeof(airing.end) !== 'number') || isNaN(airing.end)
+                            || (airing.start === airing.end)
+                        ) {
+                            return;
+                        }
+                        let length = airing.end - airing.start;
+                        if (length < 0) {
+                            length += dayParts.DAY;
+                        }
+                        airing.days.forEach( (day) => {
+                            if (typeof(day) !== 'number' || isNaN(day)) {
+                                return;
+                            }
+                            let from = ( ((day * dayParts.DAY + airing.start) % dayParts.WEEK) + dayParts.WEEK ) % dayParts.WEEK;
+                            spans.push( { from: from, to: from + length, blockIndex: blockIndex, airing: airing } );
+                        } );
+                    } );
+                } );
+                return spans;
+            }
+            let spansOverlap = (a, b) => (a.from < b.to) && (b.from < a.to);
+            let spansCollide = (a, b) => spansOverlap(a, b)
+                || spansOverlap(a, { from: b.from - dayParts.WEEK, to: b.to - dayParts.WEEK })
+                || spansOverlap(a, { from: b.from + dayParts.WEEK, to: b.to + dayParts.WEEK });
+
+            scope.hasBlockOverlaps = () => {
+                let spans = blockAiringSpans();
+                for (let i = 0; i < spans.length; i++) {
+                    for (let j = i + 1; j < spans.length; j++) {
+                        if (spans[i].blockIndex === spans[j].blockIndex) {
+                            continue;
+                        }
+                        if (spansCollide(spans[i], spans[j])) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            scope.airingOverlapMessage = (block, airing) => {
+                let blockIndex = scope.channel.blocks.indexOf(block);
+                let spans = blockAiringSpans();
+                let mine = spans.filter( (s) => s.airing === airing );
+                for (let i = 0; i < mine.length; i++) {
+                    for (let j = 0; j < spans.length; j++) {
+                        if (spans[j].blockIndex === blockIndex) {
+                            continue;
+                        }
+                        if (spansCollide(mine[i], spans[j])) {
+                            let other = scope.channel.blocks[spans[j].blockIndex];
+                            return 'Overlaps ' + (other.name || '(unnamed block)') + '.';
+                        }
+                    }
+                }
+                return '';
+            }
+
+            // Two fixed palettes, cycled by index within day-parts and blocks
+            // separately, so a block segment reads as visually distinct from
+            // a day-part one rather than just differently labelled. Kept as
+            // CSS classes (dp-color-0..7, bl-color-0..7) rather than inline
+            // colors so the strip reads consistently with the rest of the
+            // UI's theming.
             const DP_STRIP_STEP_MIN = 15;
             const DP_STRIP_COLOR_COUNT = 8;
+            const BL_STRIP_COLOR_COUNT = 8;
             const DP_STRIP_DAY_NAMES = [ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" ];
             scope.weeklyStripDays = [];
+
+            // Whichever of channel.dayParts / channel.blocks actually
+            // contains the context resolveContext returned - it always
+            // returns an element of exactly one of them, or null - so the
+            // strip can key and color a block segment the same way it always
+            // has a day-part one, instead of the two colliding on a bare
+            // index (day-part 0 and block 0 both reading as "key: 0").
+            let classifyContext = (context) => {
+                if (context == null) {
+                    return null;
+                }
+                let dpIndex = scope.channel.dayParts.indexOf(context);
+                if (dpIndex !== -1) {
+                    return { kind: 'dp', index: dpIndex, name: context.name || '(unnamed day-part)' };
+                }
+                let blIndex = scope.channel.blocks.indexOf(context);
+                if (blIndex !== -1) {
+                    return { kind: 'bl', index: blIndex, name: context.name || '(unnamed block)' };
+                }
+                return null;
+            }
 
             scope.rebuildWeeklyStrip = () => {
                 let stepsPerDay = (24*60) / DP_STRIP_STEP_MIN;
                 let rows = DP_STRIP_DAY_NAMES.map( (name) => { return { name: name, segments: [] }; } );
 
-                rebuildDayPartLegend();
+                rebuildScheduleLegend();
 
-                if ( (scope.channel.dayParts.length === 0) || (scope.channel.onDemand.isOnDemand === true) ) {
+                if ( ! dayParts.hasOverlay(scope.channel) ) {
                     scope.weeklyStripDays = rows;
                     return;
                 }
@@ -1628,46 +1861,67 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     let segments = [];
                     let current = null;
                     for (let s = 0; s <= stepsPerDay; s++) {
-                        let dayPart = null;
+                        let info = null;
                         if (s < stepsPerDay) {
                             let instant = new Date( now.getFullYear(), now.getMonth(), sunday + d, 0, s * DP_STRIP_STEP_MIN ).getTime();
-                            dayPart = dayParts.resolveContext(scope.channel, instant);
+                            info = classifyContext( dayParts.resolveContext(scope.channel, instant) );
                         }
-                        let key = dayPart ? scope.channel.dayParts.indexOf(dayPart) : -1;
+                        let key = info ? (info.kind + info.index) : 'none';
                         if ( (current !== null) && (current.key === key) && (s < stepsPerDay) ) {
                             current.endStep = s + 1;
                         } else {
                             if (current !== null) {
                                 segments.push(current);
                             }
-                            current = (s < stepsPerDay) ? { key: key, startStep: s, endStep: s + 1, dayPart: dayPart } : null;
+                            current = (s < stepsPerDay) ? { key: key, startStep: s, endStep: s + 1, info: info } : null;
                         }
                     }
                     rows[d].segments = segments.map( (seg) => {
-                        let name = seg.dayPart ? (seg.dayPart.name || '(unnamed day-part)') : '';
+                        let name = seg.info ? seg.info.name : '';
                         let startMs = seg.startStep * DP_STRIP_STEP_MIN * 60 * 1000;
                         let endMs = seg.endStep * DP_STRIP_STEP_MIN * 60 * 1000;
+                        let colorClass = 'dp-color-none';
+                        if (seg.info && seg.info.kind === 'dp') {
+                            colorClass = 'dp-color-' + (seg.info.index % DP_STRIP_COLOR_COUNT);
+                        } else if (seg.info && seg.info.kind === 'bl') {
+                            colorClass = 'bl-color-' + (seg.info.index % BL_STRIP_COLOR_COUNT);
+                        }
                         return {
                             leftPct: (seg.startStep / stepsPerDay) * 100,
                             widthPct: ( (seg.endStep - seg.startStep) / stepsPerDay) * 100,
                             label: name,
-                            colorClass: (seg.key >= 0) ? ('dp-color-' + (seg.key % DP_STRIP_COLOR_COUNT)) : 'dp-color-none',
-                            title: (name || 'No day-part') + ': ' + clockString(startMs) + ' - ' + clockString(endMs),
+                            colorClass: colorClass,
+                            title: (name || 'Nothing scheduled') + ': ' + clockString(startMs) + ' - ' + clockString(endMs),
                         };
                     } );
                 }
                 scope.weeklyStripDays = rows;
             }
 
+            // Whether the strip (and its section in the Day-Parts tab) has
+            // anything to show - either day-parts or blocks, and not
+            // on-demand, exactly what resolveContext itself is willing to
+            // resolve against. Exposed on scope since the template can't call
+            // the dayParts module directly.
+            scope.channelHasOverlay = () => {
+                return dayParts.hasOverlay(scope.channel);
+            }
+
             // A plain array, refreshed alongside the strip rather than
             // recomputed by the template on every digest - a function bound
             // in ng-repeat returns a new array each call, which never lets
             // ng-repeat's watch settle (Angular aborts after 10 digests).
-            scope.dayPartLegendEntries = [];
-            let rebuildDayPartLegend = () => {
-                scope.dayPartLegendEntries = scope.channel.dayParts.map( (dayPart, i) => {
+            // Day-parts first, then blocks, each already carrying the right
+            // color class for rebuildWeeklyStrip above.
+            scope.scheduleLegendEntries = [];
+            let rebuildScheduleLegend = () => {
+                let entries = scope.channel.dayParts.map( (dayPart, i) => {
                     return { name: dayPart.name || '(unnamed day-part)', colorClass: 'dp-color-' + (i % DP_STRIP_COLOR_COUNT) };
                 } );
+                entries = entries.concat( scope.channel.blocks.map( (block, i) => {
+                    return { name: block.name || '(unnamed block)', colorClass: 'bl-color-' + (i % BL_STRIP_COLOR_COUNT) };
+                } ) );
+                scope.scheduleLegendEntries = entries;
             }
 
             function parseResolutionString(s) {
