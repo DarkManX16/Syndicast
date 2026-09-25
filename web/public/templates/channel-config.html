@@ -99,6 +99,9 @@
                                 <div class='programming-counter' ng-show='hasFlex' style='order:4'>
                                     <span class="small"><b>Fallback:</b> {{describeFallback()}}</span>
                                 </div>
+                                <div class='programming-counter' ng-show='channel.dayParts.length > 0' style='order:4'>
+                                    <span class="small"><b>Day-Parts:</b> {{channel.dayParts.length}}</span>
+                                </div>
                                 <div class='flex-pull-right' ng-style="{order: (reverseTools?3:4) }"></div>
 
 
@@ -662,51 +665,8 @@
                         <h6>Filler Lists</h6>
                         <div id='fillerContainer'>
                             <br></br>
-    
-                            <div class="form-row" ng-repeat = "x in channel.fillerCollections" track-by = "$index">
-                                <div class='form-group col-md-5'>
-                                    <label ng-if="$index==0" for="fillerselect{{$index}}">List</label>
-                                    <select
-                                        id="fillerselect{{$index}}" class="custom-select form-control"
-                                        ng-model="x.id" ng-options="o.id as o.name for o in x.options"
-                                        ng-change="refreshFillerStuff()"
-                                        >
-                                    </select>
-                                </div>
-                                <div class='form-group col-md-2' ng-if="x.id !== &apos;none&apos; " >
-                                    <label ng-if="$index==0" for="cooldown{{$index}}">Cooldown (minutes)</label>
-                                    <input class='form-control' id="cooldown{{$index}}" type='number' ng-model='x.cooldownMinutes' ng-pattern="/^([0-9][0-9]*)$/"
-                                    min='0' max='10080'
-                                    data-toggle="tooltip" data-placement="bottom" title="The channel won&apos;t pick a video from this list if it played something from this list less than this amount of minutes ago."
-                                    > </input>
-                                </div>
-                                <div class='form-group col-md-2' ng-if="x.id === &apos;none&apos; " >
-                                </div>
-                                <div class='form-group col-md-3' ng-if="x.id !== &apos;none&apos;  &amp;&amp; channel.fillerCollections.length &gt; 2 " >
-                                    <label ng-if="$index==0" for="fillerrange{{$index}}">Weight</label>
-                                    <input class='form-control-range custom-range' id="fillerrange{{$index}}" type='range' ng-model='x.weight' min=1 max=600
-                                    data-toggle="tooltip" data-placement="bottom" title="Lists with more weight will be picked more frequently."
-                                     ng-change="refreshFillerStuff()"
-                                    >
-                                    </input>
-                                </div>
-                                <div class='form-group col-md-4' ng-if="x.id === &apos;none&apos; || channel.fillerCollections.length &lt;= 2 " >
-                                </div>
-                                <div class='form-group col-md-1' ng-if="x.id !== &apos;none&apos; &amp;&amp; channel.fillerCollections.length &gt; 2" >
-                                    <label ng-if="$index==0" for="fillerp{{$index}}">%</label>
-                                    <input class='form-control flex-filler-percent' id="fillerp{{$index}}" type='text' ng-model='x.percentage'
-                                    data-toggle="tooltip" data-placement="bottom" title="This is the overall probability this list might be picked, assuming all lists are available." readonly
-                                    >
-                                    </input>
-                                </div>
-                                <div class='form-group col-md-1' ng-if="x.id !== &apos;none&apos;" >
-                                    <label ng-if="$index==0" for="delete{{$index}}">-</label>
-                                    <button id='delete{{$index}}' class='btn btn-link form-control' ng-click='deleteFillerList($index)' >
-                                        <i class='text-danger fa fa-trash-alt'></i>
-                                    </button>
-                                </div>
-        
-                            </div>
+
+                            <filler-mix-editor mix="channel.fillerCollections" filler-options="fillerOptions"></filler-mix-editor>
                             <hr></hr >
                             <p class="text-center text-info">Videos from the filler list will be randomly picked to play unless there are cooldown restrictions to place or if no videos are short enough for the remaining Flex time. Use the Filler tab at the main page to create Filler Lists. If no videos are available, the fallback will be used instead.</p>
 
@@ -714,6 +674,118 @@
                         
                     </div>
 
+                </div>
+
+                <!--
+                    ============= TAB: DAY-PARTS =========================
+                                                                             -->
+                <div class="modal-body" ng-if="tab == 'dayparts'">
+                    <div class='text-center text-warning' ng-show="channel.onDemand.isOnDemand">
+                        <i class='fas fa-exclamation-triangle'></i> Day-parts don&apos;t apply to on-demand channels; this channel always uses its Flex tab.
+                    </div>
+
+                    <p class="text-center text-muted small">
+                        Each day-part runs until the next one starts, so there are no end times to set.
+                        Time-bounded blocks like Toonami are coming in stage 2, and will override the day-part while they air.
+                    </p>
+
+                    <div ng-show="channel.dayParts.length === 0">
+                        <p class="text-center text-info">
+                            This channel has no day-parts yet, so its Flex tab is used exactly as it is today.
+                        </p>
+                        <div class="text-center">
+                            <button class="btn btn-sm btn-warning" type="button" ng-click="convertToDayParts()">
+                                Convert current Flex to a day-part
+                            </button>
+                        </div>
+                    </div>
+
+                    <div ng-show="channel.dayParts.length > 0">
+                        <h6>Weekly overview</h6>
+                        <div class="dp-week-row" ng-repeat="row in weeklyStripDays">
+                            <span class="dp-week-row-label">{{row.name}}</span>
+                            <div class="dp-week-row-track">
+                                <div class="dp-week-segment {{seg.colorClass}}"
+                                     ng-repeat="seg in row.segments"
+                                     ng-style="{left: seg.leftPct + '%', width: seg.widthPct + '%'}"
+                                     title="{{seg.title}}">{{seg.label}}</div>
+                            </div>
+                        </div>
+                        <div style="margin: 6px 0 14px 0;">
+                            <span ng-repeat="entry in dayPartLegendEntries" class="small" style="margin-right: 12px; display: inline-block;">
+                                <span class="dp-legend-swatch {{entry.colorClass}}"></span>{{entry.name}}
+                            </span>
+                        </div>
+                        <hr></hr>
+                    </div>
+
+                    <div class="dp-daypart-card" ng-repeat="dayPart in channel.dayParts">
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label class="small">Name</label>
+                                <input type="text" class="form-control form-control-sm" ng-model="dayPart.name" ng-change="rebuildWeeklyStrip()"></input>
+                            </div>
+                            <div class="form-group col-md-5">
+                                <label class="small">Guide name <span class="text-muted">(used starting in stage 2)</span></label>
+                                <input type="text" class="form-control form-control-sm" ng-model="dayPart.guideName" placeholder="Leave empty to use the day-part name"></input>
+                            </div>
+                            <div class="form-group col-md-1" style="text-align: right;">
+                                <label class="small">&nbsp;</label>
+                                <button class="btn btn-link form-control" ng-click="deleteDayPart(dayPart)" title="Delete this day-part">
+                                    <i class='text-danger fa fa-trash-alt'></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <h6>Mix</h6>
+                        <filler-mix-editor mix="dayPart.fillerCollections" filler-options="fillerOptions"></filler-mix-editor>
+
+                        <h6 style="margin-top: 10px;">Starts</h6>
+                        <div class="dp-start-row" ng-repeat="start in dayPart.starts">
+                            <div class="form-row">
+                                <div class="form-group col-md-7">
+                                    <label class="small d-block">Days</label>
+                                    <button type="button" class="btn btn-sm"
+                                        ng-repeat="day in dpWeekDays"
+                                        ng-class="{'btn-info': isStartDaySelected(start, day), 'btn-outline-secondary': !isStartDaySelected(start, day)}"
+                                        style="margin-right: 2px;"
+                                        ng-click="toggleStartDay(start, day)">{{day.name}}</button>
+                                </div>
+                                <div class="form-group col-md-2">
+                                    <label class="small">Hour</label>
+                                    <select class="custom-select custom-select-sm form-control"
+                                        ng-model="startHourModel" ng-init="startHourModel = startHour(start)"
+                                        ng-change="setStartHour(start, startHourModel)"
+                                        ng-options="o.id as o.description for o in dpHourOptions"></select>
+                                </div>
+                                <div class="form-group col-md-2">
+                                    <label class="small">Minute</label>
+                                    <select class="custom-select custom-select-sm form-control"
+                                        ng-model="startMinuteModel" ng-init="startMinuteModel = startMinute(start)"
+                                        ng-change="setStartMinute(start, startMinuteModel)"
+                                        ng-options="o.id as o.description for o in dpMinuteOptions"></select>
+                                </div>
+                                <div class="form-group col-md-1" style="text-align:right;">
+                                    <label class="small d-block">&nbsp;</label>
+                                    <button class="btn btn-link form-control" ng-click="deleteStart(dayPart, start)" title="Delete this start">
+                                        <i class='text-danger fa fa-trash-alt'></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group col-md-12">
+                                    <label class="small">
+                                        <input type="checkbox" ng-model="start.shiftWithDst" ng-change="rebuildWeeklyStrip()"></input>
+                                        &nbsp;Shift with daylight saving
+                                    </label>
+                                    <span class="small text-muted">&nbsp;&mdash;&nbsp;{{startTimeDisplay(start)}}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" ng-click="addStart(dayPart)">+ Add start</button>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-warning" ng-click="addDayPart()">+ Add day-part</button>
                 </div>
 
                 <!--

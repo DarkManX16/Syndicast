@@ -1,3 +1,5 @@
+const dayParts = require('../../src/day-parts');
+
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
     return {
         restrict: 'E',
@@ -55,6 +57,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.channel.programs = []
                 scope.channel.watermark = defaultWatermark();
                 scope.channel.fillerCollections = []
+                scope.channel.dayParts = []
                 scope.channel.guideFlexPlaceholder = "";
                 scope.channel.fillerRepeatCooldown = 30 * 60 * 1000;
                 scope.channel.fallback = [];
@@ -119,6 +122,20 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (typeof(scope.channel.fillerCollections)==='undefined') {
                     scope.channel.fillerCollections = [];
                 }
+                if (typeof(scope.channel.dayParts)==='undefined' || scope.channel.dayParts == null) {
+                    scope.channel.dayParts = [];
+                }
+                scope.channel.dayParts.forEach( (dayPart) => {
+                    if (typeof(dayPart.fillerCollections) === 'undefined' || dayPart.fillerCollections == null) {
+                        dayPart.fillerCollections = [];
+                    }
+                    if (typeof(dayPart.starts) === 'undefined' || dayPart.starts == null) {
+                        dayPart.starts = [];
+                    }
+                    if (typeof(dayPart.id) === 'undefined' || dayPart.id == null) {
+                        dayPart.id = newDayPartId();
+                    }
+                } );
                 if (typeof(scope.channel.fallback)==='undefined') {
                     scope.channel.fallback = [];
                     scope.channel.offlineMode = "pic";
@@ -161,6 +178,16 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 adjustStartTimeToCurrentProgram();
                 updateChannelDuration();
                 setTimeout( () => { scope.showRotatedNote = true }, 1, 'funky');
+            }
+
+            /*
+             * A stable id for a day-part row, purely so ng-repeat can track it by
+             * identity rather than by $index - the same reason NOTES.md gives for
+             * addressing slots by object rather than by position. The resolver
+             * never reads this field.
+             */
+            function newDayPartId() {
+                return 'dp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
             }
 
             function defaultWatermark() {
@@ -230,35 +257,58 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
 
 
 
+            // Every mix a channel carries: its own Flex tab, plus one per
+            // day-part. Kept as a lookup rather than a stored list so a day-part
+            // added or removed mid-edit is picked up without anyone remembering
+            // to refresh a cache.
+            let allMixes = (channel) => {
+                let mixes = [ channel.fillerCollections ];
+                (channel.dayParts || []).forEach( (dayPart) => {
+                    mixes.push(dayPart.fillerCollections);
+                } );
+                return mixes;
+            }
+
+            let addMinuteVersionsToMix = (mix) => {
+                for (let i = 0; i < mix.length; i++) {
+                    mix[i].cooldownMinutes = mix[i].cooldown / 1000 / 60;
+                }
+            }
+
+            let removeMinuteVersionsFromMix = (mix) => {
+                for (let i = 0; i < mix.length; i++) {
+                    mix[i].cooldown = mix[i].cooldownMinutes * 60 * 1000;
+                    delete mix[i].cooldownMinutes;
+                }
+            }
+
             let addMinuteVersionsOfFields = () => {
                 //add the minutes versions of the cooldowns:
                 scope.channel.fillerRepeatCooldownMinutes = scope.channel.fillerRepeatCooldown / 1000 / 60;
-                for (let i = 0; i < scope.channel.fillerCollections.length; i++) {
-                    scope.channel.fillerCollections[i].cooldownMinutes = scope.channel.fillerCollections[i].cooldown / 1000 / 60;
-
-                }
+                allMixes(scope.channel).forEach(addMinuteVersionsToMix);
             }
             addMinuteVersionsOfFields();
 
             let removeMinuteVersionsOfFields = (channel) => {
                 channel.fillerRepeatCooldown = channel.fillerRepeatCooldownMinutes * 60 * 1000;
                 delete channel.fillerRepeatCooldownMinutes;
-                for (let i = 0; i < channel.fillerCollections.length; i++) {
-                    channel.fillerCollections[i].cooldown = channel.fillerCollections[i].cooldownMinutes * 60 * 1000;
-                    delete channel.fillerCollections[i].cooldownMinutes;
-                }
+                allMixes(channel).forEach(removeMinuteVersionsFromMix);
             }
 
             scope.tabOptions = [
                 { name: "Properties", id: "basic" },
                 { name: "Programming", id: "programming" },
                 { name: "Flex", id: "flex" },
+                { name: "Day-Parts", id: "dayparts" },
                 { name: "EPG", id: "epg" },
                 { name: "FFmpeg", id: "ffmpeg" },
                 { name: "On-demand", id: "ondemand" },
             ];
             scope.setTab = (tab) => {
                 scope.tab = tab;
+                if (tab === 'dayparts') {
+                    scope.rebuildWeeklyStrip();
+                }
             }
 
             if (scope.isNewChannel) {
@@ -1054,10 +1104,17 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             } else {
                                 let cloned = JSON.parse(s);
                                 //clean up some stuff that's only used by the UI:
-                                cloned.fillerCollections = cloned.fillerCollections.filter( (f) => { return f.id != 'none'; } );
-                                cloned.fillerCollections.forEach( (c) => {
-                                    delete c.percentage;
-                                    delete c.options;
+                                let cleanMix = (mix) => {
+                                    return mix.filter( (f) => { return f.id != 'none'; } )
+                                        .map( (c) => {
+                                            delete c.percentage;
+                                            delete c.options;
+                                            return c;
+                                        } );
+                                }
+                                cloned.fillerCollections = cleanMix(cloned.fillerCollections);
+                                (cloned.dayParts || []).forEach( (dayPart) => {
+                                    dayPart.fillerCollections = cleanMix(dayPart.fillerCollections);
                                 } );
                                 await scope.onDone(cloned)
                                 s = null;
@@ -1360,37 +1417,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.rerunStartHours = scope.nightStartHours;
             scope.paddingMod = 30;
 
-            let fillerOptionsFor = (index) => {
-                let used = {};
-                let added = {};
-                for (let i = 0; i < scope.channel.fillerCollections.length; i++) {
-                    if (scope.channel.fillerCollections[i].id != 'none' && i != index) {
-                        used[ scope.channel.fillerCollections[i].id ] = true;
-                    }
-                }
-                let options = [];
-                for (let i = 0; i < scope.fillerOptions.length; i++) {
-                    if ( used[scope.fillerOptions[i].id] !== true) {
-                        added[scope.fillerOptions[i].id] = true;
-                        options.push( scope.fillerOptions[i] );
-                    }
-                }
-                if (scope.channel.fillerCollections[index].id == 'none') {
-                    added['none'] = true;
-                    options.push( {
-                        id: 'none',
-                        name: 'Add a filler list...',
-                    } );
-                }
-                if ( added[scope.channel.fillerCollections[index].id] !== true ) {
-                    options.push( {
-                        id: scope.channel.fillerCollections[index].id,
-                        name: `[${f.id}]`,
-                    } );
-                }
-                return options;
-            }
-
             scope.programmingHeight = () => {
                 return scope.programming.maxHeight + "rem";
             }
@@ -1413,48 +1439,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 setProgrammingHeight(h);
             }
 
-            scope.refreshFillerStuff = () => {
-                if (typeof(scope.channel.fillerCollections) === 'undefined') {
-                    return;
-                }
-                addAddFiller();
-                updatePercentages();
-                refreshIndividualOptions();
-            }
-
-            let updatePercentages = () => {
-                let w = 0;
-                for (let i = 0; i < scope.channel.fillerCollections.length; i++) {
-                    if (scope.channel.fillerCollections[i].id !== 'none') {
-                        w += scope.channel.fillerCollections[i].weight;
-                    }
-                }
-                for (let i = 0; i < scope.channel.fillerCollections.length; i++) {
-                    if (scope.channel.fillerCollections[i].id !== 'none') {
-                        scope.channel.fillerCollections[i].percentage = (scope.channel.fillerCollections[i].weight * 100 / w).toFixed(2) + "%";
-                    }
-                }
-
-            };
-            
-
-            let addAddFiller = () => {
-                if ( (scope.channel.fillerCollections.length == 0) || (scope.channel.fillerCollections[scope.channel.fillerCollections.length-1].id !== 'none') ) {
-                    scope.channel.fillerCollections.push ( {
-                        'id': 'none',
-                        'weight': 300,
-                        'cooldown': 0,
-                    } );
-                }
-            }
-
-
-            let refreshIndividualOptions = () => {
-                for (let i = 0; i < scope.channel.fillerCollections.length; i++) {
-                    scope.channel.fillerCollections[i].options = fillerOptionsFor(i);
-                }
-            }
-
             let refreshFillerOptions = async() => {
 
                 try {
@@ -1465,14 +1449,226 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             name: f.name,
                         };
                     } );
-                    scope.refreshFillerStuff();
                     scope.$apply();
                 } catch(err) {
                     console.error("Unable to get filler info", err);
                 }
             };
-            scope.refreshFillerStuff();
             refreshFillerOptions();
+
+            /*
+             * Day-parts (stage 1 UI - see docs/blocks-spec.md). The resolver
+             * itself lives in src/day-parts.js and is untouched here; this is
+             * only the editor for channel.dayParts.
+             */
+            scope.dpWeekDays = [
+                { id: 0, name: 'Sun' },
+                { id: 1, name: 'Mon' },
+                { id: 2, name: 'Tue' },
+                { id: 3, name: 'Wed' },
+                { id: 4, name: 'Thu' },
+                { id: 5, name: 'Fri' },
+                { id: 6, name: 'Sat' },
+            ];
+            scope.dpHourOptions = [];
+            for (let h = 0; h < 24; h++) {
+                scope.dpHourOptions.push( { id: h, description: ( (h<10) ? "0" : "") + h } );
+            }
+            scope.dpMinuteOptions = [];
+            for (let m = 0; m < 60; m++) {
+                scope.dpMinuteOptions.push( { id: m, description: ( (m<10) ? "0" : "") + m } );
+            }
+
+            scope.addDayPart = () => {
+                scope.channel.dayParts.push( {
+                    id: newDayPartId(),
+                    name: "New Day-Part",
+                    guideName: "",
+                    fillerCollections: [],
+                    starts: [],
+                } );
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.deleteDayPart = (dayPart) => {
+                let i = scope.channel.dayParts.indexOf(dayPart);
+                if (i !== -1) {
+                    scope.channel.dayParts.splice(i, 1);
+                }
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.addStart = (dayPart) => {
+                dayPart.starts.push( { days: [], time: 0, shiftWithDst: false } );
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.deleteStart = (dayPart, start) => {
+                let i = dayPart.starts.indexOf(start);
+                if (i !== -1) {
+                    dayPart.starts.splice(i, 1);
+                }
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.isStartDaySelected = (start, day) => {
+                return start.days.indexOf(day.id) !== -1;
+            }
+
+            scope.toggleStartDay = (start, day) => {
+                let i = start.days.indexOf(day.id);
+                if (i === -1) {
+                    start.days.push(day.id);
+                } else {
+                    start.days.splice(i, 1);
+                }
+                scope.rebuildWeeklyStrip();
+            }
+
+            scope.startHour = (start) => {
+                return Math.floor( (start.time || 0) / (60*60*1000) );
+            }
+            scope.startMinute = (start) => {
+                return Math.floor( ( (start.time || 0) % (60*60*1000) ) / (60*1000) );
+            }
+            scope.setStartHour = (start, h) => {
+                start.time = h * 60*60*1000 + scope.startMinute(start) * 60*1000;
+                scope.rebuildWeeklyStrip();
+            }
+            scope.setStartMinute = (start, m) => {
+                start.time = scope.startHour(start) * 60*60*1000 + m * 60*1000;
+                scope.rebuildWeeklyStrip();
+            }
+
+            function clockString(msFromMidnight) {
+                let mins = Math.round(msFromMidnight / 60000);
+                mins = ( (mins % (24*60)) + (24*60) ) % (24*60);
+                let h24 = Math.floor(mins / 60);
+                let m = mins % 60;
+                let ampm = (h24 < 12) ? 'AM' : 'PM';
+                let h12 = h24 % 12;
+                if (h12 === 0) { h12 = 12; }
+                return h12 + ':' + ( (m<10) ? "0" : "" ) + m + ' ' + ampm;
+            }
+
+            // Two fixed instants, deep enough into each half of the year that
+            // neither is near a real DST transition, used only to show the
+            // effect of the "shift with daylight saving" toggle - the actual
+            // resolver evaluates it at real playback instants, never these.
+            let dstWinterRef = new Date( (new Date()).getFullYear(), 0, 15 ).getTime();
+            let dstSummerRef = new Date( (new Date()).getFullYear(), 6, 15 ).getTime();
+
+            scope.startTimeDisplay = (start) => {
+                if ( (typeof(start.time) !== 'number') || isNaN(start.time) ) {
+                    return '';
+                }
+                let winter = clockString( dayParts.effectiveStartTime(start, dstWinterRef) );
+                if (start.shiftWithDst !== true) {
+                    return winter;
+                }
+                let summer = clockString( dayParts.effectiveStartTime(start, dstSummerRef) );
+                if (summer === winter) {
+                    return winter;
+                }
+                return winter + ' in winter, ' + summer + ' in summer';
+            }
+
+            scope.convertToDayParts = () => {
+                if (scope.channel.dayParts.length > 0) {
+                    return;
+                }
+                let mix = scope.channel.fillerCollections
+                    .filter( (f) => f.id !== 'none' )
+                    .map( (f) => {
+                        return {
+                            id: f.id,
+                            weight: f.weight,
+                            cooldown: (typeof(f.cooldownMinutes) === 'number') ? (f.cooldownMinutes * 60 * 1000) : f.cooldown,
+                        };
+                    } );
+                let dayPart = {
+                    id: newDayPartId(),
+                    name: scope.channel.name,
+                    guideName: "",
+                    fillerCollections: mix,
+                    starts: [ { days: [0,1,2,3,4,5,6], time: 0, shiftWithDst: false } ],
+                };
+                addMinuteVersionsToMix(dayPart.fillerCollections);
+                scope.channel.dayParts.push(dayPart);
+                scope.rebuildWeeklyStrip();
+            }
+
+            // A small fixed palette, cycled by day-part index. Kept as CSS
+            // classes (dp-color-0..7) rather than inline colors so the strip
+            // reads consistently with the rest of the UI's theming.
+            const DP_STRIP_STEP_MIN = 15;
+            const DP_STRIP_COLOR_COUNT = 8;
+            const DP_STRIP_DAY_NAMES = [ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" ];
+            scope.weeklyStripDays = [];
+
+            scope.rebuildWeeklyStrip = () => {
+                let stepsPerDay = (24*60) / DP_STRIP_STEP_MIN;
+                let rows = DP_STRIP_DAY_NAMES.map( (name) => { return { name: name, segments: [] }; } );
+
+                rebuildDayPartLegend();
+
+                if ( (scope.channel.dayParts.length === 0) || (scope.channel.onDemand.isOnDemand === true) ) {
+                    scope.weeklyStripDays = rows;
+                    return;
+                }
+
+                // Sampled across the actual current calendar week (built from
+                // local calendar fields, not epoch arithmetic) so a week
+                // straddling a daylight-saving transition still maps each
+                // sample to the wall-clock time it names.
+                let now = new Date();
+                let sunday = now.getDate() - now.getDay();
+
+                for (let d = 0; d < 7; d++) {
+                    let segments = [];
+                    let current = null;
+                    for (let s = 0; s <= stepsPerDay; s++) {
+                        let dayPart = null;
+                        if (s < stepsPerDay) {
+                            let instant = new Date( now.getFullYear(), now.getMonth(), sunday + d, 0, s * DP_STRIP_STEP_MIN ).getTime();
+                            dayPart = dayParts.resolveContext(scope.channel, instant);
+                        }
+                        let key = dayPart ? scope.channel.dayParts.indexOf(dayPart) : -1;
+                        if ( (current !== null) && (current.key === key) && (s < stepsPerDay) ) {
+                            current.endStep = s + 1;
+                        } else {
+                            if (current !== null) {
+                                segments.push(current);
+                            }
+                            current = (s < stepsPerDay) ? { key: key, startStep: s, endStep: s + 1, dayPart: dayPart } : null;
+                        }
+                    }
+                    rows[d].segments = segments.map( (seg) => {
+                        let name = seg.dayPart ? (seg.dayPart.name || '(unnamed day-part)') : '';
+                        let startMs = seg.startStep * DP_STRIP_STEP_MIN * 60 * 1000;
+                        let endMs = seg.endStep * DP_STRIP_STEP_MIN * 60 * 1000;
+                        return {
+                            leftPct: (seg.startStep / stepsPerDay) * 100,
+                            widthPct: ( (seg.endStep - seg.startStep) / stepsPerDay) * 100,
+                            label: name,
+                            colorClass: (seg.key >= 0) ? ('dp-color-' + (seg.key % DP_STRIP_COLOR_COUNT)) : 'dp-color-none',
+                            title: (name || 'No day-part') + ': ' + clockString(startMs) + ' - ' + clockString(endMs),
+                        };
+                    } );
+                }
+                scope.weeklyStripDays = rows;
+            }
+
+            // A plain array, refreshed alongside the strip rather than
+            // recomputed by the template on every digest - a function bound
+            // in ng-repeat returns a new array each call, which never lets
+            // ng-repeat's watch settle (Angular aborts after 10 digests).
+            scope.dayPartLegendEntries = [];
+            let rebuildDayPartLegend = () => {
+                scope.dayPartLegendEntries = scope.channel.dayParts.map( (dayPart, i) => {
+                    return { name: dayPart.name || '(unnamed day-part)', colorClass: 'dp-color-' + (i % DP_STRIP_COLOR_COUNT) };
+                } );
+            }
 
             function parseResolutionString(s) {
                 var i = s.indexOf('x');
@@ -1527,13 +1723,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.showList = () => {
                 return ! scope.showFallbackPlexLibrary;
             }
-
-
-            scope.deleteFillerList =(index) => {
-                scope.channel.fillerCollections.splice(index, 1);
-                scope.refreshFillerStuff();
-            }
-
 
 
             scope.durationString = (duration) => {

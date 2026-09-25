@@ -12,14 +12,37 @@ issues section below is separate and covers defects in what already ships.
 The original reason for the fork. See [docs/blocks-spec.md](docs/blocks-spec.md)
 for the full spec, stages and acceptance tests.
 
-- [ ] Timed Flex Blocks - time-scoped filler switching by time of day and day of week
+- [x] Timed Flex Blocks - time-scoped filler switching by time of day and day of week
 
-      Stage 1's core is built and its acceptance rows pass, but there is no way
-      to configure a day-part from the UI yet, so the box stays unticked. The
-      resolver is `src/day-parts.js`, pure and free of I/O; `createLineup` takes
-      a `t0` and resolves the mix when it fills a break. `channel.dayParts` is
-      an optional field, so nothing needed migrating and a channel without one
-      takes the same code path it always did.
+      Stage 1 ships: the resolver and the UI to configure a day-part from the
+      channel editor. The resolver is `src/day-parts.js`, pure and free of
+      I/O; `createLineup` takes a `t0` and resolves the mix when it fills a
+      break. `channel.dayParts` is an optional field, so nothing needed
+      migrating and a channel without one takes the same code path it always
+      did.
+
+      The UI is a "Day-Parts" tab in `web/directives/channel-config.js` /
+      `channel-config.html`: a list of day-parts, each with a name, a
+      `filler-mix-editor` for its mix, and its `starts` (day toggles, an
+      hour/minute pair, and a "shift with daylight saving" checkbox whose
+      computed text - "7:00 PM in winter, 8:00 PM in summer" - comes straight
+      from `day-parts.js`'s `effectiveStartTime`, required into the web
+      bundle the same way `web/services/plex.js` requires `../../src/plex`).
+      A weekly strip samples `resolveContext` across the current calendar
+      week to show which day-part covers when, and "Convert current Flex to a
+      day-part" turns the channel's existing Flex into a single all-week
+      day-part named after the channel.
+
+      The Flex tab's list/weight/cooldown editor was pulled out into its own
+      directive, `filler-mix-editor`, so both the channel's own Flex mix and
+      every day-part's mix go through the same code rather than three
+      near-copies of it. Verified byte-for-byte: saved a channel's
+      `fillerCollections`/`fillerRepeatCooldown` before the extraction, redid
+      the same edits after, and diffed - identical. (A plain reload-and-resave
+      of an unrelated channel reorders unrelated JSON keys and nudges
+      `startTime` even on the pre-extraction code, so that noise is
+      pre-existing and unrelated to this change, confirmed by reproducing it
+      against the old code directly.)
 
 - [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
       and per block

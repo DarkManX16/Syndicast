@@ -1,0 +1,45 @@
+<div>
+    <div class="form-row" ng-repeat="x in mix">
+        <div class='form-group col-md-5'>
+            <label ng-if="$index==0" for="fillerselect{{uid}}-{{$index}}">List</label>
+            <select
+                id="fillerselect{{uid}}-{{$index}}" class="custom-select form-control"
+                ng-model="x.id" ng-options="o.id as o.name for o in x.options"
+                ng-change="refresh()"
+                >
+            </select>
+        </div>
+        <div class='form-group col-md-2' ng-if="x.id !== 'none'" >
+            <label ng-if="$index==0" for="cooldown{{uid}}-{{$index}}">Cooldown (minutes)</label>
+            <input class='form-control' id="cooldown{{uid}}-{{$index}}" type='number' ng-model='x.cooldownMinutes' ng-pattern="/^([0-9][0-9]*)$/"
+            min='0' max='10080'
+            data-toggle="tooltip" data-placement="bottom" title="The channel won&apos;t pick a video from this list if it played something from this list less than this amount of minutes ago."
+            > </input>
+        </div>
+        <div class='form-group col-md-2' ng-if="x.id === 'none'" >
+        </div>
+        <div class='form-group col-md-3' ng-if="x.id !== 'none' && mix.length > 2" >
+            <label ng-if="$index==0" for="fillerrange{{uid}}-{{$index}}">Weight</label>
+            <input class='form-control-range custom-range' id="fillerrange{{uid}}-{{$index}}" type='range' ng-model='x.weight' min=1 max=600
+            data-toggle="tooltip" data-placement="bottom" title="Lists with more weight will be picked more frequently."
+             ng-change="refresh()"
+            >
+            </input>
+        </div>
+        <div class='form-group col-md-4' ng-if="x.id === 'none' || mix.length <= 2" >
+        </div>
+        <div class='form-group col-md-1' ng-if="x.id !== 'none' && mix.length > 2" >
+            <label ng-if="$index==0" for="fillerp{{uid}}-{{$index}}">%</label>
+            <input class='form-control flex-filler-percent' id="fillerp{{uid}}-{{$index}}" type='text' ng-model='x.percentage'
+            data-toggle="tooltip" data-placement="bottom" title="This is the overall probability this list might be picked, assuming all lists are available." readonly
+            >
+            </input>
+        </div>
+        <div class='form-group col-md-1' ng-if="x.id !== 'none'" >
+            <label ng-if="$index==0" for="delete{{uid}}-{{$index}}">-</label>
+            <button id='delete{{uid}}-{{$index}}' class='btn btn-link form-control' ng-click='deleteRow($index)' >
+                <i class='text-danger fa fa-trash-alt'></i>
+            </button>
+        </div>
+    </div>
+</div>

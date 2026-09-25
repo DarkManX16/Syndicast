@@ -395,3 +395,74 @@ div.programming-programs div.list-group-item {
 .list-group-item .library-item-hover:hover {
   background: #D0D0FF
 }
+
+.dp-week-row {
+  display: flex;
+  align-items: stretch;
+  height: 1.8rem;
+  margin-bottom: 4px;
+}
+
+.dp-week-row-label {
+  flex: 0 0 3.2rem;
+  background: #f0f0f0;
+  border-radius: 3px 0 0 3px;
+  font-size: 0.8rem;
+  text-align: right;
+  padding-right: 6px;
+  line-height: 1.8rem;
+}
+
+.dp-week-row-track {
+  position: relative;
+  flex: 1 1 auto;
+  background: #f0f0f0;
+  border-radius: 0 3px 3px 0;
+  overflow: hidden;
+}
+
+.dp-week-segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  color: #fff;
+  text-shadow: 0 0 2px rgba(0,0,0,.6);
+  padding-left: 3px;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(255,255,255,.5);
+}
+
+.dp-legend-swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.dp-color-0 { background-color: #4e79a7; }
+.dp-color-1 { background-color: #f28e2b; }
+.dp-color-2 { background-color: #e15759; }
+.dp-color-3 { background-color: #76b7b2; }
+.dp-color-4 { background-color: #59a14f; }
+.dp-color-5 { background-color: #b07aa1; }
+.dp-color-6 { background-color: #edc948; }
+.dp-color-7 { background-color: #ff9da7; }
+.dp-color-none { background-color: #dee2e6; }
+
+.dp-daypart-card {
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.dp-start-row {
+  border-top: 1px solid #eee;
+  padding-top: 6px;
+  margin-top: 6px;
+}
