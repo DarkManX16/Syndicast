@@ -913,7 +913,8 @@
                     </div>
 
                     <p class="text-center text-muted small">
-                        Click a coloured region to edit that day-part or block. Click a slot to open the Time Slots editor.
+                        Click a coloured region to edit that day-part or block. Click a slot to edit it,
+                        or a day heading for that whole day.
                     </p>
 
                     <div ng-show="!hasScheduleToShow()">
@@ -925,7 +926,9 @@
                     <div class="sched-cal" ng-show="hasScheduleToShow()">
                         <div class="sched-cal-header">
                             <div class="sched-cal-gutter"></div>
-                            <div class="sched-cal-day-header" ng-repeat="day in scheduleCalendarDays">{{day.name}}</div>
+                            <div class="sched-cal-day-header" ng-repeat="day in scheduleCalendarDays"
+                                 ng-click="onCalendarDayClick($index)"
+                                 title="Edit {{day.name}}'s slots">{{day.name}}</div>
                         </div>
                         <div class="sched-cal-body">
                             <div class="sched-cal-gutter">
@@ -940,7 +943,7 @@
                                 <div class="sched-cal-slot"
                                      ng-repeat="slot in day.slots"
                                      ng-style="{top: slot.topPct + '%', height: slot.heightPct + '%'}"
-                                     ng-click="onCalendarSlotClick()"
+                                     ng-click="onCalendarSlotClick(slot)"
                                      title="{{slot.title}}">{{slot.label}}</div>
                             </div>
                         </div>

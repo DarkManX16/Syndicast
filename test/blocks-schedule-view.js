@@ -189,6 +189,26 @@ module.exports = async function () {
     suite.check('...and not the same clock time on Wednesday',
         covers(6 * DAY + 1 * HOUR) === false);
 
+    // The Schedule tab scopes the slot editor by day rather than by typing a
+    // day's name into its search box, because that box matches show titles
+    // too - "Mon" would also select Pokémon and Yu-Gi-Oh! Duel Monsters. That
+    // means converting the clicked calendar column back to a slot day.
+    let roundTrips = [];
+    for (let calendarDay = 0; calendarDay < 7; calendarDay++) {
+        let slotDay = slotWeek.slotDayOf(calendarDay);
+        if (slotWeek.calendarDayOf(slotDay) !== calendarDay) {
+            roundTrips.push(`calendar ${calendarDay} -> slot ${slotDay} -> `
+                + `calendar ${slotWeek.calendarDayOf(slotDay)}`);
+        }
+    }
+    suite.check('Calendar day and slot day convert back and forth',
+        roundTrips.length === 0, roundTrips.join(' | '));
+
+    // 6 is Saturday on the calendar; DAY_NAMES is indexed by slot day.
+    suite.check('The Saturday column scopes to the slots labelled Saturday',
+        slotWeek.DAY_NAMES[ slotWeek.slotDayOf(6) ] === 'Saturday',
+        slotWeek.DAY_NAMES[ slotWeek.slotDayOf(6) ]);
+
     return suite;
 };
 

@@ -1969,6 +1969,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     heightPct: Math.max(0, endMs - startMs) / CAL_DAY * 100,
                     label: name,
                     title: name + ': starts ' + clockString(startMs),
+                    // Kept so a click can name this exact slot to the editor
+                    // rather than describing it in words.
+                    time: slot.time,
                 };
             }
 
@@ -2062,8 +2065,26 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
             };
 
-            scope.onCalendarSlotClick = () => {
-                scope.onTimeSlotsButtonClick();
+            /*
+             * Both of these hand the editor a scope describing which slots are
+             * meant, rather than typing into its search box on the user's
+             * behalf. That box matches show names as well as day labels, so
+             * "Mon" would also pull in Pokémon and Yu-Gi-Oh! Duel Monsters
+             * from every other day of the week.
+             */
+            let openSlotEditor = (slotScope) => {
+                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                scope.timeSlots.startDialog(
+                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope
+                );
+            };
+
+            scope.onCalendarSlotClick = (slot) => {
+                openSlotEditor( { kind: 'slot', time: slot.time } );
+            };
+
+            scope.onCalendarDayClick = (calendarDay) => {
+                openSlotEditor( { kind: 'day', calendarDay: calendarDay } );
             };
 
             function scrollToCard(elementId, highlightKey) {
@@ -2095,8 +2116,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (scope.hasNoTimeSlots()) {
                     return;
                 }
-                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
-                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, block );
+                openSlotEditor( { kind: 'block', block: block } );
             };
 
             function parseResolutionString(s) {

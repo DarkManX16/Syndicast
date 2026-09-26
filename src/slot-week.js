@@ -32,6 +32,10 @@ function calendarDayOf(slotDay) {
     return ( (slotDay % 7) + EPOCH_WEEKDAY ) % 7;
 }
 
+function slotDayOf(calendarDay) {
+    return ( (calendarDay % 7) - EPOCH_WEEKDAY + 7 ) % 7;
+}
+
 /*
  * A weekly slot's time restated as ms into a calendar (Sunday-first) week -
  * the coordinate day-parts.js's airing spans and week positions already use.
@@ -44,5 +48,6 @@ function calendarWeekMs(slotTime) {
 module.exports = {
     DAY_NAMES: DAY_NAMES,
     calendarDayOf: calendarDayOf,
+    slotDayOf: slotDayOf,
     calendarWeekMs: calendarWeekMs,
 };

@@ -34,7 +34,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 scope.seasonGroup = [];
                 scope.seasonDayList = [];
                 scope.slotFilter = "";
-                scope.windowBlock = null;
+                scope.slotScope = null;
                 scope.schedule = {
                     period : DAY,
                     lateness : 0,
@@ -146,25 +146,39 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             }
 
             /*
-             * Blocks never own slots (docs/blocks-spec.md, Stage 3) - "editing a
-             * block's shows" is this same text filter, just pre-narrowed to the
-             * block's own window instead of typed text. A slot has no day of its
-             * own outside a weekly schedule, so on a daily schedule a slot
-             * matches if ANY day the airing covers would place that time of day
-             * inside it - the slot recurs every day regardless of which days the
-             * block airs on.
+             * A scope narrows the list structurally, on what a slot *is*,
+             * where the search box narrows it on what a slot reads as. Opening
+             * this editor from somewhere that already knows which slots it
+             * means - a block's window, a day, one slot on the calendar - sets
+             * one of these rather than typing into the search box on the
+             * user's behalf: the search text matches show names as well as day
+             * labels, so seeding it with "Mon" also drags in Pokémon, Yu-Gi-Oh!
+             * Duel Monsters and My Gym Partner's a Monkey from every other day.
+             *
+             * The two compose: a scope and a typed search both apply.
+             *
+             *   { kind: 'block', block }      a block's airings
+             *   { kind: 'day', calendarDay }  one day, 0 = Sunday
+             *   { kind: 'slot', time }        one slot, by its own time
+             */
+            scope.slotScope = null;
+
+            /*
+             * Blocks never own slots (docs/blocks-spec.md, Stage 3) - "editing
+             * a block's shows" is this list, narrowed to the block's window.
+             * A slot has no day of its own outside a weekly schedule, so on a
+             * daily schedule a slot matches if ANY day the airing covers would
+             * place that time of day inside it - the slot recurs every day
+             * regardless of which days the block airs on.
              *
              * A weekly slot's time counts from the epoch week and an airing's
              * span counts from the calendar week, so the two are only
              * comparable once converted - see src/slot-week.js.
              */
-            function slotInWindow(slot) {
-                if (scope.windowBlock === null) {
-                    return true;
-                }
+            function slotInBlock(slot, block) {
                 let now = Date.now();
                 let weekly = scope.isWeekly();
-                let airings = scope.windowBlock.airings || [];
+                let airings = block.airings || [];
                 for (let i = 0; i < airings.length; i++) {
                     let spans = dayParts.airingSpans(airings[i], now);
                     for (let j = 0; j < spans.length; j++) {
@@ -184,11 +198,34 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 return false;
             }
 
+            function slotInScope(slot) {
+                let sc = scope.slotScope;
+                if (sc === null) {
+                    return true;
+                }
+                if (sc.kind === 'slot') {
+                    // Times are unique across a schedule - refreshSlots flags
+                    // duplicates as an error - and the editor works on its own
+                    // deep copy of the backup, so the time identifies the slot
+                    // where an object reference would not survive the copy.
+                    return slot.time === sc.time;
+                }
+                if (sc.kind === 'day') {
+                    // A daily schedule's slots have no day of their own.
+                    return ! scope.isWeekly()
+                        || ( Math.floor(slot.time / DAY) === slotWeek.slotDayOf(sc.calendarDay) );
+                }
+                if (sc.kind === 'block') {
+                    return slotInBlock(slot, sc.block);
+                }
+                return true;
+            }
+
             function applyFilter() {
                 let terms = (scope.slotFilter || "").toLowerCase().split(/\s+/)
                     .filter( (x) => x !== "" );
                 scope.visibleSlots = scope.schedule.slots.filter( (s) => {
-                    if (! slotInWindow(s)) {
+                    if (! slotInScope(s)) {
                         return false;
                     }
                     if (terms.length === 0) {
@@ -201,7 +238,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             scope.filterChanged = applyFilter;
 
             scope.isFiltered = () => {
-                return ( (scope.slotFilter || "").trim() !== "" ) || scope.hasWindow();
+                return ( (scope.slotFilter || "").trim() !== "" ) || scope.hasScope();
             }
 
             scope.clearFilter = () => {
@@ -209,16 +246,41 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 applyFilter();
             }
 
-            scope.hasWindow = () => {
-                return scope.windowBlock !== null;
+            scope.hasScope = () => {
+                return scope.slotScope !== null;
             }
 
-            scope.windowLabel = () => {
-                return (scope.windowBlock !== null) ? (scope.windowBlock.name || '(unnamed block)') : '';
+            // Split so the banner can bold the part that names the scope.
+            scope.scopePrefix = () => {
+                let sc = scope.slotScope;
+                if (sc === null) {
+                    return '';
+                }
+                if (sc.kind === 'slot') {
+                    return 'Showing only the slot at';
+                }
+                if (sc.kind === 'day') {
+                    return 'Showing only slots on';
+                }
+                return 'Showing only slots inside';
             }
 
-            scope.clearWindow = () => {
-                scope.windowBlock = null;
+            scope.scopeLabel = () => {
+                let sc = scope.slotScope;
+                if (sc === null) {
+                    return '';
+                }
+                if (sc.kind === 'slot') {
+                    return scope.displayTime(sc.time);
+                }
+                if (sc.kind === 'day') {
+                    return WEEK_DAYS[ slotWeek.slotDayOf(sc.calendarDay) ];
+                }
+                return (sc.block.name || '(unnamed block)') + "'s window";
+            }
+
+            scope.clearScope = () => {
+                scope.slotScope = null;
                 applyFilter();
             }
 
@@ -350,12 +412,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
 
             
-            let startDialog = (programs, limit, backup, instant, windowBlock) => {
+            let startDialog = (programs, limit, backup, instant, slotScope) => {
                 scope.limit = limit;
                 scope.programs = programs;
 
                 reset();
-                scope.windowBlock = windowBlock || null;
+                scope.slotScope = slotScope || null;
 
 
                 programs.forEach( (p) => {

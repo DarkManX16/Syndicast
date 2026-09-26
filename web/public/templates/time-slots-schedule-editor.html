@@ -13,10 +13,10 @@
                 </div>
 
                 <div class="modal-body" ng-show='! loading' >
-                    <div class="alert alert-info py-1 px-2 small" ng-show="hasWindow()" style="margin-bottom: 6px;">
-                        Showing only slots inside <b>{{windowLabel()}}</b>'s window.
+                    <div class="alert alert-info py-1 px-2 small" ng-show="hasScope()" style="margin-bottom: 6px;">
+                        {{scopePrefix()}} <b>{{scopeLabel()}}</b>.
                         <button class='btn btn-sm btn-link' style="padding: 0 0 0 6px;"
-                            ng-click="clearWindow()">show all slots</button>
+                            ng-click="clearScope()">show all slots</button>
                     </div>
                     <div class="form-row" ng-show="schedule.slots.length > 0" style="margin-bottom: 6px;">
                         <div class='form-group col-md-5' style="margin-bottom: 4px;">

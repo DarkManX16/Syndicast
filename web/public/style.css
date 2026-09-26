@@ -506,6 +506,11 @@ div.programming-programs div.list-group-item {
   font-weight: 600;
   padding: 6px 0;
   border-left: 1px solid #eee;
+  cursor: pointer;
+}
+
+.sched-cal-day-header:hover {
+  background: #e9ecef;
 }
 
 .sched-cal-body {
@@ -551,9 +556,15 @@ div.programming-programs div.list-group-item {
   cursor: pointer;
 }
 
+/*
+ * Inset far enough on the left that the band behind stays a real click target
+ * for editing its day-part or block. At a narrower inset the slots tile the
+ * column so completely that the band is unreachable in practice, and the slot
+ * chips end up reading as the bands themselves.
+ */
 .sched-cal-slot {
   position: absolute;
-  left: 6%;
+  left: 16%;
   right: 2%;
   overflow: hidden;
   white-space: nowrap;

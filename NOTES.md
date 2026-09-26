@@ -146,13 +146,23 @@ for the full spec, stages and acceptance tests.
       with day-part/block segments as background bands and slots drawn on
       top as inset chips, matching the spec's "day-parts as background
       bands, blocks as coloured regions, slots drawn inside by their times."
-      Clicking a slot opens the existing Time Slots editor unchanged;
-      clicking a band switches to the Day-Parts or Blocks tab and scrolls to,
-      and briefly highlights, that exact card - reusing the existing inline
-      card editors rather than building a second one. Blocks still never own
-      slots: `channel-config.js` reads `channel.scheduleBackup.slots` and
+      Three click targets, each opening what it names: a slot chip opens the
+      Time Slots editor scoped to that slot, a day heading opens it scoped to
+      that day, and the band strip down the left of each column switches to
+      the Day-Parts or Blocks tab and scrolls to, and briefly highlights, that
+      exact card - reusing the existing inline card editors rather than
+      building a second one. Blocks still never own slots:
+      `channel-config.js` reads `channel.scheduleBackup.slots` and
       `channel.dayParts`/`channel.blocks` independently to build the
       calendar; neither was taught about the other's shape.
+
+      The slot chips are inset 16% for a reason worth keeping: at the 6% they
+      started at, they tiled the column so completely that the band behind
+      them was a ~5px sliver, and in practice unreachable - the bands were
+      only ever clicked during development by calling the handler directly.
+      Anyone using the tab read the chips *as* the bands and reported them as
+      such. The wider inset makes the band a real target and, incidentally,
+      is what finally makes "day-parts as background bands" legible at all.
 
       The one new core function, `dayParts.weeklySegments(channel,
       referenceInstant)` in `src/day-parts.js`, replaces the ad-hoc
@@ -182,16 +192,33 @@ for the full spec, stages and acceptance tests.
       block's window" (spec) is a new "Edit shows in this window" button on
       each block's card in the Blocks tab, not a calendar click of its own -
       clicking a block edits *the block* (name/mix/airings); editing what it
-      airs is a distinct, explicit action from there. It opens the same
-      `time-slots-schedule-editor` dialog through a new optional
-      `windowBlock` parameter on `startDialog`; the editor's existing
-      free-text `slotFilter` cannot express a time range, so a second,
-      independent predicate (`slotInWindow`) ANDs with it, and a banner names
-      the block with a "show all slots" link that drops just that predicate,
-      leaving any typed text search in place. On a daily (not weekly)
-      schedule a slot has no day of its own, so it matches if *any* day the
-      block airs on would place that time of day inside its window, rather
-      than requiring an exact day match.
+      airs is a distinct, explicit action from there.
+
+      That button, and the calendar's own clicks, all open
+      `time-slots-schedule-editor` with a **slot scope** - an optional
+      `slotScope` argument to `startDialog`, one of
+      `{kind:'block', block}`, `{kind:'day', calendarDay}` or
+      `{kind:'slot', time}`. A scope narrows the list on what a slot *is*;
+      the search box narrows it on what a slot *reads as*; the two are
+      independent predicates that both apply, and the banner's "show all
+      slots" drops only the scope, leaving typed text alone.
+
+      **The scope exists because seeding the search box instead is wrong, and
+      not subtly.** The first version of the calendar's day click set
+      `slotFilter` to "Mon", which looked right until you notice
+      `slotSearchText` matches the show name as well as the day label: on
+      channel 1 that also selects Pokémon, Yu-Gi-Oh! Duel **Mon**sters and My
+      Gym Partner's a **Mon**key, from all seven days, and "Fri" selects
+      Foster's Home for Imaginary **Fri**ends. Scoping by day index has no
+      such failure mode, and it keeps Monday's *own* Pokémon slot - which a
+      cleverer text match would have had to special-case back in.
+
+      A slot scope keys on `slot.time` rather than the object, because the
+      editor works on its own deep copy of the backup and times are unique
+      across a schedule (`refreshSlots` flags duplicates). On a daily (not
+      weekly) schedule a slot has no day of its own: a day scope therefore
+      does not restrict, and a block scope matches if *any* day the block
+      airs on would place that time of day inside its window.
 
       Deliberately kept out of this stage, per the plan reported and agreed
       before building: no printable or exportable (iCal) view - on-screen
@@ -512,7 +539,8 @@ Day-parts and blocks count **calendar** days: an airing's `days` are 0 (Sunday)
 to 6, and `day-parts.js` resolves against `Date#getDay`. So the same Saturday
 is slot day 2 and calendar day 6.
 
-`src/slot-week.js` is the one place that knows the offset, and all three
+`src/slot-week.js` is the one place that knows the offset -
+`calendarDayOf(slotDay)` and `calendarWeekMs(slotTime)` - and all three
 day-name copies now read their labels from its `DAY_NAMES`. Anything drawing
 slots on a Sunday-first calendar, or testing a slot's time against an airing
 span, goes through it.
