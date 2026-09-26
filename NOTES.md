@@ -356,7 +356,9 @@ rather than copying the layout of other projects.
 - [ ] Public channel sharing without exposing an IP
 - [ ] Easier version updates
 - [ ] Fix random crashes during streaming
-- [ ] Fix time slots breaking across daylight savings
+- [x] Fix time slots breaking across daylight savings (fixed in 8d72c52 -
+      each slot occurrence now resolves its own offset instead of one offset
+      covering the whole schedule)
 - [ ] Per-channel timezone. Slots, day-parts and blocks all read the *host
       machine's* local clock (`new Date(instant)`'s own fields and
       `getTimezoneOffset()`, in `time-slots-service.js` and `day-parts.js`
@@ -364,6 +366,57 @@ rather than copying the layout of other projects.
       Syndicast ever gets users, this is what would let someone in London run
       a London channel on a server anywhere.
 - [ ] Keep a safer version of editing the ffmpeg path in the UI
+
+## 1.0 release
+
+1.0 is a solid foundation for building real channels on - slowly, starting
+around Halloween 2026. **The must list below sets the date, not the other way
+round:** 1.0 ships once everything on it is done, whenever that turns out to
+land relative to Halloween. Moving viewers off Tunarr happens after that, one
+channel at a time, each only once it is ready - 1.0 is a foundation, not a
+cutover.
+
+**Rule for everything built after 1.0: new features must be additive to saved
+channels.** A channel built before a feature lands keeps working unchanged
+and never has to be rebuilt. Stage 5 already follows this - every transition
+sequence defaults to empty, so a channel with none configured just plays
+commercials through its breaks (see [docs/blocks-spec.md](docs/blocks-spec.md)'s
+Stage 5). Stage 6 and per-position stored progress (see Known issues below)
+don't exist yet and have to be designed to the same rule.
+
+Must-haves, each tagged with the model doing the work:
+
+- [ ] Buffering, tested with three streams at once and Tunarr stopped
+      (manual test; Opus 5.5 investigates and fixes if it turns out not to be
+      Tunarr). See the Known issues entry below.
+- [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
+      "Fix very short items repeating or being skipped next to Flex" under
+      Media handling above, and Stage 4 in
+      [docs/blocks-spec.md](docs/blocks-spec.md).
+- [ ] Verify slots, day-parts, blocks and the guide through the Nov 1, 2026
+      fall-back night (Opus 5.5). Slots' own DST handling is the ticked
+      Infrastructure line above; day-parts and blocks have their own DST
+      option (blocks-spec.md's Decisions table and Stage 1 acceptance table).
+      This confirms all three, and the guide built from them, against the
+      real transition instead of a simulated clock.
+- [ ] Random crashes during streaming, caught by a 48-hour soak and fixed if
+      seen (Opus 5.5). See the Infrastructure roadmap line above and the
+      Model guide below.
+- [ ] Build indicator in the UI (Sonnet 5). See "A long-running server keeps
+      serving the build it started with" under Known issues below.
+- [ ] Livestreaming straight from the UI.
+- [ ] A live install separate from dev, where real channels get built: own
+      folder and data folder, auto-start after reboot, a port Windows won't
+      reserve, logs to files, daily backups tested by one restore, and a
+      written routine for updating it to a new release (Sonnet 5). See the
+      "Easier version updates" line under Infrastructure above.
+- [ ] Release: version 0.1.0 to 1.0.0, README current, merge blocks into
+      main, tag v1.0.0 (Sonnet 5).
+
+After 1.0, in order: Stage 5 transitions
+([docs/blocks-spec.md](docs/blocks-spec.md)), then "Public channel sharing
+without exposing an IP" under Infrastructure above. Everything else unticked
+stays in the roadmap as it is.
 
 ## Known issues / future work
 
@@ -425,10 +478,10 @@ net start winnat
 ```
 
 It can reclaim the range again later, so this may need repeating. 18080,
-19000, 17000, 8123 and 9500 were all free when 18000 was not, and development
-moved to 18080. `.claude/launch.json` and the README still say 18000
-deliberately, since the reservation is transient. Confirm with a bind test
-rather than assuming:
+19000, 17000, 8123 and 9500 were all free when 18000 was not; development
+moved to 18080 for a while and has since moved back to 18000.
+`.claude/launch.json` and the README still say 18000 deliberately, since the
+reservation is transient. Confirm with a bind test rather than assuming:
 
 ```js
 require('net').createServer().listen(18000, '0.0.0.0')
@@ -722,6 +775,25 @@ is correctly ordered only because the DAO now sorts before it returns. If
 someone ever removes that DAO sort believing the endpoint sorts for itself, the
 ordering silently breaks again.
 
+### Heavy buffering during playback, undiagnosed
+
+Happens on real channels. Tunarr runs on the same PC and is the leading
+suspect, but unconfirmed - nothing has isolated it from Syndicast's own
+streaming path yet.
+
+Each viewer connection spawns its own ffmpeg process, not a shared one:
+`concat()` in `src/video.js`, behind `/video` and `/radio`, spawns one ffmpeg
+process per connection to run the concat demuxer, and that process pulls its
+segments back from this same server's `/stream` route, where `PlexPlayer` and
+`OfflinePlayer` (`src/plex-player.js`, `src/offline-player.js`) each spawn a
+further ffmpeg process per program or filler item played into it. So three
+concurrent viewers means at least three independent sets of ffmpeg processes
+competing for the same CPU/GPU on one machine - read from the source, not yet
+measured under load.
+
+Planned test: one stream, then three at once, both with Tunarr stopped,
+noting for each stall whether it lands mid-episode or at a changeover.
+
 ## Testing notes
 
 ### `npm test` runs the blocks suite
@@ -732,7 +804,7 @@ ordering silently breaks again.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (96
+runs every file in the directory and prints one combined pass/fail count (98
 checks as of the Schedule tab). Eight files:
 
 - `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
@@ -878,6 +950,10 @@ acceptance suite's weight rows already cover.
 
 Which model to hand a piece of work to. This is a cost and quality split, not a
 statement that one model cannot do the other's job.
+
+**Opus 5.5 is now used wherever this guide says Opus 5.** The split and the
+reasoning below are unchanged; only the specific model behind the "Opus" half
+moved forward a version.
 
 ### The default split: investigate on Opus 5, implement on Sonnet 5
 
