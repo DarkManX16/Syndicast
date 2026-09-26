@@ -1,3 +1,4 @@
+const dayParts = require('../../src/day-parts');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) {
     const DAY = 24*60*60*1000;
@@ -30,6 +31,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 scope.seasonGroup = [];
                 scope.seasonDayList = [];
                 scope.slotFilter = "";
+                scope.windowBlock = null;
                 scope.schedule = {
                     period : DAY,
                     lateness : 0,
@@ -140,14 +142,51 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 return ( name + " " + scope.displayTime(slot.time) ).toLowerCase();
             }
 
+            /*
+             * Blocks never own slots (docs/blocks-spec.md, Stage 3) - "editing a
+             * block's shows" is this same text filter, just pre-narrowed to the
+             * block's own window instead of typed text. A slot has no day of its
+             * own outside a weekly schedule, so on a daily schedule a slot
+             * matches if ANY day the airing covers would place that time of day
+             * inside it - the slot recurs every day regardless of which days the
+             * block airs on.
+             */
+            function slotInWindow(slot) {
+                if (scope.windowBlock === null) {
+                    return true;
+                }
+                let now = Date.now();
+                let weekly = scope.isWeekly();
+                let airings = scope.windowBlock.airings || [];
+                for (let i = 0; i < airings.length; i++) {
+                    let spans = dayParts.airingSpans(airings[i], now);
+                    for (let j = 0; j < spans.length; j++) {
+                        if (weekly) {
+                            if (dayParts.spanCovers(spans[j], slot.time)) {
+                                return true;
+                            }
+                        } else {
+                            for (let day = 0; day < 7; day++) {
+                                if (dayParts.spanCovers(spans[j], day * DAY + slot.time)) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
             function applyFilter() {
                 let terms = (scope.slotFilter || "").toLowerCase().split(/\s+/)
                     .filter( (x) => x !== "" );
-                if (terms.length === 0) {
-                    scope.visibleSlots = scope.schedule.slots;
-                    return;
-                }
                 scope.visibleSlots = scope.schedule.slots.filter( (s) => {
+                    if (! slotInWindow(s)) {
+                        return false;
+                    }
+                    if (terms.length === 0) {
+                        return true;
+                    }
                     let text = slotSearchText(s);
                     return terms.every( (term) => text.indexOf(term) !== -1 );
                 } );
@@ -155,11 +194,24 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             scope.filterChanged = applyFilter;
 
             scope.isFiltered = () => {
-                return (scope.slotFilter || "").trim() !== "";
+                return ( (scope.slotFilter || "").trim() !== "" ) || scope.hasWindow();
             }
 
             scope.clearFilter = () => {
                 scope.slotFilter = "";
+                applyFilter();
+            }
+
+            scope.hasWindow = () => {
+                return scope.windowBlock !== null;
+            }
+
+            scope.windowLabel = () => {
+                return (scope.windowBlock !== null) ? (scope.windowBlock.name || '(unnamed block)') : '';
+            }
+
+            scope.clearWindow = () => {
+                scope.windowBlock = null;
                 applyFilter();
             }
 
@@ -291,12 +343,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
 
             
-            let startDialog = (programs, limit, backup, instant) => {
+            let startDialog = (programs, limit, backup, instant, windowBlock) => {
                 scope.limit = limit;
                 scope.programs = programs;
 
                 reset();
-                
+                scope.windowBlock = windowBlock || null;
 
 
                 programs.forEach( (p) => {

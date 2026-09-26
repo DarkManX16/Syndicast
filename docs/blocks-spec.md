@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stage 2 core built; stage 2 UI next
+Syndicast · `blocks` branch · Status: stages 1-3 built; stage 4 (short-clip bug) next
 
 ## Summary
 

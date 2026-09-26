@@ -475,3 +475,108 @@ div.programming-programs div.list-group-item {
   padding-top: 6px;
   margin-top: 6px;
 }
+
+/*
+ * The Schedule tab's calendar (docs/blocks-spec.md, Stage 3). Day columns are
+ * a fixed height standing for 24 hours, with bands/slots positioned inside
+ * them by percentage top/height - the same percentage-of-a-fixed-track
+ * technique the day-part strip above already uses, just vertical instead of
+ * horizontal and with a slot layer on top of the band layer.
+ */
+.sched-cal {
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sched-cal-header {
+  display: flex;
+  border-bottom: 1px solid #dee2e6;
+  background: #f8f9fa;
+}
+
+.sched-cal-gutter {
+  flex: 0 0 3.6rem;
+}
+
+.sched-cal-day-header {
+  flex: 1 1 0;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 0;
+  border-left: 1px solid #eee;
+}
+
+.sched-cal-body {
+  display: flex;
+  max-height: 640px;
+  overflow-y: auto;
+}
+
+.sched-cal-body .sched-cal-gutter {
+  background: #f8f9fa;
+}
+
+.sched-cal-hour-label {
+  height: 40px;
+  font-size: 0.65rem;
+  color: #888;
+  text-align: right;
+  padding-right: 6px;
+  box-sizing: border-box;
+  border-top: 1px solid #eee;
+}
+
+.sched-cal-day {
+  position: relative;
+  flex: 1 1 0;
+  height: 960px;
+  border-left: 1px solid #eee;
+  background-image: repeating-linear-gradient(to bottom, #f2f2f2 0, #f2f2f2 1px, transparent 1px, transparent 40px);
+}
+
+.sched-cal-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.65rem;
+  color: #fff;
+  text-shadow: 0 0 2px rgba(0,0,0,.6);
+  padding: 1px 0 0 3px;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(255,255,255,.4);
+  cursor: pointer;
+}
+
+.sched-cal-slot {
+  position: absolute;
+  left: 6%;
+  right: 2%;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  color: #222;
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(0,0,0,.15);
+  border-left: 3px solid #495057;
+  border-radius: 2px;
+  padding: 1px 3px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0,0,0,.15);
+  cursor: pointer;
+  z-index: 2;
+}
+
+/* A brief pulse on the card a calendar click jumped to, so landing on the
+   right one is obvious even when it wasn't already in view. */
+.sched-cal-highlight {
+  animation: schedCalPulse 1.6s ease-out;
+}
+
+@keyframes schedCalPulse {
+  0%   { background-color: #fff3cd; }
+  100% { background-color: transparent; }
+}

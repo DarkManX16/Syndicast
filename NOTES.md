@@ -138,11 +138,94 @@ for the full spec, stages and acceptance tests.
       confirmed the strip colors and labels them correctly, and confirmed
       Save is blocked while an overlap exists and succeeds once it's fixed.
 
+- [x] Block schedule manager - a weekly calendar view of day-parts, blocks and
+      slots together
+
+      Stage 3 ships: the "Schedule" tab in the channel editor, between Blocks
+      and EPG. A vertical week grid (Sun-Sat columns, hours top to bottom)
+      with day-part/block segments as background bands and slots drawn on
+      top as inset chips, matching the spec's "day-parts as background
+      bands, blocks as coloured regions, slots drawn inside by their times."
+      Clicking a slot opens the existing Time Slots editor unchanged;
+      clicking a band switches to the Day-Parts or Blocks tab and scrolls to,
+      and briefly highlights, that exact card - reusing the existing inline
+      card editors rather than building a second one. Blocks still never own
+      slots: `channel-config.js` reads `channel.scheduleBackup.slots` and
+      `channel.dayParts`/`channel.blocks` independently to build the
+      calendar; neither was taught about the other's shape.
+
+      The one new core function, `dayParts.weeklySegments(channel,
+      referenceInstant)` in `src/day-parts.js`, replaces the ad-hoc
+      15-minute-sampling loop `rebuildWeeklyStrip` (the Day-Parts tab's
+      existing preview strip) had inlined since stage 2. Both the strip and
+      the new calendar now call this one function, so they agree on what
+      covers the week by construction instead of by two samplings kept in
+      sync by hand. It samples `resolveContext` once a minute (10,080 calls a
+      week) rather than re-deriving block/day-part precedence analytically -
+      every start and airing boundary is entered as an hour/minute pair, so a
+      minute is already finer than any boundary that can exist, and this way
+      the function never grows a second copy of resolveContext's own
+      precedence and tie-break rules to keep in sync with. Measured at
+      17.65ms per call against the real 7-day-part/3-block channel in the dev
+      data folder - cheap enough to recompute on every tab switch or edit,
+      same as the strip always has. `airingSpans` and `spanCovers` are now
+      exported too, for the block-window slot filter below. Verified in
+      `test/blocks-schedule-view.js` against a hand-derived Saturday timeline
+      (a day-part carried over from Friday, a block overriding it, the block
+      handing back to a day-part exactly at its own boundary, a block nested
+      inside a later day-part, that day-part resuming, and the
+      shiftWithDst-driven January/July difference on the last boundary) plus
+      the Thursday-has-no-Toonami row the spec's own stage 2 table exists to
+      prove.
+
+      "Editing a block's shows goes through the slot filter scoped to the
+      block's window" (spec) is a new "Edit shows in this window" button on
+      each block's card in the Blocks tab, not a calendar click of its own -
+      clicking a block edits *the block* (name/mix/airings); editing what it
+      airs is a distinct, explicit action from there. It opens the same
+      `time-slots-schedule-editor` dialog through a new optional
+      `windowBlock` parameter on `startDialog`; the editor's existing
+      free-text `slotFilter` cannot express a time range, so a second,
+      independent predicate (`slotInWindow`) ANDs with it, and a banner names
+      the block with a "show all slots" link that drops just that predicate,
+      leaving any typed text search in place. On a daily (not weekly)
+      schedule a slot has no day of its own, so it matches if *any* day the
+      block airs on would place that time of day inside its window, rather
+      than requiring an exact day match.
+
+      Deliberately kept out of this stage, per the plan reported and agreed
+      before building: no printable or exportable (iCal) view - on-screen
+      only, since the spec's data model has no dated events to export
+      (day-parts and blocks are pure day-of-week/time-of-day rules, and
+      one-off airings are still deferred - see the open questions below), so
+      every week looks identical and there was nothing date-specific to
+      export anyway. Also left alone: `channels.js`'s `selectChannel` still
+      fetches the full programs array before opening the editor at all, even
+      to look at this tab - the tab itself never reads `channel.programs`
+      (slot labels come from parsing `showId`, e.g. `"tv." + showTitle`, so
+      no show lookup is needed), but the editor-open path wasn't changed to
+      take advantage of that this time.
+
+      Performance was investigated up front rather than assumed: channel 1's
+      real file is 27MB, of which `programs` is 99.9% (27,143,345 of
+      27,169,557 bytes) - `dayParts`, `blocks` and the 336-slot
+      `scheduleBackup` together are 26KB. The calendar reads only the
+      latter, so channel 1's 39,999 programs have no bearing on it. Verified
+      live against a copy of the real dev data folder (never the live one -
+      another session had it open) rather than assumed: the tab, its
+      band/slot click-through to both tabs, and the block-window filter all
+      behave correctly on channel 1 at full size, with no console errors.
+
+      Not exercised live: a channel on a *daily* (not weekly) Time Slots
+      period with day-parts or blocks configured - none of the four dev
+      channels combine those, so `dailySlotLayout`'s column-repeats-every-day
+      path and the daily branch of `slotInWindow` have only been checked by
+      reading them, not by a real render.
+
 - [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
       and per block
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL)
 - [ ] Midrolls
-- [ ] Block schedule manager
 
 ### Scheduling
 
@@ -530,8 +613,8 @@ ordering silently breaks again.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (86
-checks as of the config cache fix). Seven files:
+runs every file in the directory and prints one combined pass/fail count (92
+checks as of the Schedule tab). Eight files:
 
 - `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
   [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance tables, transcribed
@@ -555,6 +638,12 @@ checks as of the config cache fix). Seven files:
   a guide build's program list is a windowed `{start, program}` array it
   builds itself, not the cyclic `channel.programs` the other three files
   drive through `createLineup`.
+
+- `blocks-schedule-view.js` - `dayParts.weeklySegments`, the function the
+  Schedule tab and the Day-Parts strip both draw from: a hand-derived Saturday
+  timeline covering every kind of day-part/block handoff, the
+  Thursday-has-no-Toonami row, and the January/July daylight-saving
+  difference.
 
 - `startTime-rotation.js` - that the editor's load-time rotation of
   `channel.programs` and its rewrite of `startTime` keep cancelling, so a

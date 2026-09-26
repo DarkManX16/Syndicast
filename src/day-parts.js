@@ -326,6 +326,68 @@ function resolveContext(channel, instant) {
 }
 
 /*
+ * Every day-part/block segment covering a calendar week, for a UI that draws
+ * them rather than resolves filler from them - the channel editor's weekly
+ * overview and the Block Schedule Manager both want "what covers this
+ * stretch, and when" as drawable spans, not one instant's answer. Returns one
+ * array per day (0=Sunday..6=Saturday per DP_STRIP_DAY_NAMES's own order), each
+ * holding { context, startMs, endMs } segments covering the full 24 hours in
+ * order - context is whatever resolveContext returned, including null for a
+ * stretch where the channel's own Flex applies, so a caller can tell "nothing
+ * time-scoped here" from "no data yet" rather than the two looking the same.
+ *
+ * Sampled once a minute rather than solved analytically from the chain and
+ * airing spans directly: every start and airing boundary in the editor is
+ * entered as an hour/minute pair, so a minute is already finer than any
+ * boundary that can exist, and resolveContext is the one function carrying
+ * the block-vs-day-part precedence and tie-break rules - sampling through it
+ * here means this never grows a second copy of those rules to keep in sync
+ * with resolveContext's own. 10,080 calls a week, on channels with at most a
+ * handful of day-parts and blocks, is not a cost worth avoiding for that.
+ *
+ * referenceInstant anchors which calendar week is sampled, the same role
+ * `now` plays in the channel editor's existing weekly overview - tests pass a
+ * fixed one for a deterministic answer and to reach a specific season for
+ * shiftWithDst; real callers default to the current instant, which samples
+ * "the current week" exactly as that overview already does.
+ */
+const SEGMENT_STEP_MIN = 1;
+
+function weeklySegments(channel, referenceInstant) {
+    let now = new Date( (typeof referenceInstant === 'number') ? referenceInstant : Date.now() );
+    let sunday = now.getDate() - now.getDay();
+    let stepsPerDay = (24 * 60) / SEGMENT_STEP_MIN;
+    let overlay = hasOverlay(channel);
+    let days = [];
+    for (let d = 0; d < 7; d++) {
+        let segments = [];
+        let current = null;
+        for (let s = 0; s <= stepsPerDay; s++) {
+            let ended = (s >= stepsPerDay);
+            let context = null;
+            if (! ended) {
+                let instant = new Date( now.getFullYear(), now.getMonth(), sunday + d, 0, s * SEGMENT_STEP_MIN ).getTime();
+                context = overlay ? resolveContext(channel, instant) : null;
+            }
+            if ( (current !== null) && (current.context === context) && ! ended ) {
+                current.endStep = s + 1;
+            } else {
+                if (current !== null) {
+                    segments.push( {
+                        context: current.context,
+                        startMs: current.startStep * SEGMENT_STEP_MIN * MINUTE,
+                        endMs: current.endStep * SEGMENT_STEP_MIN * MINUTE,
+                    } );
+                }
+                current = ended ? null : { context: context, startStep: s, endStep: s + 1 };
+            }
+        }
+        days.push(segments);
+    }
+    return days;
+}
+
+/*
  * The first real program after the break being filled, and the wall-clock
  * instant it starts at.
  *
@@ -500,6 +562,9 @@ module.exports = {
     resolveContext: resolveContext,
     resolveBreakContext: resolveBreakContext,
     resolveCollections: resolveCollections,
+    weeklySegments: weeklySegments,
+    airingSpans: airingSpans,
+    spanCovers: spanCovers,
     allFillerCollections: allFillerCollections,
     guideNameFor: guideNameFor,
     effectiveStartTime: effectiveStartTime,

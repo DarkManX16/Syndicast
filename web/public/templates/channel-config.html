@@ -722,7 +722,7 @@
                         <hr></hr>
                     </div>
 
-                    <div class="dp-daypart-card" ng-repeat="dayPart in channel.dayParts">
+                    <div class="dp-daypart-card" id="daypart-card-{{$index}}" ng-class="{'sched-cal-highlight': highlightCard === ('dp-' + $index)}" ng-repeat="dayPart in channel.dayParts">
                         <div class="form-row">
                             <div class="form-group col-md-6">
                                 <label class="small">Name</label>
@@ -812,7 +812,7 @@
                         </p>
                     </div>
 
-                    <div class="dp-daypart-card" ng-repeat="block in channel.blocks">
+                    <div class="dp-daypart-card" id="block-card-{{$index}}" ng-class="{'sched-cal-highlight': highlightCard === ('bl-' + $index)}" ng-repeat="block in channel.blocks">
                         <div class="form-row">
                             <div class="form-group col-md-6">
                                 <label class="small">Name</label>
@@ -830,7 +830,13 @@
                             </div>
                         </div>
 
-                        <h6>Mix</h6>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="onEditBlockShows(block)"
+                            ng-disabled="hasNoTimeSlots()"
+                            title="{{hasNoTimeSlots() ? 'Set up Time Slots first, in the Programming tab' : 'Open the slot editor, showing only slots inside this block\'s window'}}">
+                            Edit shows in this window
+                        </button>
+
+                        <h6 style="margin-top: 10px;">Mix</h6>
                         <filler-mix-editor mix="block.fillerCollections" filler-options="fillerOptions"></filler-mix-editor>
 
                         <h6 style="margin-top: 10px;">Airings</h6>
@@ -896,6 +902,55 @@
                     </div>
 
                     <button type="button" class="btn btn-sm btn-warning" ng-click="addBlock()">+ Add block</button>
+                </div>
+
+                <!--
+                    ============= TAB: SCHEDULE =========================
+                                                                             -->
+                <div class="modal-body" ng-if="tab == 'schedule'">
+                    <div class='text-center text-warning' ng-show="channel.onDemand.isOnDemand">
+                        <i class='fas fa-exclamation-triangle'></i> This channel is on-demand; day-parts and blocks don&apos;t apply to it.
+                    </div>
+
+                    <p class="text-center text-muted small">
+                        Click a coloured region to edit that day-part or block. Click a slot to open the Time Slots editor.
+                    </p>
+
+                    <div ng-show="!hasScheduleToShow()">
+                        <p class="text-center text-info">
+                            This channel has no day-parts, blocks, or time slots yet &mdash; there is nothing to show here.
+                        </p>
+                    </div>
+
+                    <div class="sched-cal" ng-show="hasScheduleToShow()">
+                        <div class="sched-cal-header">
+                            <div class="sched-cal-gutter"></div>
+                            <div class="sched-cal-day-header" ng-repeat="day in scheduleCalendarDays">{{day.name}}</div>
+                        </div>
+                        <div class="sched-cal-body">
+                            <div class="sched-cal-gutter">
+                                <div class="sched-cal-hour-label" ng-repeat="h in scheduleHourLabels">{{h}}</div>
+                            </div>
+                            <div class="sched-cal-day" ng-repeat="day in scheduleCalendarDays">
+                                <div class="sched-cal-band {{band.colorClass}}"
+                                     ng-repeat="band in day.bands"
+                                     ng-style="{top: band.topPct + '%', height: band.heightPct + '%'}"
+                                     ng-click="onCalendarBandClick(band)"
+                                     title="{{band.title}}">{{band.label}}</div>
+                                <div class="sched-cal-slot"
+                                     ng-repeat="slot in day.slots"
+                                     ng-style="{top: slot.topPct + '%', height: slot.heightPct + '%'}"
+                                     ng-click="onCalendarSlotClick()"
+                                     title="{{slot.title}}">{{slot.label}}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin: 10px 0;" ng-show="channelHasOverlay()">
+                        <span ng-repeat="entry in scheduleLegendEntries" class="small" style="margin-right: 12px; display: inline-block;">
+                            <span class="dp-legend-swatch {{entry.colorClass}}"></span>{{entry.name}}
+                        </span>
+                    </div>
                 </div>
 
                 <!--

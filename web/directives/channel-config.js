@@ -324,6 +324,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 { name: "Flex", id: "flex" },
                 { name: "Day-Parts", id: "dayparts" },
                 { name: "Blocks", id: "blocks" },
+                { name: "Schedule", id: "schedule" },
                 { name: "EPG", id: "epg" },
                 { name: "FFmpeg", id: "ffmpeg" },
                 { name: "On-demand", id: "ondemand" },
@@ -332,6 +333,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.tab = tab;
                 if (tab === 'dayparts') {
                     scope.rebuildWeeklyStrip();
+                }
+                if (tab === 'schedule') {
+                    scope.rebuildScheduleCalendar();
                 }
             }
 
@@ -1812,7 +1816,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             // CSS classes (dp-color-0..7, bl-color-0..7) rather than inline
             // colors so the strip reads consistently with the rest of the
             // UI's theming.
-            const DP_STRIP_STEP_MIN = 15;
             const DP_STRIP_COLOR_COUNT = 8;
             const BL_STRIP_COLOR_COUNT = 8;
             const DP_STRIP_DAY_NAMES = [ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" ];
@@ -1840,7 +1843,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
 
             scope.rebuildWeeklyStrip = () => {
-                let stepsPerDay = (24*60) / DP_STRIP_STEP_MIN;
                 let rows = DP_STRIP_DAY_NAMES.map( (name) => { return { name: name, segments: [] }; } );
 
                 rebuildScheduleLegend();
@@ -1850,48 +1852,30 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
 
-                // Sampled across the actual current calendar week (built from
-                // local calendar fields, not epoch arithmetic) so a week
-                // straddling a daylight-saving transition still maps each
-                // sample to the wall-clock time it names.
-                let now = new Date();
-                let sunday = now.getDate() - now.getDay();
+                // weeklySegments (src/day-parts.js) is the same function the
+                // Schedule tab's calendar draws from, so the strip here and
+                // that tab always agree on what covers the week - one sampling,
+                // not two kept in sync by hand. It defaults to sampling the
+                // current calendar week, which is what this strip has always
+                // shown.
+                let weekDays = dayParts.weeklySegments(scope.channel);
 
                 for (let d = 0; d < 7; d++) {
-                    let segments = [];
-                    let current = null;
-                    for (let s = 0; s <= stepsPerDay; s++) {
-                        let info = null;
-                        if (s < stepsPerDay) {
-                            let instant = new Date( now.getFullYear(), now.getMonth(), sunday + d, 0, s * DP_STRIP_STEP_MIN ).getTime();
-                            info = classifyContext( dayParts.resolveContext(scope.channel, instant) );
-                        }
-                        let key = info ? (info.kind + info.index) : 'none';
-                        if ( (current !== null) && (current.key === key) && (s < stepsPerDay) ) {
-                            current.endStep = s + 1;
-                        } else {
-                            if (current !== null) {
-                                segments.push(current);
-                            }
-                            current = (s < stepsPerDay) ? { key: key, startStep: s, endStep: s + 1, info: info } : null;
-                        }
-                    }
-                    rows[d].segments = segments.map( (seg) => {
-                        let name = seg.info ? seg.info.name : '';
-                        let startMs = seg.startStep * DP_STRIP_STEP_MIN * 60 * 1000;
-                        let endMs = seg.endStep * DP_STRIP_STEP_MIN * 60 * 1000;
+                    rows[d].segments = weekDays[d].map( (seg) => {
+                        let info = classifyContext(seg.context);
+                        let name = info ? info.name : '';
                         let colorClass = 'dp-color-none';
-                        if (seg.info && seg.info.kind === 'dp') {
-                            colorClass = 'dp-color-' + (seg.info.index % DP_STRIP_COLOR_COUNT);
-                        } else if (seg.info && seg.info.kind === 'bl') {
-                            colorClass = 'bl-color-' + (seg.info.index % BL_STRIP_COLOR_COUNT);
+                        if (info && info.kind === 'dp') {
+                            colorClass = 'dp-color-' + (info.index % DP_STRIP_COLOR_COUNT);
+                        } else if (info && info.kind === 'bl') {
+                            colorClass = 'bl-color-' + (info.index % BL_STRIP_COLOR_COUNT);
                         }
                         return {
-                            leftPct: (seg.startStep / stepsPerDay) * 100,
-                            widthPct: ( (seg.endStep - seg.startStep) / stepsPerDay) * 100,
+                            leftPct: (seg.startMs / dayParts.DAY) * 100,
+                            widthPct: ( (seg.endMs - seg.startMs) / dayParts.DAY ) * 100,
                             label: name,
                             colorClass: colorClass,
-                            title: (name || 'Nothing scheduled') + ': ' + clockString(startMs) + ' - ' + clockString(endMs),
+                            title: (name || 'Nothing scheduled') + ': ' + clockString(seg.startMs) + ' - ' + clockString(seg.endMs),
                         };
                     } );
                 }
@@ -1923,6 +1907,192 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 } ) );
                 scope.scheduleLegendEntries = entries;
             }
+
+            /*
+             * The Schedule tab: a calendar-style read of the same week the
+             * strip above summarises, with slots drawn inside it - Stage 3 of
+             * the blocks work (docs/blocks-spec.md). Blocks never own slots,
+             * so this reads channel.scheduleBackup.slots directly rather than
+             * through anything blocks-related. dayParts.weeklySegments is the
+             * one function shared with the strip above, so both agree on what
+             * covers the week by construction rather than by two separate
+             * samplings kept in sync by hand.
+             */
+            const CAL_DAY = 24*60*60*1000;
+            const CAL_WEEK = 7 * CAL_DAY;
+
+            scope.scheduleHourLabels = [];
+            for (let h = 0; h < 24; h++) {
+                scope.scheduleHourLabels.push( clockString(h * 60 * 60 * 1000) );
+            }
+
+            scope.scheduleCalendarDays = [];
+            scope.highlightCard = null;
+
+            // A slot's showId already carries its display name for the common
+            // cases (get-show-data.js builds it as "tv." + showTitle, and so
+            // on) - reading it here is what lets this tab avoid
+            // channel.programs entirely. That matters on a channel the size
+            // of a 39,999-program one: the schedule (day-parts, blocks,
+            // slots) is a few KB and the programs array is not, so this tab
+            // has no reason to wait on it.
+            function slotDisplayName(showId) {
+                if (typeof(showId) !== 'string') {
+                    return 'Unknown';
+                }
+                if (showId === 'flex.') {
+                    return 'Flex';
+                }
+                if (showId.indexOf('tv.') === 0) {
+                    return showId.substring(3);
+                }
+                if (showId.indexOf('audio.') === 0) {
+                    return showId.substring(6);
+                }
+                if (showId.indexOf('movie.') === 0) {
+                    return 'Movies';
+                }
+                if (showId.indexOf('redirect.') === 0) {
+                    return 'Redirect to channel ' + showId.substring(9);
+                }
+                if (showId.indexOf('custom.') === 0) {
+                    return 'Custom show';
+                }
+                return showId;
+            }
+
+            function slotBlock(slot, startMs, endMs) {
+                let name = slotDisplayName(slot.showId);
+                return {
+                    topPct: (startMs / CAL_DAY) * 100,
+                    heightPct: Math.max(0, endMs - startMs) / CAL_DAY * 100,
+                    label: name,
+                    title: name + ': starts ' + clockString(startMs),
+                };
+            }
+
+            // Slots partition time by construction - time-slots-service.js
+            // gives every slot a window running to the *next* slot's start,
+            // wrapping at the schedule's own period - so that is the window
+            // drawn here too, rather than inventing a separate notion of a
+            // slot's "length" that the scheduler itself doesn't have.
+            function weeklySlotLayout(sortedSlots) {
+                let byDay = [[], [], [], [], [], [], []];
+                for (let i = 0; i < sortedSlots.length; i++) {
+                    let slot = sortedSlots[i];
+                    let day = Math.floor(slot.time / CAL_DAY);
+                    let startOfDay = day * CAL_DAY;
+                    let nextTime = (i + 1 < sortedSlots.length) ? sortedSlots[i + 1].time : (sortedSlots[0].time + CAL_WEEK);
+                    let startMs = slot.time - startOfDay;
+                    // Clipped at midnight rather than drawn as a second sliver
+                    // on the next day - a viewer reading this to see what's on
+                    // needs the start time exact; the precise minute one
+                    // slot's window yields to the next matters far less.
+                    let endMs = Math.min(nextTime, startOfDay + CAL_DAY) - startOfDay;
+                    byDay[day].push( slotBlock(slot, startMs, endMs) );
+                }
+                return byDay;
+            }
+
+            function dailySlotLayout(sortedSlots) {
+                let blocks = [];
+                for (let i = 0; i < sortedSlots.length; i++) {
+                    let slot = sortedSlots[i];
+                    let nextTime = (i + 1 < sortedSlots.length) ? sortedSlots[i + 1].time : (sortedSlots[0].time + CAL_DAY);
+                    blocks.push( slotBlock(slot, slot.time, nextTime) );
+                }
+                // A daily schedule repeats the same slots every day, so every
+                // column shares this one computed layout by reference.
+                return [blocks, blocks, blocks, blocks, blocks, blocks, blocks];
+            }
+
+            scope.rebuildScheduleCalendar = () => {
+                rebuildScheduleLegend();
+                let weekBands = scope.channelHasOverlay() ? dayParts.weeklySegments(scope.channel) : null;
+
+                let backup = scope.channel.scheduleBackup;
+                let hasSlots = (backup != null) && Array.isArray(backup.slots) && (backup.slots.length > 0);
+                let sortedSlots = hasSlots ? backup.slots.slice().sort( (a, b) => a.time - b.time ) : [];
+                let weekly = hasSlots && (backup.period === dayParts.WEEK);
+                let daily = hasSlots && (backup.period === dayParts.DAY);
+                let slotsByDay = weekly ? weeklySlotLayout(sortedSlots) : (daily ? dailySlotLayout(sortedSlots) : null);
+
+                scope.scheduleCalendarDays = DP_STRIP_DAY_NAMES.map( (name, d) => {
+                    let bands = [];
+                    if (weekBands !== null) {
+                        bands = weekBands[d].map( (seg) => {
+                            let info = classifyContext(seg.context);
+                            let colorClass = 'dp-color-none';
+                            if (info && info.kind === 'dp') {
+                                colorClass = 'dp-color-' + (info.index % DP_STRIP_COLOR_COUNT);
+                            } else if (info && info.kind === 'bl') {
+                                colorClass = 'bl-color-' + (info.index % BL_STRIP_COLOR_COUNT);
+                            }
+                            return {
+                                topPct: (seg.startMs / CAL_DAY) * 100,
+                                heightPct: ( (seg.endMs - seg.startMs) / CAL_DAY ) * 100,
+                                label: info ? info.name : '',
+                                colorClass: colorClass,
+                                title: (info ? info.name : 'Nothing scheduled') + ': ' + clockString(seg.startMs) + ' - ' + clockString(seg.endMs),
+                                info: info,
+                            };
+                        } );
+                    }
+                    return { name: name, bands: bands, slots: slotsByDay ? slotsByDay[d] : [] };
+                } );
+            };
+
+            scope.hasScheduleToShow = () => {
+                return scope.channelHasOverlay() || ! scope.hasNoTimeSlots();
+            };
+
+            scope.onCalendarBandClick = (band) => {
+                if (! band.info) {
+                    return;
+                }
+                if (band.info.kind === 'dp') {
+                    scope.jumpToDayPart(band.info.index);
+                } else if (band.info.kind === 'bl') {
+                    scope.jumpToBlock(band.info.index);
+                }
+            };
+
+            scope.onCalendarSlotClick = () => {
+                scope.onTimeSlotsButtonClick();
+            };
+
+            function scrollToCard(elementId, highlightKey) {
+                scope.highlightCard = highlightKey;
+                $timeout( () => {
+                    let el = document.getElementById(elementId);
+                    if ( (el != null) && (typeof(el.scrollIntoView) === 'function') ) {
+                        el.scrollIntoView( { behavior: 'smooth', block: 'center' } );
+                    }
+                }, 0 );
+                $timeout( () => {
+                    if (scope.highlightCard === highlightKey) {
+                        scope.highlightCard = null;
+                    }
+                }, 1600 );
+            }
+
+            scope.jumpToDayPart = (index) => {
+                scope.setTab('dayparts');
+                scrollToCard('daypart-card-' + index, 'dp-' + index);
+            };
+
+            scope.jumpToBlock = (index) => {
+                scope.setTab('blocks');
+                scrollToCard('block-card-' + index, 'bl-' + index);
+            };
+
+            scope.onEditBlockShows = (block) => {
+                if (scope.hasNoTimeSlots()) {
+                    return;
+                }
+                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, block );
+            };
 
             function parseResolutionString(s) {
                 var i = s.indexOf('x');
