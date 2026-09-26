@@ -23,33 +23,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { helperFuncs, Suite, show, flex, MIN, HOUR } = require('./support');
-
-const ROOT = path.join(__dirname, '..');
-
-/*
- * Pulls one top-level function out of a source file by brace-matching from its
- * declaration, so this survives edits above or below it in the file.
- */
-function liftSource(file, name) {
-    const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
-    const decl = src.indexOf(`function ${name}(`);
-    if (decl === -1) {
-        throw new Error(`${file} no longer declares ${name}`);
-    }
-    let i = src.indexOf('{', decl);
-    let depth = 0;
-    for (; i < src.length; i++) {
-        if (src[i] === '{') depth++;
-        else if (src[i] === '}') {
-            depth--;
-            if (depth === 0) {
-                return src.slice(decl, i + 1);
-            }
-        }
-    }
-    throw new Error(`${file}'s ${name} has unbalanced braces`);
-}
+const { helperFuncs, Suite, show, flex, MIN, HOUR, liftSource } = require('./support');
 
 // The editor's two functions run against a `scope`; give them one.
 const editorSrc = [

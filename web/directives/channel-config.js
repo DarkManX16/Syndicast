@@ -1,4 +1,5 @@
 const dayParts = require('../../src/day-parts');
+const slotWeek = require('../../src/slot-week');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
     return {
@@ -1980,6 +1981,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let byDay = [[], [], [], [], [], [], []];
                 for (let i = 0; i < sortedSlots.length; i++) {
                     let slot = sortedSlots[i];
+                    // A slot's day counts from the epoch week (day 0 is a
+                    // Thursday); these columns are a calendar week. Reading one
+                    // as the other draws every slot three days out - see
+                    // src/slot-week.js.
                     let day = Math.floor(slot.time / CAL_DAY);
                     let startOfDay = day * CAL_DAY;
                     let nextTime = (i + 1 < sortedSlots.length) ? sortedSlots[i + 1].time : (sortedSlots[0].time + CAL_WEEK);
@@ -1989,7 +1994,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     // needs the start time exact; the precise minute one
                     // slot's window yields to the next matters far less.
                     let endMs = Math.min(nextTime, startOfDay + CAL_DAY) - startOfDay;
-                    byDay[day].push( slotBlock(slot, startMs, endMs) );
+                    byDay[ slotWeek.calendarDayOf(day) ].push( slotBlock(slot, startMs, endMs) );
                 }
                 return byDay;
             }

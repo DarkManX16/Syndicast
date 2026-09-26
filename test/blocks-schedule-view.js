@@ -15,7 +15,8 @@
  * than picked fresh, since that file already worked out which Saturdays land
  * correctly on either side of the transition.
  */
-const { dayParts, MIN, HOUR, DAY, at, mix, Suite } = require('./support');
+const { dayParts, MIN, HOUR, DAY, at, mix, Suite, liftSource } = require('./support');
+const slotWeek = require('../src/slot-week');
 
 const ccn = {
     number: 20, name: 'CCN',
@@ -128,6 +129,65 @@ module.exports = async function () {
         none.every( (segs) => (segs.length === 1) && (segs[0].context === null)
             && (segs[0].startMs === 0) && (segs[0].endMs === DAY) ),
         JSON.stringify(none.map(names)));
+
+    /*
+     * The epoch week against the calendar week.
+     *
+     * A weekly slot's time is ms into the *epoch* week, so its day 0 is a
+     * Thursday; day-parts and blocks count calendar days from Sunday. Reading
+     * one as the other shifts everything by three days, which is exactly what
+     * the Schedule tab did when it was first built - it drew Saturday's
+     * programming under Tuesday, and scoped "edit shows in this block" to the
+     * wrong days.
+     *
+     * localMsIntoPeriod is lifted out of time-slots-service.js rather than
+     * transcribed, because it is the function that decides what a slot's time
+     * *means*: a copy here that drifted from it would keep this passing while
+     * the real thing broke.
+     */
+    suite.log('-- epoch week vs calendar week --');
+
+    const runLocalMsIntoPeriod = new Function(
+        'schedule', 'MINUTE', 'instant',
+        liftSource('src/services/time-slots-service.js', 'localMsIntoPeriod')
+            + '\nreturn localMsIntoPeriod(instant);'
+    );
+
+    let mismatches = [];
+    // Two runs of a fortnight, each covering every weekday twice, one either
+    // side of the daylight-saving change. 9:20am keeps a shifted hour from
+    // rolling a sample into the previous day.
+    [ '2026-01-04', '2026-07-05' ].forEach( (startDate) => {
+        for (let i = 0; i < 14; i++) {
+            let d = new Date(startDate + 'T09:20:00');
+            d.setDate(d.getDate() + i);
+            let position = runLocalMsIntoPeriod({ period: 7 * DAY }, MIN, d.getTime());
+            let slotDay = Math.floor(position / DAY);
+            if (slotWeek.calendarDayOf(slotDay) !== d.getDay()) {
+                mismatches.push(`${d.toDateString()}: slot day ${slotDay} -> `
+                    + `${slotWeek.calendarDayOf(slotDay)}, really ${d.getDay()}`);
+            }
+        }
+    } );
+    suite.check('A slot time\'s day converts to the calendar day it falls on',
+        mismatches.length === 0, mismatches.join(' | '));
+
+    suite.check('Converting a slot time leaves its time of day alone',
+        [0, 90 * MIN, 3 * DAY + 14 * HOUR + 30 * MIN, 6 * DAY + 23 * HOUR]
+            .every( (t) => slotWeek.calendarWeekMs(t) % DAY === t % DAY ));
+
+    // The failure this cost in practice: CCN's midnight run airs Saturday
+    // 00:30-03:00, and the slots it should reach are Saturday's - slot day 2,
+    // not slot day 6, which is a Wednesday.
+    const midnightRun = { days: [6], start: 30 * MIN, end: 3 * HOUR };
+    const spans = dayParts.airingSpans(midnightRun, at('2026-01-17T12:00:00'));
+    const covers = (slotTime) => spans.some(
+        (s) => dayParts.spanCovers(s, slotWeek.calendarWeekMs(slotTime)) );
+
+    suite.check('A Saturday airing reaches Saturday\'s slots',
+        covers(2 * DAY + 1 * HOUR) === true);
+    suite.check('...and not the same clock time on Wednesday',
+        covers(6 * DAY + 1 * HOUR) === false);
 
     return suite;
 };

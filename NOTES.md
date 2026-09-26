@@ -210,11 +210,25 @@ for the full spec, stages and acceptance tests.
       real file is 27MB, of which `programs` is 99.9% (27,143,345 of
       27,169,557 bytes) - `dayParts`, `blocks` and the 336-slot
       `scheduleBackup` together are 26KB. The calendar reads only the
-      latter, so channel 1's 39,999 programs have no bearing on it. Verified
+      latter, so channel 1's 39,999 programs have no bearing on it. Exercised
       live against a copy of the real dev data folder (never the live one -
-      another session had it open) rather than assumed: the tab, its
-      band/slot click-through to both tabs, and the block-window filter all
-      behave correctly on channel 1 at full size, with no console errors.
+      another session had it open): the tab, its band/slot click-through to
+      both tabs, and the block-window filter, on channel 1 at full size.
+
+      **That first pass still shipped a three-day shift, and how it hid is
+      the part worth keeping.** A weekly slot's `time` is ms into the *epoch*
+      week, so its day 0 is a Thursday; day-parts and blocks count calendar
+      days from Sunday. This tab read the first as the second, so every slot
+      was drawn three columns off and the block-window filter selected the
+      wrong days. Nothing looked broken: the bands were right (they resolve
+      through `resolveContext`, which is calendar-based), the slot labels
+      were right, the times within each day were right, and the filter
+      returned a plausible count of plausible rows. Only the *pairing* of
+      band to slot was wrong, which reads as a configuration problem rather
+      than a display one - it was reported as "the Toonami filler isn't
+      playing during the midnight run", and the resolver measured clean at
+      every instant in that window. See the Known issues entry below for the
+      conversion and where it now lives.
 
       Not exercised live: a channel on a *daily* (not weekly) Time Slots
       period with day-parts or blocks configured - none of the four dev
@@ -482,6 +496,39 @@ the invalidation rule for the other, and if the second is added later against a
 different representation the channel ends up carrying two disagreeing records of
 where a show is. That is a worse bug than either of the ones being fixed.
 
+### Slot times count from the epoch week, day-parts from the calendar week
+
+Fixed, and documented here because the two systems still coexist and anything
+that compares them has to convert.
+
+A weekly schedule's `slot.time` is milliseconds into the **epoch** week.
+`localMsIntoPeriod` in `time-slots-service.js` resolves it as
+`local % schedule.period`, and 1 January 1970 was a Thursday, so **slot day 0
+is Thursday**. That is the whole reason both slot editors list their days
+Thursday-first - `time-slots-schedule-editor.js`'s row labels and
+`time-slots-time-editor.js`'s day picker are correct, not quirky.
+
+Day-parts and blocks count **calendar** days: an airing's `days` are 0 (Sunday)
+to 6, and `day-parts.js` resolves against `Date#getDay`. So the same Saturday
+is slot day 2 and calendar day 6.
+
+`src/slot-week.js` is the one place that knows the offset, and all three
+day-name copies now read their labels from its `DAY_NAMES`. Anything drawing
+slots on a Sunday-first calendar, or testing a slot's time against an airing
+span, goes through it.
+
+**The trap is that getting it wrong looks like a data problem, not a code
+one.** The Schedule tab shipped with the two conflated: bands landed on the
+right day, slots landed three days off, and the result reads as "this block
+isn't lined up with its programming" or "the filler isn't playing" - which
+sends you to the channel config and the resolver, both of which measure
+perfectly clean. Two checks in `test/blocks-schedule-view.js` pin it now, and
+the important one lifts `localMsIntoPeriod` straight out of
+`time-slots-service.js` by brace-matching (`liftSource`, now shared from
+`test/support.js`) rather than transcribing the formula: what is being pinned
+is the *agreement* between that function and the conversion, so a copy that
+drifted would keep the test passing while the real thing broke.
+
 ### Editing slots when there are hundreds of them
 
 Two decisions in the slot editors are worth stating, because both look
@@ -613,7 +660,7 @@ ordering silently breaks again.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (92
+runs every file in the directory and prints one combined pass/fail count (96
 checks as of the Schedule tab). Eight files:
 
 - `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
@@ -643,7 +690,10 @@ checks as of the Schedule tab). Eight files:
   Schedule tab and the Day-Parts strip both draw from: a hand-derived Saturday
   timeline covering every kind of day-part/block handoff, the
   Thursday-has-no-Toonami row, and the January/July daylight-saving
-  difference.
+  difference. Also the epoch-week/calendar-week conversion the Schedule tab
+  got wrong on first build - see the Known issues entry. That check lifts
+  `localMsIntoPeriod` out of `time-slots-service.js` rather than transcribing
+  it, so it pins the real agreement and not a copy.
 
 - `startTime-rotation.js` - that the editor's load-time rotation of
   `channel.programs` and its rewrite of `startTime` keep cancelling, so a
@@ -683,8 +733,10 @@ node test/save-resume.js .dizquetv-dev/channels/2.json
 The committed checks run on fixtures only, so `npm test` stays self-contained on
 an install with no data folder.
 
-`test/support.js` holds the shared fixtures, builders and the `Suite`
-check/report harness. `test/run.js` is what `npm test` calls; it requires each
+`test/support.js` holds the shared fixtures, builders, the `Suite`
+check/report harness, and `liftSource` - the brace-matching extractor two
+files now use to drive real production functions instead of transcriptions of
+them. `test/run.js` is what `npm test` calls; it requires each
 file above and aggregates their results. Nothing here touches ffmpeg or a running
 server, nothing reads the data folder this install actually uses - `channel-save.js`
 makes and removes its own under the OS temp directory, and is the only one that

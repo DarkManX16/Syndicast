@@ -1,9 +1,12 @@
 const dayParts = require('../../src/day-parts');
+const slotWeek = require('../../src/slot-week');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) {
     const DAY = 24*60*60*1000;
     const WEEK = 7 * DAY;
-    const WEEK_DAYS = [ "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday" ];
+    // Thursday-first: a weekly slot's time is ms into the epoch week. See
+    // src/slot-week.js.
+    const WEEK_DAYS = slotWeek.DAY_NAMES;
     
     return {
         restrict: 'E',
@@ -150,6 +153,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
              * matches if ANY day the airing covers would place that time of day
              * inside it - the slot recurs every day regardless of which days the
              * block airs on.
+             *
+             * A weekly slot's time counts from the epoch week and an airing's
+             * span counts from the calendar week, so the two are only
+             * comparable once converted - see src/slot-week.js.
              */
             function slotInWindow(slot) {
                 if (scope.windowBlock === null) {
@@ -162,7 +169,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     let spans = dayParts.airingSpans(airings[i], now);
                     for (let j = 0; j < spans.length; j++) {
                         if (weekly) {
-                            if (dayParts.spanCovers(spans[j], slot.time)) {
+                            if (dayParts.spanCovers(spans[j], slotWeek.calendarWeekMs(slot.time))) {
                                 return true;
                             }
                         } else {

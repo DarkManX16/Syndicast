@@ -4,9 +4,40 @@
  * createLineup has no I/O of its own, so filler selection is testable with a
  * stub programPlayTime and plain object fixtures, no ffmpeg or data folder.
  */
+const fs = require('fs');
+const path = require('path');
 const helperFuncs = require('../src/helperFuncs');
 const dayParts = require('../src/day-parts');
 const channelCache = require('../src/channel-cache');
+
+const ROOT = path.join(__dirname, '..');
+
+/*
+ * Pulls one function out of a source file by brace-matching from its
+ * declaration, so a test can drive the real thing instead of a transcription
+ * that would go stale silently. Used where the *agreement* between a test and
+ * a piece of production code is the point. Extraction failing is a loud throw,
+ * not a skip.
+ */
+function liftSource(file, name) {
+    const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const decl = src.indexOf(`function ${name}(`);
+    if (decl === -1) {
+        throw new Error(`${file} no longer declares ${name}`);
+    }
+    let i = src.indexOf('{', decl);
+    let depth = 0;
+    for (; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}') {
+            depth--;
+            if (depth === 0) {
+                return src.slice(decl, i + 1);
+            }
+        }
+    }
+    throw new Error(`${file}'s ${name} has unbalanced braces`);
+}
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -73,5 +104,5 @@ module.exports = {
     helperFuncs, dayParts, channelCache,
     MIN, HOUR, DAY, at,
     freshStore, clip, show, flex, mix,
-    Suite,
+    Suite, liftSource,
 };

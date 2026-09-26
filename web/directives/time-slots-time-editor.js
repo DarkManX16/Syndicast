@@ -1,3 +1,5 @@
+const slotWeek = require('../../src/slot-week');
+
 module.exports = function ($timeout) {
     return {
         restrict: 'E',
@@ -15,15 +17,12 @@ module.exports = function ($timeout) {
             scope.h = 0;
             scope.m = 0;
             scope.s = 0;
-            scope.weekDayOptions = [
-                { id: 0, description : "Thursday" } ,
-                { id: 1, description : "Friday" } ,
-                { id: 2, description : "Saturday" } ,
-                { id: 3, description : "Sunday" } ,
-                { id: 4, description : "Monday" } ,
-                { id: 5, description : "Tuesday" } ,
-                { id: 6, description : "Wednesday" } ,
-            ];
+            // Thursday-first, because the id is a slot's own day index and a
+            // weekly slot's time counts from the epoch week. See
+            // src/slot-week.js.
+            scope.weekDayOptions = slotWeek.DAY_NAMES.map( (name, i) => {
+                return { id: i, description: name };
+            } );
 
             scope.hourOptions = [];
             for (let i = 0; i < 24; i++) {
