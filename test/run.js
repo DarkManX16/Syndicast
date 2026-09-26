@@ -8,6 +8,8 @@ const suites = [
     './blocks-unchanged',
     './blocks-persistence',
     './blocks-guide',
+    './startTime-rotation',
+    './save-resume',
 ];
 
 (async () => {

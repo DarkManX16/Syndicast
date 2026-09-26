@@ -463,6 +463,77 @@ walk that scales with the number of remembered programs, which on this install
 is most of a 39,999 program channel, and the failure it prevents is one slightly
 wrong filler pick in the first moments after a restart.
 
+### A failed channel save leaves the config cache holding the rejected channel
+
+Found while investigating the live-edit stream jump, unrelated to it, and worth
+a real look rather than the paragraph it gets here.
+
+`saveChannel` in `src/services/channel-service.js` does three things in this
+order:
+
+```js
+channelCache.saveChannelConfig( number, channel);   // repopulates configCache
+await channelDB.saveChannel( number, channel );     // validates, then writes
+this.emit('channel-update', ...);                   // stops any live stream
+```
+
+The cache is written **before** the DAO validates. `validateChannelJson` throws
+on a channel number that is missing or not an integer, so a rejected save leaves
+`configCache[number]` holding the channel that was refused while the disk still
+has the old one. `api.js` catches and returns 500, and the event never fires, so
+nothing stops the stream or tells anything else to re-read. Every consumer that
+goes through `channelCache.getChannelConfig` - the streamer, the guide, the M3U
+service - then serves the rejected channel until the process restarts, and a
+later successful save of a *different* channel will not clear it (`clear()` is
+only called on delete).
+
+Not observed in normal use, because the only things that throw are number
+problems the editor cannot produce. The way in is a hand-edited or scripted PUT.
+
+The fix is presumably to validate before touching the cache, or to write the
+cache only after the DAO resolves - but `validateChannelJson` also *mutates*
+(`json.number = number`, and it is what the DAO calls, not the service), so the
+ordering is not quite a straight swap and the two responsibilities want
+separating first. Worth checking at the same time whether `configCache` should
+be repopulated at all on save rather than simply invalidated, since the lazy load
+in `getChannelConfig` would refill it from disk and the disk is the version that
+actually committed.
+
+### cleanUpProgram is the one save-path change that can desync the rotation
+
+Also found during the live-edit investigation, and the one real trap in what is
+otherwise a safe round trip.
+
+The channel editor's `adjustStartTimeToCurrentProgram` rotates
+`channel.programs` so the program playing now sits at index 0 and moves
+`startTime` back by the offset into it. Those two cancel exactly **as long as the
+cycle length does not change**, which is what makes a reload-and-resave harmless
+despite visibly rewriting `startTime` - see the Resolved entry below.
+
+`cleanUpProgram` in `src/services/channel-service.js` runs after that, on the
+save, and can change the cycle length two ways:
+
+```js
+// a program with no duration, or a non-positive one, is dropped entirely
+if (typeof(program.duration) === 'undefined' || program.duration <= 0) return [];
+// a fractional one is rounded up
+if (! Number.isInteger(program.duration) ) program.duration = Math.ceil(program.duration);
+```
+
+Either one moves the cycle after the rotation was computed against the old one,
+so `startTime` no longer means what the rotated array needs it to mean and the
+whole lineup shifts by the difference. A dropped program shifts it by that
+program's duration; a ceil shifts it by under a millisecond per program, which
+is harmless in practice but is the same failure in miniature.
+
+Neither fires on any channel in the dev data folder - all four resave with a
+byte-identical cycle length, and `test/startTime-rotation.js` checks that,
+including a deliberate fractional duration so the trap is visible as a passing
+check rather than a paragraph here. Worth knowing because the compensation is
+invisible: nothing in the editor or the save path states that the two fields are
+a pair, so a future change that drops or rewrites a duration on this path will
+look local and will not be.
+
 ### Comparators that only work by accident
 
 Left alone deliberately, but worth knowing about if any of this is touched.
@@ -495,8 +566,8 @@ ordering silently breaks again.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (51
-checks as of stage 2). Four files:
+runs every file in the directory and prints one combined pass/fail count (78
+checks as of the live-edit resume fix). Six files:
 
 - `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
   [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance tables, transcribed
@@ -520,6 +591,33 @@ checks as of stage 2). Four files:
   a guide build's program list is a windowed `{start, program}` array it
   builds itself, not the cyclic `channel.programs` the other three files
   drive through `createLineup`.
+
+- `startTime-rotation.js` - that the editor's load-time rotation of
+  `channel.programs` and its rewrite of `startTime` keep cancelling, so a
+  reload-and-resave does not move what is playing. Lifts
+  `adjustStartTimeToCurrentProgram` and `updateChannelDuration` out of
+  `web/directives/channel-config.js`, and `cleanUpProgram`/`cleanUpChannel` out
+  of `src/services/channel-service.js`, by name and brace-matching rather than
+  transcribing them - a transcription of the functions whose *agreement* is the
+  point would go stale silently, and extraction failing is a loud FAIL. Ends with
+  the `cleanUpProgram` trap from Known issues as a check.
+- `save-resume.js` - that saving a channel that is playing does not move the
+  stream. Drives `channelCache.takeResumeHint` through a `startStream` helper
+  that mirrors the sequence `video.js` runs, the same arrangement
+  `blocks-guide.js` has with the guide, because the sequence lives inside an
+  express handler with no seam to call. It therefore does not prove the wiring in
+  `video.js`, only the behaviour that wiring relies on; keep the two in step.
+
+Both of those also take channel JSON paths on the command line and re-run their
+measurements against real channels, which is where they were developed:
+
+```
+node test/startTime-rotation.js .dizquetv-dev/channels/2.json
+node test/save-resume.js .dizquetv-dev/channels/2.json
+```
+
+The committed checks run on fixtures only, so `npm test` stays self-contained on
+an install with no data folder.
 
 `test/support.js` holds the shared fixtures, builders and the `Suite`
 check/report harness. `test/run.js` is what `npm test` calls; it requires each
@@ -645,6 +743,73 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### Saving a live channel jumped the stream, and startTime was not why
+
+The symptom: updating a channel while it is playing pauses the stream and then
+moves it. The suspect was `adjustStartTimeToCurrentProgram` in
+`web/directives/channel-config.js`, because a plain reload-and-resave with no
+edits visibly rewrites `channel.startTime` and `startTime` is what decides which
+program is playing now. That was noted during the day-parts work and dismissed as
+harmless; it is worth writing down *why* the dismissal was right, since the field
+really does change and will look suspicious again.
+
+**It is a rotation, not a nudge.** The function moves the program playing now to
+index 0 and sets `startTime = t - offsetIntoIt` in the same breath. On a cyclic
+lineup those cancel: the value changes, the meaning does not. Measured on all
+four channels in the dev data folder, at 2000 instants spanning a full cycle
+each - including the 39,999 program one, whose cycle is 313 days - the pre-save
+and post-save channel resolve to the same program at the same offset every time,
+0ms drift, with the array rotated by 653, 84 and 122 positions respectively.
+Nothing else on the path touches the field: the editor load is an exact
+`new Date(string)`, `cleanUpChannel` recomputes only `duration` and by the same
+sum the editor uses, `validateChannelJson` rewrites only `number`,
+`fixupChannelBeforeSave` only *reads* `startTime` and only for on-demand
+channels, and the DAO stringifies. `programs` and `startTime` also travel in one
+`angular.toJson(channel)` PUT, so they cannot desync in flight. The one way to
+break the cancellation is `cleanUpProgram` changing the cycle length - see Known
+issues.
+
+**The pause is deliberate.** The per-session `channel-update` listener in
+`src/video.js` stops the stream 100ms after any save to the channel it is
+playing, so an edit can take effect. `CHANNEL_STOP_SHIELD` says as much.
+
+**The jump was the playback cache being flushed.** `saveChannelConfig` in
+`src/channel-cache.js` deleted `cache[number]`, which is what
+`getCurrentLineupItem` needs for its *"closed the stream and opened it again
+let's not lose seconds for no reason"* branch. Without it the reconnect worked
+its position out from the wall clock instead, and that recompute is right about
+*what* to play - the point of flushing - but does not know a stream was already
+in flight. Two consequences, both measured:
+
+- It skipped the reconnect gap that an unflushed reconnect replays. A few hundred
+  milliseconds to a few seconds, every save.
+- Where the stream was sitting inside `createLineup`'s 30 second tune-in rewind,
+  it snapped forward to the true wall-clock position: +30,896ms and +32,396ms in
+  the worst samples on channel 2.
+
+The flush still happens, so edits still take effect; what it now keeps is the
+*position*, as a one-shot `resumeHints` entry that `takeResumeHint` hands back
+only when the recompute landed on the same program anyway. It reproduces
+`getCurrentLineupItem`'s answer including the replay branch, so the guarantee is
+that a save costs the viewer no more than an ordinary quick reconnect. A save
+that changed what plays now gets no hint and takes the path it always did, and
+filler deliberately gets none - the mix is exactly the kind of thing the save may
+have changed.
+
+**What the fix does not cover, and cannot from here.** All three code-level
+mechanisms above are strictly forward: a cached position is behind the wall clock
+or equal to it, never ahead, and no negative drift appears at any reconnect gap.
+So a *backward* jump is not in this code. `-ss` is pushed before `-i` in
+`src/ffmpeg.js`, an input seek, so the resume lands on the keyframe at or before
+the position asked for - a few seconds back on a typical GOP, and the reason the
+forward case reads as "a few seconds" rather than as the exact gap. Whatever the
+client does with the buffer it had at the moment of the stop is likewise outside
+this. Roughly one save in ten also lands during a commercial break (7.8% and
+11.3% of instants on channels 2 and 4), which restarts the break with a
+different clip; that is the intended re-pick, not drift.
+
+`test/startTime-rotation.js` and `test/save-resume.js` keep both halves honest.
 
 ### Filler list cooldowns are persisted, and were being credited to the wrong list
 

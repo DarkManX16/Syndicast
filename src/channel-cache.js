@@ -2,6 +2,26 @@ const SLACK = require('./constants').SLACK;
 
 let cache = {};
 
+/*
+ * Where a stream was when a save flushed the playback cache out from under it.
+ *
+ * Saving a channel stops whatever is playing it (the channel-update listener in
+ * video.js) and flushes `cache` below, so the client's reconnect cannot take
+ * getCurrentLineupItem's "let's not lose seconds for no reason" branch and has
+ * to work its position out from the wall clock instead. That recompute is right
+ * about *what* to play - it is the whole point of flushing - but it does not
+ * know a stream was already in flight, so it re-applies createLineup's 30
+ * second tune-in rewind against a later instant and skips the reconnect gap the
+ * intact cache would have replayed. Measured on the dev channels: every save
+ * jumped forward by exactly the reconnect gap, and ~31 seconds when the stream
+ * had been sitting inside that rewind.
+ *
+ * So the flush keeps throwing away the item and its channel contexts, and this
+ * keeps only the position, for the recompute to anchor to when it lands on the
+ * same program anyway. Read once and dropped - see takeResumeHint.
+ */
+let resumeHints = {};
+
 let configCache = {};
 let numbers = null;
 
@@ -54,16 +74,90 @@ function saveChannelConfig(number, channel ) {
     configCache[number] = [channel];
     
     // flush the item played cache for the channel and any channel in its
-    // redirect chain
+    // redirect chain, keeping each one's position as a resume hint
     if (typeof(cache[number]) !== 'undefined') {
         let lineupItem = cache[number].lineupItem;
         for (let i = 0; i < lineupItem.redirectChannels.length; i++) {
-            delete cache[ lineupItem.redirectChannels[i].number ];
+            let n = lineupItem.redirectChannels[i].number;
+            keepResumeHint(n, cache[n]);
+            delete cache[n];
         }
+        keepResumeHint(number, cache[number]);
         delete cache[number];
 
     }
     numbers = null;
+}
+
+/*
+ * Only a real program is worth a hint. Filler is deliberately re-picked on every
+ * recompute - the mix is exactly the kind of thing the save may have changed -
+ * and an offline or error item has no position to preserve.
+ */
+function keepResumeHint(channelId, recorded) {
+    if ( (typeof(recorded) === 'undefined') || (recorded == null) ) {
+        return;
+    }
+    if (recorded.lineupItem.type !== 'program') {
+        delete resumeHints[channelId];
+        return;
+    }
+    resumeHints[channelId] = {
+        t0: recorded.t0,
+        start: recorded.lineupItem.start,
+        duration: recorded.lineupItem.duration,
+        streamDuration: recorded.lineupItem.streamDuration,
+        identity: getProgramKey(recorded.lineupItem),
+    };
+}
+
+/*
+ * Where a reconnect at t1 should resume this channel, or null if there was no
+ * in-flight stream or `program` is not what it was playing.
+ *
+ * The answer is the one getCurrentLineupItem would have given had the save not
+ * flushed the cache, down to its "let's not lose seconds for no reason" branch -
+ * the guarantee being that a save costs the viewer no more than an ordinary
+ * quick reconnect does. The branch replays the gap rather than skipping it, and
+ * the same reasoning applies here: the item did not change, so there is nothing
+ * to be gained by dropping the seconds the stopped stream did not finish
+ * sending.
+ *
+ * Consumed on read, so a hint answers at most the one reconnect the save caused.
+ * That plus the identity check plus the ended-by-now check below are what keep a
+ * hint nobody collected from meaning anything later: a hint only exists if a
+ * stream was recorded playing, and by the time anything else could pick it up
+ * the program has either changed (identity) or run out (rem).
+ */
+function takeResumeHint(channelId, t1, program) {
+    let hint = resumeHints[channelId];
+    if (typeof(hint) === 'undefined') {
+        return null;
+    }
+    delete resumeHints[channelId];
+    // an item getProgramKey cannot tell apart must never match one
+    if (hint.identity === UNKNOWN_PROGRAM_KEY) {
+        return null;
+    }
+    if ( (program == null) || (hint.identity !== getProgramKey(program)) ) {
+        return null;
+    }
+    let diff = t1 - hint.t0;
+    if (diff < 0) {
+        return null;
+    }
+    // the item would have ended on its own by now, so there is nothing to resume
+    let rem = hint.duration - hint.start;
+    if (typeof(hint.streamDuration) !== 'undefined') {
+        rem = Math.min(rem, hint.streamDuration);
+    }
+    if (diff + SLACK >= rem) {
+        return null;
+    }
+    if (diff <= SLACK) {
+        return hint.start;
+    }
+    return hint.start + diff;
 }
 
 function getCurrentLineupItem(channelId, t1) {
@@ -102,6 +196,9 @@ function getCurrentLineupItem(channelId, t1) {
     }
     return lineupItem;
 }
+
+// What getProgramKey returns for an item carrying neither a serverKey nor a key.
+const UNKNOWN_PROGRAM_KEY = "!unknown!|!unknownProgram!";
 
 function getProgramKey(program) {
     let serverKey = "!unknown!";
@@ -186,11 +283,13 @@ function clear() {
     //it's not necessary to clear the playback cache and it may be undesirable
     configCache = {};
     cache = {};
+    resumeHints = {};
     numbers = null;
 }
 
 module.exports = {
     getCurrentLineupItem: getCurrentLineupItem,
+    takeResumeHint: takeResumeHint,
     recordPlayback: recordPlayback,
     clear: clear,
     getProgramLastPlayTime: getProgramLastPlayTime,

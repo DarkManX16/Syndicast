@@ -304,6 +304,31 @@ function video( channelService, fillerService, db, programmingService, activeCha
         if ( (prog == null) || (typeof(prog) === 'undefined') || (prog.program == null) || (typeof(prog.program) == "undefined") ) {
             throw "No video to play, this means there's a serious unexpected bug or the channel db is corrupted."
         }
+        /*
+         * If a save flushed the playback cache out from under a stream that was
+         * mid-program, resume where that stream actually was rather than where
+         * the wall clock says it should be. Only when the recompute landed on
+         * the same program anyway: if the save changed what plays now, the hint
+         * does not apply and this takes the path it always did. See
+         * channel-cache.js's resumeHints for why the flush itself stays.
+         */
+        let resumeAt = channelCache.takeResumeHint(
+            brandChannel.number,
+            t0,
+            prog.program.isOffline === true ? null : prog.program
+        );
+        if (resumeAt != null) {
+            console.log(
+                `Resuming after a channel update at ${resumeAt}ms`
+                + ` instead of ${prog.timeElapsed}ms.`
+            );
+            prog.timeElapsed = resumeAt;
+            // the bound pushed for this program above was measured from the
+            // wall-clock position, so it would cut the item short by however
+            // far back the hint moved it
+            upperBounds[upperBounds.length - 1] = prog.program.duration - prog.timeElapsed;
+        }
+
         // Every list this channel could draw from, which for a channel without
         // day-parts is exactly the list on its Flex tab.
         let fillers = await fillerService.getFillersFromCollections(
