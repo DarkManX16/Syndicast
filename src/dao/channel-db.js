@@ -2,6 +2,51 @@ const path = require('path');
 var fs = require('fs');
 
 /*
+ * A channel file that will not parse is retried rather than treated as missing,
+ * because it far more likely means the file is being replaced right now than that
+ * it is corrupt. saveChannel writes with fs.writeFile, which truncates the target
+ * first, so a read landing inside that window gets a partial file - and channel
+ * JSON is large enough for the window to be wide. Measured against the 27MB
+ * channel in the dev data folder, 26 of 72 concurrent reads came back
+ * unparseable. getChannel returned null for those, and every consumer reads null
+ * as "channel doesn't exist", so a torn read surfaced as a 404 on a live stream
+ * rather than as anything traceable.
+ *
+ * This was previously hidden rather than absent: channelCache.saveChannelConfig
+ * repopulated the config cache before the write, so concurrent readers got a
+ * cache hit and never reached the file at all. It now invalidates instead, which
+ * is correct on a rejected save but does send readers to disk during the write.
+ *
+ * Writing to a temporary file and renaming over the target would close the window
+ * rather than wait it out, and is the usual answer, but it does not work here: on
+ * Windows rename fails with EPERM while any reader holds the destination open,
+ * and under a steady stream of readers it never gets a gap. Measured at 0 of 10
+ * renames succeeding with retries out to 200ms. So the window stays and the
+ * reader waits it out instead.
+ *
+ * The ladder is shaped to outlast a large channel's write. A file that really is
+ * corrupt costs the whole of it before returning null, which is what this
+ * returned immediately before - a broken state either way, and the wait does not
+ * make it worse.
+ */
+const READ_RETRY_DELAYS = [5, 10, 25, 50, 100, 200, 400, 800];
+
+function readChannelFile(f) {
+    return new Promise( (resolve, reject) => {
+        fs.readFile(f, (err, data) => {
+            if (err) {
+                return reject(err);
+            }
+            try {
+                resolve( JSON.parse(data) )
+            } catch (parseErr) {
+                reject(parseErr);
+            }
+        })
+    });
+}
+
+/*
  * Channel images are stored as paths like "/images/dizquetv.png" so they
  * survive the server moving, and src/image-url.js resolves them per consumer.
  * Twice now a writer has stored an absolute URL instead: first the UI building
@@ -227,22 +272,25 @@ class ChannelDB {
 
     async getChannel(number) {
         let f = path.join(this.folder, `${number}.json` );
-        try {
-            return await new Promise( (resolve, reject) => {
-                fs.readFile(f, (err, data) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    try {
-                        resolve( JSON.parse(data) )
-                    } catch (err) {
-                        reject(err);
-                    }
-                })
-            });
-        } catch (err) {
-            console.error(err);
-            return null;
+        for (let attempt = 0; ; attempt++) {
+            try {
+                return await readChannelFile(f);
+            } catch (err) {
+                // a channel that simply is not there must not cost the ladder
+                if ( (err.code === 'ENOENT') || (attempt >= READ_RETRY_DELAYS.length) ) {
+                    console.error(err);
+                    return null;
+                }
+                if (attempt === 0) {
+                    console.log(
+                        `Could not read channel ${number} (${err.code || 'unparseable'});`
+                        + ` it may be being written. Retrying...`
+                    );
+                }
+                await new Promise( (resolve) => {
+                    setTimeout(resolve, READ_RETRY_DELAYS[attempt]);
+                } );
+            }
         }
     }
     

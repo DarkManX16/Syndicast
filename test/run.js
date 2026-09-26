@@ -10,6 +10,7 @@ const suites = [
     './blocks-guide',
     './startTime-rotation',
     './save-resume',
+    './channel-save',
 ];
 
 (async () => {

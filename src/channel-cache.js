@@ -70,9 +70,31 @@ async function getAllChannels(channelDB) {
 }
 
 
+/*
+ * Called as a channel is saved, to drop what the caches hold for it. The name is
+ * kept despite no longer saving anything, because this file is in the conflict
+ * set for the pending 1.7.0 merge and a rename would widen it for nothing.
+ *
+ * It used to repopulate configCache with the channel being written, which had two
+ * problems. The write had not happened yet, so a save the DAO went on to reject
+ * left the cache serving a channel that never committed, with nothing to clear it
+ * short of a restart. And getChannel hands out the cached object by reference, so
+ * a read-modify-write caller - fixupAllChannels, deleteFiller - had already
+ * mutated the cached channel in place before the save was attempted; reordering
+ * this call would not have helped those, only invalidating does.
+ *
+ * Invalidating is also correct whether the write succeeds or fails, which is why
+ * this can stay where it is, ahead of the write, without the playback flush and
+ * the resume hints below having to move. getChannelConfig lazily reloads from
+ * disk, and the disk is by definition the version that committed.
+ *
+ * `channel` is consequently unused, and kept for the same merge reason as the
+ * name: it still says what the call is about, and a future change that wanted to
+ * seed the cache after a successful write would want it back.
+ */
 function saveChannelConfig(number, channel ) {
-    configCache[number] = [channel];
-    
+    delete configCache[number];
+
     // flush the item played cache for the channel and any channel in its
     // redirect chain, keeping each one's position as a resume hint
     if (typeof(cache[number]) !== 'undefined') {

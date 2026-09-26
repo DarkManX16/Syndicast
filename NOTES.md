@@ -463,42 +463,6 @@ walk that scales with the number of remembered programs, which on this install
 is most of a 39,999 program channel, and the failure it prevents is one slightly
 wrong filler pick in the first moments after a restart.
 
-### A failed channel save leaves the config cache holding the rejected channel
-
-Found while investigating the live-edit stream jump, unrelated to it, and worth
-a real look rather than the paragraph it gets here.
-
-`saveChannel` in `src/services/channel-service.js` does three things in this
-order:
-
-```js
-channelCache.saveChannelConfig( number, channel);   // repopulates configCache
-await channelDB.saveChannel( number, channel );     // validates, then writes
-this.emit('channel-update', ...);                   // stops any live stream
-```
-
-The cache is written **before** the DAO validates. `validateChannelJson` throws
-on a channel number that is missing or not an integer, so a rejected save leaves
-`configCache[number]` holding the channel that was refused while the disk still
-has the old one. `api.js` catches and returns 500, and the event never fires, so
-nothing stops the stream or tells anything else to re-read. Every consumer that
-goes through `channelCache.getChannelConfig` - the streamer, the guide, the M3U
-service - then serves the rejected channel until the process restarts, and a
-later successful save of a *different* channel will not clear it (`clear()` is
-only called on delete).
-
-Not observed in normal use, because the only things that throw are number
-problems the editor cannot produce. The way in is a hand-edited or scripted PUT.
-
-The fix is presumably to validate before touching the cache, or to write the
-cache only after the DAO resolves - but `validateChannelJson` also *mutates*
-(`json.number = number`, and it is what the DAO calls, not the service), so the
-ordering is not quite a straight swap and the two responsibilities want
-separating first. Worth checking at the same time whether `configCache` should
-be repopulated at all on save rather than simply invalidated, since the lazy load
-in `getChannelConfig` would refill it from disk and the disk is the version that
-actually committed.
-
 ### cleanUpProgram is the one save-path change that can desync the rotation
 
 Also found during the live-edit investigation, and the one real trap in what is
@@ -566,8 +530,8 @@ ordering silently breaks again.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (78
-checks as of the live-edit resume fix). Six files:
+runs every file in the directory and prints one combined pass/fail count (86
+checks as of the config cache fix). Seven files:
 
 - `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
   [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance tables, transcribed
@@ -608,8 +572,19 @@ checks as of the live-edit resume fix). Six files:
   express handler with no seam to call. It therefore does not prove the wiring in
   `video.js`, only the behaviour that wiring relies on; keep the two in step.
 
-Both of those also take channel JSON paths on the command line and re-run their
-measurements against real channels, which is where they were developed:
+- `channel-save.js` - the save path where the in-memory view and the on-disk view
+  could disagree: that a rejected save leaves the committed channel being served,
+  and that a read during a write never reports the channel missing. **The one
+  file here that touches a data folder**, because both of those are about what is
+  on disk and a fixture in memory cannot show either. It makes its own folder
+  under the OS temp directory and removes it again, so it still needs no data
+  folder of the user's and no running server. Carries a raw-read control, logged
+  rather than checked, so a reader can tell whether the concurrency checks had
+  teeth on that run without the suite becoming timing-flaky.
+
+The first two of those also take channel JSON paths on the command line and
+re-run their measurements against real channels, which is where they were
+developed:
 
 ```
 node test/startTime-rotation.js .dizquetv-dev/channels/2.json
@@ -621,10 +596,11 @@ an install with no data folder.
 
 `test/support.js` holds the shared fixtures, builders and the `Suite`
 check/report harness. `test/run.js` is what `npm test` calls; it requires each
-file above and aggregates their results. Nothing here touches ffmpeg, a data
-folder or a running server, and there is no test runner dependency to
-install - it is plain Node, in keeping with the rest of the project having
-none either. Each file also runs standalone, e.g. `node
+file above and aggregates their results. Nothing here touches ffmpeg or a running
+server, nothing reads the data folder this install actually uses - `channel-save.js`
+makes and removes its own under the OS temp directory, and is the only one that
+touches a disk at all - and there is no test runner dependency to install: it is
+plain Node, in keeping with the rest of the project having none either. Each file also runs standalone, e.g. `node
 test/blocks-acceptance.js`, while developing just that piece.
 
 ### createLineup can be exercised directly
@@ -743,6 +719,80 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### The config cache is invalidated on save, not repopulated
+
+`ChannelService#saveChannel` wrote the channel into `channelCache`'s
+`configCache` **before** the DAO validated it, so a save the DAO went on to
+reject left `configCache[number]` serving a channel that never committed while
+the disk still held the old one. `api.js` catches and returns 500, and the
+`channel-update` event never fires, so nothing stopped the stream or told
+anything else to re-read: the streamer, the guide and the M3U service all served
+the rejected channel until the process restarted, and a later successful save of
+a *different* channel would not clear it, since `clear()` only runs on delete.
+
+It now does `delete configCache[number]`, and `getChannelConfig`'s existing lazy
+load refills from disk on the next read. Invalidating is correct whether the
+write succeeds or fails, which is what let the call stay where it is, ahead of
+the write, with the playback flush and the resume hints in the same function
+untouched.
+
+**The caller enumeration is the part worth keeping.** `saveChannelConfig` has
+exactly one production caller, `saveChannel`, so the question was really which
+callers of *that* depend on the cache being repopulated. Five: both
+`/api/channel` handlers (neither reads back), `fixupAllChannels` in
+`plex-server-db.js`, `deleteFiller` in `filler-service.js`, and
+`updateChannelSync` in `on-demand-service.js`. None needs the new value handed
+back to it, and two of them turned out to be arguments *for* invalidating rather
+than against:
+
+- `getChannel` returns the cached object **by reference**, not a copy. So
+  `fixupAllChannels` and `deleteFiller`, which read a channel, mutate it and save
+  it, had already mutated the cached channel in place before the save was even
+  attempted. Reordering the `saveChannelConfig` call would not have fixed those;
+  only dropping the entry does.
+- `activateChannelIfNeeded` on the on-demand path saves fire-and-forget
+  (`updateChannelAsync` does not await) but *returns* the resumed channel to its
+  one caller, `programming-service.js`, which uses it directly. So nothing there
+  re-reads expecting the new version either.
+
+**What the enumeration did turn up, and it is not small.** Repopulating was
+shielding every concurrent reader from the write itself. `fs.writeFile`
+truncates the target first, so a read landing mid-write gets a partial file -
+and with repopulation those readers got a cache hit and never reached the file.
+Measured against the 27MB channel in the dev data folder, **26 of 72** concurrent
+raw reads came back unparseable; `getChannel` returned `null` for each, and every
+consumer reads `null` as "channel doesn't exist", which surfaces as a 404 on a
+live stream rather than as anything traceable. So invalidating alone would have
+traded a rare poisoning bug for a plausible torn read.
+
+The usual answer is to write a temporary file and rename it over the target.
+**That does not work here.** On Windows `rename` fails with `EPERM` while any
+reader holds the destination open, and under a steady stream of readers it never
+gets a gap: measured at **0 of 10** renames succeeding with retries out to 200ms.
+Attempted, measured, reverted.
+
+So the window stays and the reader waits it out: `ChannelDB#getChannel` retries
+an unparseable read on a ladder out to about 1.6 seconds
+(`READ_RETRY_DELAYS`), bailing immediately on `ENOENT` so a channel that simply
+is not there still costs nothing. A file that really is corrupt costs the whole
+ladder before returning `null`, which is what it returned immediately before.
+`test/channel-save.js` covers both halves, and carries a raw-read control so a
+reader can tell whether the concurrency checks proved anything on that run - on
+this machine the control tears 15 of 15 while the DAO returns a correct channel
+every time.
+
+Cost of the lazy reload: one cold read per save of that channel, measured at
+117ms for the 39,999 program one and 3ms for the others, against a guide rebuild
+that the save already triggers and that does considerably more.
+
+One thing left alone, noted because it is the same looseness: `saveChannel` and
+`deleteChannel` read a bare `channelDB` rather than `this.channelDB`, which
+resolves to the implicit global `index.js` creates at line 105 with
+`channelDB = new ChannelDB(...)` - no declaration, so it lands on `globalThis`.
+It works only because of that leak. `test/channel-save.js` sets the global to
+construct a service, and says why, so the wart fails loudly if anyone tightens
+it.
 
 ### Saving a live channel jumped the stream, and startTime was not why
 
