@@ -434,6 +434,50 @@ rather than assuming:
 require('net').createServer().listen(18000, '0.0.0.0')
 ```
 
+### A long-running server keeps serving the build it started with
+
+Found investigating "channel 1 plays no filler during breaks - not wrong
+filler, none at all." Every check on the code came back clean:
+`createLineup` reached, `resolveContext` resolving to the right block, every
+list loading real content, clips fitting the actual break lengths (13.2s
+minimum measured, none under 10s at all). Instrumenting the live process
+directly - patching `helperFuncs.createLineup` and
+`FillerService#getFillersFromCollections` at load, no edits to the repo -
+confirmed all of it end to end: a real clip picked, and Plex accepting it for
+direct play.
+
+The gap was never in the request path. A `node index.js` process that had
+been running since before `466c96b` (day-part filler resolution,
+2026-09-23) was still the one serving channel 1. That commit changed what
+`video.js` reads for filler: previously
+`fillerService.getFillersFromChannel` mapped over `channel.fillerCollections`
+- the Flex tab. Once a channel's filler moves into day-parts and blocks, as
+channel 1's has, `fillerCollections` is `[]`, and the old code's picker
+returns null on every break. `offlineMode: 'pic'` with no fallback turns
+that into the offline screen - indistinguishable, from the stream, from "the
+picker chose to play nothing." The play-cache confirmed it: an
+`!unknown!|!unknownProgram!` entry (the offline screen) recorded repeatedly,
+and not one `!fillerList!` entry, ever.
+
+**Nothing in the running app says which build is live.** There is no
+version, commit or start-time indicator anywhere a channel is edited or
+played, so a process up for days looks identical to one started five minutes
+ago. This was only found by correlating `git log` timestamps against actual
+process start times by hand.
+
+**Two servers on one data folder is its own hazard, found the same way.**
+Development moving from 18000 to 18080 (previous entry) makes it easy to end
+up with both running against `./.dizquetv-dev` at once - one old, one
+current, both willing to read and write the same channel files. `942da90`'s
+config-cache invalidation and `channel-save.js`'s retry-on-torn-read make a
+second reader/writer survivable, but neither process can detect or warn
+about the other; each believes it is the only one running.
+
+Worth doing: surface the running build's commit, or at least its start time,
+somewhere in the UI - the footer, the Version page, anywhere - so "is this
+the process I think it is" is answerable without shelling out to compare
+timestamps.
+
 ### Shuffle progress is stored, and it is seeded over the candidate count
 
 Worth stating plainly because the two orderers in `show-orderers.js` differ and
