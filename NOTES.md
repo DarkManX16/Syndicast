@@ -371,25 +371,24 @@ rather than copying the layout of other projects.
 
 ## 1.0 release
 
-1.0 now ships in two milestones. **v0.9.0's own must list sets the date, not
-the other way round:** it ships once that list is done, whenever that lands
-relative to Halloween 2026 - the foundation real channels start getting built
-on, slowly. Moving viewers off Tunarr happens after that, one channel at a
-time, each only once it is ready - v0.9.0 is a foundation, not a cutover.
-v1.0.0 follows once everything on its own list below is done; any v1.0.0
-quick win finished before v0.9.0 ships goes out in v0.9.0 too rather than
-waiting.
+1.0 is a solid foundation for building real channels on - slowly, starting
+around Halloween 2026. **The must list below still sets the date, not the
+other way round:** 1.0 ships once everything on it is done, whenever that
+lands relative to Halloween. Moving viewers off Tunarr happens after that,
+one channel at a time, each only once it is ready - 1.0 is a foundation, not
+a cutover.
 
-**Rule for everything built after v0.9.0: new features must be additive to
-saved channels.** A channel built before a feature lands keeps working
-unchanged and never has to be rebuilt. Stage 5 already follows this - every
-transition sequence defaults to empty, so a channel with none configured just
-plays commercials through its breaks (see
+**From now on, every feature must leave existing saved channels working
+unchanged.** A channel built before a feature lands keeps working unchanged
+and never has to be rebuilt. Stage 5 already follows this - every transition
+sequence defaults to empty, so a channel with none configured just plays
+commercials through its breaks (see
 [docs/blocks-spec.md](docs/blocks-spec.md)'s Stage 5). Stage 6 and
 per-position stored progress (see Known issues below) don't exist yet and
 have to be designed to the same rule.
 
-### v0.9.0
+Must-haves, each tagged with the model doing the work, in the order they'll
+be built:
 
 - [ ] Build indicator in the UI (Sonnet 5). See "A long-running server keeps
       serving the build it started with" under Known issues below.
@@ -399,38 +398,20 @@ have to be designed to the same rule.
       option (blocks-spec.md's Decisions table and Stage 1 acceptance table).
       This confirms all three, and the guide built from them, against the
       real transition instead of a simulated clock.
-- [ ] Buffering, tested with three streams at once and Tunarr stopped
-      (manual test; Opus 5.5 investigates and fixes if it turns out not to be
-      Tunarr). See the Known issues entry below.
-- [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
-      "Fix very short items repeating or being skipped next to Flex" under
-      Media handling above, and Stage 4 in
-      [docs/blocks-spec.md](docs/blocks-spec.md).
-- [ ] Random crashes during streaming, caught by a 48-hour soak and fixed if
-      seen (Opus 5.5). See the Infrastructure roadmap line above and the
-      Model guide below.
-- [ ] A live install separate from dev, where real channels get built: own
-      folder and data folder, auto-start after reboot, a port Windows won't
-      reserve, logs to files, daily backups tested by one restore, and a
-      written routine for updating it to a new release (Sonnet 5).
-- [ ] Release: merge blocks into main, tag v0.9.0 (Sonnet 5).
-
-### v1.0.0
-
-Ships once everything below is done, built in this order.
-
-**Quick wins:**
-
 - [ ] Aspect ratio stretch without having to disable "normalize resolution"
       (Opus 5.5 plans, Sonnet 5 builds).
 - [ ] Info panel and thumbnail per item (Sonnet 5).
 - [ ] Channel detail page (Sonnet 5). See the Interface roadmap line and its
       note above.
+- [ ] Buffering, tested with three streams at once and Tunarr stopped
+      (manual test; Opus 5.5 investigates and fixes if it turns out not to be
+      Tunarr). See the Known issues entry below.
 - [ ] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
       builds).
-
-**Blocks:**
-
+- [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
+      "Fix very short items repeating or being skipped next to Flex" under
+      Media handling above, and Stage 4 in
+      [docs/blocks-spec.md](docs/blocks-spec.md).
 - [ ] Stage 5 transition bumpers (design pass on Opus 5.5 or Fable 5.1,
       Sonnet 5 builds). See Stage 5 in
       [docs/blocks-spec.md](docs/blocks-spec.md). The design pass decides
@@ -438,9 +419,6 @@ Ships once everything below is done, built in this order.
       sign-offs are covered by stage 5's own sequences; whatever isn't stays
       its own item (Sonnet 5) - see those two roadmap lines under Blocks
       system and Scheduling above.
-
-**Progress and ordering:**
-
 - [ ] Per-position stored progress, then rerun, shuffle and ordered shuffle
       (Opus 5.5 throughout - see "Work that stays on Opus 5 end to end" in
       the Model guide below). See the "Per-position stored progress, which
@@ -448,25 +426,22 @@ Ships once everything below is done, built in this order.
       four roadmap lines it unblocks.
 - [ ] Swap out episodes of a show, and plug library items in anywhere (Opus
       5.5 designs, Sonnet 5 builds).
-
-**Segments:**
-
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
-
-**Interface**, each defined together before Sonnet 5 builds it:
-
-- [ ] Profiles for specific looks
-- [ ] Custom TV guides
-- [ ] UI customization and cosmetic theming
-
-Last, because it touches how every program is identified:
-
+- [ ] Profiles for specific looks, custom TV guides, and UI customization and
+      cosmetic theming - each defined together before Sonnet 5 builds it.
 - [ ] Jellyfin as a media source (Opus 5.5 investigates and designs, Sonnet 5
       builds).
-
-- [ ] Release: version 1.0.0, README current, merge, tag v1.0.0 (Sonnet 5).
+- [ ] A live install separate from dev, where real channels get built: own
+      folder and data folder, auto-start after reboot, a port Windows won't
+      reserve, logs to files, daily backups tested by one restore, and a
+      written routine for updating it to a new release (Sonnet 5).
+- [ ] Random crashes during streaming, caught by a 48-hour soak and fixed if
+      seen (Opus 5.5). See the Infrastructure roadmap line above and the
+      Model guide below.
+- [ ] Release: version 1.0.0, README current, merge blocks into main, tag
+      v1.0.0 (Sonnet 5).
 
 After 1.0: "Public channel sharing without exposing an IP" under
 Infrastructure above, which now also covers livestreaming straight from the
