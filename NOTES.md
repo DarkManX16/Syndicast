@@ -418,16 +418,23 @@ be built:
 
       Four findings, and what became of each:
 
-      - **Channel 1's saved lineup predates 8d72c52 - re-run pending.** It
-        was laid out on one fixed UTC-5 offset, and ignores per-slot season
-        exclusions (258 programs air a season their slot excludes), so from
-        the change until March 14 every slot airs an hour early - the 2:00
-        show at 1:00am CST, the 8pm show at 7pm. Measured over the whole
-        saved lineup: 99% of programs in their own slot through October and
-        from April, 0.2-1.2% November to February. No code to change:
-        re-running Time Slots on a server at or after d9d91ae and saving the
-        channel fixes it. Two attempts so far left `channels/1.json`
-        byte-identical, so neither reached the data folder.
+      - **Channel 1's saved lineup predated 8d72c52 - regenerated Sep 27,
+        2026.** It was laid out on one fixed UTC-5 offset, and ignored
+        per-slot season exclusions (258 programs aired a season their slot
+        excludes), so from the change until March 14 every slot would have
+        aired an hour early - the 2:00 show at 1:00am CST, the 8pm show at
+        7pm. Measured over the whole saved lineup: every program in its own
+        slot in October and April to July, 0.2-1.2% November to February.
+        No code to change: Time Slots was re-run on a server at 7191d8d
+        and the channel saved with Update Channel - two earlier attempts
+        never reached the data folder, most likely because the dialog's
+        Create Lineup only changes the editor's copy. The new lineup, from a
+        fresh copy of the data folder: every program in its own slot in
+        every month to August 2027, custom-show slots included; no program
+        airs a season its slot excludes (0 of 1,107); and the fall-back
+        night airs Cowboy Bebop and InuYasha again at 1:00 and 1:30am CST,
+        with Attack on Titan back at 2:00. It runs out on Aug 3, 2027 - see
+        "Channel 1's lineup runs out on Aug 3, 2027" under Known issues.
       - **The repeated hour did not re-air - fixed in 784ae47.** The drift
         correction measured the time to the next slot boundary in real
         time, and 2:00am comes round only once, so the slot on air when the
@@ -518,6 +525,30 @@ Infrastructure above, which now also covers livestreaming straight from the
 UI. Everything else unticked stays in the roadmap as it is.
 
 ## Known issues / future work
+
+### Channel 1's lineup runs out on Aug 3, 2027
+
+Regenerate it before then: re-run Time Slots on channel 1 and click Update
+Channel. Nothing renews a lineup on its own.
+
+The lineup generated on Sep 27, 2026 is 40,000 programs - the generator's
+cap, hit before its 365-day limit - and one 315-day cycle, from Thu Sep 24,
+2026 12:00am CDT to Thu Aug 5, 2027 12:00am CDT. Its last real program ends
+**Tue Aug 3, 2027 at 1:20pm CDT**; the 35 hours after that are the flex that
+pads the cycle out to whole weeks. Then the cycle loops, and a lineup starts
+with flex from the start of its week to the moment it was generated - 72
+hours here. So from Aug 3 to Sun Aug 8, 2027 12:10am CDT channel 1 plays
+filler only, about four and a half days, and after that the same episodes
+from Sep 27, 2026 come round again in the same order.
+
+The cycle is a whole number of weeks and both ends fall in daylight time, so
+if it did loop the slots would still be on their clock times - the problem
+is the dead stretch and the reruns, not the schedule. Regenerating any time
+before Aug 3 continues each show from where it has got to (see the
+per-position stored progress entry below for the one caveat). A lineup
+generated in winter and looping in summer, or the other way round, would
+also be an hour off after the loop; regenerating inside the cycle avoids
+that too.
 
 ### Rebrand artwork does not reach existing installs
 
