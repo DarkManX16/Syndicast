@@ -24,6 +24,14 @@
             <td>nodejs</td>
             <td><div class='loader' ng-if="version.length &lt;= 0"></div>{{nodejs}}</td>
         </tr>
+        <tr>
+            <td>Git commit</td>
+            <td><div class='loader' ng-if="version.length &lt;= 0"></div>{{gitCommit}}</td>
+        </tr>
+        <tr>
+            <td>Server start time</td>
+            <td><div class='loader' ng-if="version.length &lt;= 0"></div>{{startTime | date:'medium'}}</td>
+        </tr>
 
         <!-- coming soon: plex version, whatever can be used to help debug things-->
     </table>

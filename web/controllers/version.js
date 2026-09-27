@@ -5,7 +5,9 @@ module.exports = function ($scope, dizquetv) {
         $scope.version = version.dizquetv;
         $scope.ffmpegVersion = version.ffmpeg;
         $scope.nodejs = version.nodejs;
+        $scope.gitCommit = version.gitCommit;
+        $scope.startTime = version.startTime;
     })
 
-    
+
 }

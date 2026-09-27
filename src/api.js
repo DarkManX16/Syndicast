@@ -6,6 +6,7 @@ const constants = require('./constants');
 const JSONStream = require('JSONStream');
 const FFMPEGInfo = require('./ffmpeg-info');
 const Plex = require("./plex.js");
+const buildInfo = require('./build-info');
 
 const timeSlotsService = require('./services/time-slots-service');
 const randomSlotsService = require('./services/random-slots-service');
@@ -35,6 +36,8 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
             "dizquetv" : constants.VERSION_NAME,
             "ffmpeg" : v,
             "nodejs" : process.version,
+            "gitCommit" : buildInfo.gitCommit,
+            "startTime" : buildInfo.startTime,
         } );
       } catch(err) {
           console.error(err);
