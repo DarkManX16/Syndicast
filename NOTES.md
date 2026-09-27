@@ -882,6 +882,12 @@ be built:
 - [ ] Buffering, tested with three streams at once and Tunarr stopped
       (manual test; Opus 5.5 investigates and fixes if it turns out not to be
       Tunarr). See the Known issues entry below.
+
+      It wasn't Tunarr. Both causes fixed Sep 27, 2026 (fecfd2f, f8f4dc7),
+      and measured on the real server path with Claude minimized and
+      Tunarr *running*: three `/video` streams at 0.98-1.00x realtime,
+      including every short clip in a whole break. Left unticked for the
+      manual test on a real client.
 - [ ] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
       builds).
 - [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
@@ -1374,8 +1380,9 @@ ordering silently breaks again.
 
 ### Heavy buffering during playback: `-qscale:v 1` and Windows throttling
 
-Happens on real channels. **Diagnosed Sep 27, 2026, not fixed. Two causes
-multiply, and Tunarr isn't one of them:**
+Happens on real channels. **Diagnosed Sep 27, 2026, and both causes fixed
+the same day - see "Both fixes built and verified" at the end of this entry.
+Two causes multiply, and Tunarr isn't one of them:**
 
 1. **`-qscale:v 1` makes every mpeg2video item 4-8x the work it needs to
    be.** One stream needs 4-5 cores to keep up, and three at once fall
@@ -1532,7 +1539,7 @@ Three pinned, Tunarr off: 0.14 each with it, 0.78 each without. Dropping
 the flag alone carries three streams on a free CPU and one stream even
 throttled, but not three throttled - that needs both fixes.
 
-**Fix directions, not built:**
+**Fix directions, as proposed:**
 
 1. Drop `-qscale:v 1` from `spawn()`'s mpeg2video flags and keep `-b:v`.
    Nothing about it is stored per channel, so no saved channel changes or
@@ -1549,7 +1556,119 @@ There is also a lead for Stage 4 here. A `/stream` item works out where the
 channel is from the wall clock. When an item takes longer to deliver than
 it lasts, the clock gets ahead of the stream, so the next entry starts
 later in the lineup. A short item right after a slow one can then be
-skipped entirely.
+skipped entirely. With both fixes in, no item measured below realtime (see
+below), so this lead is weaker now - but a machine busy with something
+else can still delay an item's start by a second or so.
+
+**Both fixes built and verified, Sep 27, 2026.** 1 and 2 are built, as
+separate commits; 3 and the libx264 `-sc_threshold` finding stay notes,
+since three streams keep up without them.
+
+1. **`-qscale:v 1` dropped, `-b:v` kept** (fecfd2f). Changed outright, not
+   behind a setting. `test/ffmpeg-encoder-flags.js` checks the mpeg2 item
+   and offline-screen commands carry `-b:v` and no `-qscale:v`, and that
+   libx264 gets neither.
+2. **Every ffmpeg marked High QoS** (f8f4dc7), by `src/ffmpeg-qos.js`: one
+   PowerShell helper, started with the first ffmpeg and kept for the life
+   of the server, is sent each ffmpeg's pid on stdin and calls
+   `SetProcessInformation(ProcessPowerThrottling)` with execution-speed
+   throttling explicitly off. Called at every spawn - items, filler,
+   screens and the concat in `ffmpeg.js`, `ffmpegText.js`, and the
+   `-version` check in `ffmpeg-info.js`, which now uses `execFile` so the
+   child is ffmpeg and not the `cmd.exe` around it. Off Windows it does
+   nothing; if the helper can't start, dies, or a mark is refused, it logs
+   one line and stops trying. `test/ffmpeg-qos.js`.
+
+**How the mark was chosen.** Two findings first. A child does *not* inherit
+its parent's mark: node marked High QoS, then an ffmpeg it spawned, read
+back `control=0` - so marking the server process alone does nothing.
+And Microsoft's QoS documentation classifies a process by the window state
+of the app it descends from (in focus High, visible Medium, minimized or
+covered Low) before anything else; priority only feeds the fallback
+heuristic for what that leaves unclassified. Then five candidates, taking
+turns in one throttled window (Claude minimized, VSDC in front), each
+30s of the Bebop stretch with the *pre-fix* command at `-re`, so a
+throttled run falls far behind; realtime is 1.00:
+
+- Unmarked: 0.54, 0.13 - throttling was on.
+- `os.setPriority` above normal: 0.78 (its other run had Claude in front
+  and doesn't count), about 0.64x for its first 20s.
+- `os.setPriority` high: 0.89, 0.97 - about 0.7x for the first 10-15s
+  both times, then racing to catch up.
+- High QoS (`SetProcessInformation`): 0.98, 0.98. One run was about 0.7x
+  for its first 10s and caught up.
+- `powercfg /powerthrottling disable /path`, on a byte-identical copy of
+  ffmpeg.exe so it could take turns with the unmarked one: 0.88 (the video
+  kept up; the process took 3.6s to exit), 0.98 - realtime in every 5s
+  sample from the first.
+
+So priority isn't enough, as the documentation predicts. `powercfg` works
+as well as the helper, and was smoother at the start in those two rounds,
+but it needs an administrator prompt, it is keyed to one exe path - and
+the gyan builds unpack to a new versioned folder on every update - and
+reading it back also needs administrator rights, so Syndicast could never
+notice it had silently stopped applying. The helper follows whatever path
+the FFmpeg settings name, travels with the code, and needs no admin.
+
+What the helper costs and how it behaves, measured: about 78 MB for one
+PowerShell process, about 1s to start, 12-182ms from an ffmpeg's spawn to
+its mark landing (median 40, 71 marks). The first ffmpeg after a server
+start waits for the helper to start: 1.4-1.7s in the smoke run, and a
+420ms loading screen had finished before its mark arrived (error 87,
+deliberately not logged). The script is passed as plain `-Command` text:
+this machine's execution policy blocks `.ps1` files, and base64
+`-EncodedCommand` is the pattern security tools look for. It reads stdin
+until it closes, so it exits with node - checked by calling
+`process.abort()` in node, after which the helper was gone. Windows
+Security (real-time protection, behaviour monitoring and tamper protection
+on, no ASR rules) recorded no detection before, during or after, and
+blocked nothing. One thing does get recorded: PowerShell's own automatic
+suspicious-script logging writes the helper's script to the
+`Microsoft-Windows-PowerShell/Operational` log as a Warning (event 4104)
+once per server start, as it does for any `Add-Type` with `DllImport`. It
+is a log entry, not a block; avoiding it would take a compiled helper
+binary, which is a build step this project doesn't have.
+
+**The live test**, on the real server path: the working tree with both
+fixes, on a copy of `.dizquetv-dev` on port 18096, channel 1's real
+lineup, Claude minimized throughout (every 5s sample), Tunarr running - and
+itself streaming, its ffmpeg using 0.1-0.7 cores. A `node -r` preload
+recorded each ffmpeg's spawn time, the helper's reply for it, and each
+item's output with arrival times, so every item's own pace could be
+measured from its own start; Syndicast's code ran unmodified.
+
+- *One stream, 150s:* 1.00 (Pokémon S01E08 throughout). *Three at once,
+  150s:* 0.997, 0.999, 0.997 - against 0.26 and 0.13 each in the same
+  conditions before the fixes. An unmarked control right after: 0.27.
+- *Three streams across a whole break*, 5:21:30-5:31:00 - the end of the
+  same Pokémon, channel 1's 5:22:45-5:30:00 break, and the start of the
+  Powerpuff Girls: 0.998, 0.983, 0.995. Control after: 0.14. 54 items, 17
+  of them clips of 5.1-15.7s. Every item delivered its first 10 seconds -
+  or all of itself, for the short ones - at 1.01x realtime or better;
+  median 306ms from spawn to first audio. 679 of 680 samples of the
+  server's running ffmpegs read High QoS. The odd one was a 5.1s bumper
+  whose mark the helper had confirmed 71ms after its spawn, read 2.5s later
+  during the stall below: most likely read after the clip ended and its
+  pid was reused. It ran at 1.36x.
+- *The dips were the machine, not throttling.* Twice - 5:28:12-5:28:35 and
+  5:30:32-5:30:57, while VSDC, Streamlabs and Explorer were being switched
+  between - something outside Syndicast took 10 or more logical processors:
+  P-cores 76-93% busy while Syndicast's ffmpegs used 0-6 cores and
+  Tunarr's 0.3, and the per-second sampler itself stalled for 12s and 25s.
+  The three items starting in the first window took 1.2-1.5s to first
+  audio instead of about 0.3s; in the second, all three copies of Powerpuff
+  slipped together by up to 2.2s at 41s in and caught up within about 10s.
+  Throttling looks the other way round - E-cores full, P-cores idle - and
+  `powercfg` wouldn't have helped with either. One stream ended the 9.5
+  minutes 9.6s behind, the other two 1.2s and 2.8s.
+
+So `powercfg` is not added as a second layer: item starts were slow only
+while the whole machine was busy, never while marked ffmpegs waited on a
+mark.
+
+A measurement trap worth keeping: **Windows reuses a pid within a minute**.
+Two items a minute apart both got pid 40368 here, so per-process records
+keyed on pid alone mixed them up. Key them on pid plus spawn time.
 
 ## Testing notes
 
@@ -1633,6 +1752,18 @@ checks as of the fall-back fixes). Nine files:
   as one block, and shifted and ordinary day-part starts keeping their real
   order across both the autumn and the spring change.
 
+- `ffmpeg-encoder-flags.js` - that mpeg2video gets `-b:v` and no
+  `-qscale:v 1`. Drives the real `src/ffmpeg.js` with `spawn` swapped for a
+  recorder, like `aspect-mark.js`; it loads its own copy of the module and
+  takes it back out of the require cache, since `ffmpeg.js` keeps whichever
+  `spawn` it saw when first required.
+
+- `ffmpeg-qos.js` - the High QoS helper: nothing done off Windows, one log
+  line when it can't mark, a helper that exits when its stdin closes.
+  **The one file here that starts a real process**: on Windows its last
+  check runs the real PowerShell helper against a real child, which is
+  what proves the C# in the script compiles.
+
 The first two of those also take channel JSON paths on the command line and
 re-run their measurements against real channels, which is where they were
 developed:
@@ -1649,8 +1780,9 @@ an install with no data folder.
 check/report harness, and `liftSource` - the brace-matching extractor two
 files now use to drive real production functions instead of transcriptions of
 them. `test/run.js` is what `npm test` calls; it requires each
-file above and aggregates their results. Nothing here touches ffmpeg or a running
-server, nothing reads the data folder this install actually uses - `channel-save.js`
+file above and aggregates their results. Nothing here runs ffmpeg or a
+server (`ffmpeg-qos.js` starts PowerShell and a node child on Windows, and
+nothing else does), nothing reads the data folder this install actually uses - `channel-save.js`
 makes and removes its own under the OS temp directory, and is the only one that
 touches a disk at all - and there is no test runner dependency to install: it is
 plain Node, in keeping with the rest of the project having none either. Each file also runs standalone, e.g. `node
