@@ -5,6 +5,21 @@ const imageUrl = require('./image-url')
 const MAXIMUM_ERROR_DURATION_MS = 60000;
 const REALLY_RIDICULOUSLY_HIGH_FPS_FOR_DIZQUETVS_USECASE = 120;
 
+// Whether ffmpeg-settings.js's five flags together guarantee every stream
+// opens with the square 16:9 loading screen - the loading screen's own
+// condition in video.js's /playlist, and also the one condition that makes
+// aspect marking (below) safe: a player that locks onto the shape of the
+// first thing it sees needs that first thing to be the loading screen, not
+// a narrow show. Keep this the one place both read from, so they can't
+// drift apart.
+function isFullyNormalized(opts) {
+    return (opts.enableFFMPEGTranscoding === true)
+        && (opts.normalizeVideoCodec === true)
+        && (opts.normalizeAudioCodec === true)
+        && (opts.normalizeResolution === true)
+        && (opts.normalizeAudio === true);
+}
+
 class FFMPEG extends events.EventEmitter {
     constructor(opts, channel) {
         super()
@@ -51,6 +66,18 @@ class FFMPEG extends events.EventEmitter {
             && (channel.transcoding.videoBufSize != 0)
         ) {
             opts.videoBufSize = channel.transcoding.videoBufSize;
+        }
+
+        // 'mark' lets a source narrower than the channel fill the frame and
+        // carries its real shape as a sample aspect ratio, instead of the
+        // default 'fit' (or absent, or '') which pads it with black bars.
+        // Only takes effect when isFullyNormalized() holds - see spawn().
+        this.aspectMode = 'fit';
+        if (
+            (typeof(channel.transcoding) !== 'undefined')
+            && (channel.transcoding.aspect === 'mark')
+        ) {
+            this.aspectMode = 'mark';
         }
 
         let parsed = parseResolutionString(resString);
@@ -360,34 +387,64 @@ class FFMPEG extends events.EventEmitter {
                     cw = hypotheticalW2;
                     ch = hypotheticalH2;
                 }
-                videoComplex += `;${currentVideo}scale=${cw}:${ch}:flags=${algo}[scaled]`;
-                currentVideo = "scaled";
-                resizeMsg = `Stretch to ${cw} x ${ch}. To fit target resolution of ${this.wantedW} x ${this.wantedH}.`;
-                if (this.ensureResolution) {
-                    console.log(`First stretch to ${cw} x ${ch}. Then add padding to make it ${this.wantedW} x ${this.wantedH} `);
-                } else if (cw % 2 == 1 || ch % 2 ==1)  {
-                    //we need to add padding so that the video dimensions are even
-                    let xw  = cw + cw % 2;
-                    let xh  = ch + ch % 2;
-                    resizeMsg = `Stretch to ${cw} x ${ch}. To fit target resolution of ${this.wantedW} x ${this.wantedH}. Then add 1 pixel of padding so that dimensions are not odd numbers, because they are frowned upon. The final resolution will be ${xw} x ${xh}`;
-                    this.wantedW = xw;
-                    this.wantedH = xh;
+                // Marking: instead of fitting the source into cw x ch and
+                // padding the rest with black, scale straight to the full
+                // frame and mark the result with the source's real display
+                // shape as a sample aspect ratio, so a player that reads it
+                // can add its own bars, or let the viewer stretch. Only for
+                // a source narrower than the frame (ch == wantedH, cw <
+                // wantedW) - see the roadmap entry for why a letterboxed
+                // (wider) source keeps its painted bars - and only when
+                // isFullyNormalized() holds, the same condition video.js's
+                // /playlist uses to guarantee the stream opens with the
+                // square loading screen a marking-aware player locks onto.
+                let doMark = (this.aspectMode === 'mark')
+                    && this.ensureResolution
+                    && isFullyNormalized(this.opts)
+                    && (ch === this.wantedH)
+                    && (cw < this.wantedW);
+
+                if (doMark) {
+                    videoComplex += `;${currentVideo}scale=${this.wantedW}:${this.wantedH}:flags=${algo}[scaled]`;
+                    currentVideo = "scaled";
+                    let sarG = gcd(cw * this.wantedH, ch * this.wantedW);
+                    let sarNum = (cw * this.wantedH) / sarG;
+                    let sarDen = (ch * this.wantedW) / sarG;
+                    resizeMsg = `Stretch to ${this.wantedW} x ${this.wantedH} and mark it to display as ${cw} x ${ch} (SAR ${sarNum}/${sarDen}), for the player to add its own bars or stretch.`;
+                    videoComplex += `;[${currentVideo}]setsar=${sarNum}/${sarDen}[siz]`;
+                    currentVideo = "[siz]";
+                    iW = this.wantedW;
+                    iH = this.wantedH;
                 } else {
+                    videoComplex += `;${currentVideo}scale=${cw}:${ch}:flags=${algo}[scaled]`;
+                    currentVideo = "scaled";
                     resizeMsg = `Stretch to ${cw} x ${ch}. To fit target resolution of ${this.wantedW} x ${this.wantedH}.`;
+                    if (this.ensureResolution) {
+                        console.log(`First stretch to ${cw} x ${ch}. Then add padding to make it ${this.wantedW} x ${this.wantedH} `);
+                    } else if (cw % 2 == 1 || ch % 2 ==1)  {
+                        //we need to add padding so that the video dimensions are even
+                        let xw  = cw + cw % 2;
+                        let xh  = ch + ch % 2;
+                        resizeMsg = `Stretch to ${cw} x ${ch}. To fit target resolution of ${this.wantedW} x ${this.wantedH}. Then add 1 pixel of padding so that dimensions are not odd numbers, because they are frowned upon. The final resolution will be ${xw} x ${xh}`;
+                        this.wantedW = xw;
+                        this.wantedH = xh;
+                    } else {
+                        resizeMsg = `Stretch to ${cw} x ${ch}. To fit target resolution of ${this.wantedW} x ${this.wantedH}.`;
+                    }
+                    if ( (this.wantedW != cw) || (this.wantedH != ch) ) {
+                        // also add black bars, because in this case it HAS to be this resolution
+                        videoComplex += `;[${currentVideo}]pad=${this.wantedW}:${this.wantedH}:(ow-iw)/2:(oh-ih)/2[blackpadded]`;
+                        currentVideo = "blackpadded";
+                    }
+                    let name = "siz";
+                    if (! this.ensureResolution && (beforeSizeChange != '[fpchange]') ) {
+                        name = "minsiz";
+                    }
+                    videoComplex += `;[${currentVideo}]setsar=1[${name}]`;
+                    currentVideo = `[${name}]`;
+                    iW = this.wantedW;
+                    iH = this.wantedH;
                 }
-                if ( (this.wantedW != cw) || (this.wantedH != ch) ) {
-                    // also add black bars, because in this case it HAS to be this resolution
-                    videoComplex += `;[${currentVideo}]pad=${this.wantedW}:${this.wantedH}:(ow-iw)/2:(oh-ih)/2[blackpadded]`;
-                    currentVideo = "blackpadded";
-                }
-                let name = "siz";
-                if (! this.ensureResolution && (beforeSizeChange != '[fpchange]') ) {
-                    name = "minsiz";
-                }
-                videoComplex += `;[${currentVideo}]setsar=1[${name}]`;
-                currentVideo = `[${name}]`;
-                iW = this.wantedW;
-                iH = this.wantedH;
             }
 
             // Channel watermark:
@@ -679,4 +736,5 @@ function gcd(a, b) {
     return a;
 }
 
+FFMPEG.isFullyNormalized = isFullyNormalized;
 module.exports = FFMPEG

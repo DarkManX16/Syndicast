@@ -1122,6 +1122,31 @@
                         </div>
                     </div>
 
+                    <div class='row'>
+                        <div class="form-group col-sm-auto">
+                            <label for="channelAspect">Shows narrower than the channel:</label>
+                            <select class="form-control custom-select" id="channelAspect" ng-model="channel.transcoding.aspect"
+                                ng-options="o.id as o.description for o in aspectOptions"
+                            >
+                            </select>
+                            <small class='text-muted form-text'>
+                                A 4:3 show on a 16:9 channel normally gets black bars on the
+                                sides. "Let the viewer's player decide" instead fills the
+                                frame and marks the real shape, so a player that reads the
+                                mark can add its own bars, or the viewer can stretch it to
+                                fill the screen. Tested against TiviMate: on its Normal and
+                                16:9 settings these shows fill the screen; its 4:3 setting
+                                shows bars, but also boxes 16:9 shows. A widescreen movie
+                                wider than the channel still gets painted bars either way.
+                            </small>
+                            <small class='text-warning form-text' ng-if='! ffmpegSettingsFullyNormalized'>
+                                This has no effect until FFmpeg Settings has transcoding
+                                enabled and Normalize Video Codec, Normalize Audio Codec,
+                                Normalize Resolution and Normalize Audio are all on.
+                            </small>
+                        </div>
+                    </div>
+
 
 
                 </div>

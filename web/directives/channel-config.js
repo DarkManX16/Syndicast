@@ -179,6 +179,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 ) {
                     scope.channel.transcoding.targetResolution = "";
                 }
+                if (
+                    (scope.channel.transcoding.aspect == null)
+                    || (typeof(scope.channel.transcoding.aspect) === 'undefined')
+                ) {
+                    scope.channel.transcoding.aspect = "";
+                }
 
                 if (typeof(scope.channel.onDemand) === 'undefined') {
                     scope.channel.onDemand = {};
@@ -1432,6 +1438,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.resolutionOptions = [
                 { id: "", description: "(Use global setting)" },
             ];
+
+            scope.aspectOptions = [
+                { id: "", description: "Black bars (default)" },
+                { id: "mark", description: "Let the viewer's player decide" },
+            ];
             resolutionOptions.get()
                 .forEach( (a) => {
                     scope.resolutionOptions.push(a)
@@ -2135,6 +2146,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
 
             scope.videoRateDefault = "(Use global setting)";
             scope.videoBufSizeDefault = "(Use global setting)";
+            // Whether the global FFmpeg settings meet the condition
+            // "Let the viewer's player decide" needs - the same one that
+            // guarantees the stream opens with the loading screen. Starts
+            // true so the note doesn't flash on while settings are loading.
+            scope.ffmpegSettingsFullyNormalized = true;
 
             scope.randomizeBlockShuffle = false;
 
@@ -2145,6 +2161,13 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                
                 try {
                     let ffmpegSettings = await dizquetv.getFfmpegSettings()
+                    scope.ffmpegSettingsFullyNormalized = (
+                        (ffmpegSettings.enableFFMPEGTranscoding === true)
+                        && (ffmpegSettings.normalizeVideoCodec === true)
+                        && (ffmpegSettings.normalizeAudioCodec === true)
+                        && (ffmpegSettings.normalizeResolution === true)
+                        && (ffmpegSettings.normalizeAudio === true)
+                    );
                     if (
                         (ffmpegSettings.targetResolution != null)
                         && (typeof(ffmpegSettings.targetResolution) !== 'undefined')
@@ -2160,9 +2183,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         scope.screenH = p.h;
                         scope.videoRateDefault = `global setting=${ffmpegSettings.videoBitrate}`;
                         scope.videoBufSizeDefault = `global setting=${ffmpegSettings.videoBufSize}`;
-           
-                        $timeout();
                     }
+                    $timeout();
                 } catch(err) {
                     console.error("Could not fetch ffmpeg settings", err);
                 }

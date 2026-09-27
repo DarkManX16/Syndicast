@@ -518,6 +518,68 @@ on shows.
       can make it do. And the unrelated `stepNumber={step}` bug in
       `video.js`, flagged as its own task.
 
+      **Built and verified Sep 27, 2026 (Sonnet 5), against this plan.**
+      All eight steps as written, with two findings along the way:
+
+      - `isFullyNormalized(opts)` is a small static function on `FFMPEG`
+        (`src/ffmpeg.js`), exported as `FFMPEG.isFullyNormalized`, and
+        `/playlist` in `src/video.js` now calls it instead of carrying its
+        own copy of the five-flag check. `channel.transcoding.aspect`
+        reads the same way `targetResolution` etc. already do - absent or
+        anything other than `'mark'` behaves as `'fit'`.
+      - The scaler block in `spawn()` now branches: `doMark` (the four
+        conditions from step 3) picks `scale=wantedW:wantedH` +
+        `setsar=(cw*wantedH)/(ch*wantedW)`, everything else keeps the
+        original scale-then-pad-then-`setsar=1` code exactly as it was,
+        moved into an `else`. No line inside either branch changed
+        behaviour from before this change.
+      - `test/aspect-mark.js` (10 checks) drives the real `src/ffmpeg.js`
+        the same way the investigation's scratch test-stream builder did -
+        `child_process.spawn` swapped for a recorder before requiring the
+        module, real probed shapes for Batman TAS and Cow and Chicken.
+        Added to `test/run.js`; `npm test` is 187/187.
+      - The one-time `git show` comparison the plan calls for (step 7):
+        pre-change `ffmpeg.js`, `helperFuncs.js` and `image-url.js`
+        extracted to a scratch directory and run side by side with the
+        current code across all four fixture sources, with and without a
+        watermark, plus the offline screen and the concat command - every
+        pair byte-identical. Not kept as an automated test, the same
+        reasoning `blocks-unchanged.js` gives for not keeping its own
+        git-show diff.
+      - **Finding: the editor changes needed `npm run build`.** The UI
+        lives in `web/directives/channel-config.js`, browserified into
+        `web/public/bundle.js` (gitignored, not source), which the running
+        server actually serves. The first live check showed the new
+        select's own two options and the no-effect note missing from the
+        rendered page - not a code bug, `scope.aspectOptions` and
+        `scope.ffmpegSettingsFullyNormalized` simply weren't in the bundle
+        the browser had loaded. Rebuilding and hard-reloading fixed it;
+        worth remembering for the next UI change, since nothing in the dev
+        workflow rebuilds this automatically.
+      - **Live check**, on a copy of `.dizquetv-dev` on port 18099 (never
+        the live folder, never 18000 - another session had it). A scratch
+        channel 900, Batman TAS / Attack on Titan / Cow and Chicken,
+        direct-play from the real files. The originally planned single
+        three-minute `/video` capture turned out not to isolate an item
+        boundary reliably - raw concatenated mpegts has independent PTS
+        per segment, which confused ffprobe/ffmpeg's own frame-level
+        decode across the join (the concat itself is fine; real players,
+        TiviMate included, are built to tolerate exactly this and proved
+        it live earlier in this investigation). Fetching `/stream`
+        directly instead - one item at a time, the same route the concat
+        process itself calls - decoded cleanly and, going through the
+        real Plex decision API rather than synthetic stats, confirmed all
+        of it: Batman TAS 1920x1080 SAR 3:4 no bars (`crop=1916:1080:2:0`),
+        Attack on Titan 1920x1080 SAR 1:1, Cow and Chicken (anamorphic)
+        1920x1080 SAR 3:4, switching the channel back to Fit brings the
+        painted bars back (`crop=1436:1080:242:0`, matching the pre-change
+        shape exactly), and turning off Normalize Audio live falls back to
+        the same padded shape even with the channel set to `'mark'`. In
+        the browser: the select saves through a real `Update Channel`,
+        survives a hard reload, and the no-effect note appears and clears
+        with the global setting. Channel 1, never touched, continued
+        serving its guide and lineup unaffected throughout.
+
       The enumeration of where scaling happens, and the per-channel
       mechanism, below serve both plans. From "What changes in the ffmpeg
       command" on is the fallback.

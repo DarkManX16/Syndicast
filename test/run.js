@@ -18,6 +18,7 @@ const suites = [
     './backup-restore-check',
     './backup-find-free-port',
     './backup-task-xml',
+    './aspect-mark',
 ];
 
 (async () => {

@@ -264,6 +264,30 @@ function warnAboutBlocks(json) {
     }
 }
 
+/*
+ * Warned about at the same write boundary and for the same reason as
+ * day-parts and blocks above: the one place every channel write passes
+ * through, whatever wrote it. Warn-only, and it rewrites nothing - the
+ * FFMPEG constructor already treats anything other than 'mark' as 'fit',
+ * so an unrecognized value is not a crash, just silently not what was
+ * probably meant.
+ */
+function warnAboutAspect(json) {
+    if (typeof(json.transcoding) === 'undefined') {
+        return;
+    }
+    const aspect = json.transcoding.aspect;
+    if ( (typeof(aspect) === 'undefined') || (aspect === '') || (aspect === 'mark') ) {
+        return;
+    }
+    console.error(
+        `Channel ${json.number}: transcoding.aspect was saved as `
+        + `"${aspect}", which is not a recognized value. It will be treated `
+        + `as though it were unset, and shows narrower than the channel `
+        + `will get black bars.`
+    );
+}
+
 class ChannelDB {
 
     constructor(folder) {
@@ -339,6 +363,7 @@ class ChannelDB {
         warnAboutAbsoluteImages(json);
         warnAboutDayParts(json);
         warnAboutBlocks(json);
+        warnAboutAspect(json);
     }
 
     async deleteChannel(number) {

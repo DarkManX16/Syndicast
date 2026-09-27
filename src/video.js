@@ -618,11 +618,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
         let sessionId = StreamCount++;
         let audioOnly = ("true" == req.query.audioOnly);
 
-        let transcodingEnabled = (ffmpegSettings.enableFFMPEGTranscoding === true)
-            && (ffmpegSettings.normalizeVideoCodec === true)
-            && (ffmpegSettings.normalizeAudioCodec === true)
-            && (ffmpegSettings.normalizeResolution === true)
-            && (ffmpegSettings.normalizeAudio === true);
+        let transcodingEnabled = FFMPEG.isFullyNormalized(ffmpegSettings);
 
         if (
                transcodingEnabled
