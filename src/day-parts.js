@@ -122,39 +122,122 @@ function hasOverlay(channel) {
 }
 
 /*
- * One start can name several days, so it expands to one point per day. A
- * daylight-saving shift can carry a late start past midnight - an 11:30pm start
- * fixed in standard time really is 12:30am the next day in summer - so the
- * position is normalised back into the week rather than clamped.
+ * The chain's rule is that each start runs until the next one, so the
+ * day-part in effect is the one whose start happened most recently. Across a
+ * daylight-saving change "most recently" has to be decided in real time rather
+ * than by where each start sits on this week's wall clock, because shifted and
+ * ordinary starts move differently when the clock changes.
+ *
+ * A shifted start is fixed in standard time, so it happens at exactly one real
+ * instant each week and never happens twice. Placing it by the offset at the
+ * instant being resolved - as the chain once did - re-positions a start that
+ * already happened under the other offset: after the autumn change a shifted
+ * 12am start that really began at 1:00am CDT was read back at 12:00am, behind
+ * an ordinary 12:30am start it had followed, and the older day-part came back
+ * at 1:00am CST with no start there. The spring change did the mirror image.
+ *
+ * An ordinary start happens whenever the wall clock reaches its day and time.
+ * On the autumn night the clock reaches a time inside the repeated hour twice,
+ * and the wall-clock schedule replays: at 1:10am CST a 1:30am start is not in
+ * effect again until the clock reaches 1:30 a second time, the same as the
+ * slots and block airings under it. A time inside the hour skipped in spring
+ * happens at the moment the clock jumps past it.
  */
-function startWeekPositions(start, instant) {
-    let positions = [];
-    if ( (start == null) || ! Array.isArray(start.days) ) {
-        return positions;
-    }
-    let time = start.time;
-    if (typeof(time) !== 'number' || isNaN(time)) {
-        return positions;
-    }
-    let shift = (start.shiftWithDst === true) ? daylightShiftAt(instant) : 0;
-    for (let i = 0; i < start.days.length; i++) {
-        let day = start.days[i];
-        if (typeof(day) !== 'number' || isNaN(day)) {
-            continue;
-        }
-        let at = day * DAY + time + shift;
-        positions.push( ((at % WEEK) + WEEK) % WEEK );
-    }
-    return positions;
+
+// 1 January 1970, day 0 of the epoch, was a Thursday.
+const EPOCH_WEEKDAY = 4;
+
+function sinceInWeek(from, to) {
+    return ( ((to - from) % WEEK) + WEEK ) % WEEK;
 }
 
 /*
- * Every start of every day-part, as one continuous weekly chain. There are no
- * end times: each start runs until the next one, wrapping at the end of the
- * week, which is what makes gaps and overlaps impossible.
+ * Where an instant falls in the week in standard time: the wall clock of a
+ * winter's day, all year round. Standard time never jumps, so arithmetic on it
+ * is exact.
  */
-function chainOf(channel, instant) {
-    let points = [];
+function standardWeekPositionOf(instant) {
+    let standard = instant - standardOffsetFor(instant);
+    let days = Math.floor(standard / DAY);
+    let weekday = ( ((days + EPOCH_WEEKDAY) % 7) + 7 ) % 7;
+    return weekday * DAY + (standard - days * DAY);
+}
+
+/*
+ * The first instant in (from, to] already on the offset in force at `to` -
+ * the moment the clock changed. Only asked when a change is known to lie
+ * between them.
+ */
+function clockChangeIn(from, to) {
+    let offsetAfter = timezoneOffsetAt(to);
+    let lo = from;
+    let hi = to;
+    while (hi - lo > 1) {
+        let mid = Math.floor( (lo + hi) / 2 );
+        if (timezoneOffsetAt(mid) === offsetAfter) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    return hi;
+}
+
+/*
+ * The last instant at or before clock.instant at which a start, on one of its
+ * days, happened.
+ *
+ * For an ordinary start, counting back on the wall clock from now to its
+ * position is exact whenever the offset has not changed in the past week - the
+ * common case, checked once per resolve rather than per start. Otherwise the
+ * count is off by the size of the change, and correcting by the error lands on
+ * the moment the clock read that time, or shows it never did.
+ */
+function lastOccurrence(start, day, clock) {
+    let at = ( ((day * DAY + start.time) % WEEK) + WEEK ) % WEEK;
+    if (start.shiftWithDst === true) {
+        return clock.instant - sinceInWeek(at, clock.standardPosition);
+    }
+    let occurred = clock.instant - sinceInWeek(at, clock.wallPosition);
+    if (clock.steady) {
+        return occurred;
+    }
+    let error = weekPositionOf(occurred) - at;
+    if (error > WEEK / 2) {
+        error -= WEEK;
+    } else if (error <= -WEEK / 2) {
+        error += WEEK;
+    }
+    if (error === 0) {
+        return occurred;
+    }
+    let corrected = occurred - error;
+    if (weekPositionOf(corrected) === at) {
+        return corrected;
+    }
+    // Skipped by the spring change: it happened when the clock jumped past it.
+    return clockChangeIn( Math.min(occurred, corrected), Math.max(occurred, corrected) );
+}
+
+/*
+ * The day-part whose start happened most recently, or null when no day-part
+ * has a usable start. Every start happens at least once a week, so there is
+ * always one: Saturday 12am needs no configuration because the day-part that
+ * began on Friday is simply the latest to have started. Two starts landing on
+ * the same moment is a configuration error the editor warns about; the one
+ * declared first wins, so the answer never depends on iteration details.
+ */
+function dayPartAt(channel, instant) {
+    let clock = {
+        instant: instant,
+        wallPosition: weekPositionOf(instant),
+        standardPosition: standardWeekPositionOf(instant),
+        // Changes are months apart, so equal offsets a week and an hour apart
+        // mean none happened in between.
+        steady: timezoneOffsetAt(instant) === timezoneOffsetAt(instant - WEEK - 60 * MINUTE),
+    };
+    let chosen = null;
+    let chosenAt = -Infinity;
     let dayParts = channel.dayParts;
     for (let i = 0; i < dayParts.length; i++) {
         let dayPart = dayParts[i];
@@ -162,59 +245,25 @@ function chainOf(channel, instant) {
             continue;
         }
         for (let j = 0; j < dayPart.starts.length; j++) {
-            let positions = startWeekPositions(dayPart.starts[j], instant);
-            for (let k = 0; k < positions.length; k++) {
-                points.push({
-                    at: positions[k],
-                    dayPartIndex: i,
-                    startIndex: j,
-                    dayPart: dayPart,
-                });
+            let start = dayPart.starts[j];
+            if ( (start == null) || ! Array.isArray(start.days)
+                || (typeof(start.time) !== 'number') || isNaN(start.time) ) {
+                continue;
+            }
+            for (let k = 0; k < start.days.length; k++) {
+                let day = start.days[k];
+                if (typeof(day) !== 'number' || isNaN(day)) {
+                    continue;
+                }
+                let occurred = lastOccurrence(start, day, clock);
+                if (occurred > chosenAt) {
+                    chosen = dayPart;
+                    chosenAt = occurred;
+                }
             }
         }
     }
-    points.sort( (a, b) => {
-        if (a.at !== b.at) {
-            return a.at - b.at;
-        }
-        if (a.dayPartIndex !== b.dayPartIndex) {
-            return a.dayPartIndex - b.dayPartIndex;
-        }
-        return a.startIndex - b.startIndex;
-    } );
-    return points;
-}
-
-/*
- * The latest start at or before this point in the week. Two starts landing on
- * the same moment is a configuration error the editor warns about; resolving it
- * to the day-part declared first keeps the answer deterministic rather than
- * dependent on sort stability.
- */
-function pickPoint(points, position) {
-    let chosen = null;
-    for (let i = 0; i < points.length; i++) {
-        if (points[i].at > position) {
-            break;
-        }
-        if ( (chosen === null) || (points[i].at > chosen.at) ) {
-            chosen = points[i];
-        }
-    }
-    if (chosen !== null) {
-        return chosen;
-    }
-    // Nothing has started yet this week, so the chain has wrapped and the
-    // week's last start is still running. Saturday 12am needs no configuration
-    // for the same reason: the day-part that began on Friday simply runs on.
-    let last = points[points.length - 1];
-    for (let i = points.length - 1; i >= 0; i--) {
-        if (points[i].at !== last.at) {
-            break;
-        }
-        last = points[i];
-    }
-    return last;
+    return chosen;
 }
 
 /*
@@ -278,7 +327,7 @@ function spanCovers(span, position) {
  * editor is meant to prevent this; the resolver still needs an answer if one
  * slips through - a hand-edited channel file, say) and, harmlessly, for a
  * single block's own airings never being able to collide with themselves. The
- * first match found wins, mirroring pickPoint's "declared first" rule for
+ * first match found wins, mirroring dayPartAt's "declared first" rule for
  * colliding day-part starts.
  */
 function blockContextAt(channel, instant) {
@@ -318,11 +367,7 @@ function resolveContext(channel, instant) {
     if (! hasDayParts(channel)) {
         return null;
     }
-    let points = chainOf(channel, instant);
-    if (points.length === 0) {
-        return null;
-    }
-    return pickPoint(points, weekPositionOf(instant)).dayPart;
+    return dayPartAt(channel, instant);
 }
 
 /*

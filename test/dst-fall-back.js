@@ -24,9 +24,10 @@
  *
  * On the repeated hour's second pass, the slots inside it air again: the
  * 1:00 slot at 1:00am CST, the 1:30 at 1:30am CST, so everything after keeps
- * its clock time. One thing the verification found is still logged rather
- * than checked: a shifted day-part start losing its place to an earlier
- * ordinary one after the change. See NOTES.md.
+ * its clock time. Day-part starts follow the same wall clock, except a
+ * shifted one, which is fixed in standard time and happens exactly once; the
+ * day-part in effect is the one whose start happened last, in real time, and
+ * the spring change is checked for that too.
  */
 const { spawnSync } = require('child_process');
 const TVGuideService = require('../src/services/tv-guide-service');
@@ -317,9 +318,9 @@ async function checks() {
 
     // ---- shift with daylight saving ------------------------------------
     suite.log('-- shift with daylight saving (none of the real starts use it) --');
-    const coverage = (ch, name) => {
+    const coverage = (ch, name, from = NIGHT_FROM, to = NIGHT_TO) => {
         const minutes = [];
-        for (let t = NIGHT_FROM; t < NIGHT_TO; t += MIN) {
+        for (let t = from; t < to; t += MIN) {
             if (nameAt(ch, t) === name) {
                 minutes.push(t);
             }
@@ -376,17 +377,46 @@ async function checks() {
         exactly(plain, [['2026-11-01T06:30:00Z', '2026-11-01T07:00:00Z'],
             ['2026-11-01T07:30:00Z', '2026-11-01T09:00:00Z']]), spanText(plain));
 
-    // Open: every shifted start is placed using the offset at the instant
-    // being resolved, including starts that already happened under the other
-    // offset. After the change a shifted start that aired at 1:00am CDT is
-    // re-placed at 12:00am, behind an ordinary 12:30am start that really came
-    // first, and the older day-part comes back.
+    // A shifted start and an ordinary one half an hour apart. The day-part in
+    // effect is the one whose start happened last, in real time. Placing the
+    // shifted start by the offset at the moment being resolved - as the
+    // resolver once did - moves a start that already happened under the other
+    // offset, and after a change swaps the two.
     const reordered = clone(shiftedStart);
     reordered.dayParts.push({ name: 'Late Adult Swim', fillerCollections: mix([['Adult Swim', 300]]),
         starts: [{ days: [0], time: 30 * MIN }] });
-    suite.log(`OPEN  shifted 12am start + ordinary 12:30am start: ${label(FALL_BACK - MIN)} `
-        + `${nameAt(reordered, FALL_BACK - MIN)}, ${label(FALL_BACK)} ${nameAt(reordered, FALL_BACK)}`
-        + ' - no start happens at 1:00am CST, so this should still be Toonami AcTN');
+
+    // Autumn: 12:30am CDT the ordinary start, 1:00am CDT the shifted one.
+    // Nothing starts at 1:00am CST, so Toonami AcTN holds.
+    const autumn = coverage(reordered, 'Toonami AcTN');
+    suite.check('Autumn: a shifted 12am start keeps its place after an ordinary 12:30am start',
+        exactly(autumn, [['2026-11-01T06:00:00Z', '2026-11-01T10:00:00Z']]), spanText(autumn));
+
+    // Spring, Mar 14 2027: the shifted start is 12:00am CST, the ordinary one
+    // 12:30am CST, and the clock jumps to 3:00am CDT at 08:00Z. Nothing
+    // starts at the jump, so Late Adult Swim holds.
+    const lateSpring = coverage(reordered, 'Late Adult Swim',
+        Z('2027-03-14T05:00:00Z'), Z('2027-03-14T09:00:00Z'));
+    suite.check('Spring: an ordinary 12:30am start keeps its place after a shifted 12am start',
+        exactly(lateSpring, [['2027-03-14T06:30:00Z', '2027-03-14T09:00:00Z']]), spanText(lateSpring));
+
+    // A shifted start inside the first pass happens once. 12:30am standard is
+    // 1:30am CDT, 06:30Z; the second pass must not undo it.
+    const shiftedInRepeat = clone(channel);
+    Object.assign(shiftedInRepeat.dayParts.find( (d) => d.name === 'Toonami AcTN' ).starts[0],
+        { time: 30 * MIN, shiftWithDst: true });
+    const once = coverage(shiftedInRepeat, 'Toonami AcTN');
+    suite.check('A shifted start at 1:30am CDT happens once and holds through the second pass',
+        exactly(once, [['2026-11-01T06:30:00Z', '2026-11-01T10:00:00Z']]), spanText(once));
+
+    // An ordinary start inside the repeated hour replays with the wall clock,
+    // the same as the slots and block airings around it.
+    const ordinaryInRepeat = clone(channel);
+    ordinaryInRepeat.dayParts.find( (d) => d.name === 'Toonami AcTN' ).starts[0].time = 90 * MIN;
+    const twice = coverage(ordinaryInRepeat, 'Toonami AcTN');
+    suite.check('An ordinary 1:30am start happens at both 1:30ams, CN City (Night) between them',
+        exactly(twice, [['2026-11-01T06:30:00Z', '2026-11-01T07:00:00Z'],
+            ['2026-11-01T07:30:00Z', '2026-11-01T10:00:00Z']]), spanText(twice));
 
     // ---- weeklySegments -------------------------------------------------
     suite.log('-- weeklySegments --');

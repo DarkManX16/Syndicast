@@ -121,7 +121,7 @@ plain.fillerCollections = mix([['Powerhouse', 50], ['CN Groovies', 50]]);
 // later session) is meant to prevent, and channel-db.js's warnAboutBlocks
 // complains about, but the resolver still needs a deterministic answer if one
 // slips through regardless - a hand-edited channel file, say. The
-// first-declared block wins, the same rule pickPoint already uses when two
+// first-declared block wins, the same rule dayPartAt already uses when two
 // day-part starts land on the same moment.
 const overlapping = channelOf(50, 'Overlap', []);
 overlapping.blocks = [
