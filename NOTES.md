@@ -393,7 +393,17 @@ on shows.
       to tell "ignores the marking" apart from "reads the shape once";
       C - marked, switching 4:3 / 16:9 every 30 seconds (Batman TAS,
       Attack on Titan, Cow and Chicken, Attack on Titan, Batman TAS).
-      Results go here once TiviMate and ImPlayer have been tried.
+      **TiviMate, stream C, Sep 27, 2026: the goal works.** With TiviMate's
+      16:9 setting the marked 4:3 shows fill the screen - which today's
+      painted bars make impossible - and with its 4:3 setting they get
+      bars. Attack on Titan played full screen, and the stream switched by
+      itself at every item change, with nothing to reset or retune. Still
+      open: whether Attack on Titan stayed full screen *under the 4:3
+      setting* (if so, TiviMate follows the marking item by item and my
+      "reads the shape once" prediction for ExoPlayer was wrong; if it
+      went into a 4:3 box, the setting simply forces a shape), and what
+      TiviMate's default setting shows. ImPlayer, and streams A, B and B2,
+      not yet tried.
 
       The enumeration of where scaling happens, and the per-channel
       mechanism, below serve both plans. From "What changes in the ffmpeg
