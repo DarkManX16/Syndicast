@@ -64,8 +64,8 @@ for the full spec, stages and acceptance tests.
       `resolveContext` is what changed, not the rule that calls it with the
       neighbour's start time. Two overlapping airings from different blocks -
       a state the editor now prevents interactively - resolve to whichever
-      block was declared first, the same tie-break `pickPoint` already used
-      for two colliding day-part starts.
+      block was declared first, the same tie-break the day-part chain
+      already used for two colliding day-part starts.
 
       Per-context guide names turned out not to reach the guide through
       `createLineup` at all - the earlier investigation that shaped this
@@ -360,7 +360,7 @@ rather than copying the layout of other projects.
 - [ ] Fix random crashes during streaming
 - [x] Fix time slots breaking across daylight savings (fixed in 8d72c52 -
       each slot occurrence now resolves its own offset instead of one offset
-      covering the whole schedule)
+      covering the whole schedule; the repeated autumn hour in 784ae47)
 - [ ] Per-channel timezone. Slots, day-parts and blocks all read the *host
       machine's* local clock (`new Date(instant)`'s own fields and
       `getTimezoneOffset()`, in `time-slots-service.js` and `day-parts.js`
@@ -416,39 +416,39 @@ be built:
       none of the real ones use, land on the right instant exactly once.
       What holds is pinned in `test/dst-fall-back.js`.
 
-      Four findings, reported and awaiting a decision before any code
-      changes:
+      Four findings, and what became of each:
 
-      - **Channel 1's saved lineup predates 8d72c52.** It was laid out on
-        one fixed UTC-5 offset, and ignores per-slot season exclusions, so
-        from the change until March 14 every slot airs an hour early - the
-        2:00 show at 1:00am CST, the 8pm show at 7pm. Measured over the
-        whole saved lineup: 99% of programs in their own slot through
-        October and from April, 0.2-1.2% November to February. Re-running
-        Time Slots on a current server fixes it; the current generator,
-        given the same schedule, measured 99% every month.
-      - **The repeated hour does not re-air the way "Time slots have no
-        daylight-saving toggle" under Known issues says.** The generator's
-        drift correction measures the time to the next boundary in real
+      - **Channel 1's saved lineup predates 8d72c52 - re-run pending.** It
+        was laid out on one fixed UTC-5 offset, and ignores per-slot season
+        exclusions (258 programs air a season their slot excludes), so from
+        the change until March 14 every slot airs an hour early - the 2:00
+        show at 1:00am CST, the 8pm show at 7pm. Measured over the whole
+        saved lineup: 99% of programs in their own slot through October and
+        from April, 0.2-1.2% November to February. No code to change:
+        re-running Time Slots on a server at or after d9d91ae and saving the
+        channel fixes it. Two attempts so far left `channels/1.json`
+        byte-identical, so neither reached the data folder.
+      - **The repeated hour did not re-air - fixed in 784ae47.** The drift
+        correction measured the time to the next slot boundary in real
         time, and 2:00am comes round only once, so the slot on air when the
-        clock falls back (1:30) runs on through the whole second pass -
-        three InuYasha in a row on channel 1 - rather than the 1:00 and
-        1:30 slots each airing again. Day-parts and blocks do re-run the
-        hour, so a boundary inside it would pair with the wrong programming
-        on the second pass.
-      - **A shifted day-part start can lose its place after the change.**
-        Every start is placed using the offset at the instant being
-        resolved, including starts that already happened under the other
-        one, so a shifted start can drop behind an ordinary start that
-        really came first, and the older day-part comes back at 1:00am CST
-        with no start there. Needs a shifted and an ordinary start within
-        an hour of each other; no channel has one.
+        clock fell back (1:30) ran on through the whole second pass - three
+        InuYasha in a row on channel 1. The 1:00 and 1:30 slots now each
+        air again; see "Time slots have no daylight-saving toggle" under
+        Known issues.
+      - **A shifted day-part start could lose its place after a change -
+        fixed in d9d91ae, spring and autumn.** Every start was placed using
+        the offset at the instant being resolved, including starts that had
+        already happened under the other one, so a shifted start could drop
+        behind an ordinary start it had followed, and the older day-part
+        came back at 1:00am CST with nothing starting there. The day-part in
+        effect is now the one whose start happened last in real time: a
+        shifted start happens once, at its standard time; an ordinary one
+        whenever the wall clock reaches it, so it replays in the repeated
+        hour like the slots and block airings around it. No channel had the
+        combination that showed it.
       - **Not daylight saving: a boundary break often opens with a clip
-        from the outgoing mix.** The stream is handed to a break up to 10
-        seconds early with no time elapsed, so `findNextProgram` computes
-        the next show's start that much early - just before a boundary set
-        at the show's start, as the spec says to set it. 15 of 28 boundary
-        breaks in an ordinary week, one clip each; the guide is unaffected.
+        from the outgoing mix.** Moved to the Stage 4 item below, which
+        takes it.
 - [ ] Aspect ratio stretch without having to disable "normalize resolution"
       (Opus 5.5 plans, Sonnet 5 builds).
 - [ ] Info panel and thumbnail per item (Sonnet 5).
@@ -463,6 +463,25 @@ be built:
       "Fix very short items repeating or being skipped next to Flex" under
       Media handling above, and Stage 4 in
       [docs/blocks-spec.md](docs/blocks-spec.md).
+
+      Also take, since it comes from the same look-ahead at the edge of a
+      break: **a boundary break often opens with one clip from the outgoing
+      mix.** Found walking the fall-back night, but not a daylight-saving
+      problem - it happens every day. `getCurrentProgramAndTimeElapsed` in
+      `src/helperFuncs.js` hands the stream to the next item when it is
+      within `SLACK` (10 seconds) of the current one's end, reporting 0
+      elapsed. `findNextProgram` in `src/day-parts.js` then works out the
+      next show's start as `t0 - obj.timeElapsed + duration` - up to 10
+      seconds early, which is just before a boundary set at that show's
+      start, exactly as the spec says to set one. So the first clip of the
+      break resolves in the outgoing context and the rest in the incoming
+      one. Measured on channel 1 regenerated by the current generator, Oct
+      18-25: 15 of 28 boundary breaks opened with one outgoing clip, never
+      more than one; e.g. the break before Saturday's midnight Dragon Ball
+      GT opened with a CN City [NIGHT] clip, then Toonami AcTN. The guide
+      is unaffected - it resolves from exact starts. Likely shape: resolve
+      from the break's real start in the lineup rather than from the
+      hand-off instant, and check against the same week.
 - [ ] Stage 5 transition bumpers (design pass on Opus 5.5 or Fable 5.1,
       Sonnet 5 builds). See Stage 5 in
       [docs/blocks-spec.md](docs/blocks-spec.md). The design pass decides
@@ -774,15 +793,38 @@ is no boundary case that should shift and nothing to make opt-in.
 
 `localMsIntoPeriod` in `src/services/time-slots-service.js` resolves the UTC
 offset per instant rather than once for the whole schedule, which is what
-keeps a slot on the wall-clock time it was set to across a change - its own
-comment states the two consequences of following local time honestly instead
-of special-casing it: on the spring-forward day the skipped local hour never
-occurs, so a slot inside it does not air that day; on the autumn day the
-repeated hour occurs twice, so a slot inside it airs twice. Both are accepted,
-not treated as bugs to fix.
+keeps a slot on the wall-clock time it was set to across a change. Following
+local time honestly instead of special-casing it has two consequences, both
+accepted rather than treated as bugs:
 
-Measured on the Nov 1, 2026 night, the autumn half is not what the generator
-actually does - see the fall-back item in the 1.0 must list.
+- **Spring forward:** the skipped local hour never occurs, so a slot inside
+  it does not air that day.
+- **Fall back:** the repeated hour occurs twice, so each slot inside it airs
+  twice - on Nov 1, 2026 channel 1's 1:00 slot airs at 1:00am CDT and again
+  at 1:00am CST, the 1:30 slot likewise, and the 2:00 slot at 2:00am CST, so
+  every later show keeps its clock time. "Twice" means the slot runs again,
+  so a Play Next slot airs its next episode, not a rerun. A slot that spans
+  the change instead - say one running 12:00-3:00am - has nothing to air
+  again, and runs on through the repeat as one block - four real hours for
+  the wall clock's three.
+
+The autumn half was not true until 784ae47. The drift correction that stops
+a slot overshooting its boundary in spring measured the time to the next
+boundary in real time, and 2:00am comes round only once, so the slot on air
+when the clock fell back ran on through the whole second pass - three
+InuYasha in a row on channel 1. It now stops at the moment the clock falls
+back whenever the repeated time belongs to an earlier slot, and the loop airs
+that slot again; slot search is one function, `findSlot`, so the loop and
+this check cannot disagree about who owns a moment. Stopping there
+unconditionally would be wrong for the spanning slot: it would be re-entered
+an hour "late", and with lateness at 0 the rest of it would turn to flex
+(measured: 128 minutes). `test/dst-fall-back.js` pins both.
+
+Day-parts and block airings replay the repeated hour the same way, so the
+filler rules and the programming under them stay paired on the second pass;
+a day-part start marked "shift with daylight saving" is the exception, since
+it is fixed in standard time and happens once. See the fall-back item in the
+1.0 must list.
 
 ### The play-time cache is loaded without being awaited
 
@@ -887,8 +929,8 @@ noting for each stall whether it lands mid-episode or at a changeover.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (116
-checks as of the fall-back night). Nine files:
+runs every file in the directory and prints one combined pass/fail count (123
+checks as of the fall-back fixes). Nine files:
 
 - `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
   [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance tables, transcribed
@@ -954,9 +996,10 @@ checks as of the fall-back night). Nine files:
   own day-parts and airings, shifted and unshifted starts, and weeklySegments.
   **The one file here pinned to a named zone** rather than the machine's own,
   since the instants it tests are US Central's: it re-runs itself in a child
-  with `TZ=America/Chicago` when the machine is anywhere else. Two open
-  findings from that verification are logged rather than checked until they
-  are decided - see the fall-back item in the 1.0 must list.
+  with `TZ=America/Chicago` when the machine is anywhere else. Covers the
+  repeated hour airing its slots again, a slot spanning the change running on
+  as one block, and shifted and ordinary day-part starts keeping their real
+  order across both the autumn and the spring change.
 
 The first two of those also take channel JSON paths on the command line and
 re-run their measurements against real channels, which is where they were
