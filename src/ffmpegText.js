@@ -2,6 +2,7 @@ const spawn = require('child_process').spawn
 const events = require('events')
 const fs = require('fs')
 const path = require('path')
+const { markHighQos } = require('./ffmpeg-qos')
 
 class FFMPEG_TEXT extends events.EventEmitter {
     constructor (opts, title, subtitle) {
@@ -22,6 +23,7 @@ class FFMPEG_TEXT extends events.EventEmitter {
         ]
 
         this.ffmpeg = spawn(opts.ffmpegPath, this.args)
+        markHighQos(this.ffmpeg)
 
         this.ffmpeg.stdout.on('data', (chunk) => {
             this.emit('data', chunk)

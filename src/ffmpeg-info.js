@@ -1,4 +1,5 @@
-const exec = require('child_process').exec;
+const execFile = require('child_process').execFile;
+const { markHighQos } = require('./ffmpeg-qos');
 
 class FFMPEGInfo {
     constructor(opts) {
@@ -7,13 +8,15 @@ class FFMPEGInfo {
     async getVersion() {
         try {
             let s = await new Promise( (resolve, reject) => {
-                exec( `"${this.ffmpegPath}" -version`, function(error, stdout, stderr){
+                // execFile rather than exec, so the child is ffmpeg itself and not a shell around it
+                let child = execFile( this.ffmpegPath, ['-version'], function(error, stdout, stderr){
                     if (error !== null) {
                         reject(error);
                     } else {
                         resolve(stdout);
                     }
                 });
+                markHighQos(child);
             });
             var m = s.match( /version\s+([^\s]+)\s+.*Copyright/ )
             if (m == null) {

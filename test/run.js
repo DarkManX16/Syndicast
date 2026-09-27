@@ -20,6 +20,7 @@ const suites = [
     './backup-task-xml',
     './aspect-mark',
     './ffmpeg-encoder-flags',
+    './ffmpeg-qos',
 ];
 
 (async () => {

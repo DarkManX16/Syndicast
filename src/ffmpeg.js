@@ -1,6 +1,7 @@
 const spawn = require('child_process').spawn
 const events = require('events')
 const imageUrl = require('./image-url')
+const { markHighQos } = require('./ffmpeg-qos')
 
 const MAXIMUM_ERROR_DURATION_MS = 60000;
 const REALLY_RIDICULOUSLY_HIGH_FPS_FOR_DIZQUETVS_USECASE = 120;
@@ -630,6 +631,7 @@ class FFMPEG extends events.EventEmitter {
         }
         //console.log(this.ffmpegPath + " " + ffmpegArgs.join(" ") );
         this.ffmpeg = spawn(this.ffmpegPath, ffmpegArgs, { stdio: ['ignore', 'pipe', (doLogs?process.stderr:"ignore") ] } );
+        markHighQos(this.ffmpeg);
         if (this.hasBeenKilled) {
             console.log("Send SIGKILL to ffmpeg");
             this.ffmpeg.kill("SIGKILL");
