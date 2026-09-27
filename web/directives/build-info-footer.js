@@ -8,11 +8,13 @@ module.exports = function (dizquetv) {
         link: function (scope, element, attrs) {
             scope.version = "";
             scope.gitCommit = "";
+            scope.gitDirty = false;
             scope.startTime = null;
 
             dizquetv.getVersion().then((version) => {
                 scope.version = version.dizquetv;
                 scope.gitCommit = version.gitCommit;
+                scope.gitDirty = version.gitDirty;
                 scope.startTime = version.startTime;
             });
         }

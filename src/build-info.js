@@ -18,10 +18,25 @@ function readGitCommit() {
     }
 }
 
+// Tracked files only - untracked files don't count as "modified".
+function readGitDirty() {
+    try {
+        let status = execSync('git status --porcelain --untracked-files=no', {
+            cwd: path.join(__dirname, '..'),
+            stdio: ['ignore', 'pipe', 'ignore'],
+        }).toString().trim();
+        return status.length > 0;
+    } catch (err) {
+        return false;
+    }
+}
+
 const gitCommit = readGitCommit();
+const gitDirty = readGitDirty();
 
 module.exports = {
     version: constants.VERSION_NAME,
     gitCommit,
+    gitDirty,
     startTime,
 };

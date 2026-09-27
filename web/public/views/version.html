@@ -26,7 +26,7 @@
         </tr>
         <tr>
             <td>Git commit</td>
-            <td><div class='loader' ng-if="version.length &lt;= 0"></div>{{gitCommit}}</td>
+            <td><div class='loader' ng-if="version.length &lt;= 0"></div>{{gitCommit}}<span ng-if="gitDirty"> (modified)</span></td>
         </tr>
         <tr>
             <td>Server start time</td>

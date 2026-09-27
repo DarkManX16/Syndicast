@@ -37,6 +37,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
             "ffmpeg" : v,
             "nodejs" : process.version,
             "gitCommit" : buildInfo.gitCommit,
+            "gitDirty" : buildInfo.gitDirty,
             "startTime" : buildInfo.startTime,
         } );
       } catch(err) {
