@@ -401,12 +401,17 @@ on shows.
       the 4:3 setting Attack on Titan went into a 4:3 box with bars, so
       TiviMate's 16:9 and 4:3 settings *force* a shape on everything:
       they tell us nothing about whether it reads the marking. That is
-      decided by its default setting, "Normal" - result still to come: bars
-      on the 4:3 shows and full screen on Attack on Titan would mean it
-      follows the marking item by item (and my "reads the shape once"
-      prediction was wrong); 4:3 shows filling the width would mean it
-      ignores the marking or keeps the loading screen's shape. ImPlayer
-      couldn't be tried: its free version allows only one playlist.
+      decided by its default setting, "Normal", and on Normal every show
+      on stream C looked stretched to 16:9, the 4:3 ones included. So
+      TiviMate does *not* honour the marking by default: it either ignores
+      it, or keeps the square shape of the loading screen it saw first -
+      the "reads the shape once" prediction, which stream B2 (no loading
+      screen) on Normal would confirm or rule out. What a TiviMate viewer
+      gets on a marked channel, then: 4:3 shows full width on Normal and
+      16:9; bars on 4:3 shows only by forcing 4:3, which also boxes every
+      16:9 show. Stretch-by-choice works; the right shape per show,
+      automatically, does not. ImPlayer couldn't be tried: its free
+      version allows only one playlist.
 
       The enumeration of where scaling happens, and the per-channel
       mechanism, below serve both plans. From "What changes in the ffmpeg
