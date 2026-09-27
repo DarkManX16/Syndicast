@@ -516,7 +516,9 @@ on shows.
       Out of scope: the right shape per show, automatically, in TiviMate -
       that needs the player to start over at each item, which no marking
       can make it do. And the unrelated `stepNumber={step}` bug in
-      `video.js`, flagged as its own task.
+      `video.js`, flagged as its own task - since fixed in 1634bef, which
+      leaves one thing to test for this feature (see "A concat restart
+      replayed the tune-in" under Resolved).
 
       **Built and verified Sep 27, 2026 (Sonnet 5), against this plan.**
       All eight steps as written, with two findings along the way:
@@ -905,6 +907,13 @@ be built:
       is unaffected - it resolves from exact starts. Likely shape: resolve
       from the break's real start in the lineup rather than from the
       hand-off instant, and check against the same week.
+
+      Two leads from fixing the concat restart (Sep 27, 2026). The restart
+      is ruled out as the "plays three times" symptom, and can only start
+      a clip partway about four times a day. Items encoding below realtime
+      are a stronger lead for the skipping. See "A concat restart replayed
+      the tune-in" under Resolved, and "Heavy buffering during playback"
+      under Known issues.
 - [ ] Stage 5 transition bumpers (design pass on Opus 5.5 or Fable 5.1,
       Sonnet 5 builds). See Stage 5 in
       [docs/blocks-spec.md](docs/blocks-spec.md). The design pass decides
@@ -1382,6 +1391,40 @@ measured under load.
 Planned test: one stream, then three at once, both with Tunarr stopped,
 noting for each stall whether it lands mid-episode or at a changeover.
 
+**Measured Sep 27, 2026, while fixing the concat restart (see Resolved):
+single items encoded below realtime.** Tunarr was streaming at the time,
+with three ffmpeg processes of its own, so this isn't isolated from it yet.
+But a player whose video arrives at a quarter of realtime stalls whatever
+it is, so this goes to the head of the list:
+
+- Through `/video` with the dev settings (`mpeg2video`, 1920x1080, 5000k):
+  about 40 seconds of video delivered in about 200 seconds of wall time,
+  twice in a row. A single `/stream` fetched on its own: 68.7s of video in
+  110s, and 15.1s in 65.9s.
+- The exact command Syndicast built for that 15.1s clip (CN comm break,
+  Tootsie Pop Owl), run by hand into a file, took 66.9s with `-re` and 41.5s
+  flat out, and logged `rc buffer underflow` 50 times. The same command
+  without `-qscale:v 1` took 2.1s flat out. That flag is upstream's fix for
+  blocky mpeg2 (56a4f3f), pushed only for `mpeg2video` in `spawn()`'s
+  encoder flags in `src/ffmpeg.js`, and its comment already mentions
+  ffmpeg's "impossible bitrate constraints" warning.
+- Not everything is that flag. With the encoder set to `libx264`, which
+  never gets it, Syndicast's exact command for a 14.6s Adult Swim bumper
+  took 17.2s flat out and 38.5s with `-re` on this i7-12700. Slower with
+  `-re` than without is odd in itself.
+- The 100-entry concat restart is not the cause. Its gap is about the size
+  of an ordinary item change.
+
+Next step: time those same commands with Tunarr stopped, then compare
+image quality with and without `-qscale:v 1` before touching it, since it
+was added to fix blockiness.
+
+There is also a lead for Stage 4 here. A `/stream` item works out where the
+channel is from the wall clock. When an item takes longer to deliver than
+it lasts, the clock gets ahead of the stream, so the next entry starts
+later in the lineup. A short item right after a slow one can then be
+skipped entirely.
+
 ## Testing notes
 
 ### `npm test` runs the blocks suite
@@ -1607,6 +1650,70 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### A concat restart replayed the tune-in, loading screen included
+
+Fixed in 1634bef. `/video` and `/radio` run one concat ffmpeg per viewer over
+a 100-entry `/playlist`. When it runs out, `concat()` in `src/video.js` calls
+itself with `step+1` to fetch the next one - an upstream workaround (92cd5ec)
+whose own commit message calls the seam "sort of glitchy". The URL it built
+ended `stepNumber={step}`, with no `$`, so `/playlist` parsed the literal
+text, got NaN, and fell back to 0. Every restart was built as a tune-in.
+
+What that did, measured on a copy of `.dizquetv-dev` running a scratch copy
+of the code with the playlist cut to one entry, so a restart came every
+minute or so:
+
+- **The loading screen played again at every restart** - 420ms of the
+  loading card, mid-channel. The log showed `raw={step} parsed=0` and then
+  `Title: Loading Screen` at each one.
+- **The next entry was `first=1`.** For a program that changes nothing. In a
+  break, `createLineup` then takes a clip of any length, skips the
+  longest-idle preference, and starts the clip partway in, so a tune-in
+  doesn't always open on the start of a commercial. Seen live: a restart
+  started Star Fox Command 3.65 seconds into the clip.
+
+With the fix the restarts asked for steps 1, 2 and 3 and played neither.
+`/playlist` itself is unchanged. On channel 1 and on the scratch channel,
+step 0 and the literal `{step}` give byte-identical text (loading screen,
+`first=1`, 99 plain entries, 100 `between=1`), and steps 1 and 2 give 100
+plain entries and 100 `between=1`. Step 0 is every tune-in, so tuning in is
+exactly as before.
+
+**How often a real channel hits it.** Each `/stream` is one entry: a program
+or a single filler clip. Channel 1's saved lineup, walked through the real
+`createLineup` for Oct 19-25, is 811 entries a day - 454 programs in the
+week against 5,226 filler clips (28.8s mean). With preludes off, as in
+`.dizquetv-dev`, `/stream` serves every `between=1` entry as a real item, so
+one playlist is 200 items: a restart every 6.4 hours per viewer (3.5 to
+7.9), about four a day. With preludes on it would be 100 items, every ~3
+hours. 26 of that week's 28 restarts landed on a filler clip, because most
+entries are filler, so the `first=1` pick was the usual case.
+
+**Whether it looks like buffering.** The fix takes the loading card out of
+the seam, not the seam itself. A restart is a new ffmpeg process, so the
+stream's timestamps start over (29.1s back to 0.03s in the capture), and
+nothing flows while it starts up: about 1.3 seconds at each restart unfixed
+and 0.4 to 4.1 seconds fixed, against 0.3 to 2.3 seconds at ordinary item
+changes in the same captures. Within the noise. So about four times a day a
+viewer's player gets a short gap and a timestamp reset. Whether that shows
+as a stall depends on the player, and it hasn't been tried on TiviMate. It
+isn't the heavy buffering: see "Heavy buffering during playback" under
+Known issues, where measuring this turned up items encoding below realtime.
+
+**Stage 4.** At most a small, rare part. A restart can start a clip partway
+(the `first=1` pick above), which could read as "skipped", but only about
+four times a day. Nothing in a restart plays an item again, so it can't
+explain the "plays about three times" symptom.
+
+**Still to check, for the aspect marking.** That build leans on the loading
+screen opening the stream, so TiviMate latches square 16:9. Before this fix
+every restart opened with it too; now a restart opens with whatever is on,
+usually a filler clip. If TiviMate re-reads the shape at a restart's
+timestamp reset, a `'mark'` channel could latch 4:3 there and box every
+16:9 show until the viewer retunes. Untested: stream C never ran long
+enough to restart. No saved channel uses `'mark'` yet. Test it with a
+playlist cut short, as here, before one does.
 
 ### The config cache is invalidated on save, not repopulated
 
