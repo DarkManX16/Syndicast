@@ -126,7 +126,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
         })
 
         let channelNum = parseInt(req.query.channel, 10)
-        let ff = await ffmpeg.spawnConcat(`http://localhost:${process.env.PORT}/playlist?channel=${channelNum}&audioOnly=${audioOnly}&stepNumber={step}`);
+        let ff = await ffmpeg.spawnConcat(`http://localhost:${process.env.PORT}/playlist?channel=${channelNum}&audioOnly=${audioOnly}&stepNumber=${step}`);
         ff.pipe(res,  { end: false}  );
     };
     router.get('/video', async(req, res) => {
