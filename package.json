@@ -11,7 +11,10 @@
     "dev-server": "nodemon index.js --ignore ./web/ --ignore ./db/ --ignore ./xmltv.xml",
     "compile": "babel index.js -d dist && babel src -d dist/src",
     "package": "sh ./make_dist.sh",
-    "clean": "del-cli --force ./bin ./dist ./.dizquetv ./.syndicast ./web/public/bundle.js"
+    "clean": "del-cli --force ./bin ./dist ./.dizquetv ./.syndicast ./web/public/bundle.js",
+    "backup": "node scripts/backup.js",
+    "backup:test-restore": "node scripts/test-restore.js",
+    "backup:schedule": "node scripts/backup-register-task.js"
   },
   "author": "vexorian",
   "license": "Zlib",

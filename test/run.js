@@ -13,6 +13,11 @@ const suites = [
     './save-resume',
     './channel-save',
     './dst-fall-back',
+    './backup-verified-copy',
+    './backup-retention',
+    './backup-restore-check',
+    './backup-find-free-port',
+    './backup-task-xml',
 ];
 
 (async () => {
