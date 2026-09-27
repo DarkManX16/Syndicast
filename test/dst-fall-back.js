@@ -22,14 +22,16 @@
  * hour, named by its wall-clock time, so "which slot airs" is readable
  * straight off a program's title.
  *
- * Two things the verification found are still awaiting a decision, and are
- * logged here rather than checked: what fills the repeated hour's second
- * pass, and a shifted day-part start losing its place to an earlier ordinary
- * one after the change. See NOTES.md.
+ * On the repeated hour's second pass, the slots inside it air again: the
+ * 1:00 slot at 1:00am CST, the 1:30 at 1:30am CST, so everything after keeps
+ * its clock time. One thing the verification found is still logged rather
+ * than checked: a shifted day-part start losing its place to an earlier
+ * ordinary one after the change. See NOTES.md.
  */
 const { spawnSync } = require('child_process');
 const TVGuideService = require('../src/services/tv-guide-service');
 const timeSlotsService = require('../src/services/time-slots-service');
+const slotWeek = require('../src/slot-week');
 const { helperFuncs, dayParts, MIN, HOUR, DAY, mix, Suite, liftSource } = require('./support');
 
 const ZONE = 'America/Chicago';
@@ -194,14 +196,12 @@ async function checks() {
 
     // The 8d72c52 regression, pinned to this night: before that fix the whole
     // schedule used one offset, so every slot after the change aired an hour
-    // early. The repeated hour's second pass is left out - which slot owns it
-    // is the open question logged below - and everything either side of it
-    // must sit in its own wall-clock slot.
-    const secondPass = (t) => t >= FALL_BACK && t < FALL_BACK + HOUR;
+    // early. The repeated hour's second pass is included - each slot in it
+    // airs again, so it too reads straight off the wall clock.
     const around = realStarts.filter( (s) => s.start >= Z('2026-10-31T05:00:00Z')
-        && s.start < Z('2026-11-03T06:00:00Z') && ! secondPass(s.start) );
+        && s.start < Z('2026-11-03T06:00:00Z') );
     const misplaced = around.filter( (s) => s.program.showTitle !== showAt(s.start) );
-    suite.check('Oct 31 to Nov 2, every program starts in the slot for its own wall-clock time',
+    suite.check('Oct 31 to Nov 2, every program starts in the slot for its own wall-clock time, both 1-2ams included',
         around.length > 100 && misplaced.length === 0,
         `${around.length} programs` + misplaced.slice(0, 3).map(
             (s) => ` | ${label(s.start)} ${s.program.showTitle}, wanted ${showAt(s.start)}`).join(''));
@@ -214,16 +214,34 @@ async function checks() {
         ['2026-10-31T01:00:00Z', 'S 20:00', 'Fri 8:00pm CDT'],
         ['2026-11-01T06:00:00Z', 'S 01:00', 'Sun 1:00am CDT'],
         ['2026-11-01T06:30:00Z', 'S 01:30', 'Sun 1:30am CDT'],
+        ['2026-11-01T07:00:00Z', 'S 01:00', 'Sun 1:00am CST, the repeat - the 1:00 slot airs again'],
+        ['2026-11-01T07:30:00Z', 'S 01:30', 'Sun 1:30am CST, the repeat - the 1:30 slot airs again'],
         ['2026-11-01T08:00:00Z', 'S 02:00', 'Sun 2:00am CST, the first hour after the repeat'],
         ['2026-11-02T02:00:00Z', 'S 20:00', 'Sun 8:00pm CST, aired an hour early before 8d72c52'],
     ].forEach( ([iso, want, when]) => {
         suite.check(`${when}: ${want} airs`, airingAt(Z(iso)) === want, airingAt(Z(iso)));
     } );
 
-    const repeated = realStarts.filter( (s) => secondPass(s.start) )
-        .map( (s) => `${label(s.start)} ${s.program.showTitle}` );
-    suite.log(`OPEN  repeated hour, second pass: ${repeated.join(', ')}`
-        + ' - documented as each slot airing again (S 01:00, then S 01:30)');
+    // A slot that spans the change has nothing to air again: the clock falls
+    // back into the same slot. It must run on as one block. Cut at the jump
+    // instead, it would be re-entered an hour "late", and with lateness at 0
+    // the rest of it would go to flex. Sunday's 12:00am slot, stretched here
+    // to 3:00am by dropping the four after it.
+    const sunday = slotWeek.slotDayOf(0) * DAY;
+    const stretched = clone(schedule);
+    stretched.lateness = 0;
+    stretched.slots = stretched.slots.filter( (x) => ! (x.time > sunday && x.time < sunday + 3 * HOUR) );
+    const long = await generate(programs, stretched, Z('2026-10-28T17:00:00Z'));
+    const longStarts = programStarts({ startTime: long.startTime, programs: long.programs })
+        .filter( (s) => s.start >= Z('2026-11-01T05:00:00Z') && s.start < Z('2026-11-01T09:00:00Z') );
+    const strays = longStarts.filter( (s) => (s.program.isOffline !== true) && (s.program.showTitle !== 'S 00:00') );
+    const longestFlex = Math.max(0, ...longStarts.filter( (s) => s.program.isOffline === true )
+        .map( (s) => s.program.duration ));
+    suite.check('A 12-3am slot runs on through the repeat as one block, not cut to flex',
+        strays.length === 0 && longestFlex < 30 * MIN
+            && longStarts.filter( (s) => s.program.isOffline !== true ).length >= 9,
+        `longest flex ${Math.round(longestFlex / MIN)}min`
+            + strays.slice(0, 2).map( (s) => ` | ${label(s.start)} ${s.program.showTitle}` ).join(''));
 
     // ---- guide against playback ----------------------------------------
     suite.log('-- guide and playback, 11pm CDT to 4am CST --');

@@ -35,6 +35,26 @@ function getProgramId(program) {
     return s + "|" + p;
 }
 
+/*
+ * The instant the local clock falls back, somewhere in (from, to] - the first
+ * moment already on the later offset. Only asked when the offsets at the two
+ * ends are known to differ, and a slot interval never spans two changes.
+ */
+function fallBackInstant(from, to) {
+    let offsetAfter = (new Date(to)).getTimezoneOffset();
+    let lo = from;
+    let hi = to;
+    while (hi - lo > 1) {
+        let mid = Math.floor( (lo + hi) / 2 );
+        if ( (new Date(mid)).getTimezoneOffset() === offsetAfter ) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    return hi;
+}
+
 function addProgramToShow(show, program) {
     if ( (show.id == 'flex.') || show.id.startsWith("redirect.")  ) {
         //nothing to do
@@ -224,6 +244,43 @@ module.exports = async( programs, schedule  ) => {
     }
 
     let s = schedule.slots;
+
+    /*
+     * The slot covering a local time of day, how far into it that is, and how
+     * long until the next one starts. The loop below asks this once per step,
+     * and the fall-back handling asks it which slot the repeated time belongs
+     * to, so the two can never disagree about who owns a moment.
+     */
+    function findSlot(dayTime) {
+        for (let i = 0; i < s.length; i++) {
+            let endTime;
+            if (i == s.length - 1) {
+                endTime = s[0].time + schedule.period;
+            } else {
+                endTime = s[i+1].time;
+            }
+
+            if ((s[i].time <= dayTime) && (dayTime < endTime)) {
+                return {
+                    slot: s[i],
+                    dayTime: dayTime,
+                    remaining: endTime - dayTime,
+                    late: dayTime - s[i].time,
+                };
+            }
+            if ((s[i].time <= dayTime + schedule.period) && (dayTime + schedule.period < endTime)) {
+                let wrapped = dayTime + schedule.period;
+                return {
+                    slot: s[i],
+                    dayTime: wrapped,
+                    remaining: endTime - wrapped,
+                    late: wrapped + schedule.period - s[i].time,
+                };
+            }
+        }
+        return null;
+    }
+
     let ts = (new Date() ).getTime();
     let curr = ts - localMsIntoPeriod(ts);
     let t0 = curr + s[0].time;
@@ -266,35 +323,14 @@ module.exports = async( programs, schedule  ) => {
             continue;
         }
 
-        let dayTime = localMsIntoPeriod(t);
-        let slot = null;
-        let remaining = null;
-        let late = null;
-        for (let i = 0; i < s.length; i++) {
-            let endTime;
-            if (i == s.length - 1) {
-                endTime = s[0].time + schedule.period;
-            } else {
-                endTime = s[i+1].time;
-            }
-
-            if ((s[i].time <= dayTime) && (dayTime < endTime)) {
-                slot = s[i];
-                remaining = endTime - dayTime;
-                late = dayTime - s[i].time;
-                break;
-            }
-            if ((s[i].time <= dayTime + schedule.period) && (dayTime + schedule.period < endTime)) {
-                slot = s[i];
-                dayTime += schedule.period;
-                remaining = endTime - dayTime;
-                late = dayTime + schedule.period - s[i].time;
-                break;
-            }
+        let found = findSlot(localMsIntoPeriod(t));
+        if (found == null) {
+            throw Error("Unexpected. Unable to find slot for time of day " + t + " " + localMsIntoPeriod(t));
         }
-        if (slot == null) {
-            throw Error("Unexpected. Unable to find slot for time of day " + t + " " + dayTime);
-        }
+        let slot = found.slot;
+        let dayTime = found.dayTime;
+        let remaining = found.remaining;
+        let late = found.late;
 
         /*
          * remaining is the wall-clock distance to the next slot boundary, but t
@@ -311,10 +347,31 @@ module.exports = async( programs, schedule  ) => {
             } else if (drift < -schedule.period / 2) {
                 drift += schedule.period;
             }
-            let corrected = remaining - drift;
-            // The loop only advances when it is handed a positive duration, so a
-            // correction that cancels the interval entirely would stall it.
-            remaining = (corrected > constants.SLACK) ? corrected : remaining;
+            if (drift < 0) {
+                /*
+                 * The clock falls back before the boundary, so the wall-clock
+                 * time just after the jump comes round a second time. When that
+                 * time belongs to an earlier slot, stop at the jump and let the
+                 * loop air that slot again - on the autumn day the 1:00 and 1:30
+                 * slots each air twice, and every later slot keeps its clock
+                 * time. When it lands back inside this same slot there is
+                 * nothing to air again, so the slot runs on through the repeat
+                 * as one block rather than being cut at the jump and re-entered
+                 * an hour "late", which lateness would turn into flex.
+                 */
+                let jump = fallBackInstant(t, t + remaining);
+                let repeated = findSlot(localMsIntoPeriod(jump));
+                if ( (repeated != null) && (repeated.slot !== slot) ) {
+                    remaining = jump - t;
+                } else {
+                    remaining = remaining - drift;
+                }
+            } else {
+                let corrected = remaining - drift;
+                // The loop only advances when it is handed a positive duration, so a
+                // correction that cancels the interval entirely would stall it.
+                remaining = (corrected > constants.SLACK) ? corrected : remaining;
+            }
         }
 
         let item = getNextForSlot(slot, remaining);
