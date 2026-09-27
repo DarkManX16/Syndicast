@@ -317,7 +317,7 @@ on shows.
 
 - [ ] Per-channel transcoding configs, so channels can use different video and audio formats
 - [ ] Fix NVIDIA / h264_nvenc encoder issues
-- [ ] Let the viewer's IPTV player (TiviMate, ImPlayer) stretch 4:3 to fill
+- [x] Let the viewer's IPTV player (TiviMate, ImPlayer) stretch 4:3 to fill
       the screen with its own aspect setting, with "normalize resolution"
       still on
 
@@ -871,7 +871,7 @@ be built:
       - **Not daylight saving: a boundary break often opens with a clip
         from the outgoing mix.** Moved to the Stage 4 item below, which
         takes it.
-- [ ] Let the viewer's IPTV player stretch 4:3 with "normalize resolution"
+- [x] Let the viewer's IPTV player stretch 4:3 with "normalize resolution"
       still on (Opus 5.5 plans, Sonnet 5 builds). See its Media handling
       roadmap line above.
 - [ ] Info panel and thumbnail per item (Sonnet 5).
