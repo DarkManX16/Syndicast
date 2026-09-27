@@ -12,6 +12,7 @@ const suites = [
     './startTime-rotation',
     './save-resume',
     './channel-save',
+    './dst-fall-back',
 ];
 
 (async () => {
