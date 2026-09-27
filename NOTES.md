@@ -317,11 +317,87 @@ on shows.
 
 - [ ] Per-channel transcoding configs, so channels can use different video and audio formats
 - [ ] Fix NVIDIA / h264_nvenc encoder issues
-- [ ] Aspect ratio stretch without having to disable "normalize resolution"
+- [ ] Let the viewer's IPTV player (TiviMate, ImPlayer) stretch 4:3 to fill
+      the screen with its own aspect setting, with "normalize resolution"
+      still on
 
-      **Plan, investigated Sep 27, 2026; not built.** A per-channel choice
-      between *Fit* (today's black bars) and *Stretch to fill*, for any
-      source whose shape doesn't match the channel's resolution.
+      **The goal, restated Sep 27, 2026:** Syndicast should not decide to
+      stretch; the viewer's player should be able to. Today it can't,
+      because normalize resolution paints the black bars into the
+      1920x1080 frame, so to the player the bars are picture. The first
+      plan below (Syndicast stretches) is kept as the fallback.
+
+      **Primary plan: mark the shape instead of painting bars. Not built;
+      waiting on the player tests below.** Keep the constant frame size,
+      but scale the 4:3 picture to fill all of it and mark it with a
+      sample aspect ratio so it *displays* 4:3: `scale=W:H` then
+      `setsar=(cw*H)/(ch*W)` in place of `scale=cw:ch`, `pad`, `setsar=1`.
+      For 4:3 in 1920x1080 that is `setsar=3/4` - pixels three-quarters
+      as wide as they are tall. A player that honours it shows bars of its
+      own, which its stretch setting can then remove. `cw`/`ch` already
+      account for anamorphic sources, so the same formula holds for them.
+
+      - *The encoder carries it.* Checked on the real encoder settings
+        (`mpeg2video`, 1920x1080): the marked pieces come out 1920x1080 at
+        SAR 3:4, display 4:3. MPEG-2 can only label a picture square, 4:3,
+        16:9 or 2.21:1, so anything else is rounded to the nearest -
+        harmless for real 4:3 (Dexter's Lab DVDs at 15:11 would show a hair
+        narrow). H.264 encoders, `h264_nvenc` included, store any ratio.
+      - *The concat and stream path keeps it, item by item.* Each item's
+        ffmpeg writes mpegts; the `/video` concat process joins them with
+        `-c copy` and sends mpegts to the player. The shape lives in the
+        video data itself (the MPEG-2 sequence header, or H.264's SPS),
+        which a copy never touches, and mpegts has no container-level
+        shape to override it. Measured by running Syndicast's own concat
+        command, recorded from `src/ffmpeg.js`, over loading screen ->
+        Batman TAS (marked) -> Attack on Titan (16:9) -> Cow and Chicken
+        (marked) -> Attack on Titan -> Batman TAS: the decoded shape
+        switches on the first frame of every item - square at 0.02s,
+        3:4 at 0.47s, square at 30.56s, 3:4 at 60.57s, and so on.
+      - *The catch is at tune-in, and it decides whether this works.* The
+        stream-wide description a player reads when it opens the stream
+        comes from the first item, and the first item is always the
+        loading screen: square pixels, 16:9. A player that follows the
+        shape as it changes reshapes at every item boundary. A player
+        that reads the shape once and keeps it will treat every later
+        4:3 item as 16:9: full width, stretched, with no bars it could
+        add - the same result as the fallback, but uncontrollable - and
+        if it ever latched onto a 4:3 item instead, every 16:9 item after
+        it would be squeezed. From memory of ExoPlayer's MPEG-TS readers,
+        which TiviMate is built on, they take the format from the first
+        sequence header and don't update it; unconfirmed, and it is
+        exactly what test stream C checks. With preludes on (they are
+        off in `.dizquetv-dev`), a square black interlude also sits
+        between every item, so the shape changes twice per seam - black,
+        so invisible either way.
+      - *A watermark can't be right both ways.* The logo is overlaid on
+        the stored frame, so on a marked 4:3 item a player honouring the
+        mark squeezes it to three-quarters width, and a player stretching
+        to fill shows it true. Pre-widening the logo would reverse which
+        case is wrong. It also sits relative to the 4:3 picture, not the
+        screen corner. No dev channel has the watermark on today.
+      - *Nothing else changes.* Filler gets the same per-item treatment.
+        The still-image screens (offline, loading, interlude, music) and
+        the generated screens stay square and padded.
+
+      **Player tests, built Sep 27, 2026 from the real `src/ffmpeg.js`.**
+      A scratch script swaps `child_process.spawn` for a recorder before
+      requiring the module unmodified, records the exact commands for the
+      loading screen, each item and the concat, renders the items with
+      the real ffmpeg 7.1 on the real files, and applies the one filter
+      change above for the marked ones. A small server on the home network
+      runs Syndicast's recorded concat command, `-re` included, once per
+      viewer, the way `/video` does. Four streams in one M3U:
+      A - today's painted bars (loading screen, Batman TAS 90s);
+      B - marked (the same, marked); B2 - marked with no loading screen,
+      to tell "ignores the marking" apart from "reads the shape once";
+      C - marked, switching 4:3 / 16:9 every 30 seconds (Batman TAS,
+      Attack on Titan, Cow and Chicken, Attack on Titan, Batman TAS).
+      Results go here once TiviMate and ImPlayer have been tried.
+
+      The enumeration of where scaling happens, and the per-channel
+      mechanism, below serve both plans. From "What changes in the ffmpeg
+      command" on is the fallback.
 
       **Where scaling and padding are decided - all of it is in
       `src/ffmpeg.js`, and only one place needs to change.**
@@ -377,7 +453,10 @@ on shows.
       channel being watched (not a redirect's target, the same as the
       resolution it stretches to). Absent means `'fit'`, so nothing
       migrates and every saved channel gets exactly the command it gets
-      today.
+      today. The primary plan adds `'mark'` as a third value.
+
+      **Fallback: Syndicast stretches, if players ignore the marking.**
+      The original plan, from before the goal was restated. Kept whole.
 
       **What changes in the ffmpeg command.** One decision: when the
       channel says stretch and `ensureResolution` is on, `cw` x `ch` is the
@@ -607,8 +686,9 @@ be built:
       - **Not daylight saving: a boundary break often opens with a clip
         from the outgoing mix.** Moved to the Stage 4 item below, which
         takes it.
-- [ ] Aspect ratio stretch without having to disable "normalize resolution"
-      (Opus 5.5 plans, Sonnet 5 builds).
+- [ ] Let the viewer's IPTV player stretch 4:3 with "normalize resolution"
+      still on (Opus 5.5 plans, Sonnet 5 builds). See its Media handling
+      roadmap line above.
 - [ ] Info panel and thumbnail per item (Sonnet 5).
 - [ ] Channel detail page (Sonnet 5). See the Interface roadmap line and its
       note above.
