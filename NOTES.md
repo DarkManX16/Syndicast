@@ -396,12 +396,59 @@ be built:
       identical to one just started; if git isn't available at startup it
       shows "unknown" rather than failing. See "A long-running server keeps
       serving the build it started with" under Known issues below.
-- [ ] Verify slots, day-parts, blocks and the guide through the Nov 1, 2026
+- [x] Verify slots, day-parts, blocks and the guide through the Nov 1, 2026
       fall-back night (Opus 5.5). Slots' own DST handling is the ticked
       Infrastructure line above; day-parts and blocks have their own DST
       option (blocks-spec.md's Decisions table and Stage 1 acceptance table).
       This confirms all three, and the guide built from them, against the
       real transition instead of a simulated clock.
+
+      Done against this machine's real America/Chicago transition (07:00Z)
+      with the clock moved, not waited for - the night itself is still
+      ahead. Walked 11pm Oct 31 to 4am Nov 1 on copies of the four dev
+      channels: playback decisions clip by clip, the guide build, the real
+      XMLTV writer and weeklySegments. Nothing crashes. XMLTV writes UTC, so
+      the two 1:00-2:00ams come out as distinct times, and guide and
+      playback agree every minute on all four channels. Channels 2-4 have no
+      slots, day-parts or blocks and simply run through. Channel 1's
+      day-parts resolve as intended - CN City (Night) to midnight, Toonami
+      AcTN after, through both passes - and shifted starts and airings, which
+      none of the real ones use, land on the right instant exactly once.
+      What holds is pinned in `test/dst-fall-back.js`.
+
+      Four findings, reported and awaiting a decision before any code
+      changes:
+
+      - **Channel 1's saved lineup predates 8d72c52.** It was laid out on
+        one fixed UTC-5 offset, and ignores per-slot season exclusions, so
+        from the change until March 14 every slot airs an hour early - the
+        2:00 show at 1:00am CST, the 8pm show at 7pm. Measured over the
+        whole saved lineup: 99% of programs in their own slot through
+        October and from April, 0.2-1.2% November to February. Re-running
+        Time Slots on a current server fixes it; the current generator,
+        given the same schedule, measured 99% every month.
+      - **The repeated hour does not re-air the way "Time slots have no
+        daylight-saving toggle" under Known issues says.** The generator's
+        drift correction measures the time to the next boundary in real
+        time, and 2:00am comes round only once, so the slot on air when the
+        clock falls back (1:30) runs on through the whole second pass -
+        three InuYasha in a row on channel 1 - rather than the 1:00 and
+        1:30 slots each airing again. Day-parts and blocks do re-run the
+        hour, so a boundary inside it would pair with the wrong programming
+        on the second pass.
+      - **A shifted day-part start can lose its place after the change.**
+        Every start is placed using the offset at the instant being
+        resolved, including starts that already happened under the other
+        one, so a shifted start can drop behind an ordinary start that
+        really came first, and the older day-part comes back at 1:00am CST
+        with no start there. Needs a shifted and an ordinary start within
+        an hour of each other; no channel has one.
+      - **Not daylight saving: a boundary break often opens with a clip
+        from the outgoing mix.** The stream is handed to a break up to 10
+        seconds early with no time elapsed, so `findNextProgram` computes
+        the next show's start that much early - just before a boundary set
+        at the show's start, as the spec says to set it. 15 of 28 boundary
+        breaks in an ordinary week, one clip each; the guide is unaffected.
 - [ ] Aspect ratio stretch without having to disable "normalize resolution"
       (Opus 5.5 plans, Sonnet 5 builds).
 - [ ] Info panel and thumbnail per item (Sonnet 5).
@@ -734,6 +781,9 @@ occurs, so a slot inside it does not air that day; on the autumn day the
 repeated hour occurs twice, so a slot inside it airs twice. Both are accepted,
 not treated as bugs to fix.
 
+Measured on the Nov 1, 2026 night, the autumn half is not what the generator
+actually does - see the fall-back item in the 1.0 must list.
+
 ### The play-time cache is loaded without being awaited
 
 `index.js` calls `initializeProgramPlayTimeDB()` at line 130 without awaiting
@@ -837,8 +887,8 @@ noting for each stall whether it lands mid-episode or at a changeover.
 npm test
 ```
 
-runs every file in the directory and prints one combined pass/fail count (98
-checks as of the Schedule tab). Eight files:
+runs every file in the directory and prints one combined pass/fail count (116
+checks as of the fall-back night). Nine files:
 
 - `blocks-acceptance.js` - the stage 1 **and** stage 2 rows from
   [docs/blocks-spec.md](docs/blocks-spec.md)'s acceptance tables, transcribed
@@ -897,6 +947,16 @@ checks as of the Schedule tab). Eight files:
   folder of the user's and no running server. Carries a raw-read control, logged
   rather than checked, so a reader can tell whether the concurrency checks had
   teeth on that run without the suite becoming timing-flaky.
+
+- `dst-fall-back.js` - the Nov 1, 2026 fall-back night for everything that
+  reads the wall clock: the real slot generator with the clock frozen, the
+  guide against playback minute by minute, the XMLTV date format, channel 1's
+  own day-parts and airings, shifted and unshifted starts, and weeklySegments.
+  **The one file here pinned to a named zone** rather than the machine's own,
+  since the instants it tests are US Central's: it re-runs itself in a child
+  with `TZ=America/Chicago` when the machine is anywhere else. Two open
+  findings from that verification are logged rather than checked until they
+  are decided - see the fall-back item in the 1.0 must list.
 
 The first two of those also take channel JSON paths on the command line and
 re-run their measurements against real channels, which is where they were
