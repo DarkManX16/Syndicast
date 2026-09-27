@@ -354,6 +354,8 @@ rather than copying the layout of other projects.
 ### Infrastructure
 
 - [ ] Public channel sharing without exposing an IP
+
+      Also covers livestreaming straight from the UI.
 - [ ] Easier version updates
 - [ ] Fix random crashes during streaming
 - [x] Fix time slots breaking across daylight savings (fixed in 8d72c52 -
@@ -404,12 +406,10 @@ Must-haves, each tagged with the model doing the work:
       Model guide below.
 - [ ] Build indicator in the UI (Sonnet 5). See "A long-running server keeps
       serving the build it started with" under Known issues below.
-- [ ] Livestreaming straight from the UI.
 - [ ] A live install separate from dev, where real channels get built: own
       folder and data folder, auto-start after reboot, a port Windows won't
       reserve, logs to files, daily backups tested by one restore, and a
-      written routine for updating it to a new release (Sonnet 5). See the
-      "Easier version updates" line under Infrastructure above.
+      written routine for updating it to a new release (Sonnet 5).
 - [ ] Release: version 0.1.0 to 1.0.0, README current, merge blocks into
       main, tag v1.0.0 (Sonnet 5).
 
@@ -480,8 +480,8 @@ net start winnat
 It can reclaim the range again later, so this may need repeating. 18080,
 19000, 17000, 8123 and 9500 were all free when 18000 was not; development
 moved to 18080 for a while and has since moved back to 18000.
-`.claude/launch.json` and the README still say 18000 deliberately, since the
-reservation is transient. Confirm with a bind test rather than assuming:
+`.claude/launch.json` still says 18000 deliberately, since the reservation is
+transient. Confirm with a bind test rather than assuming:
 
 ```js
 require('net').createServer().listen(18000, '0.0.0.0')
