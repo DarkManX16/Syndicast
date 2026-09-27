@@ -403,15 +403,25 @@ on shows.
       they tell us nothing about whether it reads the marking. That is
       decided by its default setting, "Normal", and on Normal every show
       on stream C looked stretched to 16:9, the 4:3 ones included. So
-      TiviMate does *not* honour the marking by default: it either ignores
-      it, or keeps the square shape of the loading screen it saw first -
-      the "reads the shape once" prediction, which stream B2 (no loading
-      screen) on Normal would confirm or rule out. What a TiviMate viewer
-      gets on a marked channel, then: 4:3 shows full width on Normal and
-      16:9; bars on 4:3 shows only by forcing 4:3, which also boxes every
-      16:9 show. Stretch-by-choice works; the right shape per show,
-      automatically, does not. ImPlayer couldn't be tried: its free
-      version allows only one playlist.
+      TiviMate does *not* follow the marking as it changes. Stream B2 (the
+      same marked 4:3, no loading screen) on Normal shows bars, so of the
+      two explanations **"reads the shape once" held** and "ignores the
+      marking" is ruled out: TiviMate honours the shape of the first
+      thing it sees after tuning in and keeps it until it is retuned. On a
+      real channel that first thing is always the loading screen, square
+      16:9, so on Normal every show fills the width - consistently, not by
+      chance. What a TiviMate viewer gets on a marked channel, then: 4:3
+      shows full width on Normal and 16:9; bars on 4:3 shows only by
+      forcing 4:3, which also boxes every 16:9 show. Stretch-by-choice
+      works; the right shape per show, automatically, does not, and no
+      change to the marking can fix that - the player would have to be
+      made to start over at each item.
+
+      For the build, that makes the loading screen load-bearing: `/playlist`
+      only sends it when all five normalize settings are on. Without it, a
+      TiviMate viewer tuning in during a 4:3 show would latch 4:3 and see
+      every later 16:9 show boxed until retuning. ImPlayer couldn't be
+      tried: its free version allows only one playlist.
 
       The enumeration of where scaling happens, and the per-channel
       mechanism, below serve both plans. From "What changes in the ffmpeg
