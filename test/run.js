@@ -19,6 +19,7 @@ const suites = [
     './backup-find-free-port',
     './backup-task-xml',
     './aspect-mark',
+    './ffmpeg-encoder-flags',
 ];
 
 (async () => {

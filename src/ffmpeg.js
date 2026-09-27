@@ -558,9 +558,10 @@ class FFMPEG extends events.EventEmitter {
                             `-bufsize:v`, `${this.opts.videoBufSize}k`
                 );
                 if (this.opts.videoEncoder.toLowerCase() === "mpeg2video") {
-                    // This makes message "impossible bitrate constraints, this will fail" appear but nothing actually fails and it really looks like b:v is the only way to make the video look good when using mpeg2video
+                    // -b:v is what makes mpeg2video look good; without it the encoder targets its 200 kb/s default.
+                    // No -qscale:v 1: it made each encode 4-8x the CPU work for no better quality, and worse
+                    // worst frames - see "Heavy buffering during playback" in NOTES.md.
                     ffmpegArgs.push(
-                        `-qscale:v`, `1`,
                         '-b:v', `${this.opts.videoBitrate}k`
                     );
                 }
