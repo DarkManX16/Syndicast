@@ -423,6 +423,101 @@ on shows.
       every later 16:9 show boxed until retuning. ImPlayer couldn't be
       tried: its free version allows only one playlist.
 
+      **Build plan, for Sonnet 5. Written Sep 27, 2026; not started -
+      waiting on OK.** A per-channel option, off by default, that sends
+      narrow shows marked instead of with painted bars.
+
+      1. *The setting.* `channel.transcoding.aspect`: absent, `''` or
+         `'fit'` all mean today's painted bars; `'mark'` turns this on.
+         (`'stretch'` stays reserved for the fallback below, unbuilt.)
+         Nothing migrates, and a channel without the field must get a
+         byte-identical ffmpeg command.
+      2. *One condition, shared with the loading screen.* Marking is only
+         safe when the loading screen is guaranteed to open the stream,
+         and `/playlist` in `src/video.js` sends it only when transcoding
+         and all four normalize settings (video codec, audio codec,
+         resolution, audio) are on - its inline `transcodingEnabled`. Move
+         that test into one exported function - a static
+         `FFMPEG.isFullyNormalized(opts)` in `src/ffmpeg.js` - and have
+         both `/playlist` and the marking call it, so the two can't drift
+         apart. When it's false the channel gets painted bars, whatever
+         the setting says. `/playlist` must make exactly the same decision
+         as today. This also covers the HLS path for free:
+         `program-player.js` turns `normalizeResolution` off there.
+      3. *The ffmpeg change,* in `spawn()`'s scaler block in
+         `src/ffmpeg.js`, after `cw`/`ch` are computed. When the channel is
+         `'mark'`, the condition in step 2 holds, `ensureResolution` is
+         set, and the source is *narrower* than the frame (`ch ==
+         wantedH` and `cw < wantedW`): scale to `wantedW:wantedH`, then
+         `setsar=` the reduced fraction `(cw*wantedH)/(ch*wantedW)`,
+         labelled `[siz]` exactly as the padded path is. No `pad`.
+         Everything else in the command stays as it is. Letterboxed
+         sources wider than the frame keep their painted bars: MPEG-2 can't
+         mark 2.39:1 (it would round to 2.21:1), and TiviMate on Normal
+         would show such a film stretched tall with no way back.
+      4. *What stays as it is:* the still-image screens (offline, loading,
+         interlude, music), the generated screens, the concat process,
+         and the watermark. The logo is overlaid on the full stored frame,
+         so it looks right in TiviMate on Normal (which shows the frame
+         as stored) and squeezed to three-quarters width in a player that
+         honours the marking - accepted, and said in the editor's help
+         text. Filler gets marked like any other item, since it goes
+         through the same `spawnStream`.
+      5. *The editor,* under "Transcoding settings" in
+         `web/public/templates/channel-config.html` /
+         `web/directives/channel-config.js`: a select, "Shows narrower
+         than the channel", with "Black bars (default)" and "Let the
+         viewer's player decide". Initialise a missing value to `''` on
+         load, the same way `targetResolution` is. Help text in plain
+         words: TiviMate shows these shows full width on Normal and 16:9,
+         and with bars on 4:3, which also boxes 16:9 shows. When the
+         global FFmpeg settings don't meet step 2, the channel editor
+         already has them loaded for its resolution list - show beside
+         the select that the option has no effect until they're all on.
+      6. *Save-time check:* `validateChannelJson` in
+         `src/dao/channel-db.js` warns on an unknown `transcoding.aspect`
+         value, rewriting nothing, the same way `warnAboutBlocks` does.
+      7. *Tests,* `test/aspect-mark.js`, added to `test/run.js`, plain
+         Node: swap `child_process.spawn` for a recorder before requiring
+         the real `src/ffmpeg.js`, as the scratch test-stream builder did.
+         Check that:
+         - with the field absent, Batman TAS (1440x1080, 1:1) gets
+           exactly today's command;
+         - `'mark'` gives Batman TAS `scale=1920:1080`, `setsar=3/4` and
+           no pad, and does the same for Cow and Chicken (720x576,
+           pixelP/Q 16:15);
+         - a 1920x1080 source gets no scaler;
+         - a 1920x800 source still pads;
+         - `'mark'` with any one normalize setting off pads;
+         - the offline and loading screens are unchanged;
+         - the watermark still overlays after `[siz]`;
+         - `isFullyNormalized` matches the old inline test in every
+           combination of the five flags.
+
+         The "absent means unchanged" check is also proved once against
+         `git show` of the pre-change `ffmpeg.js` and `video.js`, the way
+         the filler change was, then kept as the shape assertions above.
+      8. *Live check,* on a **copy** of `.dizquetv-dev` on its own port
+         (never the live folder, and not 18000 - another session's dev
+         server uses this folder). Set up a scratch channel whose lineup
+         is Batman TAS, Attack on Titan and Cow and Chicken, set to
+         `'mark'`:
+         - capture `/video` for three minutes, and ffprobe the per-frame
+           shape: square for the loading screen, 3:4 on the 4:3 items,
+           square on Attack on Titan;
+         - set it back to black bars, and the painted bars return;
+         - channel 1, untouched, gets byte-identical item commands;
+         - in the editor, the option saves, reloads and shows its
+           no-effect note when a normalize setting is off.
+
+         Then the user adds that server's M3U to TiviMate and confirms
+         what stream C showed: Normal fills, 4:3 gives bars.
+
+      Out of scope: the right shape per show, automatically, in TiviMate -
+      that needs the player to start over at each item, which no marking
+      can make it do. And the unrelated `stepNumber={step}` bug in
+      `video.js`, flagged as its own task.
+
       The enumeration of where scaling happens, and the per-channel
       mechanism, below serve both plans. From "What changes in the ffmpeg
       command" on is the fallback.
