@@ -954,6 +954,19 @@ be built:
       folder and its own backup destination via `--source`/`--dest`, rather
       than writing new scheduling, copy or restore-check logic.
 
+      Needs `browserify` present in `node_modules` (it's a devDependency, not
+      a dependency) - `src/web-bundle.js`'s startup/request-time rebuild
+      `require`s it lazily, only when a rebuild is actually attempted. Set up
+      with `npm install --production` or `npm ci --omit=dev`, that `require`
+      fails every time a rebuild is needed, which the same code path treats as
+      any other build failure: logged once, the previous `web/public/bundle.js`
+      keeps being served, and the footer warns it may be out of date. If
+      `bundle.js` was never built at all (a fresh clone with no prior
+      `npm run build`), there is no previous copy to fall back to and the
+      editor page fails to load it - so a live install still needs a real
+      `npm run build` (dev dependencies installed) at least once, even if it
+      never rebuilds automatically again after that.
+
       **How to restore a backup**, in plain English: stop the server,
       rename the current data folder out of the way (don't delete it until
       the restored one is confirmed good), copy the dated folder you want

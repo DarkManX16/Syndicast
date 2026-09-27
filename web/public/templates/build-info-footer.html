@@ -1,3 +1,8 @@
-<div class='text-muted' style='margin-top: 15px; padding: 5px 0; font-size: 0.8em;'>
-    Syndicast {{version}} &middot; commit {{gitCommit}}<span ng-if="gitDirty"> (modified)</span> &middot; started {{startTime | date:'medium'}}
+<div>
+    <div class='text-muted' style='margin-top: 15px; padding: 5px 0; font-size: 0.8em;'>
+        Syndicast {{version}} &middot; commit {{gitCommit}}<span ng-if="gitDirty"> (modified)</span> &middot; started {{startTime | date:'medium'}}
+    </div>
+    <div ng-if="bundleStale" class='text-warning' style='padding: 5px 0; font-size: 0.8em;'>
+        Warning: the editor's page code failed to rebuild and may be out of date - check the server console.
+    </div>
 </div>

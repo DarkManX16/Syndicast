@@ -35,6 +35,7 @@ const ProgrammingService = require("./src/services/programming-service");
 const ActiveChannelService = require('./src/services/active-channel-service')
 const ProgramPlayTimeDB = require('./src/dao/program-play-time-db')
 const FfmpegSettingsService = require('./src/services/ffmpeg-settings-service')
+const { BundleFreshnessChecker } = require('./src/web-bundle')
 
 const onShutdown = require("node-graceful-shutdown").onShutdown;
 
@@ -266,6 +267,15 @@ channelService.on("channel-update", (data) => {
 } );
 
 
+const bundleChecker = new BundleFreshnessChecker({
+    entryFile: path.join(__dirname, 'web', 'app.js'),
+    outFile: path.join(__dirname, 'web', 'public', 'bundle.js'),
+    manifestFile: path.join(__dirname, 'web', 'bundle.manifest.json'),
+    watchDir: path.join(__dirname, 'web'),
+    watchDirExclude: [path.join(__dirname, 'web', 'public')],
+});
+bundleChecker.ensureFresh(); // best-effort rebuild at startup; never rejects
+
 let hdhr = HDHR(db, channelDB)
 let app = express()
 eventService.setup(app);
@@ -297,6 +307,10 @@ app.get('/version.js', (req, res) => {
     res.end();
 });
 app.use('/images', express.static(path.join(process.env.DATABASE, 'images')))
+app.get('/bundle.js', async (req, res, next) => {
+    await bundleChecker.ensureFresh();
+    next();
+});
 app.use(express.static(path.join(__dirname, 'web','public')))
 app.use('/images', express.static(path.join(process.env.DATABASE, 'images')))
 app.use('/cache/images', cacheImageService.routerInterceptor())
@@ -307,7 +321,7 @@ app.use('/favicon.svg', express.static(
 app.use('/custom.css', express.static(path.join(process.env.DATABASE, 'custom.css')))
 
 // API Routers
-app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService))
+app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker))
 app.use('/api/cache/images', cacheImageService.apiRouters())
 app.use('/' + fontAwesome, express.static(path.join(process.env.DATABASE, fontAwesome)))
 app.use('/' + bootstrap, express.static(path.join(process.env.DATABASE, bootstrap)))

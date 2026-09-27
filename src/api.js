@@ -24,7 +24,7 @@ function safeString(object) {
 }
 
 module.exports = { router: api }
-function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService ) {
+function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker ) {
     let m3uService = _m3uService;
     const router = express.Router()
 
@@ -39,6 +39,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
             "gitCommit" : buildInfo.gitCommit,
             "gitDirty" : buildInfo.gitDirty,
             "startTime" : buildInfo.startTime,
+            "bundleStale" : bundleChecker ? bundleChecker.isStale() : false,
         } );
       } catch(err) {
           console.error(err);

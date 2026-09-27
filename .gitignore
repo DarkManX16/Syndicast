@@ -5,6 +5,7 @@ bin/
 .dizquetv/
 .dizquetv-dev/
 web/public/bundle.js
+web/bundle.manifest.json
 *.orig
 package-lock.json
 .syndicast/

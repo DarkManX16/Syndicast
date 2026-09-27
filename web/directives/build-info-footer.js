@@ -10,12 +10,14 @@ module.exports = function (dizquetv) {
             scope.gitCommit = "";
             scope.gitDirty = false;
             scope.startTime = null;
+            scope.bundleStale = false;
 
             dizquetv.getVersion().then((version) => {
                 scope.version = version.dizquetv;
                 scope.gitCommit = version.gitCommit;
                 scope.gitDirty = version.gitDirty;
                 scope.startTime = version.startTime;
+                scope.bundleStale = version.bundleStale;
             });
         }
     };

@@ -21,6 +21,7 @@ const suites = [
     './aspect-mark',
     './ffmpeg-encoder-flags',
     './ffmpeg-qos',
+    './bundle-freshness',
 ];
 
 (async () => {
