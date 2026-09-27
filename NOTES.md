@@ -514,6 +514,20 @@ be built:
       folder and data folder, auto-start after reboot, a port Windows won't
       reserve, logs to files, daily backups tested by one restore, and a
       written routine for updating it to a new release (Sonnet 5).
+
+      Should reuse the backup tooling built for `.dizquetv-dev` -
+      `scripts/backup.js`, `scripts/backup-register-task.js` and
+      `scripts/test-restore.js` - pointed at the live install's own data
+      folder and its own backup destination via `--source`/`--dest`, rather
+      than writing new scheduling, copy or restore-check logic.
+
+      **How to restore a backup**, in plain English: stop the server,
+      rename the current data folder out of the way (don't delete it until
+      the restored one is confirmed good), copy the dated folder you want
+      from the backups location to where the data folder was, then start
+      the server pointed at it exactly as usual. `npm run
+      backup:test-restore` proves a given backup actually boots - and that
+      its channels match what's on disk - before you trust it for this.
 - [ ] Random crashes during streaming, caught by a 48-hour soak and fixed if
       seen (Opus 5.5). See the Infrastructure roadmap line above and the
       Model guide below.
