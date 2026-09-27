@@ -1372,52 +1372,178 @@ is correctly ordered only because the DAO now sorts before it returns. If
 someone ever removes that DAO sort believing the endpoint sorts for itself, the
 ordering silently breaks again.
 
-### Heavy buffering during playback, undiagnosed
+### Heavy buffering during playback: `-qscale:v 1` and Windows throttling
 
-Happens on real channels. Tunarr runs on the same PC and is the leading
-suspect, but unconfirmed - nothing has isolated it from Syndicast's own
-streaming path yet.
+Happens on real channels. **Diagnosed Sep 27, 2026, not fixed. Two causes
+multiply, and Tunarr isn't one of them:**
 
-Each viewer connection spawns its own ffmpeg process, not a shared one:
-`concat()` in `src/video.js`, behind `/video` and `/radio`, spawns one ffmpeg
-process per connection to run the concat demuxer, and that process pulls its
-segments back from this same server's `/stream` route, where `PlexPlayer` and
-`OfflinePlayer` (`src/plex-player.js`, `src/offline-player.js`) each spawn a
-further ffmpeg process per program or filler item played into it. So three
-concurrent viewers means at least three independent sets of ffmpeg processes
-competing for the same CPU/GPU on one machine - read from the source, not yet
-measured under load.
+1. **`-qscale:v 1` makes every mpeg2video item 4-8x the work it needs to
+   be.** One stream needs 4-5 cores to keep up, and three at once fall
+   behind even with the whole CPU free.
+2. **Windows at times throttles Syndicast's ffmpegs onto the four E-cores**,
+   at most about 1.4 cores for all of them together while the P-cores sit
+   idle. A stream then gets 0.13-0.45x realtime.
 
-Planned test: one stream, then three at once, both with Tunarr stopped,
-noting for each stall whether it lands mid-episode or at a changeover.
+Tunarr, the leading suspect before this, measured minor (below). The first
+reports, for the record: through `/video` with the dev settings
+(`mpeg2video`, 1920x1080, 5000k), about 40 seconds of video in 200 seconds,
+twice; the exact command for a 15.1s clip took 66.9s with `-re` and 41.5s
+flat out, 2.1s without `-qscale:v 1`; under `libx264` a 14.6s bumper took
+17.2s flat out and 38.5s with `-re`. The 100-entry concat restart is not the
+cause - its gap is about the size of an ordinary item change.
 
-**Measured Sep 27, 2026, while fixing the concat restart (see Resolved):
-single items encoded below realtime.** Tunarr was streaming at the time,
-with three ffmpeg processes of its own, so this isn't isolated from it yet.
-But a player whose video arrives at a quarter of realtime stalls whatever
-it is, so this goes to the head of the list:
+Each viewer connection spawns its own ffmpegs, not shared ones: `concat()`
+in `src/video.js`, behind `/video` and `/radio`, runs one concat ffmpeg per
+connection, which pulls its segments back from this server's `/stream`,
+where `PlexPlayer` and `OfflinePlayer` spawn one more ffmpeg per program or
+filler item. Three viewers are three separate encodes of whatever is on.
 
-- Through `/video` with the dev settings (`mpeg2video`, 1920x1080, 5000k):
-  about 40 seconds of video delivered in about 200 seconds of wall time,
-  twice in a row. A single `/stream` fetched on its own: 68.7s of video in
-  110s, and 15.1s in 65.9s.
-- The exact command Syndicast built for that 15.1s clip (CN comm break,
-  Tootsie Pop Owl), run by hand into a file, took 66.9s with `-re` and 41.5s
-  flat out, and logged `rc buffer underflow` 50 times. The same command
-  without `-qscale:v 1` took 2.1s flat out. That flag is upstream's fix for
-  blocky mpeg2 (56a4f3f), pushed only for `mpeg2video` in `spawn()`'s
-  encoder flags in `src/ffmpeg.js`, and its comment already mentions
-  ffmpeg's "impossible bitrate constraints" warning.
-- Not everything is that flag. With the encoder set to `libx264`, which
-  never gets it, Syndicast's exact command for a 14.6s Adult Swim bumper
-  took 17.2s flat out and 38.5s with `-re` on this i7-12700. Slower with
-  `-re` than without is odd in itself.
-- The 100-entry concat restart is not the cause. Its gap is about the size
-  of an ordinary item change.
+**How it was measured.** Scratch servers on copies of `.dizquetv-dev`
+(18097-18099), `child_process.spawn` recorded by a `node -r` preload for
+the exact commands, and those commands re-run from node the way `spawn()`
+runs them, stdout piped and drained, with `-benchmark` added for CPU time.
+`/video` delivery counted from the AAC packets that arrived (1024 samples
+at 48 kHz, normalized for every item) against wall time. Where runs are
+compared, the content is fixed: the same stretch of the same file each
+time. Where scheduling had to be held still, each ffmpeg was forced one
+way: High QoS (`SetProcessInformation`, execution-speed throttling
+explicitly off), EcoQoS, or affinity pinned to the E-cores; `auto` leaves
+it to Windows. The i7-12700 has 8 P-cores (logical 0-15) and 4 E-cores
+(16-19). Everything ran on `ffmpeg 7.1` (gyan full build), the dev path.
 
-Next step: time those same commands with Tunarr stopped, then compare
-image quality with and without `-qscale:v 1` before touching it, since it
-was added to fix blockiness.
+**Each flag removed on its own**, at High QoS so scheduling stays out of it,
+two rounds, as multiples of realtime flat out. Sources: Cowboy Bebop S01E09
+(1080p Hi10p, pillarboxed) and CN City Bumper (30) (720p) under mpeg2video,
+the Adult Swim bumper under libx264:
+
+- Exact command: Bebop 1.47-1.80, CN bumper 2.66-3.43, AS bumper 2.13-2.55.
+- **Without `-qscale:v 1`: Bebop 7.18-7.31, CN bumper 7.49-9.68.** The
+  whole of the mpeg2 cost - 12s of Bebop is about 60 core-seconds with it
+  and 15 without. It asks for quantizer 1 inside a 5000k/10000k rate
+  buffer, and still logs `rc buffer underflow` 24 times in those 12s.
+- Without `-flags cgop+ilme`: Bebop 2.15-2.33, CN bumper 4.11-5.12, about
+  30% (`ilme` is interlaced motion estimation, on progressive sources);
+  nothing on libx264. `cgop` can't lose its partner: without
+  `-sc_threshold 1000000000` mpeg2video refuses closed GOPs and exits -22.
+- `-threads` sits before `-i`, so it sets the decoder's threads; the
+  encoder uses ffmpeg's automatic count either way. Removing it changes
+  nothing measurable. Moving it to the output side slows libx264
+  (1.73 against 2.13-2.55), since that caps x264 at 10 threads.
+- `-fflags +genpts+discardcorrupt+igndts`, and `-crf 22` (which mpeg2video
+  ignores): nothing.
+- **`-re` isn't slow.** Held at High QoS, every `-re` run kept realtime
+  (0.96-1.03, the shortfall being startup). The libx264 bumper's "slower
+  with `-re` than without" was scheduling changing between the two runs:
+  unthrottled it runs 2.5x flat out, throttled 0.99x flat out and 0.93x
+  with `-re`.
+- Not the buffering, but found along the way: under libx264,
+  `-sc_threshold 1000000000` - there to switch mpeg2's scene detection off -
+  is x264's scenecut threshold, where larger means more sensitive. The
+  bumper comes out with no B-frames at all (1 I, 435 P), and without the
+  flag it encodes at 3.5-3.6x instead of 2.1-2.5x.
+
+**Quality with and without `-qscale:v 1`**, VMAF and SSIM against a
+lossless reference made by the same exact command with the encoder swapped
+for FFV1, so both encodes are scored against exactly the frames the encoder
+was given, aligned by frame index. (A first pass against the source file
+misaligned every fourth frame and was thrown away.) With, then without:
+
+- Bebop: VMAF 84.88 / 86.06, worst 5% of frames 67.2 / 80.2, worst frame
+  55.8 / 77.7, SSIM 0.9844 / 0.9893.
+- CN bumper: 96.93 / 96.35, worst 5% 93.0 / 92.9, worst frame 78.3 / 90.7.
+- AS bumper (as `spawn()` builds it for mpeg2video): 97.00 / 96.98, and
+  within 0.2 on every other measure.
+
+As good on average without it, and better at the worst frames: at Bebop's
+frame 35 the `-qscale` encode breaks into visible macroblocks (VMAF 55.8)
+where the other stays close to the reference (90.3). The files are smaller
+too (Bebop 8.2 against 9.6 MB, CN bumper 4.9 against 6.3), because every
+underflow is a frame over budget. What fixed upstream's blocky mpeg2 in
+56a4f3f was `-b:v`, added in the same commit, as its own comment says.
+Without either flag mpeg2video targets its 200 kb/s default, and scores
+61.1 (Bebop) and 79.4 (CN bumper).
+
+**Windows throttling.** Throttled, an item's ffmpeg runs on the E-cores
+only. The first `/video` capture on the scratch server showed it plainly:
+the item got 2.4 cores for its first few seconds, then 0.5-0.8 for the
+rest of 150s, with the E-cores at 100% and the P-cores mostly 5-20% busy.
+It reproduces on demand by marking an ffmpeg EcoQoS (0.14-0.17x on Bebop) or
+pinning it to the E-cores (0.11-0.26x), and marking it High QoS undid it
+every time it was tried, including while an `auto` run beside it was being
+throttled (1.52-1.83x against 0.34-0.76x).
+
+When `auto` gets throttled isn't fully pinned down. Where the window state
+was recorded, it happened whenever the Claude app's window was minimized or
+covered by a maximized one (VSDC Video Editor, Edge), and never while
+Claude's window was visible, in front or partly behind a terminal; it also
+happened with PotPlayer in front, Claude's state unrecorded. One monitor.
+But it is **not** limited to processes started from the Claude app: a
+server started through WMI - parent `WmiPrvSE`, no window, outside Claude's
+process tree - was throttled just the same, on the same item, a minute
+apart. A benchmark started through WMI looked unaffected, probably because
+it finished in about 5s, before throttling set in (it lands a few seconds
+into a process's life). So the trigger may be the foreground app being
+maximized, or the user being away, rather than Claude as such.
+Established: it happens here in ordinary use, to a server started either
+way, and explicit High QoS prevents it for a single benchmarked command.
+Not yet tried: High QoS on the server's own ffmpegs while throttled.
+
+The E-cores are busy before Syndicast starts: 75-79% in an idle sample
+with Tunarr running, 54% with it stopped. By elimination most of the rest
+is two minimized OBS Studio windows and Streamlabs, about 2.3 cores by
+their counters, which Windows treats as background too. But crowding isn't
+the whole of it: with Tunarr stopped and E-cores to spare, throttled
+streams still got about 1.2 cores for one and 1.4 in total for three.
+
+**Tunarr didn't hold.** Stopping it took idle E-core load from 75-79% to
+54%, about one E-core's worth. Same content, same placement, Tunarr on then
+off:
+
+- One stream, High QoS: 0.996 / 0.994.
+- Three streams, High QoS: 0.755 / 0.813.
+- One stream pinned to the E-cores: 0.345 / 0.422.
+- Three streams without `-qscale`, High QoS: 0.995 / 0.993.
+
+Stopping it helped by about a fifth at most, where streams were already
+failing, and never turned a failing case into one that kept up. With it
+stopped and Claude minimized, one `/video` stream still got 0.26x (12.9s of
+video in 49s), and three at once 0.13x each.
+
+**The planned test, one `/video` stream then three**, on channel 1's real
+lineup, so what was on is noted:
+
+- Current code, Claude visible, Tunarr on: one stream 0.96, three 0.99
+  each (Attack on Titan S01E09, 932s and 1037s in). Forced High QoS,
+  three again, minutes later: 0.72-0.74 each (the same episode at 1190s).
+- Current code, Claude minimized, Tunarr off: one stream 0.26, three 0.13
+  each. The WMI-started server a minute after each: 0.34, then 0.18-0.19.
+  All four on the same HEVC Main 10 1080p episode.
+- Pinned to the E-cores, Tunarr on, one stream: current code 0.45 (a CN
+  Groovies clip), a scratch copy without `-qscale:v 1` 0.98 (an X-Men
+  Evolution episode) - different items, so see the fixed-content numbers
+  below for the comparison.
+- That copy, Claude visible, three streams: 0.99 each.
+
+What's on matters, so the same 20s of Attack on Titan, three copies of the
+exact command at once: with `-qscale:v 1` and the P-cores free, 0.75-0.81
+each (about 4.3 cores each); without it, 0.99 each (0.7-1.3 cores each).
+One copy pinned to the E-cores, Tunarr on: 0.35 with it, 0.99 without.
+Three pinned, Tunarr off: 0.14 each with it, 0.78 each without. Dropping
+the flag alone carries three streams on a free CPU and one stream even
+throttled, but not three throttled - that needs both fixes.
+
+**Fix directions, not built:**
+
+1. Drop `-qscale:v 1` from `spawn()`'s mpeg2video flags and keep `-b:v`.
+   Nothing about it is stored per channel, so no saved channel changes or
+   needs rebuilding; every mpeg2 channel's encode gets cheaper, smaller and
+   no worse, with the worst frames better.
+2. Mark every ffmpeg Syndicast spawns High QoS on Windows. Node has no call
+   for it, and how to do it is untested: a small helper per spawn, a mark
+   on the server process if children inherit it, or `os.setPriority` if
+   priority alone is enough. Needs another run with Claude minimized, which
+   can happen with Tunarr running.
+3. Optional: `ilme` costs about 30% on mpeg2 for progressive sources.
 
 There is also a lead for Stage 4 here. A `/stream` item works out where the
 channel is from the wall clock. When an item takes longer to deliver than
