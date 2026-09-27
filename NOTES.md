@@ -390,7 +390,11 @@ have to be designed to the same rule.
 Must-haves, each tagged with the model doing the work, in the order they'll
 be built:
 
-- [ ] Build indicator in the UI (Sonnet 5). See "A long-running server keeps
+- [x] Build indicator in the UI (Sonnet 5). Shipped in eee8ac1 - the Version
+      page and a footer on every page now show the running version, git
+      commit and server start time, so a long-running process no longer looks
+      identical to one just started; if git isn't available at startup it
+      shows "unknown" rather than failing. See "A long-running server keeps
       serving the build it started with" under Known issues below.
 - [ ] Verify slots, day-parts, blocks and the guide through the Nov 1, 2026
       fall-back night (Opus 5.5). Slots' own DST handling is the ticked
