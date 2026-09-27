@@ -333,6 +333,14 @@ on shows.
 ### Library management
 
 - [ ] Swap out episodes of a show, and plug library items in anywhere
+- [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
+
+      Swapping an item for one of a different length makes the Flex right
+      after it grow or shrink so the next show still starts on time.
+      Deleting an item turns its time into Flex so everything after stays on
+      time. Adding an item takes its time from the Flex after where it's
+      inserted, and if there isn't enough, the following shows move later to
+      the next clean start time (:00 or :30).
 - [ ] Info panel and thumbnail per item
 - [ ] Jellyfin as a media source
 
@@ -501,8 +509,10 @@ be built:
       the Model guide below). See the "Per-position stored progress, which
       fixes two things at once" Known issues entry above, which covers the
       four roadmap lines it unblocks.
-- [ ] Swap out episodes of a show, and plug library items in anywhere (Opus
-      5.5 designs, Sonnet 5 builds).
+- [ ] Swap out episodes of a show, and plug library items in anywhere, and
+      Flex adjusts itself when lineup items are added, swapped or deleted -
+      designed together in the same Opus 5.5 design session, built by
+      Sonnet 5.
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
