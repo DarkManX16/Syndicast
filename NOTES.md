@@ -318,6 +318,149 @@ on shows.
 - [ ] Per-channel transcoding configs, so channels can use different video and audio formats
 - [ ] Fix NVIDIA / h264_nvenc encoder issues
 - [ ] Aspect ratio stretch without having to disable "normalize resolution"
+
+      **Plan, investigated Sep 27, 2026; not built.** A per-channel choice
+      between *Fit* (today's black bars) and *Stretch to fill*, for any
+      source whose shape doesn't match the channel's resolution.
+
+      **Where scaling and padding are decided - all of it is in
+      `src/ffmpeg.js`, and only one place needs to change.**
+
+      - *The main scaler*, in `spawn()` from "Resolution fix" on. Every
+        real video goes through it: episodes, movies and filler alike,
+        since `PlexPlayer` plays filler with the same `spawnStream` call.
+        It works out the largest picture of the source's *display* shape
+        (storage size times `pixelP`/`pixelQ`, so anamorphic DVDs come out
+        right) that fits the channel's frame - `cw` x `ch` - scales to
+        that, pads with black to the full frame when the two differ, and
+        ends with `setsar=1`. It runs whenever `ensureResolution` is set
+        (normalize resolution on) and the source's size or pixel shape
+        differs; with normalize off it only shrinks sources larger than
+        the target, and never pads except by a pixel to make a size even.
+      - *The watermark* forces `ensureResolution` on, even with normalize
+        resolution off, so a watermarked channel always gets the full
+        frame. The logo is scaled on its own (`scale=w:-1`, its own shape
+        kept) and overlaid *after* the scaler, positioned by percentages
+        of the full frame. So it needs no change: stretched or not, it
+        lands in the same corner at the same size.
+      - *Still images* - the offline picture, the error screen's picture,
+        the loading screen, the black interlude between items, and the
+        album art or music placeholder behind audio-only items - have
+        their own `scale=...:force_original_aspect_ratio=1` then `pad`,
+        in the error/offline branch.
+      - *Generated screens* - testsrc, the text error screen, blank,
+        static, and `src/ffmpegText.js`'s no-channels screen - are drawn
+        at the frame size to begin with. Nothing to decide.
+      - *The concat process* in `video.js` copies, never scales.
+      - *Plex's own transcode*, when Plex transcodes rather than direct
+        plays, only ever shrinks to `maxTranscodeResolution` keeping the
+        shape, and reports the result's size, which is what the main
+        scaler then works from. No padding happens there.
+      - *NVIDIA.* There is no hardware filter path anywhere - no
+        `hwaccel`, `scale_cuda` or `scale_npp`. Choosing `h264_nvenc`
+        only changes the `-c:v` encoder; scaling and padding run on the
+        CPU the same as for every other encoder, and the only
+        NVIDIA-specific line is skipping `-tune stillimage`. So stretch
+        works identically there. If the "Fix NVIDIA" item later moves
+        scaling onto the GPU, it must keep taking the size from the same
+        `cw`/`ch` decision rather than rebuilding it, or stretch will
+        silently stop applying on that path.
+
+      **It can be per-channel without the per-channel transcoding
+      configs.** Every channel already carries a small `channel.transcoding`
+      block - resolution, video bitrate and buffer size, edited under
+      "Transcoding settings" in the channel editor - and `FFMPEG` already
+      reads it from the channel it is given. A new field there,
+      `channel.transcoding.aspect` (`'fit'` or `'stretch'`), rides the same
+      way with no plumbing: `transcoding` is already in `helperFuncs.js`'s
+      `CHANNEL_CONTEXT_KEYS`, and `video.js` already copies it from the
+      channel being watched (not a redirect's target, the same as the
+      resolution it stretches to). Absent means `'fit'`, so nothing
+      migrates and every saved channel gets exactly the command it gets
+      today.
+
+      **What changes in the ffmpeg command.** One decision: when the
+      channel says stretch and `ensureResolution` is on, `cw` x `ch` is the
+      channel's full frame instead of the fitted size. The existing "pad
+      only if the size differs from the frame" check then drops the `pad`
+      on its own, and the existing `setsar=1` is what makes the stretched
+      frame display as full width - it already had to be there. Nothing
+      else in the command moves: encoder, bitrate, audio, watermark, the
+      `-map`s. The shapes, worked through the code for a 1920x1080 channel
+      using each file's ffprobed size (step 1 of the verification below
+      confirms them by building the real command):
+
+          Batman TAS 1440x1080 (square pixels, 4:3):
+            fit     [video]scale=1440:1080:flags=bicubic[scaled];
+                    [scaled]pad=1920:1080:(ow-iw)/2:(oh-ih)/2[blackpadded];
+                    [blackpadded]setsar=1[siz]
+            stretch [video]scale=1920:1080:flags=bicubic[scaled];
+                    [scaled]setsar=1[siz]
+
+          Cow and Chicken 720x576, pixel shape 16:15 (anamorphic, 4:3):
+            fit     scale=1440:1080, pad to 1920:1080, setsar=1
+            stretch scale=1920:1080, setsar=1
+
+      A 16:9 source already at 1920x1080 takes no scaler at all either way.
+      With normalize resolution off and no watermark, the setting does
+      nothing - there is no fixed frame to fill - and the editor should say
+      so beside it.
+
+      **Recommended answers to the three open choices, pending OK:**
+
+      - *Stretch only sources narrower than the channel.* 4:3 on a 16:9
+        channel fills the frame; a 2.39:1 film keeps its letterbox rather
+        than being pulled tall. "Narrower" is judged on the display
+        shape, so anamorphic files are judged correctly.
+      - *Filler follows the same setting.* One rule per channel, so a 4:3
+        commercial between two stretched 4:3 episodes doesn't suddenly
+        pillarbox. `spawnStream` gets the item's `type`, so excluding
+        filler later is one condition if it's wanted.
+      - *Still images stay fitted.* Stretching square album art or a 4:3
+        offline card to 16:9 distorts artwork the user drew; the offline
+        picture can simply be made at the channel's shape.
+
+      **Not covered, by design.** A file with black bars *burned into* a
+      16:9 frame is already the channel's shape, so stretch can't touch it
+      - that would be cropping, a different feature. None of the 4:3-era
+      files checked have this: Batman TAS, Superman TAS and Powerpuff Girls
+      1080p are all clean 1440x1080 (cropdetect reports the full picture).
+
+      **Verification, on real episodes from the library.**
+
+      1. `test/aspect-stretch.js`, plain Node like the rest of `test/`:
+         swap `child_process.spawn` for a recorder before requiring
+         `src/ffmpeg.js`, build the command for Batman TAS 1440x1080, Cow
+         and Chicken 720x576 at 16:15, a 1920x1080 source, a 1920x800
+         film, a watermarked channel with normalize off, the offline
+         screen and an audio-only item. Asserts the stretch shapes above,
+         and that with the field absent the full argument list is
+         *identical* to what the code before the change builds - proved
+         once against `git show` of the pre-change `ffmpeg.js`, then kept
+         as shape assertions, the way the filler change was compared.
+      2. The real ffmpeg on the real file: run the recorded command for
+         Batman TAS S01E09 "Pretty Poison" through
+         `ffmpeg-7.1-full_build` for 10 seconds from 5:00, fit and
+         stretch, into the scratchpad. ffprobe both: 1920x1080, square
+         pixels. cropdetect: fit reports `crop=1440:1080:240:0` (240px
+         black each side), stretch reports the full `1920:1080`. A frame
+         from each, side by side, for the eye. Repeat with Cow and
+         Chicken S01E19 for the anamorphic path, first confirming Plex
+         reports it anamorphic with `pixelAspectRatio` 16:15 (a read of
+         its own metadata) - if Plex doesn't, the fit path is already
+         wrong today and that's a separate finding.
+      3. End to end, on a **copy** of `.dizquetv-dev`, never the live
+         folder: a scratch channel whose lineup is Batman TAS, a 4:3
+         commercial and Futurama 1080p (16:9), set to stretch with the
+         watermark on. Capture `/video?channel=N` with ffmpeg across all
+         three items; cropdetect every second - full width throughout,
+         logo in its corner, Futurama's segment built with no scale
+         filter. Flip the channel to fit and the pillarbox comes back.
+         Then channel 1, untouched, still resolves to the unchanged
+         command.
+      4. One look on the real client (Plex Live TV) - the stream is the
+         same bytes either way, but the client is what the viewer sees.
+
 - [ ] Fix very short items repeating or being skipped next to Flex
 
       Items under roughly 20 seconds, placed adjacent to Flex in the lineup,
