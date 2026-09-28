@@ -167,7 +167,7 @@
                      ng-style="{'max-height':programmingHeight()}"
                 >
                     <div class='row' ng-class="{'reverse': reverseTools }" >
-                        <div vs-repeat="options" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
+                        <div vs-repeat="{size: 66}" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
                             dnd-drop="dropFunction(index , item)"
                             dnd-list=""
                             ng-init="setUpWatcher()"
@@ -175,30 +175,12 @@
                             ng-style="{'max-height':programmingHeight()}"
                             id="channelConfigProgramList"
                         >
-                            <div ng-repeat="x in channel.programs track by x.$index"
+                            <program-list-row ng-repeat="x in channel.programs track by x.$index"
                                 ng-click="selectProgram(x.$index)"
-                                class="list-group-item flex-container program-row" dnd-draggable="x" dnd-moved="" dnd-effect-allowed="move"
-                            >
-                                <div class="program-start">
-                                    {{ dateForGuide(x.start) }}
-                                </div>
-                                <div ng-style="programSquareStyle(x)"></div>
-
-                                <div ng-hidden="x.isOffline" class='title' >
-                                    {{ getProgramDisplayTitle(x) }}
-                                </div>
-                                <div style="font-weight:ligther"  ng-show="x.isOffline" class='title' >
-                                    <i ng-if="x.type !== 'redirect' " >Flex</i>
-                                    <span ng-if="x.type === 'redirect' " ><i>Redirect to channel:</i> <b>{{x.channel}}</b></span>
-                                </div>
-                                <div class="flex-pull-right"></div>
-                                <button class="btn btn-sm btn-link" ng-if="!x.isOffline" ng-click="showProgramInfo(x); $event.stopPropagation()">
-                                    <i class="fas fa-info-circle"></i>
-                                </button>
-                                <button class="btn btn-sm btn-link" ng-click="removeItem(x.$index);  $event.stopPropagation()">
-                                    <i class="text-danger fa fa fa-trash-alt"></i>
-                                </button>
-                            </div>
+                                dnd-draggable="x" dnd-moved="" dnd-effect-allowed="move"
+                                program="x" show-gauge="true" show-start-time="true" break-after-mode="true"
+                                on-info="showProgramInfo" on-delete="deleteRow"
+                                ></program-list-row>
                         </div>
                         <div ng-class='{"col-sm-4": showShuffleOptions, "col-md-8": showShuffleOptions, "col-lg-7": showShuffleOptions, "col-xl-6": showShuffleOptions, "col" : !showShuffleOptions }' ng-if="! hasPrograms()">
                             <small class='text-info'>There are no programs in the channel, use the <i class='fas fa-plus'></i> button to add programs from your media library or use the Tools to add Flex time or a Channel Redirect</small>
