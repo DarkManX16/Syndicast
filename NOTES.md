@@ -2800,6 +2800,14 @@ port, a consumer of whatever's on disk in `web/`. Any future work that edits
 `web/` or `src/` belongs in a worktree from the start, not just a spare-port
 data copy.
 
+**Running `npm install` inside a worktree breaks the link.** A worktree's
+`node_modules` is a junction to the main checkout's, so both share one set
+of packages; `npm install` run in the worktree replaces that junction with a
+real folder of its own, and from then on the worktree and the main checkout
+have separate packages that can drift apart. So a new dependency is
+installed in the main checkout (`C:\Projects\dizquetv`), where the junction
+points, and the worktree sees it through the link.
+
 ### Deleting a filler list could silently fail instead of completing
 
 Found by accident during the incident above, confirmed as pre-existing and
