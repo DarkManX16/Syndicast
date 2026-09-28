@@ -151,8 +151,11 @@
                         <div class="flex-container library-item-hover" ng-click="selectGroup(g)">
                             <span class="fa {{ g === selectedGroup ? 'fa-chevron-down' : 'fa-chevron-right' }} tab"></span>
                             <img ng-if="displayImages" lazy-img="{{g.icon}}"></img>
-                            <span class="flex-grow-1">{{g.title}}</span>
-                            <span class="text-muted small">{{g.itemCount}} episodes &middot; {{longDurationString(g.totalDurationMs)}}</span>
+                            <span class="flex-grow-1">
+                                {{g.title}}
+                                <span ng-if="g.isCustomShow" class="badge badge-secondary" style="margin-left: 0.5em;">Custom show</span>
+                            </span>
+                            <span class="text-muted small">{{g.itemCount}} {{ g.isCustomShow ? 'items' : 'episodes' }} &middot; {{longDurationString(g.totalDurationMs)}}</span>
                         </div>
                     </li>
                 </ul>
@@ -178,7 +181,10 @@
                  above so an expanding row never fights vs-repeat's fixed-row-height
                  assumption. -->
             <div ng-if="(libraryTab === 'shows' || libraryTab === 'music') && selectedGroup" style="margin-top: 0.5em;">
-                <h6>{{selectedGroup.title}}</h6>
+                <h6>
+                    {{selectedGroup.title}}
+                    <span ng-if="selectedGroup.isCustomShow" class="badge badge-secondary" style="margin-left: 0.5em;">Custom show</span>
+                </h6>
                 <ul class="list-group channel-library-detail">
                     <li class="list-group-item flex-container library-item-hover" ng-repeat="it in selectedGroup.items" ng-click="showProgramInfo(it.program)">
                         <img ng-if="displayImages" lazy-img="{{it.program.episodeIcon || it.program.icon}}"></img>

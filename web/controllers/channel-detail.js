@@ -173,7 +173,35 @@ module.exports = function ($scope, $routeParams, $timeout, $interval, dizquetv, 
 
             let showData = getShowData(program);
 
-            if (program.type === 'movie') {
+            /*
+             * A custom show can be built from movie- or track-typed segments
+             * as freely as from episodes (addCustomShow in plex-library.js
+             * copies whatever type the underlying item already had) - so this
+             * has to be checked before the type-based routing below, not
+             * folded into it, or a custom show built from movie-type clips
+             * (e.g. a cartoon's a-side/b-side segments) lands in Movies
+             * instead of appearing as its own show. getShowData already gives
+             * custom shows their own showId ("custom."+id), distinct from a
+             * same-named real show's "tv."+showTitle, so the two never merge
+             * into one tile even when they happen to share a display name.
+             */
+            if (typeof(program.customShowId) !== 'undefined') {
+                let groupKey = showData.showId;
+                if (! shows.has(groupKey)) {
+                    shows.set(groupKey, {
+                        title: showData.showDisplayName,
+                        icon: (program.type === 'episode') ? (program.showIcon || program.icon) : program.icon,
+                        isCustomShow: true,
+                        items: new Map(),
+                    });
+                }
+                let group = shows.get(groupKey);
+                let itemKey = showData.order;
+                if (! group.items.has(itemKey)) {
+                    group.items.set(itemKey, { program: program, order: showData.order, count: 0 });
+                }
+                group.items.get(itemKey).count++;
+            } else if (program.type === 'movie') {
                 let key = showData.showId + '|' + showData.order;
                 if (! movies.has(key)) {
                     movies.set(key, {
@@ -214,6 +242,7 @@ module.exports = function ($scope, $routeParams, $timeout, $interval, dizquetv, 
             return {
                 title: group.title,
                 icon: group.icon,
+                isCustomShow: group.isCustomShow === true,
                 itemCount: items.length,
                 totalDurationMs: totalDurationMs,
                 items: items,
