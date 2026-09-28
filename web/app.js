@@ -50,6 +50,7 @@ app.directive('timeSlotsTimeEditor',  require('./directives/time-slots-time-edit
 app.directive('toastNotifications',  require('./directives/toast-notifications'))
 app.directive('buildInfoFooter',  require('./directives/build-info-footer'))
 app.directive('programInfoPanel',  require('./directives/program-info-panel'))
+app.directive('programListRow',  require('./directives/program-list-row'))
 app.directive('fillerConfig',  require('./directives/filler-config'))
 app.directive('showConfig',  require('./directives/show-config'))
 app.directive('deleteFiller',  require('./directives/delete-filler'))

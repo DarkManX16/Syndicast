@@ -16,6 +16,28 @@ module.exports = function ($timeout, commonProgramTools) {
             scope.visible = false;
             scope.error = undefined;
 
+            // vs-repeat computes its visible row window from the list's
+            // clientHeight, but ng-show="visible" only hides this whole
+            // modal with CSS - the list never leaves the DOM, so its
+            // container reads 0 height while hidden. Reopening the modal
+            // (the same show again, or a different one) can leave vs-repeat
+            // stuck on that stale zero-height window, rendering nothing even
+            // though its own row-position math is correct. A ResizeObserver
+            // on the modal's root reacts to the real event we care about -
+            // the container actually gaining size - rather than guessing at
+            // a delay.
+            if (window.ResizeObserver) {
+                let resizeObserver = new ResizeObserver(() => {
+                    if (scope.visible) {
+                        scope.$applyAsync(() => {
+                            scope.$broadcast('vsRepeatTrigger');
+                        });
+                    }
+                });
+                resizeObserver.observe(element[0]);
+                scope.$on('$destroy', () => resizeObserver.disconnect());
+            }
+
             function applyFilter() {
                 let query = (scope.searchText || "").trim().toLowerCase();
                 // Unfiltered keeps the same array reference so drag-and-drop still
@@ -30,11 +52,16 @@ module.exports = function ($timeout, commonProgramTools) {
             // to be rebuilt after every mutation, otherwise a filtered view would
             // delete the wrong row.
             function refreshContentIndexes() {
+                let totalDurationMs = 0;
                 for (let i = 0; i < scope.content.length; i++) {
                     scope.content[i].$index = i;
                     scope.content[i].$searchText =
                         scope.getProgramDisplayTitle(scope.content[i]).toLowerCase();
+                    if (typeof(scope.content[i].duration) === 'number' && !isNaN(scope.content[i].duration)) {
+                        totalDurationMs += scope.content[i].duration;
+                    }
                 }
+                scope.totalDurationMs = totalDurationMs;
                 applyFilter();
             }
 
@@ -54,6 +81,14 @@ module.exports = function ($timeout, commonProgramTools) {
                 scope.content.splice(a,b)
                 refreshContentIndexes();
             }
+            // program-list-row calls back with the program itself, not an
+            // index/count pair, so it always deletes the right row even
+            // though $index was only ever refreshed against the unfiltered
+            // list.
+            scope.deleteRow = (program) => {
+                scope.contentSplice(program.$index, 1);
+            }
+            scope.longDurationString = commonProgramTools.longDurationString;
 
             scope.dropFunction = (dropIndex, program) => {
                 let y = program.$index;

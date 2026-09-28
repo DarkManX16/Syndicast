@@ -145,7 +145,12 @@ module.exports = function (getShowData) {
         return programs;
     }
 
-    let programSquareStyle = (program) => {
+    // Just the color/pattern a program's identity hashes to - no duration
+    // encoding. Split out of programSquareStyle so the new program-list-row
+    // component can show a plain color swatch while the older duration-width
+    // square (still used by filler lists and the channel programming list)
+    // keeps its own behavior untouched.
+    let programColorStyle = (program) => {
         let background ="";
         if  ( (program.isOffline) && (program.type !== 'redirect') ) {
             background = "rgb(255, 255, 255)";
@@ -179,7 +184,7 @@ module.exports = function (getShowData) {
                 if ( angle >= 350 || angle < 10 ) {
                     angle += 53;
                 }
-               
+
             } else if (program.type === 'episode') {
                 let h = Math.abs( getHashCode(program.showTitle, false));
                 let h2 = Math.abs( getHashCode(program.showTitle, true));
@@ -210,6 +215,11 @@ module.exports = function (getShowData) {
             background = "repeating-linear-gradient( " + angle + "deg, " + rgb1 + ", " + rgb1 + " " + w + "px, " + rgb2 + " " + w + "px, " + rgb2 + " " + (w*2) + "px)";
 
         }
+        return background;
+    }
+
+    let programSquareStyle = (program) => {
+        let background = programColorStyle(program);
         let f = interpolate;
         let w = 15.0;
         let t = 4*60*60*1000;
@@ -259,6 +269,72 @@ module.exports = function (getShowData) {
 
     } )();
 
+    // m:ss under an hour, h:mm:ss at or above it - schedule to the second,
+    // never rounded to a minute.
+    let exactDurationString = (ms) => {
+        if (typeof(ms) !== 'number' || isNaN(ms) || ms < 0) {
+            return 'Unknown';
+        }
+        let totalSeconds = Math.floor(ms / 1000);
+        let h = Math.floor(totalSeconds / 3600);
+        let m = Math.floor((totalSeconds % 3600) / 60);
+        let s = totalSeconds % 60;
+        let ss = s.toString().padStart(2, '0');
+        if (h > 0) {
+            return h + ':' + m.toString().padStart(2, '0') + ':' + ss;
+        }
+        return m + ':' + ss;
+    }
+
+    // Coarse total for a list header - runtimes here can run into days, where
+    // exactDurationString's h:mm:ss would just be unreadable.
+    let longDurationString = (ms) => {
+        if (typeof(ms) !== 'number' || isNaN(ms) || ms < 0) {
+            return 'Unknown';
+        }
+        let totalMinutes = Math.floor(ms / 60000);
+        let days = Math.floor(totalMinutes / (24 * 60));
+        let hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+        let minutes = totalMinutes % 60;
+        let parts = [];
+        if (days > 0) {
+            parts.push(days + 'd');
+        }
+        if (hours > 0 || days > 0) {
+            parts.push(hours + 'h');
+        }
+        parts.push(minutes + 'm');
+        return parts.join(' ');
+    }
+
+    // Smallest standard slot a program fits in: 15 and 30 minutes for split
+    // half-episodes, then every half hour above that with no ceiling, the way
+    // a 2h15m movie schedules into a 150-min slot rather than being capped.
+    let slotFitGauge = (program) => {
+        let ms = program.duration;
+        if (typeof(ms) !== 'number' || isNaN(ms) || ms <= 0) {
+            return null;
+        }
+        const MIN = 60 * 1000;
+        let slotMinutes;
+        if (ms <= 15 * MIN) {
+            slotMinutes = 15;
+        } else if (ms <= 30 * MIN) {
+            slotMinutes = 30;
+        } else {
+            slotMinutes = Math.ceil(ms / (30 * MIN)) * 30;
+        }
+        let slotMs = slotMinutes * MIN;
+        let breaksMs = Math.max(0, slotMs - ms);
+        let fillPercent = Math.max(0, Math.min(100, (ms / slotMs) * 100));
+        return {
+            slotMinutes: slotMinutes,
+            fillPercent: fillPercent,
+            breaksMs: breaksMs,
+            label: slotMinutes + '-min slot · ' + exactDurationString(breaksMs) + ' for breaks',
+        };
+    }
+
 
     return {
         sortShows: sortShows,
@@ -268,6 +344,10 @@ module.exports = function (getShowData) {
         sortByDate: sortByDate,
         getProgramDisplayTitle: getProgramDisplayTitle,
         programSquareStyle: programSquareStyle,
+        programColorStyle: programColorStyle,
+        exactDurationString: exactDurationString,
+        longDurationString: longDurationString,
+        slotFitGauge: slotFitGauge,
     }
 
 }
