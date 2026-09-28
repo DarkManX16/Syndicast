@@ -286,6 +286,25 @@ module.exports = function (getShowData) {
         return m + ':' + ss;
     }
 
+    // A program's absolute scheduled date/time - moved here from
+    // channel-config.js's own dateForGuide so program-list-row can show it
+    // too, in the channel programming list, without duplicating it.
+    let startTimeString = (date) => {
+        let t = date.toLocaleTimeString(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+        });
+        if (t.charCodeAt(1) == 58) {
+            t = "0" + t;
+        }
+        return date.toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit"
+        }) + " " + t;
+    }
+
     // Coarse total for a list header - runtimes here can run into days, where
     // exactDurationString's h:mm:ss would just be unreadable.
     let longDurationString = (ms) => {
@@ -347,6 +366,7 @@ module.exports = function (getShowData) {
         programColorStyle: programColorStyle,
         exactDurationString: exactDurationString,
         longDurationString: longDurationString,
+        startTimeString: startTimeString,
         slotFitGauge: slotFitGauge,
     }
 

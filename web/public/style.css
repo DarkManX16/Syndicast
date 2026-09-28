@@ -294,6 +294,13 @@ div.programming-panes div.programming-pane {
 div.programming-programs div.list-group-item {
   height: 1.5rem;
 }
+/* program-list-row is a div.list-group-item too, but its multi-line layout
+   needs its real content height, not the single-line rows' fixed 1.5rem -
+   the extra .program-list-row class makes this the more specific selector,
+   so it wins outright rather than by source order. */
+div.programming-programs div.list-group-item.program-list-row {
+  height: auto;
+}
 .channel-editor-modal-big {
   width:1200px;
   min-width: 98%;
@@ -350,6 +357,14 @@ div.programming-programs div.list-group-item {
   align-items: baseline;
   white-space: nowrap;
   overflow: hidden;
+}
+.program-list-row .plr-start-time {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: 80%;
+  color: #0c5c68;
+  margin-right: 10px;
+  white-space: nowrap;
 }
 .program-list-row .plr-name {
   overflow: hidden;
