@@ -1,5 +1,12 @@
 # Notes
 
+## Design principle
+
+When we take an idea from another program - Tunarr, ErsatzTV, Plex - we don't
+copy it. We rebuild it around how Ron actually programs channels and put
+Syndicast's own stamp on it. Any roadmap line below for a borrowed idea says
+what we do differently and why, not just that we built our own version.
+
 ## Feature roadmap
 
 Intended work, mostly a statement of direction rather than of state. **An
@@ -742,6 +749,7 @@ on shows.
 ### Library management
 
 - [ ] Swap out episodes of a show, and plug library items in anywhere
+- [ ] Program rows show the episode title, with a slot-fit gauge
 - [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
 
       Swapping an item for one of a different length makes the Flex right
@@ -912,6 +920,8 @@ be built:
       management roadmap line above.
 - [x] Channel detail page (Sonnet 5). See the Interface roadmap line and its
       note above.
+- [ ] Program rows show the episode title, with a slot-fit gauge (Sonnet 5 ·
+      High). See the Library management roadmap line above.
 - [ ] Buffering, tested with three streams at once and Tunarr stopped
       (manual test; Opus 5.5 investigates and fixes if it turns out not to be
       Tunarr). See the Known issues entry below.
