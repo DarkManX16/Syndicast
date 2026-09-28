@@ -53,36 +53,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 saved : false,
             };
             scope.fixedOnDemand = false;
-
-            // See show-config.js for vs-repeat's reopen problem: it computes
-            // its visible row window from the list's clientHeight, and
-            // nothing prompts a recompute if that height changes without a
-            // resize event - switching tabs away from Programming and back
-            // is exactly that (a real display:none <-> flex transition on an
-            // ancestor), confirmed live. The extra delayed broadcast below
-            // is the same insurance for the very first open: at 40,000
-            // programs, laying the list out takes long enough that it's
-            // worth a second, later nudge rather than trusting the first
-            // render landed after layout had fully settled.
-            if (window.ResizeObserver) {
-                let resizeObserver = new ResizeObserver(() => {
-                    if (scope.visible) {
-                        scope.$applyAsync(() => {
-                            scope.$broadcast('vsRepeatTrigger');
-                        });
-                    }
-                });
-                $timeout(() => {
-                    let listElement = $element[0].querySelector('#channelConfigProgramList');
-                    if (listElement) {
-                        resizeObserver.observe(listElement);
-                    }
-                });
-                scope.$on('$destroy', () => resizeObserver.disconnect());
-            }
-            $timeout( () => {
-                scope.$broadcast('vsRepeatTrigger');
-            }, 500 );
             if (typeof scope.channel === 'undefined' || scope.channel == null) {
                 scope.channel = {}
                 scope.channel.programs = []
@@ -455,6 +425,21 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.removeOffline();
                 scope.channel.programs = commonProgramTools.sortShows(scope.channel.programs);
                 updateChannelDuration()
+            }
+            scope.dateForGuide = (date) => {
+                let t = date.toLocaleTimeString(undefined, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+                if (t.charCodeAt(1) == 58) {
+                    t = "0" + t;
+                }
+                return date.toLocaleDateString(undefined,{
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit"
+                }) + " " + t;
             }
             scope.sortByDate = () => {
                 scope.removeOffline();
@@ -1075,26 +1060,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.maxSize = Math.max(scope.maxSize, scope.channel.programs.length);
                 scope.libraryLimit = Math.max(0, scope.maxSize - scope.channel.programs.length );
                 scope.endTime = new Date( scope.channel.startTime.valueOf() + scope.channel.duration );
-
-                // The break-after gauge in program-list-row wants the real
-                // Flex/redirect time that already follows each program, not
-                // a theoretical slot - computed once here, alongside the
-                // other per-program fields this function already maintains,
-                // rather than walking the array again from the row itself.
-                // Each run of consecutive offline items is only walked once,
-                // by the program immediately before it, so this stays linear
-                // in the channel's program count.
-                for (let i = 0, l = scope.channel.programs.length; i < l; i++) {
-                    let program = scope.channel.programs[i];
-                    if (program.isOffline) {
-                        continue;
-                    }
-                    let breakMs = 0;
-                    for (let j = i + 1; j < l && scope.channel.programs[j].isOffline; j++) {
-                        breakMs += scope.channel.programs[j].duration;
-                    }
-                    program.$breakAfterMs = breakMs;
-                }
             }
             scope.error = {}
             scope._onDone = async (channel) => {
@@ -1165,7 +1130,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         scope.error.any = false;
                         for (let i = 0; i < scope.channel.programs.length; i++) {
                             delete scope.channel.programs[i].$index;
-                            delete scope.channel.programs[i].$breakAfterMs;
                         }
                         try {
                             removeMinuteVersionsOfFields(channel);
@@ -1302,9 +1266,6 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.removeItem = (x) => {
                 scope.channel.programs.splice(x, 1)
                 updateChannelDuration()
-            }
-            scope.deleteRow = (program) => {
-                scope.removeItem(program.$index);
             }
             scope.knownChannels = [
                 { id: -1, description: "# Channel #"},
