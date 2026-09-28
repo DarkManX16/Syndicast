@@ -750,7 +750,18 @@ on shows.
       time. Adding an item takes its time from the Flex after where it's
       inserted, and if there isn't enough, the following shows move later to
       the next clean start time (:00 or :30).
-- [ ] Info panel and thumbnail per item
+- [x] Info panel and thumbnail per item - an "i" button, like Tunarr's, wherever
+
+      a program is picked or reviewed. Shipped in c75cdf7: one shared
+      `program-info-panel` directive mounted in the channel's programming
+      list, filler lists and custom shows, showing thumbnail, show name (for
+      episodes), title, season/episode, year, duration, summary and which
+      Plex library the item is from. Display only - never touches how
+      anything is saved or played. Everything but the library name was
+      already stored on the program object; the library name is the one
+      live Plex request, fired once per click of the button, never for the
+      list. See the commit for what a scope-shadowing bug in the first pass
+      looked like and how it was found.
 - [ ] Jellyfin as a media source
 
 ### Interface
@@ -876,7 +887,8 @@ be built:
 - [x] Let the viewer's IPTV player stretch 4:3 with "normalize resolution"
       still on (Opus 5.5 plans, Sonnet 5 builds). See its Media handling
       roadmap line above.
-- [ ] Info panel and thumbnail per item (Sonnet 5).
+- [x] Info panel and thumbnail per item (Sonnet 5). See its Library
+      management roadmap line above.
 - [ ] Channel detail page (Sonnet 5). See the Interface roadmap line and its
       note above.
 - [ ] Buffering, tested with three streams at once and Tunarr stopped
