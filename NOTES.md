@@ -2378,3 +2378,44 @@ nothing ran and no error was raised, which read as a pass. The real entry
 point is `scope._onDone(channel)`, bound to the Save button in
 `channel-config.html`. When testing through a scope, confirm the function
 being called actually exists.
+
+### The XMLTV guide can hand a viewer your Plex access token
+
+Investigated, not fixed, ahead of "Public channel sharing without exposing an
+IP" under Infrastructure above - a channel shared publicly is exactly the
+case where a leaked token stops being theoretical.
+
+`program.icon` (and `episodeIcon`/`seasonIcon`/`showIcon`) is stored as the
+raw Plex thumbnail URL, `X-Plex-Token` included - confirmed by "Channel
+images no longer depend on the host and port that created them" above
+("Anything not starting with `/` passes through untouched, which is what
+keeps Plex thumbnail URLs working"). `src/xmltv.js`'s `_writeProgramme` only
+rewrites that URL through the safe `/cache/images/<hash>` proxy - which
+strips the token, since the proxy fetches the image itself and only ever
+hands the client a hash - when `xmltvSettings.enableImageCache === true`.
+That setting defaults to `false` (`src/database-migration.js`'s
+`initializeDb`, step introducing `xmltv-settings`), and this real dev
+install is still at that default. Measured against channel 1's actual saved
+file: 20,017 of its 40,000 programs carry a token-bearing `icon` URL, so with
+image caching off - the out-of-the-box state - roughly half its guide
+entries would hand a real viewer that token today.
+
+A second, narrower path has no gate at all. The channel's own icon (XMLTV's
+`<channel><icon>` and the M3U's `tvg-logo`) goes through `imageUrl.forClient`
+in both `xmltv.js` and `m3u-service.js`, which passes anything not starting
+with `/` through unchanged regardless of `enableImageCache` - there is no
+cache option for it to check. `channel-config.js`'s `validURL` accepts any
+URL with a scheme, not only an uploaded `/images/uploads/...` path, so
+nothing stops a channel icon from being set to a Plex thumbnail URL directly.
+None of the four dev channels do this today (channel 1's icon is
+`/images/uploads/syndicast-icon-512.png`), so this one is a real gap in the
+mechanism rather than a measured leak.
+
+HDHomeRun's `lineup.json` (`src/hdhr.js`) carries no icon field at all, so
+that path is clean.
+
+Not fixed here, per plan: the likely shape is turning `enableImageCache` on
+by default (or removing it as an option) for the program-icon path, and
+routing the channel icon through the same proxy regardless of that setting
+for the second path - but that's a decision for whoever builds public
+sharing, not a drive-by change now.
