@@ -151,6 +151,9 @@
                             {{ getText(x) }}
                         </div>
                         <div class="flex-pull-right">
+                            <button class="btn btn-sm btn-link" ng-if="!x.isOffline" ng-click="showProgramInfo(x)">
+                            <i class="fas fa-info-circle"></i>
+                            </button>
                             <button class="btn btn-sm btn-link" ng-click="contentSplice(x.$index,1)">
                             <i class="text-danger fa fa-trash-alt" ></i>
                             </button>
@@ -167,4 +170,5 @@
         </div>
     </div>
     <plex-library limit=1000000000 height="300" visible="showPlexLibrary" on-finish="importPrograms"></plex-library>
+    <program-info-panel program="_infoProgram"></program-info-panel>
 </div>

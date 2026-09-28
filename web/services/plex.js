@@ -156,6 +156,15 @@ module.exports = function ($http, $window, $interval) {
                 }
             return playlists
         },
+        // The one piece of the info panel that isn't already stored on a
+        // program: which Plex library it's from. One request per open, for
+        // the single item being looked at - never for the list behind it.
+        getMetadata: async (server, ratingKey) => {
+            var client = new Plex(server)
+            const res = await client.Get(`/library/metadata/${ratingKey}`)
+            const meta = (typeof res.Metadata !== 'undefined') ? res.Metadata[0] : undefined;
+            return (meta && typeof meta.librarySectionTitle !== 'undefined') ? meta.librarySectionTitle : undefined;
+        },
         getStreams: async (server, key) => {
             var client = new Plex(server)
             return client.Get(key).then((res) => {

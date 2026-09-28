@@ -1,0 +1,57 @@
+<div ng-show="program">
+    <div class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Program Info</h5>
+                    <button type="button" class="close" ng-click="close()"><span>&times;</span></button>
+                </div>
+                <div class="modal-body container">
+                    <div class="row">
+                        <div class="col-sm-4 text-center">
+                            <img class="img" ng-src="{{thumbnail(program)}}" style="max-width: 100%;" ng-if="thumbnail(program)"></img>
+                        </div>
+                        <div class="col-sm-8">
+                            <div ng-if="program.type === 'episode'">
+                                <h5>{{program.showTitle}}</h5>
+                                <div>
+                                    S{{ program.season.toString().padStart(2, '0') }}E{{ program.episode.toString().padStart(2, '0') }}
+                                    &middot; {{program.title}}
+                                </div>
+                            </div>
+                            <div ng-if="program.type !== 'episode'">
+                                <h5>{{program.title}}</h5>
+                            </div>
+                            <table class="table table-sm" style="margin-top: 10px;">
+                                <tbody>
+                                    <tr>
+                                        <th scope="row">Year</th>
+                                        <td>{{program.year || 'Unknown'}}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Duration</th>
+                                        <td>{{durationString(program.duration)}}</td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">Library</th>
+                                        <td>
+                                            <span ng-if="libraryLoading">Loading&hellip;</span>
+                                            <span ng-if="!libraryLoading">{{library || 'Unknown'}}</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div>
+                                <strong>Summary</strong>
+                                <p>{{program.summary || 'Unknown'}}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-primary" ng-click="close()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

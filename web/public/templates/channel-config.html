@@ -192,6 +192,9 @@
                                     <span ng-if="x.type === 'redirect' " ><i>Redirect to channel:</i> <b>{{x.channel}}</b></span>
                                 </div>
                                 <div class="flex-pull-right"></div>
+                                <button class="btn btn-sm btn-link" ng-if="!x.isOffline" ng-click="showProgramInfo(x); $event.stopPropagation()">
+                                    <i class="fas fa-info-circle"></i>
+                                </button>
                                 <button class="btn btn-sm btn-link" ng-click="removeItem(x.$index);  $event.stopPropagation()">
                                     <i class="text-danger fa fa fa-trash-alt"></i>
                                 </button>
@@ -1200,6 +1203,7 @@
         </div>
     </div>
     <program-config program="_selectedProgram" on-done="finshedProgramEdit"></program-config>
+    <program-info-panel program="_infoProgram"></program-info-panel>
     <flex-config offline-title="Modify Flex Time" program="_selectedOffline" on-done="finishedOfflineEdit"></flex-config>
     <frequency-tweak programs="_programFrequencies" message="_frequencyMessage" modified="_frequencyModified" on-done="tweakFrequencies"></frequency-tweak>
     <remove-shows program-infos="_removablePrograms" on-done="removeShows" deleted="_deletedProgramNames"></remove-shows>

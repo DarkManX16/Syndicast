@@ -52,6 +52,12 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                 return (scope.searchText || "").trim() !== "";
             }
 
+            // A plain `ng-click="_infoProgram = x"` on a row would assign to
+            // that row's own ng-repeat child scope, not this one - the panel
+            // is mounted on this scope, so it would never see it.
+            scope.showProgramInfo = (program) => {
+                scope._infoProgram = program;
+            }
             scope.contentSplice = (a,b) => {
                 scope.content.splice(a,b)
                 refreshContentIndexes();

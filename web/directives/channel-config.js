@@ -1234,6 +1234,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
 
             };
+            // A plain `ng-click="_infoProgram = x"` on a row would assign to
+            // that row's own ng-repeat child scope, not this one - the panel
+            // is mounted on this scope, so it would never see it.
+            scope.showProgramInfo = (program) => {
+                scope._infoProgram = program;
+            }
             scope.selectProgram = (index) => {
                 scope.selectedProgram = index;
                 let program = scope.channel.programs[index];
