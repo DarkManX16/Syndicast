@@ -840,16 +840,103 @@ on shows.
       row by `replace: true`, the same mechanism every other directive in
       this file already relies on.
 
-      Both follow-ups landed too, each as its own commit once verified smooth:
-      filler lists reuse the row with the gauge off (clips aren't scheduled
-      into slots), and the channel programming list reuses it with two modes
-      switched on - show-start-time (the program's absolute scheduled time,
-      not a duration, leads line 1) and break-after-mode (the gauge shows the
-      real Flex/redirect time already following the item - "break after:
-      4:46" - rather than a theoretical slot). Verified at channel 1's real
-      40,000 programs: virtualization holds, full-list scroll jumps land in
-      15-75ms, a delete-triggered full recompute takes ~126ms, and five
-      tab-switch-away-and-back cycles all rendered correctly.
+      The filler-list follow-up landed and stayed: filler lists reuse the row
+      with the gauge off (clips aren't scheduled into slots), verified at a
+      1900x900 window.
+
+      **The channel programming list follow-up shipped once, then was pulled
+      back out - it broke scrolling on Ron's real window, not just the
+      shared-checkout incident's window (see Resolved below for that separate
+      incident).** It briefly reused the row with two extra modes -
+      show-start-time (the program's absolute scheduled time, not a
+      duration, leads line 1) and break-after-mode (the gauge shows the real
+      Flex/redirect time already following the item - "break after: 4:46" -
+      rather than a theoretical slot) - and looked right in every test run
+      here: virtualization held, full-list scroll jumps landed in 15-75ms, a
+      delete-triggered full recompute took ~126ms, five tab-switch cycles all
+      rendered correctly, and sustained real scrolling a week into channel
+      1's real 40,000-program lineup showed no stuck window. None of that
+      reproduced Ron's report - a stuck 6-row list that wouldn't scroll
+      further, on his real window (~1900x900).
+
+      **Root cause found and verified.** Flex and redirect rows rendered
+      53.39px tall against every other row's 65.39px - `vs-repeat` was told
+      every row is a fixed 66px (`vs-repeat="{size: 66}"`), so its scroll
+      math assumed a uniform height that a whole class of real rows never
+      had. Traced to `.plr-gauge-label`: `gauge()` returns `null` for any
+      `isOffline` item (Flex and redirect never get a slot-fit or
+      break-after gauge), so the label's interpolation renders a genuinely
+      empty string - and a `<span>` with zero content collapses to 0px
+      height in this flex layout, not the "phantom" line-box height a
+      populated label gets. `.plr-gauge`'s own height then falls back to its
+      other child, the gauge bar - 6px, `visibility:hidden` and rendered
+      unconditionally, but far shorter than a real label's line height -
+      instead of the 18px a non-empty label would have given it. Confirmed
+      by hand: setting that one label's content to `&nbsp;` on a live Flex
+      row changed its measured height from 53.39px to exactly 65.39px, with
+      nothing else touched. The custom show editor and filler lists never
+      hit this, since neither ever contains an `isOffline` item - it's
+      specific to the programming list reusing the row with `show-gauge`
+      on for rows that can't have one.
+
+      What that mismatch does to `vs-repeat`: `sizesCumulative` (and the
+      `totalSize` it derives, which sizes the before/after spacer elements
+      that stand in for off-screen rows) is built entirely from the fixed
+      66px assumption, never the real DOM. Every Flex or redirect row -
+      roughly half of a real channel's rows, breaks alternating with
+      programs - reserves 12.6px more virtual scroll space than it actually
+      occupies. That drift compounds with every one of them scrolled past,
+      throwing off which slice of `channel.programs` the real scroll
+      position should show; how far into a run of thousands of alternating
+      program/Flex rows that has to compound before the visible window
+      stops advancing usefully is exactly the kind of thing that depends on
+      how many rows are visible at once (window size) and where playback
+      already was in the lineup (scroll starting position) - both of which
+      differ between a 1900x900 real window mid-lineup and this test
+      environment's narrower one starting from the top. That difference is
+      the leading explanation for why this reproduced on Ron's machine and
+      not here, though it wasn't reproduced directly - see below.
+
+      **The other two things asked to check, answered as far as they can be
+      from here:**
+      - `localStorage`'s `channel-programming-list-height` sets
+        `scope.programming.maxHeight` (rem, clamped 1-64, default 30),
+        which becomes the `max-height` on both `.programming-panes` and the
+        vs-repeat container itself (`programmingHeight()` in
+        `channel-config.js`) - the zoom in/out buttons on the Programming
+        tab write it. A small persisted value legitimately shows fewer rows
+        at once (correct behavior, not this bug), but a smaller visible
+        window also means each scroll tick advances through relatively more
+        rows for the same wheel movement, so it would reach the point where
+        the row-height drift matters *sooner* - consistent with, though not
+        proof of, this being where Ron's session sat. Could not be read
+        directly - it lives in Ron's own browser's `localStorage` for his
+        real server's origin, not anything captured in a log or a file.
+      - Window size: confirmed real (not scaled) 1900x900 renders and
+        scrolls both the custom show editor and filler lists correctly here.
+        Not tested at that exact size against the programming list's
+        show-start-time/break-after-mode variant specifically, since it was
+        reverted before that combination could be tried under Ron's
+        conditions - see below.
+
+      **Reverted back to the pre-session rows** (05ac006's `vs-repeat="options"`,
+      the single-line `.program-row` markup, `dateForGuide`, and the matching
+      `div.programming-programs div.list-group-item` CSS with no override) in
+      a fresh worktree, immediately, per Ron's instruction to restore a
+      working list before anything else. Custom shows and filler lists were
+      untouched by this - `program-list-row.js` and its CSS stay in the
+      tree, just no longer wired into the channel programming list. Verified
+      after reverting: both the custom show editor and filler lists still
+      scroll correctly at a real 1900x900 window.
+
+      **Not retrying the programming list until it can be tested under Ron's
+      actual conditions**, per instruction. The fix itself is narrow once
+      found - reserve real height for an empty gauge label, most simply by
+      giving `.plr-gauge-label` (or `.plr-gauge`) a `min-height` matching a
+      populated label's own line height, so every row is uniformly 66px
+      regardless of whether that row has a gauge to show - but confirming it
+      actually stays smooth on Ron's window, not just here, is the real gate
+      before it goes back in.
 - [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
 
       Swapping an item for one of a different length makes the Flex right
