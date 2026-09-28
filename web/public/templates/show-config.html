@@ -19,7 +19,6 @@
                             <div class="programming-counter small" ng-show="content.length > 0">
                                 <span class="small" ng-hide="isFiltered()"><b>Total:</b> {{content.length}}</span>
                                 <span class="small" ng-show="isFiltered()"><b>Showing:</b> {{filteredContent.length}} of {{content.length}}</span>
-                                <span class="small">&middot; <b>Runtime:</b> {{longDurationString(totalDurationMs)}}</span>
                             </div>
                             <div class='flex-pull-right' ></div>
                             <div>
@@ -101,7 +100,7 @@
     
                     </div>
                 </div>
-                <div vs-repeat="{size: 66}" class="modal-body container list-group list-group-root show-list"
+                <div vs-repeat class="modal-body container list-group list-group-root show-list" 
                  dnd-list="content" ng-if="showList()"
                     vs-repeat-reinitialized="vsReinitialized(event, startIndex, endIndex)"
                     ng-init="setUpWatcher()"
@@ -110,12 +109,27 @@
                     dnd-list=""
 
                 >
-                    <program-list-row ng-repeat="x in filteredContent" track-by="x.$index" dnd-draggable="x"
+                    <div class="list-group-item flex-container show-row"  style="cursor: default; height:1.1em; overflow:hidden" ng-repeat="x in filteredContent" track-by="x.$index"  dnd-draggable="x"
                         dnd-disable-if="isFiltered()"
                         dnd-effect-allowed="move"
                         dnd-moved="movedFunction(x.$index)"
-                        program="x" show-gauge="true" on-info="showProgramInfo" on-delete="deleteRow"
-                        ></program-list-row>
+                        >
+                        <div class="program-start" >
+                            X{{ (x.$index + 1).toString().padStart(2, '0') }}
+                        </div>
+                        <div ng-style="programSquareStyle(x, false)" ></div>
+                        <div class="title" >
+                            {{ getProgramDisplayTitle(x) }} <span class="text-muted">{{ durationSummary(x) }}</span>
+                        </div>
+                        <div class="flex-pull-right">
+                            <button class="btn btn-sm btn-link" ng-if="!x.isOffline" ng-click="showProgramInfo(x)">
+                            <i class="fas fa-info-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-link" ng-click="contentSplice(x.$index,1)">
+                            <i class="text-danger fa fa-trash-alt" ></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="modal-footer">

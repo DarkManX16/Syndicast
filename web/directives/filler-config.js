@@ -13,25 +13,6 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
             scope.content = [];
             scope.visible = false;
             scope.error = undefined;
-            scope.longDurationString = commonProgramTools.longDurationString;
-
-            // See show-config.js for why this is here: ng-show="visible"
-            // only hides this modal with CSS, so vs-repeat's own row-window
-            // math can go stale against a container that still reads zero
-            // height, and reopening (the same filler list again, or a
-            // different one) can then render nothing until something
-            // prompts a recompute against the real, now-visible size.
-            if (window.ResizeObserver) {
-                let resizeObserver = new ResizeObserver(() => {
-                    if (scope.visible) {
-                        scope.$applyAsync(() => {
-                            scope.$broadcast('vsRepeatTrigger');
-                        });
-                    }
-                });
-                resizeObserver.observe(element[0]);
-                scope.$on('$destroy', () => resizeObserver.disconnect());
-            }
             scope.modes = [ {
                 name: "import",
                 description: "Collection/Playlist from Plex",
@@ -58,15 +39,10 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
             // delete and reorder act on. It has to be rebuilt after every mutation,
             // otherwise a filtered view would delete the wrong row.
             function refreshContentIndexes() {
-                let totalDurationMs = 0;
                 for (let i = 0; i < scope.content.length; i++) {
                     scope.content[i].$index = i;
                     scope.content[i].$searchText = scope.getText(scope.content[i]).toLowerCase();
-                    if (typeof(scope.content[i].duration) === 'number' && !isNaN(scope.content[i].duration)) {
-                        totalDurationMs += scope.content[i].duration;
-                    }
                 }
-                scope.totalDurationMs = totalDurationMs;
                 applyFilter();
             }
 
@@ -85,9 +61,6 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
             scope.contentSplice = (a,b) => {
                 scope.content.splice(a,b)
                 refreshContentIndexes();
-            }
-            scope.deleteRow = (program) => {
-                scope.contentSplice(program.$index, 1);
             }
 
             scope.dropFunction = (dropIndex, program) => {
