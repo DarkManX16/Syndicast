@@ -749,7 +749,101 @@ on shows.
 ### Library management
 
 - [ ] Swap out episodes of a show, and plug library items in anywhere
-- [ ] Program rows show the episode title, with a slot-fit gauge
+- [x] Program rows show the episode title, with a slot-fit gauge
+
+      Rebuilt Tunarr's duration bar around how Ron schedules: a slot-fit gauge
+      instead, since what matters when building a lineup isn't a program's raw
+      length but how much of a real broadcast slot it leaves for breaks. Ships
+      in the custom show editor - `web/directives/program-list-row.js`, one
+      shared two-line row: line 1 is the color square (now a plain identity
+      swatch, no longer width-scaled by duration - that encoding moved to the
+      gauge), the show/album name, a compact `S1 · E2` or `Track 2` /
+      `Disc 1 · Track 2` tag, and the exact duration as `m:ss` (`h:mm:ss` at an
+      hour or more) pinned right - never rounded to a minute, since slots are
+      built to the second. Line 2 is the episode/track title, a movie's year,
+      or blank for anything else (a redirect, a plain clip) - its title
+      already said everything it has on line 1.
+
+      The gauge itself picks the smallest standard slot the item fits: 15 and
+      30 minutes for split half-episodes (an `S01E02a` airs two to a
+      half-hour), then every half hour above that with no ceiling, so a 2h15m
+      movie reads "150-min slot · 15:00 for breaks" rather than being forced
+      into a fixed 30/60/90/120 list - matching how a real broadcast day
+      actually schedules movies. `commonProgramTools.slotFitGauge` computes it
+      from `program.duration` alone; `exactDurationString` and
+      `longDurationString` (the list header's coarse total, moved here from
+      `channel-detail.js`'s own copy) are its siblings. Info and delete
+      buttons stay; the header adds total runtime beside the existing item
+      count.
+
+      Tracks get the album on line 1, not the artist - `plex.js`'s track
+      import only ever copies the album (`showTitle`) and disc/track numbers,
+      never `grandparentTitle` (the artist), so there's nothing to show yet.
+      Left as a follow-up alongside the library page's own artist/music-video
+      gap, in its note under Interface's Channel detail page entry - both need
+      the same kind of Plex field saved on import that isn't today, so do them
+      together rather than as two separate changes. Not exercised live: no
+      custom show in the dev data actually contains a track-typed clip, so the
+      tag/line-1 logic for tracks was verified by reading the code path, not
+      by a real render.
+
+      Two real bugs found building this, both in how `angular-vs-repeat`
+      (the virtual-scroll list the custom show editor, filler lists and the
+      channel programming list all already used) reacts to a taller,
+      multi-line row replacing the old single-line one:
+
+      - **Every row rendered at a uniform 24px and visually overlapped the
+        next one**, even though each row's own line 1/line 2/gauge measured
+        correctly inside it. `vs-repeat`'s scroll container turned out to be
+        `display: flex; flex-direction: column` - a flex item's default
+        `flex-shrink: 1` was squashing every row down to fit the visible
+        viewport, bottoming out exactly at the pre-existing
+        `min-height: 1.5em` floor (`.show-list .list-group-item`) once
+        content exceeded it, with the clipped remainder painted over by the
+        next row's own opaque background rather than visibly spilling out.
+        The single-line rows this replaces never hit it, since their fixed
+        height was already smaller than their fair share. Fixed with
+        `flex-shrink: 0` on `.program-list-row`.
+      - **Reopening the editor - the same custom show again, or a different
+        one - could render zero rows**, even though `vsRepeat.sizesCumulative`
+        was correct throughout. `ng-show="visible"` only hides the modal with
+        CSS; the list never leaves the DOM, so `vs-repeat` can compute its
+        visible row window from a container that still reads zero height,
+        and nothing after that prompts it to recompute once the modal is
+        actually shown. Confirmed by hand (`scope.$broadcast('vsRepeatTrigger')`
+        fixed a stuck list immediately) and fixed properly with a
+        `ResizeObserver` on the editor's root in `show-config.js`, broadcasting
+        `vsRepeatTrigger` whenever the modal's real size changes - reacting to
+        the actual condition instead of guessing a `$timeout` delay, which
+        measurably still left it flaky under fast, scripted open/close cycles.
+        Reproduced and fixed only for the custom show editor; filler lists and
+        the channel programming list use the same library and the same
+        `ng-show` pattern; whether they need the same fix is part of what
+        reusing `program-list-row` there would take.
+
+      Verified on a copy of `.dizquetv-dev`, port 18098 (never 18000, never
+      the live folder), against the real custom shows: the mixed movie/track
+      "My Gym Partner's a Monkey" (all `S01E01a`-style movie-typed segments,
+      confirmed by the grouping fix in 05ac006) for line-1/line-2 fallback
+      behaviour, and the 107-episode "Batman/New Batman Adventures" for the
+      `S1 · E1` tag and episode-title line 2. Gauge math checked against the
+      slot-tier table by hand (15m -> 30m -> every half hour) and against a
+      literal 2h15m case, which produces exactly "150-min slot · 15:00 for
+      breaks". Info panel, row delete (with a live count/runtime update), and
+      an unrelated no-op open-then-Done save (diffed byte-for-byte against
+      the file beforehand) all confirmed against "Silly Symphony". Eight
+      rapid open/cancel cycles across three different shows after the
+      `ResizeObserver` fix, all rendering the right row count and content
+      every time. Not exercised: an actual drag-to-reorder gesture (browser
+      automation can't drive native HTML5 drag-and-drop); the `dnd-draggable`
+      attribute is confirmed present and correctly merged onto the rendered
+      row by `replace: true`, the same mechanism every other directive in
+      this file already relies on.
+
+      Not yet done: reusing the row in filler lists (no gauge there, since
+      clips aren't scheduled into slots) and the channel's programming list
+      (must stay smooth at channel 1's real ~40,000 programs) - both are
+      still open, each planned as its own commit and only if it holds up.
 - [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
 
       Swapping an item for one of a different length makes the Flex right
@@ -802,7 +896,14 @@ on shows.
       program object anywhere in this codebase (checked `web/services/plex.js`'s
       Plex-to-program mapping) - telling them apart would mean saving Plex's own
       item type onto new programs, out of scope for a display-only page, and is
-      left for later. Artwork at 40,000 programs (channel 1's real size) stays
+      left for later. Same gap, same fix: a track's `showTitle` is its album,
+      never its artist (`plex.js` only ever copies `grandparentTitle` for
+      episodes) - program-list-row's line 1 uses the album for now rather than
+      guessing at an artist that isn't stored. Both need Plex fields saved on
+      import that aren't today, so do them together, once, rather than as two
+      separate imports.
+
+      Artwork at 40,000 programs (channel 1's real size) stays
       cheap because programs are grouped into a few dozen show/movie/album tiles
       first (reusing `getShowData`'s existing show grouping) - `vs-repeat` and
       `lazy-img`, the same mechanisms the programming list and Plex library
@@ -920,7 +1021,7 @@ be built:
       management roadmap line above.
 - [x] Channel detail page (Sonnet 5). See the Interface roadmap line and its
       note above.
-- [ ] Program rows show the episode title, with a slot-fit gauge (Sonnet 5 ·
+- [x] Program rows show the episode title, with a slot-fit gauge (Sonnet 5 ·
       High). See the Library management roadmap line above.
 - [ ] Buffering, tested with three streams at once and Tunarr stopped
       (manual test; Opus 5.5 investigates and fixes if it turns out not to be
