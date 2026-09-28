@@ -30,6 +30,9 @@
             </td>
             <td>{{x.name}} <span ng-if='x.stealth===true' class='text-muted'>(Stealth)</span></td>
             <td class="text-right">
+                <a ng-show="!x.pending" class="btn btn-sm btn-link" href="#!/channels/{{x.number}}" ng-click="$event.stopPropagation()">
+                    <span class="fa fa-chart-bar"></span>
+                </a>
                 <button ng-show="!x.pending" class="btn btn-sm btn-link" ng-click="removeChannel($index, x); $event.stopPropagation()">
                     <span class="text-danger fa fa-trash-alt"></span>
                 </button>

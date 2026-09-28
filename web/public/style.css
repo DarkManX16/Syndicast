@@ -396,6 +396,16 @@ div.programming-programs div.list-group-item {
   background: #D0D0FF
 }
 
+.channel-library-panel {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.channel-library-detail {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 .dp-week-row {
   display: flex;
   align-items: stretch;

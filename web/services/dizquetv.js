@@ -147,6 +147,14 @@ module.exports = function ($http, $q) {
             return $http.get(`/api/channel/programs/${number}`).then( (d) => { return d.data } )
         },
 
+        getChannelNowPlaying: (number) => {
+            return $http.get(`/api/channel/${number}/now-playing`).then( (d) => { return d.data } )
+        },
+
+        getChannelFillerLists: (number) => {
+            return $http.get(`/api/channel/${number}/filler-lists`).then( (d) => { return d.data } )
+        },
+
 
         getChannelNumbers: () => {
             return $http.get('/api/channelNumbers').then( (d) => { return d.data } )

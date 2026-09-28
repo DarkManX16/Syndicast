@@ -10,6 +10,7 @@ const buildInfo = require('./build-info');
 
 const timeSlotsService = require('./services/time-slots-service');
 const randomSlotsService = require('./services/random-slots-service');
+const channelStatusService = require('./services/channel-status-service');
 const throttle = require('./services/throttle');
 
 function safeString(object) {
@@ -327,6 +328,34 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
         } else {
             return res.status(404).send("Channel not found");
         }
+      } catch(err) {
+        console.error(err);
+       res.status(500).send("error");
+      }
+    })
+    router.get('/api/channel/:number/now-playing', async (req, res) => {
+      try {
+        let number = parseInt(req.params.number, 10);
+        let channel = await channelService.getChannel(number);
+        if (channel == null) {
+            return res.status(404).send("Channel not found");
+        }
+        let status = await channelStatusService.getNowPlaying(channel, fillerDB);
+        res.send(status);
+      } catch(err) {
+        console.error(err);
+       res.status(500).send("error");
+      }
+    })
+    router.get('/api/channel/:number/filler-lists', async (req, res) => {
+      try {
+        let number = parseInt(req.params.number, 10);
+        let channel = await channelService.getChannel(number);
+        if (channel == null) {
+            return res.status(404).send("Channel not found");
+        }
+        let lists = await channelStatusService.getFillerLists(channel, fillerDB);
+        res.send(lists);
       } catch(err) {
         console.error(err);
        res.status(500).send("error");

@@ -1,0 +1,241 @@
+<div class='container'>
+
+    <div ng-if="loading" class="text-center">
+        <div class='loader'></div>
+    </div>
+    <div ng-if="!loading && loadError" class="text-danger">
+        Could not load channel {{channelNumber}}.
+    </div>
+
+    <div ng-if="!loading && !loadError && channel">
+        <h5>
+            <a href="#!/channels" class="btn btn-sm btn-link"><span class="fa fa-arrow-left"></span></a>
+            <img ng-if="channel.icon" ng-src="{{channel.icon}}" alt="{{channel.name}}" style="max-height: 32px; vertical-align: middle;"></img>
+            Channel {{channel.number}} &middot; {{channel.name}}
+        </h5>
+
+        <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <span class="nav-link btn btn-link {{ tab === 'overview' ? 'active' : '' }}" ng-click="setTab('overview')">Overview</span>
+            </li>
+            <li class="nav-item">
+                <span class="nav-link btn btn-link {{ tab === 'library' ? 'active' : '' }}" ng-click="setTab('library')">Library</span>
+            </li>
+            <li class="nav-item">
+                <span class="nav-link btn btn-link {{ tab === 'filler' ? 'active' : '' }}" ng-click="setTab('filler')">Filler</span>
+            </li>
+        </ul>
+
+        <!-- ============= TAB: OVERVIEW ========================= -->
+        <div ng-if="tab === 'overview'" style="padding-top: 1em;">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Now playing</h6>
+
+                    <div ng-if="nowPlayingError" class="small text-danger">Could not reach the server for status.</div>
+                    <div ng-if="!nowPlaying && !nowPlayingError" class="loader"></div>
+
+                    <div ng-if="nowPlaying.state === 'program'">
+                        <div class="flex-container">
+                            <img ng-if="nowPlaying.program.episodeIcon || nowPlaying.program.icon"
+                                 ng-src="{{nowPlaying.program.episodeIcon || nowPlaying.program.icon}}"
+                                 ng-click="showProgramInfo(nowPlaying.program)"
+                                 style="max-height: 90px; margin-right: 1em; cursor: pointer;"></img>
+                            <div class="flex-grow-1">
+                                <div ng-if="nowPlaying.program.type === 'episode'">
+                                    <strong>{{nowPlaying.program.showTitle}}</strong>
+                                    <div>S{{ (nowPlaying.program.season||0).toString().padStart(2,'0') }}E{{ (nowPlaying.program.episode||0).toString().padStart(2,'0') }} &middot; {{nowPlaying.program.title}}</div>
+                                </div>
+                                <div ng-if="nowPlaying.program.type !== 'episode'">
+                                    <strong>{{nowPlaying.program.title}}</strong>
+                                </div>
+                                <div class="progress" style="height: 6px; margin-top: 0.5em;">
+                                    <div class="progress-bar" role="progressbar" ng-style="{width: progressPercent(nowPlaying) + '%'}"></div>
+                                </div>
+                                <div class="small text-muted">{{durationString(nowPlaying.elapsedMs)}} / {{durationString(nowPlaying.durationMs)}}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div ng-if="nowPlaying.state === 'break'">
+                        <span class="badge badge-secondary">Break</span>
+                        <div class="progress" style="height: 6px; margin-top: 0.5em;">
+                            <div class="progress-bar" role="progressbar" ng-style="{width: progressPercent(nowPlaying) + '%'}"></div>
+                        </div>
+                        <div class="small text-muted">{{durationString(nowPlaying.elapsedMs)}} / {{durationString(nowPlaying.durationMs)}}</div>
+                        <div class="small" style="margin-top: 0.5em;">Filling from {{breakContextLabel(nowPlaying)}}:</div>
+                        <ul class="small" style="margin-bottom: 0.25em;">
+                            <li ng-repeat="m in nowPlaying.mix">{{m.name}} &mdash; {{m.clipCount}} clips, {{longDurationString(m.totalDurationMs)}}</li>
+                            <li ng-if="nowPlaying.mix.length === 0" class="text-muted">No filler configured.</li>
+                        </ul>
+                        <div class="small" ng-if="nowPlaying.nextProgram">
+                            Next up in {{durationString(nowPlaying.msUntilNextProgram)}}: {{getProgramDisplayTitle(nowPlaying.nextProgram)}}
+                        </div>
+                    </div>
+
+                    <div ng-if="nowPlaying.state === 'redirect'">
+                        <div>Redirected to <a href="#!/channels/{{nowPlaying.targetChannel}}">channel {{nowPlaying.targetChannel}}</a></div>
+                        <div class="small text-muted">{{durationString(nowPlaying.elapsedMs)}} / {{durationString(nowPlaying.durationMs)}}</div>
+                    </div>
+
+                    <div ng-if="nowPlaying.state === 'paused'" class="text-muted small">
+                        This channel is on-demand and currently paused.
+                    </div>
+                    <div ng-if="nowPlaying.state === 'empty'" class="text-muted small">
+                        No programs are scheduled on this channel.
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <h6>Stats</h6>
+                    <table class="table table-sm">
+                        <tr><th width="140">Programs</th><td>{{channel.programs.length}}</td></tr>
+                        <tr><th>Total runtime</th><td>{{longDurationString(channel.duration)}}</td></tr>
+                    </table>
+
+                    <h6>Stream</h6>
+                    <table class="table table-sm">
+                        <tr ng-repeat="e in streamEndpoints">
+                            <th width="140">{{e.label}}</th>
+                            <td>{{e.description}}</td>
+                            <td class="text-right"><a ng-href="{{streamUrl(e.id)}}" target="_blank"><span class="fa fa-external-link-alt"></span></a></td>
+                        </tr>
+                    </table>
+
+                    <h6>Transcode config</h6>
+                    <table class="table table-sm">
+                        <tr><th width="140">Resolution</th><td>{{channel.transcoding.targetResolution || 'Global default'}}</td></tr>
+                        <tr><th>Video bitrate</th><td>{{channel.transcoding.videoBitrate ? (channel.transcoding.videoBitrate + ' k') : 'Global default'}}</td></tr>
+                        <tr><th>Buffer size</th><td>{{channel.transcoding.videoBufSize ? (channel.transcoding.videoBufSize + ' k') : 'Global default'}}</td></tr>
+                        <tr><th>Aspect</th><td>{{channel.transcoding.aspect === 'mark' ? "Let the viewer's player decide" : 'Black bars'}}</td></tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============= TAB: LIBRARY ========================= -->
+        <div ng-if="tab === 'library'" style="padding-top: 1em;">
+            <div class="flex-container" style="margin-bottom: 0.5em;">
+                <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-outline-secondary {{ libraryTab === 'movies' ? 'active' : '' }}" ng-click="setLibraryTab('movies')">Movies ({{library.movies.length}})</button>
+                    <button class="btn btn-sm btn-outline-secondary {{ libraryTab === 'shows' ? 'active' : '' }}" ng-click="setLibraryTab('shows')">Shows ({{library.shows.length}})</button>
+                    <button class="btn btn-sm btn-outline-secondary {{ libraryTab === 'music' ? 'active' : '' }}" ng-click="setLibraryTab('music')">Music ({{library.music.length}})</button>
+                    <button class="btn btn-sm btn-outline-secondary {{ libraryTab === 'other' ? 'active' : '' }}" ng-click="setLibraryTab('other')">Other</button>
+                </div>
+                <span class="flex-pull-right" ng-if="libraryTab !== 'other'">
+                    <label class="small" for="displayImages">Thumbnails</label>&nbsp;
+                    <input id="displayImages" type="checkbox" ng-model="displayImages"></input>
+                </span>
+            </div>
+
+            <!-- Movies -->
+            <div ng-if="libraryTab === 'movies'">
+                <div class="text-muted small" ng-if="library.movies.length === 0">No movies on this channel.</div>
+                <ul ng-if="library.movies.length > 0" class="list-group list-group-root plex-panel channel-library-panel" lazy-img-container vs-repeat="options">
+                    <li class="list-group-item" ng-repeat="m in library.movies track by $index">
+                        <div class="flex-container library-item-hover" ng-click="showProgramInfo(m.program)">
+                            <img ng-if="displayImages" lazy-img="{{m.icon}}"></img>
+                            <span class="flex-grow-1">{{m.title}}</span>
+                            <span ng-if="m.count > 1" class="text-muted small" style="margin-right: 1em;">&times;{{m.count}}</span>
+                            <span>{{durationString(m.durationMs)}}</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Shows -->
+            <div ng-if="libraryTab === 'shows'">
+                <div class="text-muted small" ng-if="library.shows.length === 0">No shows on this channel.</div>
+                <ul ng-if="library.shows.length > 0" class="list-group list-group-root plex-panel channel-library-panel" lazy-img-container vs-repeat="options">
+                    <li class="list-group-item" ng-repeat="g in library.shows track by $index">
+                        <div class="flex-container library-item-hover" ng-click="selectGroup(g)">
+                            <span class="fa {{ g === selectedGroup ? 'fa-chevron-down' : 'fa-chevron-right' }} tab"></span>
+                            <img ng-if="displayImages" lazy-img="{{g.icon}}"></img>
+                            <span class="flex-grow-1">{{g.title}}</span>
+                            <span class="text-muted small">{{g.itemCount}} episodes &middot; {{longDurationString(g.totalDurationMs)}}</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Music -->
+            <div ng-if="libraryTab === 'music'">
+                <div class="text-muted small" ng-if="library.music.length === 0">No music on this channel.</div>
+                <ul ng-if="library.music.length > 0" class="list-group list-group-root plex-panel channel-library-panel" lazy-img-container vs-repeat="options">
+                    <li class="list-group-item" ng-repeat="g in library.music track by $index">
+                        <div class="flex-container library-item-hover" ng-click="selectGroup(g)">
+                            <span class="fa {{ g === selectedGroup ? 'fa-chevron-down' : 'fa-chevron-right' }} tab"></span>
+                            <img ng-if="displayImages" lazy-img="{{g.icon}}"></img>
+                            <span class="flex-grow-1">{{g.title}}</span>
+                            <span class="text-muted small">{{g.itemCount}} tracks &middot; {{longDurationString(g.totalDurationMs)}}</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Shows/Music detail panel - a plain (non-virtualized) list of one
+                 show's or album's own items; kept out of the virtualized grid
+                 above so an expanding row never fights vs-repeat's fixed-row-height
+                 assumption. -->
+            <div ng-if="(libraryTab === 'shows' || libraryTab === 'music') && selectedGroup" style="margin-top: 0.5em;">
+                <h6>{{selectedGroup.title}}</h6>
+                <ul class="list-group channel-library-detail">
+                    <li class="list-group-item flex-container library-item-hover" ng-repeat="it in selectedGroup.items" ng-click="showProgramInfo(it.program)">
+                        <img ng-if="displayImages" lazy-img="{{it.program.episodeIcon || it.program.icon}}"></img>
+                        <span class="flex-grow-1">{{getProgramDisplayTitle(it.program)}}</span>
+                        <span ng-if="it.count > 1" class="text-muted small" style="margin-right: 1em;">&times;{{it.count}}</span>
+                        <span>{{durationString(it.program.duration)}}</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Other -->
+            <div ng-if="libraryTab === 'other'">
+                <div class="list-group-item" ng-if="library.other.flexCount > 0">
+                    Flex &mdash; {{library.other.flexCount}} breaks, {{longDurationString(library.other.flexDurationMs)}} total
+                </div>
+                <div class="list-group-item" ng-repeat="r in library.other.redirects">
+                    Redirect to <a href="#!/channels/{{r.channel}}">channel {{r.channel}}</a> &mdash; {{r.count}} times, {{longDurationString(r.totalDurationMs)}} total
+                </div>
+                <div class="text-muted small" ng-if="library.other.flexCount === 0 && library.other.redirects.length === 0">
+                    Nothing else on this channel.
+                </div>
+            </div>
+        </div>
+
+        <!-- ============= TAB: FILLER ========================= -->
+        <div ng-if="tab === 'filler'" style="padding-top: 1em;">
+            <div ng-if="fillerListsLoading" class="loader"></div>
+
+            <div ng-if="fillerLists">
+                <h6>Channel-wide</h6>
+                <ul class="list-group" ng-if="fillerLists.channelWide.length > 0">
+                    <li class="list-group-item" ng-repeat="m in fillerLists.channelWide">{{m.name}} &mdash; {{m.clipCount}} clips, {{longDurationString(m.totalDurationMs)}}</li>
+                </ul>
+                <div class="text-muted small" ng-if="fillerLists.channelWide.length === 0">None.</div>
+
+                <h6 style="margin-top: 1em;">Day-parts</h6>
+                <div class="text-muted small" ng-if="fillerLists.dayParts.length === 0">This channel has no day-parts.</div>
+                <div ng-repeat="dp in fillerLists.dayParts" style="margin-bottom: 0.5em;">
+                    <strong>{{dp.name}}</strong>
+                    <ul class="list-group" ng-if="dp.mix.length > 0">
+                        <li class="list-group-item" ng-repeat="m in dp.mix">{{m.name}} &mdash; {{m.clipCount}} clips, {{longDurationString(m.totalDurationMs)}}</li>
+                    </ul>
+                    <div class="text-muted small" ng-if="dp.mix.length === 0">No filler mix of its own.</div>
+                </div>
+
+                <h6 style="margin-top: 1em;">Blocks</h6>
+                <div class="text-muted small" ng-if="fillerLists.blocks.length === 0">This channel has no blocks.</div>
+                <div ng-repeat="block in fillerLists.blocks" style="margin-bottom: 0.5em;">
+                    <strong>{{block.name}}</strong>
+                    <ul class="list-group" ng-if="block.mix.length > 0">
+                        <li class="list-group-item" ng-repeat="m in block.mix">{{m.name}} &mdash; {{m.clipCount}} clips, {{longDurationString(m.totalDurationMs)}}</li>
+                    </ul>
+                    <div class="text-muted small" ng-if="block.mix.length === 0">No filler mix of its own.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <program-info-panel program="_infoProgram"></program-info-panel>
+</div>
