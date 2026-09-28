@@ -769,15 +769,36 @@ on shows.
 - [ ] Profiles for specific looks
 - [ ] Custom TV guides
 - [ ] UI customization and cosmetic theming
-- [ ] Channel detail page: now playing with progress, total runtime, program count,
+- [x] Channel detail page: now playing with progress, total runtime, program count,
       stream mode and transcode config, plus a library browsable by type - movies,
       shows, artists, music videos, other - with durations and artwork
 
-The channel detail page is mostly display layer over data the API already returns,
-so it carries little risk to existing behaviour. The one real constraint is scale:
-a channel here already holds 9712 programs, so artwork needs lazy loading rather
-than rendering every tile up front. It should be drawn to Syndicast's own identity
-rather than copying the layout of other projects.
+      The channel detail page is mostly display layer over data the API already returns,
+      so it carries little risk to existing behaviour. The one real constraint is scale:
+      a channel here already holds 9712 programs, so artwork needs lazy loading rather
+      than rendering every tile up front. It should be drawn to Syndicast's own identity
+      rather than copying the layout of other projects.
+
+      Shipped in e30a891: `/channels/:number`, reached from a small chart icon on
+      each channels-list row. Now playing is computed server-side and polled every
+      5 seconds, from the same `getCurrentProgramAndTimeElapsed` video.js streams
+      from, rather than the viewing device's clock. A break never claims to know
+      the filler clip on (that's chosen live, per viewer, and never stored) - it
+      shows the day-part or block's mix in effect and the time to the next real
+      program instead. A new Filler tab lists every filler list the channel can
+      reach, grouped by where it applies (channel-wide, each day-part, each
+      block), with clip count and total length.
+
+      The library groups programs into Movies / Shows / Music / Other, not the
+      five categories above: there is no "artist" or "music video" field on a
+      program object anywhere in this codebase (checked `web/services/plex.js`'s
+      Plex-to-program mapping) - telling them apart would mean saving Plex's own
+      item type onto new programs, out of scope for a display-only page, and is
+      left for later. Artwork at 40,000 programs (channel 1's real size) stays
+      cheap because programs are grouped into a few dozen show/movie/album tiles
+      first (reusing `getShowData`'s existing show grouping) - `vs-repeat` and
+      `lazy-img`, the same mechanisms the programming list and Plex library
+      browser already use at this scale, are what actually render each tile.
 
 ### Infrastructure
 
@@ -889,7 +910,7 @@ be built:
       roadmap line above.
 - [x] Info panel and thumbnail per item (Sonnet 5). See its Library
       management roadmap line above.
-- [ ] Channel detail page (Sonnet 5). See the Interface roadmap line and its
+- [x] Channel detail page (Sonnet 5). See the Interface roadmap line and its
       note above.
 - [ ] Buffering, tested with three streams at once and Tunarr stopped
       (manual test; Opus 5.5 investigates and fixes if it turns out not to be
