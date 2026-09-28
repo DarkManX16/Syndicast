@@ -22,6 +22,7 @@ const suites = [
     './ffmpeg-encoder-flags',
     './ffmpeg-qos',
     './bundle-freshness',
+    './program-row-heights',
 ];
 
 (async () => {

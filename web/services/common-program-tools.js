@@ -2,6 +2,15 @@
 //one of these days, we'll figure out how to share the code.
 module.exports = function (getShowData) {
 
+    // The channel programming list's one-line row is given exactly this
+    // height (both the CSS, via an inline style bound to this same value,
+    // and vs-repeat's `{size: ...}`) so the two can never drift apart -
+    // NOTES.md > "Program rows show the episode title" has the bug that came
+    // from a CSS height and a hardcoded vs-repeat size disagreeing per row
+    // type. test/program-row-heights.js renders the row for real and fails
+    // if its measured height doesn't match this constant.
+    const PROGRAM_SCHEDULE_ROW_HEIGHT = 26;
+
 
     /*** Input: list of programs
      * output: sorted list of programs */
@@ -305,6 +314,23 @@ module.exports = function (getShowData) {
         }) + " " + t;
     }
 
+    // The same absolute start time, compact - "9/28 2:00:00a" - for the
+    // channel programming list's one-line-per-row layout, which has no room
+    // for startTimeString's full "MM/DD/YYYY hh:mm:ss AM". No leading zero on
+    // month/day/hour, and am/pm collapses to one trailing letter.
+    let shortStartTimeString = (date) => {
+        let hours24 = date.getHours();
+        let ampm = hours24 < 12 ? 'a' : 'p';
+        let hours12 = hours24 % 12;
+        if (hours12 === 0) {
+            hours12 = 12;
+        }
+        let minutes = date.getMinutes().toString().padStart(2, '0');
+        let seconds = date.getSeconds().toString().padStart(2, '0');
+        return (date.getMonth() + 1) + '/' + date.getDate() + ' ' +
+            hours12 + ':' + minutes + ':' + seconds + ampm;
+    }
+
     // Coarse total for a list header - runtimes here can run into days, where
     // exactDurationString's h:mm:ss would just be unreadable.
     let longDurationString = (ms) => {
@@ -354,6 +380,76 @@ module.exports = function (getShowData) {
         };
     }
 
+    // The channel programming list's one-line row - each function reads one
+    // field off a program (a schedule item: an episode/movie/track, or an
+    // offline Flex/redirect placeholder) with nothing else to close over,
+    // which is what lets test/program-row-heights.js drive them directly to
+    // build realistic fixture rows instead of guessing at their output.
+    let rowStartTime = (x) => {
+        return (x && x.start) ? shortStartTimeString(x.start) : '';
+    }
+    let rowDuration = (x) => {
+        return x ? exactDurationString(x.duration) : '';
+    }
+    // The show/album name - blank for Flex and redirect, which use
+    // rowOfflineLabel instead. A custom show's own name is prefixed on top,
+    // the one thing about a placed clip that isn't already implied by being
+    // in this list.
+    let rowShow = (x) => {
+        if (!x || x.isOffline) {
+            return '';
+        }
+        let name = (x.type === 'episode' || x.type === 'track') ? x.showTitle : x.title;
+        if (typeof(x.customShowId) !== 'undefined') {
+            name = x.customShowName + ' · ' + name;
+        }
+        return name;
+    }
+    let rowTag = (x) => {
+        if (!x || x.isOffline) {
+            return '';
+        }
+        if (x.type === 'episode') {
+            return 'S' + x.season + ' · E' + x.episode;
+        }
+        if (x.type === 'track') {
+            if (typeof(x.season) === 'number' && x.season > 1) {
+                return 'Disc ' + x.season + ' · Track ' + x.episode;
+            }
+            return 'Track ' + x.episode;
+        }
+        return '';
+    }
+    // The episode/track title, or a movie's year - blank for anything else,
+    // since rowShow already said everything it has.
+    let rowTitle = (x) => {
+        if (!x || x.isOffline) {
+            return '';
+        }
+        if (x.type === 'episode' || x.type === 'track') {
+            return x.title;
+        }
+        if (x.type === 'movie' && typeof(x.year) !== 'undefined' && x.year !== null) {
+            return String(x.year);
+        }
+        return '';
+    }
+    let rowOfflineLabel = (x) => {
+        if (!x || !x.isOffline) {
+            return '';
+        }
+        return (x.type === 'redirect') ? ('Redirect to channel: ' + x.channel) : 'Flex';
+    }
+    // The real break the Flex/redirect run right after this program adds up
+    // to (channel-config.js's updateChannelDuration computes $breakAfterMs)
+    // - blank when the next item is another program, or for an offline row
+    // itself, which is the break rather than something with one after it.
+    let rowBreakAfter = (x) => {
+        if (!x || x.isOffline || typeof(x.$breakAfterMs) !== 'number' || x.$breakAfterMs <= 0) {
+            return '';
+        }
+        return 'break after ' + exactDurationString(x.$breakAfterMs);
+    }
 
     return {
         sortShows: sortShows,
@@ -367,7 +463,16 @@ module.exports = function (getShowData) {
         exactDurationString: exactDurationString,
         longDurationString: longDurationString,
         startTimeString: startTimeString,
+        shortStartTimeString: shortStartTimeString,
         slotFitGauge: slotFitGauge,
+        programScheduleRowHeight: PROGRAM_SCHEDULE_ROW_HEIGHT,
+        rowStartTime: rowStartTime,
+        rowDuration: rowDuration,
+        rowShow: rowShow,
+        rowTag: rowTag,
+        rowTitle: rowTitle,
+        rowOfflineLabel: rowOfflineLabel,
+        rowBreakAfter: rowBreakAfter,
     }
 
 }

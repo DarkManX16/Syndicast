@@ -937,6 +937,106 @@ on shows.
       regardless of whether that row has a gauge to show - but confirming it
       actually stays smooth on Ron's window, not just here, is the real gate
       before it goes back in.
+
+      **Retried Sep 28, 2026 (Sonnet 5), in a fresh worktree
+      (`programming-list-row`, `node_modules` junction-linked), with a
+      different row design rather than the `program-list-row` two-line
+      layout above.** The earlier bug's real cause - a gauge label that goes
+      empty for `isOffline` rows collapses to 0px in a flex layout, so
+      `vs-repeat`'s one fixed size stops matching every row's real height -
+      is a whole *class* of bug that a two-line row with an optional gauge
+      line stays exposed to indefinitely, even after the specific fix. This
+      pass changes the shape of the row instead: one line, no gauge line to
+      go missing, and its own height set inline from the exact same scope
+      value handed to `vs-repeat="{size: ...}"`
+      (`commonProgramTools.programScheduleRowHeight`, currently 26) plus
+      `flex-shrink: 0` - so a row's rendered height cannot disagree with
+      what `vs-repeat` was told, by construction, not by remembering to
+      keep two numbers in sync.
+
+      The row (inline in `channel-config.html`, not a directive - only one
+      list wants this exact layout, and program-list-row's own comment about
+      inline-vs-templateUrl timing doesn't apply here since this row doesn't
+      rely on `vs-repeat` auto-measuring it): start time in a compact form
+      (`commonProgramTools.shortStartTimeString`, "9/28 2:00:00a" - no
+      leading zeros, am/pm as one trailing letter), the show/album name, a
+      `S1 · E2` tag, the episode/track title or a movie's year (CSS
+      ellipsis, not JS truncation), the exact duration, and - new here -
+      "break after 4:46" as a small tag at the right end, computed once per
+      `updateChannelDuration()` pass into `program.$breakAfterMs` (stripped
+      before save, like `$index`) the same way the reverted attempt did it.
+      Flex and redirect rows collapse to start time, "Flex" or "Redirect to
+      channel: N", and the length, on the same one line - no separate
+      gauge, so there's nothing left to go missing. All the row-field
+      functions (`rowStartTime`, `rowShow`, `rowTag`, `rowTitle`,
+      `rowOfflineLabel`, `rowBreakAfter`) live in `common-program-tools.js`
+      as pure functions of a program object, not closures in
+      `channel-config.js`, specifically so a test can call them directly
+      instead of guessing at their output.
+
+      **A second real bug, found live rather than guessed at.** `.psr-show`
+      and `.psr-title` both need `overflow: hidden` for the ellipsis rule to
+      work - but per the flexbox spec, `overflow` other than `visible` makes
+      a flex item's *automatic* minimum width 0 instead of its content size.
+      With no explicit `min-width`, a row too narrow for every field at once
+      (an 800px test viewport; the real Tools pane open beside the list at
+      1900px did not trigger it, but came close) shrank both fields to
+      literally 0px - the text was correct in the DOM
+      (`getBoundingClientRect().width === 0` while `textContent` held the
+      full title) but nothing was visible, the same invisible-not-missing
+      failure shape as the original gauge-label bug, on a different property.
+      Fixed with `min-width: 4em` on `.psr-show`, `.psr-title` and
+      `.psr-flex-label` - a real floor, so a too-narrow row truncates
+      further (including, at the extreme, clipping the row's own
+      right-hand fields via `.psr-row`'s `overflow: hidden`) rather than
+      dropping a field to nothing.
+
+      **`test/program-row-heights.js`, added to `npm test`.** Renders the
+      real row - extracted from `channel-config.html` by `<div>` tag-balance
+      matching, the same reasoning `test/support.js`'s `liftSource` gives for
+      pulling JS function bodies instead of transcribing them - inside the
+      real `style.css`, in a real headless Chrome via `puppeteer-core`
+      (a new devDependency; Chromium itself isn't vendored, so the test
+      searches common Chrome/Edge install paths and *skips*, rather than
+      failing, when none is found - keeps `npm test` runnable on a machine
+      without either). Three fixtures (a program row with every field
+      populated, a Flex row, a redirect row) are resolved against the real
+      row template - each top-level `ng-if` evaluated and each `{{ }}`
+      filled from the real `common-program-tools.js` functions, both via a
+      small fixed lookup that throws if the template grows an expression it
+      doesn't recognize, rather than silently rendering a stale fixture -
+      then measured with `getBoundingClientRect()` inside a
+      `flex-direction: column` container shorter than the fixtures combined,
+      the same shape `vs-repeat`'s real scroll container has. Confirmed the
+      check actually catches the bug class it guards, not just its own
+      fixtures: temporarily removing `flex-shrink: 0` from `.psr-row`
+      dropped all three measured heights to 13px against the 26px `npm test`
+      expects, restoring it passed again. A small Bootstrap 4.4.1
+      `box-sizing: border-box` + base `.list-group-item` border shim is
+      hand-written in the test, not vendored - `web/public/bootstrap-4.4.1-
+      dist` isn't checked into this repo - since `box-sizing: border-box` is
+      exactly what keeps that base border from silently adding to a row's
+      declared height in the real page.
+
+      **Live-verified** on a copy of `.dizquetv-dev`, a fresh port (never
+      18000, never the live folder - this session's copy lives in Claude's
+      own scratchpad directory, outside the repo), against channel 1's real
+      40,001-program lineup, at a real 1900x900 window (Ron's own, per the
+      note above) and, for the width-collapse bug specifically, an 800x450
+      one that reproduced and then confirmed the fix. `el.scrollTop` driven
+      by script from 0% to 100% of a `1,040,026`px scroll height landed on
+      19-20 rendered rows every time, every one measuring exactly 26px,
+      including deep into the list (past 8/9, a week-plus from the 9/28
+      start) where real show variety (Boondocks, Harvey Birdman, Robot
+      Chicken, Space Ghost Coast to Coast) confirmed rendering wasn't
+      somehow specific to the first few rows. No redirect row exists in the
+      real dev data, so one was injected into the live scope to confirm its
+      rendering and height directly, then discarded (Cancel, never saved).
+      A real `Update Channel` save round-tripped 40,001 programs with
+      `$breakAfterMs` and `$index` both absent from the written file
+      afterward. Not yet confirmed: Ron scrolling it himself, a week ahead,
+      on his own window - the actual gate, same as last time, before this
+      merges.
 - [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
 
       Swapping an item for one of a different length makes the Flex right

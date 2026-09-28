@@ -167,7 +167,7 @@
                      ng-style="{'max-height':programmingHeight()}"
                 >
                     <div class='row' ng-class="{'reverse': reverseTools }" >
-                        <div vs-repeat="options" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
+                        <div vs-repeat="{size: programRowHeight}" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
                             dnd-drop="dropFunction(index , item)"
                             dnd-list=""
                             ng-init="setUpWatcher()"
@@ -177,21 +177,18 @@
                         >
                             <div ng-repeat="x in channel.programs track by x.$index"
                                 ng-click="selectProgram(x.$index)"
-                                class="list-group-item flex-container program-row" dnd-draggable="x" dnd-moved="" dnd-effect-allowed="move"
+                                class="list-group-item flex-container psr-row" dnd-draggable="x" dnd-moved="" dnd-effect-allowed="move"
+                                style="height: {{ programRowHeight }}px"
                             >
-                                <div class="program-start">
-                                    {{ dateForGuide(x.start) }}
-                                </div>
-                                <div ng-style="programSquareStyle(x)"></div>
-
-                                <div ng-hidden="x.isOffline" class='title' >
-                                    {{ getProgramDisplayTitle(x) }}
-                                </div>
-                                <div style="font-weight:ligther"  ng-show="x.isOffline" class='title' >
-                                    <i ng-if="x.type !== 'redirect' " >Flex</i>
-                                    <span ng-if="x.type === 'redirect' " ><i>Redirect to channel:</i> <b>{{x.channel}}</b></span>
-                                </div>
-                                <div class="flex-pull-right"></div>
+                                <span class="psr-start">{{ rowStartTime(x) }}</span>
+                                <span class="psr-square" ng-style="programSquareStyle(x)"></span>
+                                <span class="psr-show" ng-if="!x.isOffline">{{ rowShow(x) }}</span>
+                                <span class="psr-tag" ng-if="rowTag(x)">{{ rowTag(x) }}</span>
+                                <span class="psr-title" ng-if="!x.isOffline">{{ rowTitle(x) }}</span>
+                                <span class="psr-flex-label" ng-if="x.isOffline">{{ rowOfflineLabel(x) }}</span>
+                                <span class="psr-duration">{{ rowDuration(x) }}</span>
+                                <span class="psr-break" ng-if="rowBreakAfter(x)">{{ rowBreakAfter(x) }}</span>
+                                <span class="flex-pull-right"></span>
                                 <button class="btn btn-sm btn-link" ng-if="!x.isOffline" ng-click="showProgramInfo(x); $event.stopPropagation()">
                                     <i class="fas fa-info-circle"></i>
                                 </button>

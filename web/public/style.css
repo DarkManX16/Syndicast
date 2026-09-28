@@ -294,6 +294,97 @@ div.programming-panes div.programming-pane {
 div.programming-programs div.list-group-item {
   height: 1.5rem;
 }
+/* psr-row (the channel programming list's own row) sets its height inline,
+   bound to the same scope value handed to vs-repeat, so CSS never gets a
+   chance to disagree with it - flex-shrink:0 is still needed because
+   vs-repeat's scroll container is flex-direction:column, and a flex item's
+   default flex-shrink:1 would otherwise squash the row short regardless of
+   its declared height. This is what NOTES.md's "empty gauge label" bug
+   needed and didn't have: a row height that content can't move. */
+.psr-row {
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.psr-row:nth-child(odd) {
+  background-color: #eeeeee;
+}
+.psr-row .psr-start {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: 80%;
+  color: #0c5c68;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+.psr-row .psr-square {
+  flex: 0 0 auto;
+  border: 1px solid black;
+  margin-right: 8px;
+}
+.psr-row .psr-show {
+  flex: 0 1 auto;
+  max-width: 22%;
+  /* overflow:hidden makes a flex item's automatic minimum width 0 (not its
+     content size) - without a real min-width, this and .psr-title/
+     .psr-flex-label below would shrink all the way to 0px, invisibly,
+     whenever the row is too narrow for everything at once (a real window
+     narrower than Ron's usual one, or the Tools pane open beside the list),
+     rather than truncating with an ellipsis the way a "too long" title is
+     supposed to. Found live at an 800px test viewport: the show name and
+     episode title both measured 0px wide while their text was correctly in
+     the DOM. */
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 6px;
+  font-weight: 500;
+}
+.psr-row .psr-tag {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: 80%;
+  color: #666;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+.psr-row .psr-title, .psr-row .psr-flex-label {
+  flex: 1 1 auto;
+  /* Same reasoning as .psr-show's min-width above - a real floor, not 0,
+     so this never silently vanishes under space pressure. */
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+.psr-row .psr-title {
+  color: #555;
+  font-size: 90%;
+}
+.psr-row .psr-flex-label {
+  font-weight: 500;
+}
+.psr-row .psr-duration {
+  flex: 0 0 auto;
+  font-family: monospace;
+  font-size: 85%;
+  color: #0c5c68;
+  margin-right: 8px;
+  white-space: nowrap;
+}
+.psr-row .psr-break {
+  flex: 0 0 auto;
+  font-size: 75%;
+  color: #777;
+  background: #ddd;
+  border-radius: 3px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
 .channel-editor-modal-big {
   width:1200px;
   min-width: 98%;

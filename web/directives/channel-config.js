@@ -426,21 +426,26 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.channel.programs = commonProgramTools.sortShows(scope.channel.programs);
                 updateChannelDuration()
             }
-            scope.dateForGuide = (date) => {
-                let t = date.toLocaleTimeString(undefined, {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                });
-                if (t.charCodeAt(1) == 58) {
-                    t = "0" + t;
-                }
-                return date.toLocaleDateString(undefined,{
-                    year: "numeric",
-                    month: "2-digit",
-                    day: "2-digit"
-                }) + " " + t;
-            }
+            // The programming list's one-line row, vs-repeat="{size: ...}"
+            // so every row type - program, Flex, redirect - is committed to
+            // the exact same real height (see programScheduleRowHeight's own
+            // comment). The row's own style height is bound to this same
+            // scope value rather than a separate CSS rule, so the two can't
+            // drift apart the way the reverted attempt's did.
+            scope.programRowHeight = commonProgramTools.programScheduleRowHeight;
+
+            // The row's individual fields - all pure functions of a program
+            // object, so they live in common-program-tools.js (test/
+            // program-row-heights.js drives them directly, the same way
+            // exactDurationString etc. already can be) rather than as
+            // closures here.
+            scope.rowStartTime = commonProgramTools.rowStartTime;
+            scope.rowDuration = commonProgramTools.rowDuration;
+            scope.rowShow = commonProgramTools.rowShow;
+            scope.rowTag = commonProgramTools.rowTag;
+            scope.rowTitle = commonProgramTools.rowTitle;
+            scope.rowOfflineLabel = commonProgramTools.rowOfflineLabel;
+            scope.rowBreakAfter = commonProgramTools.rowBreakAfter;
             scope.sortByDate = () => {
                 scope.removeOffline();
                 scope.channel.programs = commonProgramTools.sortByDate(
@@ -1060,6 +1065,25 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.maxSize = Math.max(scope.maxSize, scope.channel.programs.length);
                 scope.libraryLimit = Math.max(0, scope.maxSize - scope.channel.programs.length );
                 scope.endTime = new Date( scope.channel.startTime.valueOf() + scope.channel.duration );
+
+                // The programming list's row wants the real Flex/redirect
+                // time that already follows each program, not a theoretical
+                // slot - computed once here, alongside the other per-program
+                // fields this function already maintains. Each run of
+                // consecutive offline items is walked only once, by the
+                // program right before it, so this stays linear in the
+                // channel's program count.
+                for (let i = 0, l = scope.channel.programs.length; i < l; i++) {
+                    let program = scope.channel.programs[i];
+                    if (program.isOffline) {
+                        continue;
+                    }
+                    let breakMs = 0;
+                    for (let j = i + 1; j < l && scope.channel.programs[j].isOffline; j++) {
+                        breakMs += scope.channel.programs[j].duration;
+                    }
+                    program.$breakAfterMs = breakMs;
+                }
             }
             scope.error = {}
             scope._onDone = async (channel) => {
@@ -1130,6 +1154,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         scope.error.any = false;
                         for (let i = 0; i < scope.channel.programs.length; i++) {
                             delete scope.channel.programs[i].$index;
+                            delete scope.channel.programs[i].$breakAfterMs;
                         }
                         try {
                             removeMinuteVersionsOfFields(channel);
