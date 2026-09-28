@@ -96,12 +96,22 @@ module.exports = function ($scope, $timeout, dizquetv) {
         }
     }
 
+    // Keyed on the filler's own id, not its array position: $scope.fillers
+    // can be reassigned (a reorder, another delete, a refresh) while the
+    // confirmation dialog is open, and a stored index can then point past
+    // the end of the new array or at the wrong row. onFillerDelete used to
+    // dereference a stored index instead - a miss there threw before the
+    // real delete request on the line right after it, so the delete never
+    // ran, the filler list survived untouched, and the only visible symptom
+    // was a console error and a row stuck showing as pending.
+    let findFillerById = (id) => $scope.fillers.find((f) => f.id === id);
+
     $scope.deleteFiller = async (index) => {
         try {
             if ( $scope.fillers[index].pending) {
                 return;
             }
-            $scope.deleteFillerIndex = index;
+            $scope.deleteFillerId = $scope.fillers[index].id;
             $scope.fillers[index].pending = true;
             let id = $scope.fillers[index].id;
             let channels = await dizquetv.getChannelsUsingFiller(id);
@@ -120,10 +130,15 @@ module.exports = function ($scope, $timeout, dizquetv) {
 
     $scope.onFillerDelete = async( id ) => {
         try {
-            $scope.fillers[ $scope.deleteFillerIndex ].pending = false;
+            let pendingFiller = findFillerById($scope.deleteFillerId);
+            if (pendingFiller) {
+                pendingFiller.pending = false;
+            }
             $timeout();
             if (typeof(id) !== 'undefined') {
-                $scope.fillers[ $scope.deleteFillerIndex ].pending = true;
+                if (pendingFiller) {
+                    pendingFiller.pending = true;
+                }
                 await dizquetv.deleteFiller(id);
                 $timeout();
                 await $scope.refreshFiller();
