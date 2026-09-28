@@ -1216,15 +1216,15 @@ be built:
       note above.
 - [x] Program rows show the episode title, with a slot-fit gauge (Sonnet 5 ·
       High). See the Library management roadmap line above.
-- [ ] Buffering, tested with three streams at once and Tunarr stopped
+- [x] Buffering, tested with three streams at once and Tunarr stopped
       (manual test; Opus 5.5 investigates and fixes if it turns out not to be
       Tunarr). See the Known issues entry below.
 
       It wasn't Tunarr. Both causes fixed Sep 27, 2026 (fecfd2f, f8f4dc7),
       and measured on the real server path with Claude minimized and
       Tunarr *running*: three `/video` streams at 0.98-1.00x realtime,
-      including every short clip in a whole break. Left unticked for the
-      manual test on a real client.
+      including every short clip in a whole break. Confirmed Sep 28, 2026 on
+      Ron's real client - the manual test this was left unticked for.
 - [ ] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
       builds).
 - [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
