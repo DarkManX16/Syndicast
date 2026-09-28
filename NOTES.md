@@ -840,10 +840,16 @@ on shows.
       row by `replace: true`, the same mechanism every other directive in
       this file already relies on.
 
-      Not yet done: reusing the row in filler lists (no gauge there, since
-      clips aren't scheduled into slots) and the channel's programming list
-      (must stay smooth at channel 1's real ~40,000 programs) - both are
-      still open, each planned as its own commit and only if it holds up.
+      Both follow-ups landed too, each as its own commit once verified smooth:
+      filler lists reuse the row with the gauge off (clips aren't scheduled
+      into slots), and the channel programming list reuses it with two modes
+      switched on - show-start-time (the program's absolute scheduled time,
+      not a duration, leads line 1) and break-after-mode (the gauge shows the
+      real Flex/redirect time already following the item - "break after:
+      4:46" - rather than a theoretical slot). Verified at channel 1's real
+      40,000 programs: virtualization holds, full-list scroll jumps land in
+      15-75ms, a delete-triggered full recompute takes ~126ms, and five
+      tab-switch-away-and-back cycles all rendered correctly.
 - [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
 
       Swapping an item for one of a different length makes the Flex right
