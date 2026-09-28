@@ -2569,3 +2569,70 @@ by default (or removing it as an option) for the program-icon path, and
 routing the channel icon through the same proxy regardless of that setting
 for the second path - but that's a decision for whoever builds public
 sharing, not a drive-by change now.
+
+### The program-list-row work broke the live dev server, without touching it
+
+Ron's real server on port 18000 (`node index.js -p 18000 -d ./.dizquetv-dev`)
+started showing a stuck 6-row, non-scrolling programming list, and reported
+it before anything else. Root cause: `index.js` rebuilds
+`web/public/bundle.js` on the next `/bundle.js` request whenever any file
+under `web/` has a newer mtime than the bundle
+(`src/web-bundle.js`'s `BundleFreshnessChecker`), from whatever is on disk at
+that moment - and that bundle file, its manifest, and the watched `web/`
+directory are the same physical files regardless of which port asks. The
+program-list-row work (this file's "Program rows show the episode title"
+entries above) was built and iterated on directly in this checkout rather
+than an isolated worktree - only the *data* was copied to a spare port, never
+the code - so every edit made while debugging it was a candidate for port
+18000's own next live rebuild, triggered by an ordinary page load or reload
+on that server, independent of anything run against the copy on 18098.
+`.dizquetv-dev` itself was never written to - confirmed against both the
+newest backup and a copy taken at the very start of that session, both
+already showing the same `channel.fillerCollections: []` Ron separately
+flagged, ruling that specific change out as unrelated.
+
+Fixed in two steps: an immediate revert of `web/` to the commit before that
+work (`05ac006`) and a rebuild, to get a known-good bundle served again
+without restarting port 18000; then the actual feature was rebuilt and
+re-verified in a real `git worktree` this time (`blocks-scroll-fix`, node_modules
+junction-linked rather than reinstalled) - its own bundle, manifest and
+`web/` tree, so no further iteration could touch the live checkout. No
+scrolling bug reproduced there even under sustained real mouse-wheel
+scrolling a week-plus into channel 1's real 40,000-program lineup (63 scroll
+actions, 09/28 to 10/05, no stuck window, no console errors) - the live
+server's actual symptom is believed to have been one of the mid-debugging
+intermediate states (the flex-shrink squash or the vs-repeat reopen bug, both
+documented under the "Program rows show the episode title" entries above)
+getting served live partway through that work, not a defect in the code that
+shipped.
+
+**Lesson kept for next time:** a data-only copy on a spare port is not
+enough isolation when the *code* itself is what's being changed in this
+checkout - `index.js`'s live rebuild makes every running server, on any
+port, a consumer of whatever's on disk in `web/`. Any future work that edits
+`web/` or `src/` belongs in a worktree from the start, not just a spare-port
+data copy.
+
+### Deleting a filler list could silently fail instead of completing
+
+Found by accident during the incident above, confirmed as pre-existing and
+unrelated to it. `web/controllers/filler.js`'s `deleteFiller(index)` stored
+the clicked row's plain array index (`$scope.deleteFillerIndex`); if
+`$scope.fillers` was reassigned before the confirmation dialog closed - a
+reorder, another delete, any refresh - that index could land past the end of
+the new array or on the wrong row. `onFillerDelete` dereferenced it directly
+as its first line, so a miss threw *before* the real
+`dizquetv.deleteFiller(id)` call one line later - the delete never ran, the
+filler list itself was never touched, and the visible symptom was a console
+error ("Cannot set properties of undefined (setting 'pending')") and a row
+stuck showing as pending. No orphaned channel/day-part/block reference is
+possible from this failure mode specifically, since the delete request never
+reached the server when it triggered.
+
+Fixed by keying both sides on the filler's own `id` (`findFillerById`)
+instead of a stored index, which stays correct regardless of what else
+changed the array in between. Verified on a copy of `.dizquetv-dev`: opened
+a delete confirmation, spliced an earlier row out of `$scope.fillers` from
+the console to reproduce the exact stale-index condition, confirmed the
+delete completed correctly (checked against the API afterward), and
+confirmed an ordinary delete with no race still works as before.
