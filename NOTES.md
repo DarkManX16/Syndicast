@@ -1050,9 +1050,231 @@ on shows.
       does not touch it, and it happens to items already placed in the
       programming rather than to items being chosen. Most likely in the concat
       or transition handling, where a very short item interacts badly with the
-      black-frame interlude and the buffer boundaries. Reproduce with a
+      black-frame interlude and the buffer boundaries. **Corrected Oct 1,
+      2026: it is none of those - see below.** Reproduce with a
       deliberately short item next to Flex before attempting any fix -
       guessing at the layer here would be expensive.
+
+      **Investigated Oct 1, 2026 (Opus 5.5). It still happens with items
+      encoding at full speed and the concat restart fixed. The layer is how
+      `/stream` chooses each item: from the wall clock, with no memory of
+      what this stream just played. Not fixed yet; the fix below waits on
+      Ron's OK.**
+
+      **Reproduced, with Ron's own clips.** Channel 1 itself opens with the
+      pattern: ATHF, "[as] SGC2C NEXT promo" (15.0s), a 184s Flex, "[As]
+      NEXT - SGC2C [2003]" (10.0s), Space Ghost; then later "[As] NEXT - Home
+      Movies (2001) (2)" (15.1s), a 418s Flex, "[As] NEXT - Home Movies
+      (2003)" (10.1s), Home Movies. Those aired once, on Sep 30, so they were
+      copied onto scratch channels on a copy of `.dizquetv-dev`, timed so the
+      episode before each ended 90s after tuning in:
+      - *ATHF to Space Ghost:* the 10s NEXT after the break played **twice**,
+        back to back, and Space Ghost then started 7.4s late.
+      - *Space Ghost to Home Movies:* the same - the 10.1s NEXT after the
+        break played twice, and Home Movies started 9.2s late.
+      - *A compressed copy* (the same four NEXT clips around two 60s breaks,
+        two promos of about a minute standing in for the shows), 25
+        minutes, 10 breaks: the 10s item after the break played twice after
+        2 of them, once after the other 8.
+      - *Ron's 5-8s bumpers* ("CN City Bumper (2)" 5.1s, "AcTN - Bumps Now!"
+        8.1s, "[Adult Swim] Bumper - Collective Building" 7.5s) on both sides
+        of a 60s and a 45s break, 20 minutes, 10 breaks: every one played
+        once - all ten breaks happened to end late.
+      - *Skipped:* once, at tune-in. Tuning in 23s into a program plays it
+        from the start (see the 30-second rule below), so the stream ran 23s
+        behind, and the 15s promo after it was never asked for.
+      - Every item *before* a break played once: the 15s promos 1.2-9.1s
+        late, the 5-8s bumpers 0.0-6.3s late.
+
+      So 4 of 22 breaks repeated the item after them, and nothing was
+      skipped mid-stream in this sample. Encoding wasn't a factor: every
+      item's next request came within about half a second of its length
+      (first byte usually 0.1-0.8s after the request, five outliers of
+      2.1-5.5s while the machine was busy), and the concat played exactly
+      what each request handed it.
+
+      **Why, in plain English.** The concat asks for the next item the
+      moment the last one finishes. `/stream` doesn't know what that last
+      item was. It looks at the clock, works out what the lineup says is on
+      right now, and plays that. That would be fine if the stream were
+      always exactly on the clock, but by design it isn't - three rules let
+      it drift by several seconds either way:
+      1. *A break ends early.* `getCurrentProgramAndTimeElapsed`
+         (`src/helperFuncs.js`) hands over to the next item as soon as the
+         clock is within 10 seconds (`SLACK`) of the end of anything longer
+         than 20 seconds - including a Flex break. So when the last clip of
+         a break finishes with up to 10s of the break left, the next item
+         starts up to 10s early.
+      2. *A break ends late.* A filler clip may be up to 10s longer than the
+         time left in its break (`pickRandomWithMaxDuration` and
+         `createLineup`, `remaining + SLACK`).
+      3. *A program asked for in its first 30 seconds plays from the
+         start* (`createLineup`), so the stream can fall up to 30s behind.
+      A long item absorbs that drift. A short one can't:
+      - *Repeat.* The stream reaches the short item early (rule 1), plays
+        all 10 seconds of it, and asks again. The clock is now only 7
+        seconds into that same item. Nothing hands an item of 20 seconds or
+        less over early (rule 1 needs more than 20), so the same item comes
+        back, and rule 3 plays it from the start again. If the item is
+        shorter than how early the stream was, the next request lands back
+        in the break, which hands over to the item again, and the one after
+        that lands inside it once more: three plays. That is the "about
+        three times". It can also repeat when the stream is within a few
+        hundred milliseconds of exactly on time, since the next request
+        comes up to about 0.4s either side of an item's nominal end.
+      - *Skip.* The stream reaches the short item late by more than its
+        length (rule 2 or 3, or a slow machine). By then the clock is past
+        it, so it is never asked for.
+      - *The two chain.* After a repeat the stream is about 9 seconds
+        behind, and stays that way through the next show, so a short item
+        before the next break that is under 9 seconds would then be skipped.
+        Seen: Space Ghost and Home Movies 7.4s and 9.2s late after their
+        repeats, and the compressed channel 9.0s late into its next 15s
+        item.
+      - *Long items aren't immune, just harder to hit.* Rule 1's window is
+        10 seconds, so a stream more than 10s ahead repeats the *end* of
+        anything. Seen once: handed into a 58.6s promo 9.85s early, the
+        next request came 58.3s later, 48.4s into it - just short of the
+        window - so its last 10.2s played twice. Equally, a stream more than
+        30s behind starts a program partway (rule 3 no longer applies), so
+        its opening is skipped.
+
+      **Every place that decides what plays next, or for how long.** Only
+      the three rules above produce this; the rest were read and, where it
+      applies, ruled out by measurement.
+      - `/playlist` (`src/video.js`): the 100-entry list - loading screen,
+        `first=1`, then plain and `between=1` entries. Order only; it never
+        names an item. The concat restart (`step+1`) is 200 items apart
+        here and asks for nothing twice (see "A concat restart replayed the
+        tune-in" under Resolved). None happened in these runs.
+      - *The concat* (`spawnConcat`, `-re`, `-c copy`): reads each
+        `/stream` response to its end, in order. It can't repeat or drop an
+        item; every repeat above was two separate requests, each a fresh
+        decision.
+      - *The black-frame interlude* (`between=1`, 420ms): **switched off on
+        Ron's channels** (`disablePreludes: true`), so `/stream` serves every
+        `between=1` entry as an ordinary item. With preludes on it would add
+        about half a second of lag per item, untracked by the lineup, which
+        makes skips a little likelier and repeats a little rarer. It can't
+        cause either by itself.
+      - *Buffer boundaries:* item timing measured within ~0.5s of each
+        item's length, as above. Slow encoding used to make the stream fall
+        behind within long items, which is the lead from "Heavy buffering
+        during playback" - a cause of skips back then, not now.
+      - `channelCache.getCurrentLineupItem` (`src/channel-cache.js`): the
+        "closed and opened it again" replay. Only when a request comes
+        within 10s of the last one *and* more than 10s of that item is left,
+        so it never fires between items here - logged as expired every time.
+        A client that reconnects mid-item gets it again from the same start;
+        not seen in this sample.
+      - `getCurrentProgramAndTimeElapsed`: rule 1, and where the position
+        comes from.
+      - *The skip-ahead* in `streamFunction` (`video.js`, "Too little time
+        before the filler ends"): a break with 10s or less left hands over
+        to the next program. Only reachable for breaks of 20s or less,
+        since rule 1 hands over first for anything longer - channel 1 has 6
+        such breaks. Same effect as rule 1 when it fires.
+      - `createLineup` (`helperFuncs.js`): rules 2 and 3; also how long the
+        offline screen and the fallback clip run.
+      - The upper bounds loop in `streamFunction`: caps `streamDuration` at
+        what's left plus `SLACK`. Never shortened an item here.
+      - `PlexPlayer` (`src/plex-player.js`): passes `-t` only when the item
+        is cut more than 10s short of its end, so a whole item always plays
+        to its file's real end. An error before any data plays the error
+        screen for at most 60s instead.
+      - `takeResumeHint`, `wereThereTooManyAttempts` (the throttler), the
+        redirect loop and the on-demand resume: only after a save, within a
+        second of the same item, or on channels Ron doesn't have.
+      - `dayParts.findNextProgram`: which mix, not which item - see the
+        look-ahead below.
+
+      **How often.** The real `getCurrentProgramAndTimeElapsed` and
+      `createLineup`, unmodified, driven through 2,000 breaks of each
+      length with Ron's CCN mix, 0-3s late into the break and 0.3s between
+      clips, as measured. The share of breaks after which a short item
+      plays:
+
+      | break | item | skipped | once | twice | three times |
+      |---|---|---|---|---|---|
+      | 60s | 5.1s | 3.6% | 85.5% | 9.2% | 1.6% |
+      | 60s | 10.0s | 0.4% | 91.3% | 8.3% | |
+      | 60s | 15.0s | | 89.2% | 10.8% | |
+      | 150s | 5.1s | 8.4% | 72.0% | 13.7% | 5.8% |
+      | 150s | 10.0s | 0.5% | 79.5% | 20.1% | |
+      | 150s | 15.0s | | 79.8% | 20.2% | |
+      | 300s | 5.1s | 16.0% | 48.5% | 20.3% | 15.2% |
+      | 300s | 10.0s | 1.0% | 65.0% | 34.0% | |
+      | 300s | 15.0s | | 68.2% | 31.9% | |
+
+      Longer breaks end early more often: 12% of 60s breaks, 22% of 150s
+      and 35% of 300s in the same runs. Channel 1's breaks run 150-500s, and
+      stage 5's transitions are exactly these 5-15s clips, so this has to
+      be fixed before them.
+
+      **The fix, proposed: give each viewer's stream a lineup cursor.**
+      Remember, per stream, which lineup entry it just finished. The next
+      request then plays the *next entry in the lineup*, not whatever the
+      clock lands on, and only breaks stretch or shrink to bring the stream
+      back to the clock - as on real TV, where programmes air whole and
+      in order and the commercials absorb the slack.
+      - *A program follows a program:* it plays from the start, whether the
+        stream is a few seconds early or late. Never the same one again,
+        never one skipped.
+      - *Into or within a break:* filler as today, but the time left is
+        measured from the clock to the break's real end. A stream that is
+        behind gets a shorter break, one that is ahead a longer one. When
+        too little is left for a clip, the program after the break plays
+        from the start - there is no "skip ahead in time and look again",
+        which is what lands back inside the short item.
+      - *Behind by more than a whole break:* the break is dropped and the
+        lateness carries to the next one.
+      - *Unchanged:* tuning in (no cursor yet), the 30-second rule at
+        tune-in, a stream further than a minute off the clock (falls back
+        to today's path), redirects and on-demand channels.
+      - *Where:* a small pure module (say `src/lineup-cursor.js`) that
+        `streamFunction` asks first; cursors in memory in
+        `channel-cache.js`, keyed by stream, dropped for a channel when it
+        is saved (a save can renumber the lineup). `concat()` mints one
+        stream id at tune-in and passes it to `/playlist`, which puts it on
+        every `/stream` URL - today's `session` is re-minted at every
+        concat restart, so it can't carry the cursor across one.
+      - *Saved channels:* nothing stored changes, so every existing channel
+        keeps working unchanged, as the 1.0 rule requires. `video.js`,
+        `helperFuncs.js` and `channel-cache.js` are in the 1.7.0 merge's
+        conflict set.
+      - *Tests:* a simulated viewer like the one above, driving the new
+        decision against 5, 10 and 15s items on both sides of 60-300s
+        breaks - every program plays exactly once, in order - plus a day of
+        channel 1's real lineup. Then the same scratch channels live, and a
+        real channel 1 break.
+
+      **Considered and not recommended:** cutting `SLACK`, or exempting
+      short items from rules 1 and 3. From the clock alone, "about to play
+      this item" and "just played it" look the same - the stream reaches a
+      10s item 2.6s late and plays it once, or 2.8s early, plays it, and
+      asks again 7s into it - so any stateless threshold trades repeats
+      for skips somewhere else.
+
+      **How it was measured.** A scratch server on port 18095, run from a
+      git worktree (`.claude/worktrees/stage4`, branch `stage4`) so the
+      repo-relative paths and the web bundle were its own, on a copy of
+      `.dizquetv-dev` in the session scratchpad: the copy's
+      `xmltv-settings.json` path made absolute (the trap in the NVENC entry
+      above) and its HDHR auto-discovery switched off, so it never
+      advertised itself on the LAN. A `node -r` preload wrapped
+      `getCurrentProgramAndTimeElapsed`, `createLineup`,
+      `getCurrentLineupItem` and `recordPlayback`, `child_process.spawn` and
+      each `/stream` response, and logged every decision next to where the
+      lineup really was at that instant; the repo's code ran unmodified. A
+      plain HTTP client played each viewer, reading `/video` for 7-25
+      minutes. Tunarr, OBS and port 18000 kept running throughout.
+
+      **A trap.** A server started as a Claude Code background task is
+      stopped when the task's time limit runs out - 30 minutes unless one is
+      given - with nothing in the server's own log. The first scratch server
+      died that way 3 minutes into a channel 1 break. Give a long-running
+      scratch server an explicit two-hour limit, or start it outside the
+      session.
 
 ### Library management
 
@@ -1616,6 +1838,42 @@ be built:
       is unaffected - it resolves from exact starts. Likely shape: resolve
       from the break's real start in the lineup rather than from the
       hand-off instant, and check against the same week.
+
+      **Investigated with stage 4, Oct 1, 2026: the same cause, and
+      confirmed.** It is rule 1 in the stage 4 entry under Media handling:
+      a stream that reaches the end of a show early is handed the break at
+      0 elapsed, and `findNextProgram` counts the next show's start from
+      that instant. A stream reaches a show early whenever the break before
+      it ended early - 12-35% of breaks in that entry's simulation, more the
+      longer the break, and 15 of 28 in the week measured above - and at
+      tune-in within 10s of a show's end.
+      - *With the real functions at a real boundary:* channel 1's Friday
+        12:30am Adult Swim start, where Family Guy begins 0.92s after the
+        minute. Reaching the break 0 or 0.5s early, every clip is Adult
+        Swim; 2, 5 or 9.9s early, the first clip is CCN and a clip 30s in
+        is Adult Swim.
+      - *Live, through `/video`*, on scratch channel 904 on the copy: a
+        59s promo, a 120s break, a 59s promo starting on the minute, with a
+        day-part (Checkerboard mix) starting at that minute. Tuning in 5s
+        before the first promo ended, the break opened with "Comm Break
+        (Sept 2006) (1)" from CN City [NIGHT], the outgoing mix, then two
+        Checkerboard clips.
+      - *Channel 1's own breaks on the copy*, with test day-part starts
+        added at 6:00pm (CN City [NIGHT]) and 7:00pm (Checkerboard): tuned
+        in 51s into the 6:21:39-6:30 break (501s), whose 9 clips were all
+        CN City [NIGHT]. It ended 1.2s late, so Grim started 1.2s late and
+        played once, and the 6:52 break before the 7:00 boundary began 1.7s
+        late and was Checkerboard from its first clip - right, as expected
+        for a stream that arrives late.
+
+      **Fix, proposed, to go in with stage 4's as its own commit, first:**
+      have the hand-off say how early it is - a new field, say `startsIn`,
+      rather than a negative `timeElapsed`, which the channel detail page
+      shows as is (`channel-status-service.js`) - and have
+      `findNextProgram`, and the break's time left in `createLineup`, count
+      from the break's real start. Tested at that Friday boundary for 0-10s
+      early, every clip from the incoming mix. The lineup cursor needs the
+      same number, which is why they go together.
 
       Two leads from fixing the concat restart (Sep 27, 2026). The restart
       is ruled out as the "plays three times" symptom, and can only start
@@ -2605,6 +2863,9 @@ over. These stay on Opus 5 for both halves:
 - **Very short items repeating or being skipped next to Flex.** A diagnosis
   problem in the concat or transition handling, with no reproduction yet. The
   roadmap entry already says guessing at the layer here would be expensive.
+  Reproduced and diagnosed Oct 1, 2026: it is how `/stream` picks each item,
+  not the concat. The fix, a per-stream lineup cursor, is itself the design
+  decision, so it still stays here.
 - **Random crashes during streaming.** Intermittent, no reproduction, so it is
   diagnosis all the way down.
 - **The Blocks scheduling core.** The original reason for the fork, and it has
