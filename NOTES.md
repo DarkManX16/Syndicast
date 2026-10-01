@@ -274,6 +274,30 @@ for the full spec, stages and acceptance tests.
       and per block
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL)
 - [ ] Midrolls
+- [ ] Generated Up Next bumpers (after 1.0)
+
+      Inspired by a RetroTVRevival post where a custom scheduler pre-renders
+      "Coming Up Next" bumpers with a separate script. Our stamp: Syndicast
+      builds them live at airtime from its own schedule, so they always match
+      what actually airs next, even after a regeneration, a swap or an insert.
+
+      Styled per day-part and block from a template (colors, logo, layout),
+      so the style changes automatically when the block changes.
+
+      Three kinds:
+
+      - "Up Next": a short clean clip from the actual next episode, plus the
+        show's Plex logo or artwork and its start time.
+      - "Later Tonight": a show further down the schedule.
+      - "Tonight on [block]": a lineup card listing the block's next few
+        shows.
+
+      Built as a new step type, "generated", inside stage 5's transition
+      sequences, matching the channel's resolution and aspect setting. Stage
+      5's design pass has to leave room for it (see docs/blocks-spec.md).
+
+      Depends on stage 5 and the chapter and segment detector, which picks a
+      clip that avoids cold opens and credits.
 
 ### Scheduling
 

@@ -162,6 +162,8 @@ Each sequence is an ordered list of steps. A step says what to play and how to p
 
 WBRB can never play after a block's last show, because at a block boundary the Leaving sequence fires instead.
 
+**Leave room for a "generated" step type.** The design pass must not assume every step draws from a filler list: after 1.0, Up Next, Later Tonight and "Tonight on [block]" bumpers are built live at airtime and slot into these sequences as a step of their own. See the "Generated Up Next bumpers" line in NOTES.md.
+
 ### Stage 6 — Midrolls
 
 Breaks inside a program. Depends on chapter/segment detection and gets designed once that exists.
