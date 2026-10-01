@@ -141,7 +141,8 @@ class FFMPEG extends events.EventEmitter {
              `-threads`, isConcatPlaylist? 1 : this.opts.threads,
                           `-fflags`, `+genpts+discardcorrupt+igndts`];
         let stillImage = false;
-        
+        let pixFmtSet = false;
+
         if (
             (limitRead === true)
             &&
@@ -341,6 +342,7 @@ class FFMPEG extends events.EventEmitter {
                 }
                 if ( this.audioOnly !== true ) {
                     ffmpegArgs.push('-pix_fmt' , 'yuv420p' );
+                    pixFmtSet = true;
                 }
                 audioComplex += ';[audioy]arealtime[audiox]';
                 currentAudio = "[audiox]";
@@ -558,6 +560,13 @@ class FFMPEG extends events.EventEmitter {
                             `-maxrate:v`, `${this.opts.videoBitrate}k`,
                             `-bufsize:v`, `${this.opts.videoBufSize}k`
                 );
+                if (this.opts.videoEncoder.includes("264") && !pixFmtSet) {
+                    // Every H.264 encoder gets 8-bit 4:2:0. h264_nvenc can't encode 10-bit at all (a 10-bit
+                    // source made it fail before sending a byte), and libx264 would write High 10, which most
+                    // TV-box hardware decoders can't play. mpeg2video only takes 8-bit, so ffmpeg has always
+                    // converted for it and gets no flag. See "Fix NVIDIA / h264_nvenc encoder issues" in NOTES.md.
+                    ffmpegArgs.push('-pix_fmt', 'yuv420p');
+                }
                 if (this.opts.videoEncoder.toLowerCase() === "mpeg2video") {
                     // -b:v is what makes mpeg2video look good; without it the encoder targets its 200 kb/s default.
                     // No -qscale:v 1: it made each encode 4-8x the CPU work for no better quality, and worse

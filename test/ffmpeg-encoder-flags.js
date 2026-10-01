@@ -110,6 +110,31 @@ module.exports = async function () {
         s.check('libx264 item: neither -qscale:v nor -b:v (mpeg2-only branch)', !args.includes('-qscale:v') && !args.includes('-b:v'), args.join(' '));
     }
 
+    // Every H.264 encoder is handed 8-bit 4:2:0. h264_nvenc refuses 10-bit
+    // outright (Ampere can't encode it), and libx264 would write High 10, which
+    // most TV-box decoders can't play. mpeg2video only takes 8-bit, so ffmpeg
+    // has always converted for it and its commands must stay exactly as they were.
+    for (const encoder of ['h264_nvenc', 'libx264']) {
+        const item = await itemArgs({ videoEncoder: encoder });
+        s.check(`${encoder} item: -pix_fmt yuv420p, exactly once`, valueOf(item, '-pix_fmt') === 'yuv420p' && item.filter((a) => a === '-pix_fmt').length === 1, item.join(' '));
+        const offline = await offlineArgs({ videoEncoder: encoder });
+        s.check(`${encoder} offline screen: -pix_fmt yuv420p, exactly once`, valueOf(offline, '-pix_fmt') === 'yuv420p' && offline.filter((a) => a === '-pix_fmt').length === 1, offline.join(' '));
+    }
+    {
+        const args = await itemArgs({});
+        s.check('mpeg2video item: no -pix_fmt added', !args.includes('-pix_fmt'), args.join(' '));
+    }
+    {
+        // A 1080p H.264 source at 29.97fps or below, no watermark, is copied, so
+        // there is nothing for -pix_fmt to apply to.
+        recorded = null;
+        const ff = new FFMPEG(Object.assign({}, SETTINGS, { videoEncoder: 'h264_nvenc' }), CHANNEL);
+        ff.setAudioOnly(false);
+        await ff.spawnStream('input.mkv', Object.assign({}, BEBOP, { videoCodec: 'h264', videoFramerate: 23.976, duration: 30000 }), 0, 30, null, 'episode');
+        const args = recorded.args;
+        s.check('h264_nvenc item that is copied: -c:v copy, no -pix_fmt', valueOf(args, '-c:v') === 'copy' && !args.includes('-pix_fmt'), args.join(' '));
+    }
+
     return s;
 };
 
