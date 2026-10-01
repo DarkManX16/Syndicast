@@ -1269,10 +1269,12 @@ on shows.
       x 26 plus the list's padding, and rows landing correctly at 0%, 25%,
       50%, 75% and 100%; delete removed the right row (including from a
       filtered view), the info panel opened, and a 900px window kept both
-      buttons visible with the names ellipsised. Not exercised: drag to
-      reorder (browser automation can't drive native HTML5 drag and drop;
-      `dnd-draggable` is on the same row element, as in the programming
-      list). Merge waits on Ron checking both lists in his own browser.
+      buttons visible with the names ellipsised. Not exercised from here:
+      drag to reorder (browser automation can't drive native HTML5 drag and
+      drop; `dnd-draggable` is on the same row element, as in the
+      programming list). **Confirmed by Ron in his own browser before this
+      merged:** one-line rows, the gauge, scrolling to the bottom of both
+      lists, drag to reorder, and a narrow window all right.
 - [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
 
       Swapping an item for one of a different length makes the Flex right
