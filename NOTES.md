@@ -324,6 +324,180 @@ on shows.
 
 - [ ] Per-channel transcoding configs, so channels can use different video and audio formats
 - [ ] Fix NVIDIA / h264_nvenc encoder issues
+
+      **Investigated Sep 28 - Oct 1, 2026 (Opus 5.5); no code changed.
+      Waiting on OK before anything is built.** On Ron's RTX 3060 (driver
+      616.56, ffmpeg 7.1 gyan full build, the dev path) with `videoEncoder`
+      set to `h264_nvenc` and everything else as in `.dizquetv-dev`.
+
+      **The one real failure: every 10-bit source.** Everything 8-bit works;
+      everything 10-bit fails before sending a byte:
+
+          [h264_nvenc] 10 bit encode not supported
+          [h264_nvenc] No capable devices found
+          Error while opening encoder - maybe incorrect parameters such as
+          bit_rate, rate, width or height.
+          exit code 3752568763 (AVERROR_EXTERNAL, unsigned)
+
+      Ampere's NVENC can't encode 10-bit H.264 at all. Syndicast decodes on
+      the CPU and never sets a pixel format for real items, so a 10-bit
+      source arrives at the encoder as `yuv420p10le`, ffmpeg picks NVENC's
+      10-bit input, and the encoder refuses. (mpeg2video only takes 8-bit,
+      so ffmpeg has always converted silently there; that is why this never
+      showed before.) Failed: Samurai Jack (HEVC Main 10, 1440x1080), Dexter's
+      Lab (HEVC Main 10, 720x480, marked), Cowboy Bebop (H.264 High 10,
+      1448x1080) and InuYasha (High 10, 640x480, marked). Bebop *with* a
+      watermark works, by accident: the overlay filter outputs 8-bit.
+
+      **How much of the real channel that is**, from ffprobing every file
+      channel 1 can play: 10-bit is 42.7% of the lineup's airtime (HEVC
+      Main 10 37.7%, H.264 High 10 5.0%; 2,071 of 4,474 program files),
+      across 22 real shows: Pokémon, Dexter's Lab, Johnny Bravo, InuYasha,
+      Robot Chicken, Family Guy, Futurama, Justice League and more. Filler is
+      almost all 8-bit H.264; only 2 CN Groovies clips are 10-bit. (Unrelated
+      to NVIDIA: the 118 "Black Commercials" files on H: are missing, since
+      the drive wasn't there.)
+
+      **What a viewer sees when a 10-bit episode comes up**, measured on a
+      copy of `.dizquetv-dev` on port 18095 through `/video`, with a scratch
+      channel 900 airing Samurai Jack: the loading screen, then the item
+      fails in about 1s, then `PlexPlayer`'s error handler plays 60s of
+      testsrc colour bars. Then the concat asks again, the same episode is
+      still on, it fails again, and there are 60s more bars, for the whole
+      episode.
+
+      **Everything else works on NVENC.** Built by the real `src/ffmpeg.js`
+      (spawn recorded, as `test/aspect-mark.js` does) and run with the real
+      ffmpeg against the real files: the loading screen, the interlude, the
+      offline screen, all three error screens (testsrc, picture, text),
+      8-bit episodes from 480x360 to 1080p60, five short filler clips (9-15s;
+      Adult Swim bumper, CN City, Checkerboard ID, Toonami AcTN), the
+      watermark (on ATHF, Batman TAS, Attack on Titan) and "Let the viewer's
+      player decide". The loading screen and an 8-bit episode also ran end to
+      end through `/video` on the test server. The marking comes out exactly:
+      Batman TAS, ATHF and Cow and Chicken (anamorphic DVD) all at 1920x1080
+      SAR 3:4, and marked plus watermark works too. Since nothing scales on the
+      GPU, the aspect plan's warning doesn't apply yet.
+
+      **Wrong, though nothing fails:**
+      - *The channel's bitrate is ignored.* Syndicast gives nvenc `-maxrate`
+        and `-bufsize` but `-b:v` only to mpeg2video, so nvenc targets its own
+        2000 kb/s default at 1080p (logged as `2000 kb/s`; measured 2.0-3.0
+        Mbit/s out against the channel's 5000k). It is the same omission that
+        once left mpeg2video at its 200 kb/s default (56a4f3f).
+      - *`-crf 22` and `-sc_threshold` do nothing for nvenc*: ffmpeg logs
+        "Codec AVOption crf ... has not been used for any stream", and the
+        same for `sc_threshold`. They're harmless, but noise in the log.
+        `-flags cgop+ilme` is harmless too: the encoder's log says "bottom
+        coded first", but every decoded frame is progressive.
+      - *1080p 8-bit H.264 sources are copied, not encoded.*
+        `isDifferentVideoCodec` treats h264 against `h264_nvenc` as the same
+        codec, so a 1920x1080 H.264 source at 29.97fps or below with no
+        watermark goes out as `-c:v copy`. That is 526 files, 10.7% of
+        airtime (Attack on Titan came out at 9.4 Mbit/s, untouched). Under
+        mpeg2video everything was re-encoded. None of those 526 are 10-bit
+        today, but the check doesn't look at bit depth, so a 1080p High 10
+        file would be copied straight through. Untested: `-ss` with `-c:v
+        copy` can only start on a keyframe, which matters on a mid-episode
+        tune-in.
+
+      **How many streams, alongside Tunarr.** Tunarr's CCN, Nick Picks and
+      That's So Disney all use its "H264/Nvidia" config (cuda decode,
+      `scale_cuda`, NVENC) and were all streaming throughout. Before
+      Syndicast uses the card at all, it holds 6 NVENC sessions, with the
+      engine 57-88% busy: Tunarr's 3, plus, most likely, the two OBS Studio
+      windows and Streamlabs, the only visible processes with
+      `nvEncodeAPI64.dll` loaded. (Tunarr runs elevated, so its own modules
+      can't be listed.)
+      - *There's no session cap here.* 20 extra encodes held open together
+        made 26 at once, and every one ran, at about 150 MB of GPU memory
+        each. The old consumer limit of 3, then 5, then 8, doesn't bind on
+        this driver.
+      - *The limit is the encoder's throughput, which is shared.* Copies of
+        Syndicast's real Batman TAS command at `-re`, 30s each: 6 streams all
+        at 1.000-1.001x realtime, engine 48-90% busy; 10 streams at
+        0.997-0.999x, engine at 99% the whole time. So **about 6
+        comfortably, 8-9 at most**, alongside today's Tunarr and OBS load.
+        Whether Tunarr's own streams slowed during the 10-stream run wasn't
+        measured.
+
+      **CPU saved against today's mpeg2video.** Fixed content (from 300s in),
+      `-re`, each ffmpeg's own CPU time from `-benchmark`, all marked High
+      QoS, 60s (45s for Samurai Jack). The machine was already busy at about
+      40%: Tunarr's three streams, port 18000 streaming channel 1, and OBS.
+
+      - Batman TAS (1440x1080 8-bit H.264, scaled and padded): one stream,
+        mpeg2video 0.76 cores against NVENC 0.30; three streams, 0.82-0.88
+        each against 0.35-0.37 each.
+      - Samurai Jack (HEVC Main 10; NVENC given `-pix_fmt yuv420p` in the
+        test harness only, the fix below): one stream, 0.91 against 0.41;
+        three streams, 1.12-1.22 each against 0.59-0.72 each. Adding cuda
+        decode (`-hwaccel cuda`) took one stream to 0.31.
+
+      So **about half a core per stream**, 1.5 cores for three, out of 20.
+      All runs kept realtime either way. What's left on the CPU is decode,
+      scale and audio, so NVENC is a modest saving now that `-qscale:v 1` is
+      gone (fecfd2f), not a rescue. Its real gains are H.264 itself, any
+      sample aspect ratio stored exactly (MPEG-2 rounds to four), and a
+      smaller stream.
+
+      **The High QoS helper matters less with NVENC, but keep it.** Forced
+      throttling - each ffmpeg marked EcoQoS by the same helper with its
+      state mask flipped, the mark read back as `control=1 state=1`:
+      - NVENC, Batman TAS: one stream 0.999, three 1.000 each, at 0.23-0.25
+        cores.
+      - NVENC, Samurai Jack: three streams 0.996-0.998 and six 0.998-0.999,
+        at about 0.47 cores each - the shortfall is startup.
+      - mpeg2video, Batman TAS: one stream 1.000, three 0.989-0.992.
+
+      Throttled NVENC keeps up where mpeg2video starts to slip, because there
+      is so little left on the CPU. But the helper costs nothing per stream.
+      Throttling still bites anything CPU-heavy (the fallback below most of
+      all), and E-core headroom depends on what OBS and Tunarr are doing.
+
+      **Is the graceful fallback still the right fix? Not as the fix, only as
+      a safety net.** The failure isn't random: it is decided by the source's
+      bit depth, known before ffmpeg starts, and it hits 43% of airtime.
+      Falling back each time would mean a failed start on almost every other
+      episode, and the fallback itself is expensive. What's needed, in order:
+
+      1. *Hand every H.264 encoder 8-bit 4:2:0.* `-pix_fmt yuv420p` (or a
+         final `format=yuv420p` in the filter chain) whenever the video is
+         encoded with an H.264 encoder. This is not only for nvenc:
+         libx264 fed the same Samurai Jack wrote **High 10**
+         (`yuv420p10le`), which most TV-box hardware decoders can't play.
+      2. *Give nvenc `-b:v`* at the channel's bitrate, as mpeg2video already
+         gets, and drop `-crf` and `-sc_threshold` for it.
+      3. *Decide the copy path.* Either always encode with H.264 encoders,
+         the same normalisation mpeg2video gives today, or at least treat a
+         source that isn't 8-bit 4:2:0 as a different codec. That needs
+         `streamStats` to carry the bit depth: Plex reports one, and
+         `plexTranscoder.js` doesn't copy it.
+      4. *Then a fallback, for what can't be predicted* - no GPU, the driver
+         gone, an NVENC error mid-update. **It must fall back to libx264,
+         not mpeg2video.** The `/video` concat joins items with `-c copy`.
+         Measured: an nvenc item, then an mpeg2video item, then an nvenc
+         item, joined that way, decoded only 487 of 640 frames, with 8,504
+         decode errors; the MPEG-2 item is read as H.264 garbage. The same
+         with a libx264 item in the middle decoded all 640. The failure is
+         fast and clean: about 0.5-1.1s, exit 3752568763, before any data is
+         sent, so retrying the same command with the encoder swapped needs
+         no unpicking of the stream. It also has to cover the screens, which
+         encode with the same encoder. And it should remember a failure for a
+         while, rather than paying a second at every item. But libx264 with
+         today's flags costs 2.15 cores on Batman TAS and 3.42 on Samurai
+         Jack, and fell behind realtime (0.990, 0.988), partly the
+         `-sc_threshold` quirk in "Heavy buffering during playback". So it
+         needs a faster preset to be a fallback at all - unmeasured.
+      5. *Not needed now:* GPU scaling and cuda decode. Decode is most of
+         what's left, and cuda decode saved 0.1 core per stream. If either is
+         ever added, it must take its size from the same `cw`/`ch` decision,
+         per the aspect plan below.
+
+      Left in place from the investigation: a worktree at
+      `C:\Projects\dizquetv-nvenc` (detached at aca020e, `node_modules`
+      junction-linked, nothing changed in it). The data copy and scripts are
+      in the session's scratchpad.
 - [x] Let the viewer's IPTV player (TiviMate, ImPlayer) stretch 4:3 to fill
       the screen with its own aspect setting, with "normalize resolution"
       still on
@@ -1226,7 +1400,8 @@ be built:
       including every short clip in a whole break. Confirmed Sep 28, 2026 on
       Ron's real client - the manual test this was left unticked for.
 - [ ] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
-      builds).
+      builds). Investigated Oct 1, 2026, waiting on OK: 10-bit sources fail,
+      42.7% of channel 1's airtime. See its Media handling roadmap line above.
 - [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
       "Fix very short items repeating or being skipped next to Flex" under
       Media handling above, and Stage 4 in
