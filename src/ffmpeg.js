@@ -1,10 +1,45 @@
 const spawn = require('child_process').spawn
 const events = require('events')
+const { PassThrough } = require('stream')
 const imageUrl = require('./image-url')
 const { markHighQos } = require('./ffmpeg-qos')
 
 const MAXIMUM_ERROR_DURATION_MS = 60000;
 const REALLY_RIDICULOUSLY_HIGH_FPS_FOR_DIZQUETVS_USECASE = 120;
+
+// When an h264_nvenc ffmpeg dies before sending any data (no GPU, the driver
+// gone, an NVENC error nobody predicted), that item is run again with libx264.
+// It must be libx264 and never mpeg2video: /video joins items with `-c copy`,
+// and an MPEG-2 item between H.264 ones comes out as H.264 garbage. Once
+// libx264 has rescued an item, the next ones go straight to it for this long
+// instead of paying the failed attempt again; then NVENC gets another try.
+// See "Fix NVIDIA / h264_nvenc encoder issues" in NOTES.md.
+const NVENC_RETRY_AFTER_MS = 5 * 60 * 1000;
+// superfast: the slowest preset that kept realtime for three streams of a 10-bit
+// episode with Tunarr and OBS running (0.997, 1.7 cores each); veryfast was
+// borderline (0.995), and today's default medium fell to 0.915 at 5 cores each.
+const FALLBACK_PRESET = 'superfast';
+let nvencBrokenUntil = 0;
+
+// The nvenc command, as the same command for libx264: what changes is the
+// encoder, its rate control and a preset fast enough to keep realtime. Filters,
+// maps, audio and output stay exactly as they were. No -sc_threshold, which is
+// x264's scenecut and left the stream without a single B-frame.
+function libx264FallbackArgs(args) {
+    let out = args.slice();
+    let enc = out.indexOf('-c:v');
+    out[enc + 1] = 'libx264';
+    // Main, because that is what the nvenc items come out as: x264 would write High, and a stream that switched
+    // profile when NVENC dropped out is the reconfigure at a join that always-encode exists to avoid.
+    out.splice(enc + 2, 0, '-preset', FALLBACK_PRESET, '-profile:v', 'main');
+    let bv = out.indexOf('-b:v');
+    if (bv !== -1) {
+        out.splice(bv, 2);
+    }
+    let maxrate = out.indexOf('-maxrate:v');
+    out.splice(maxrate, 0, '-crf', '22');
+    return out;
+}
 
 // Whether ffmpeg-settings.js's five flags together guarantee every stream
 // opens with the square 16:9 loading screen - the loading screen's own
@@ -141,7 +176,10 @@ class FFMPEG extends events.EventEmitter {
              `-threads`, isConcatPlaylist? 1 : this.opts.threads,
                           `-fflags`, `+genpts+discardcorrupt+igndts`];
         let stillImage = false;
-        
+        let pixFmtSet = false;
+        let videoEncoded = false;
+        let isNvenc = String(this.opts.videoEncoder || '').toLowerCase().includes("nvenc");
+
         if (
             (limitRead === true)
             &&
@@ -341,6 +379,7 @@ class FFMPEG extends events.EventEmitter {
                 }
                 if ( this.audioOnly !== true ) {
                     ffmpegArgs.push('-pix_fmt' , 'yuv420p' );
+                    pixFmtSet = true;
                 }
                 audioComplex += ';[audioy]arealtime[audiox]';
                 currentAudio = "[audiox]";
@@ -503,7 +542,13 @@ class FFMPEG extends events.EventEmitter {
             // If no filters have been applied, then the stream will still be
             // [video] , in that case, we do not actually add the video stuff to
             // filter_complex and this allows us to avoid transcoding.
-            var transcodeVideo = (this.opts.normalizeVideoCodec &&  isDifferentVideoCodec( streamStats.videoCodec, this.opts.videoEncoder) );
+            // An H.264 encoder encodes everything it is given and copies nothing. A copied H.264 item brings its own
+            // profile, level and reference frames (High@4.0 or High@5.1 against the encoder's Main@4.0), so a stream
+            // mixing copied and encoded items makes a TV box's decoder reconfigure at every join, and a copied 10-bit
+            // file would go through as it is. mpeg2video still copies a source that is already MPEG-2.
+            // See "Fix NVIDIA / h264_nvenc encoder issues" in NOTES.md.
+            var alwaysEncode = this.opts.videoEncoder.includes("264");
+            var transcodeVideo = (this.opts.normalizeVideoCodec &&  (alwaysEncode || isDifferentVideoCodec( streamStats.videoCodec, this.opts.videoEncoder)) );
             var transcodeAudio = (this.opts.normalizeAudioCodec &&  isDifferentAudioCodec( streamStats.audioCodec, this.opts.audioEncoder) );
             var filterComplex = '';
             if ( (!transcodeVideo) && (currentVideo == '[minsiz]') ) {
@@ -540,8 +585,11 @@ class FFMPEG extends events.EventEmitter {
                 ffmpegArgs.push(
                     '-map', currentVideo,
                     `-c:v`, (transcodeVideo ? this.opts.videoEncoder : 'copy'),
-                    `-sc_threshold`, `1000000000`,
                 );
+                if (!isNvenc) {
+                    // nvenc has no scene-cut threshold; ffmpeg logs it as "not used for any stream".
+                    ffmpegArgs.push(`-sc_threshold`, `1000000000`);
+                }
                 // do not use -tune stillimage for nv
                 if (stillImage && ! this.opts.videoEncoder.toLowerCase().includes("nv") ) {
                     ffmpegArgs.push('-tune', 'stillimage');
@@ -553,11 +601,28 @@ class FFMPEG extends events.EventEmitter {
             );
             if ( transcodeVideo && (this.audioOnly !== true) ) {
                 // add the video encoder flags
+                videoEncoded = true;
+                if (!isNvenc) {
+                    // nvenc ignores -crf (ffmpeg logs it as "not used for any stream").
+                    ffmpegArgs.push('-crf', '22');
+                }
                 ffmpegArgs.push(
-                            '-crf', '22',
                             `-maxrate:v`, `${this.opts.videoBitrate}k`,
                             `-bufsize:v`, `${this.opts.videoBufSize}k`
                 );
+                if (this.opts.videoEncoder.includes("264") && !pixFmtSet) {
+                    // Every H.264 encoder gets 8-bit 4:2:0. h264_nvenc can't encode 10-bit at all (a 10-bit
+                    // source made it fail before sending a byte), and libx264 would write High 10, which most
+                    // TV-box hardware decoders can't play. mpeg2video only takes 8-bit, so ffmpeg has always
+                    // converted for it and gets no flag. See "Fix NVIDIA / h264_nvenc encoder issues" in NOTES.md.
+                    ffmpegArgs.push('-pix_fmt', 'yuv420p');
+                }
+                if (isNvenc) {
+                    // Without -b:v, nvenc targets its own 2000 kb/s default at 1080p and ignores the channel's bitrate.
+                    ffmpegArgs.push(
+                        '-b:v', `${this.opts.videoBitrate}k`
+                    );
+                }
                 if (this.opts.videoEncoder.toLowerCase() === "mpeg2video") {
                     // -b:v is what makes mpeg2video look good; without it the encoder targets its 200 kb/s default.
                     // No -qscale:v 1: it made each encode 4-8x the CPU work for no better quality, and worse
@@ -629,6 +694,12 @@ class FFMPEG extends events.EventEmitter {
         if (this.hasBeenKilled) {
             return ;
         }
+        this.ffmpegName = (isConcatPlaylist ? "Concat FFMPEG":  "Stream FFMPEG");
+
+        if (isNvenc && videoEncoded && !isConcatPlaylist) {
+            return this.spawnWithFallback(ffmpegArgs, doLogs);
+        }
+
         //console.log(this.ffmpegPath + " " + ffmpegArgs.join(" ") );
         this.ffmpeg = spawn(this.ffmpegPath, ffmpegArgs, { stdio: ['ignore', 'pipe', (doLogs?process.stderr:"ignore") ] } );
         markHighQos(this.ffmpeg);
@@ -638,41 +709,99 @@ class FFMPEG extends events.EventEmitter {
             return;
         }
 
-
-        this.ffmpegName = (isConcatPlaylist ? "Concat FFMPEG":  "Stream FFMPEG");
-
         this.ffmpeg.on('error', (code, signal) => {
             console.log( `${this.ffmpegName} received error event: ${code}, ${signal}` );
          });
         this.ffmpeg.on('exit', (code, signal) => {
-            if (code === null) {
-                if (!this.hasBeenKilled) {
-                    console.log( `${this.ffmpegName} exited due to signal: ${signal}` );
-                } else {
-                    console.log( `${this.ffmpegName} exited due to signal: ${signal} as expected.`);
-                }
-                this.emit('close', code)
-            } else if (code === 0) {
-                console.log( `${this.ffmpegName} exited normally.` );
-                this.emit('end')
-            } else if (code === 255) {
-                if (this.hasBeenKilled) {
-                    console.log( `${this.ffmpegName} finished with code 255.` );
-                    this.emit('close', code)
-                    return;
-                }
-                if (! this.sentData) {
-                    this.emit('error', { code: code, cmd: `${this.opts.ffmpegPath} ${ffmpegArgs.join(' ')}` })
-                }
-                console.log( `${this.ffmpegName} exited with code 255.` );
-                this.emit('close', code)
-            } else {
-                console.log( `${this.ffmpegName} exited with code ${code}.` );
-                this.emit('error', { code: code, cmd: `${this.opts.ffmpegPath} ${ffmpegArgs.join(' ')}` })
-            }
+            this.handleExit(code, signal, ffmpegArgs);
         });
 
         return this.ffmpeg.stdout;
+    }
+    handleExit(code, signal, ffmpegArgs) {
+        if (code === null) {
+            if (!this.hasBeenKilled) {
+                console.log( `${this.ffmpegName} exited due to signal: ${signal}` );
+            } else {
+                console.log( `${this.ffmpegName} exited due to signal: ${signal} as expected.`);
+            }
+            this.emit('close', code)
+        } else if (code === 0) {
+            console.log( `${this.ffmpegName} exited normally.` );
+            this.emit('end')
+        } else if (code === 255) {
+            if (this.hasBeenKilled) {
+                console.log( `${this.ffmpegName} finished with code 255.` );
+                this.emit('close', code)
+                return;
+            }
+            if (! this.sentData) {
+                this.emit('error', { code: code, cmd: `${this.opts.ffmpegPath} ${ffmpegArgs.join(' ')}` })
+            }
+            console.log( `${this.ffmpegName} exited with code 255.` );
+            this.emit('close', code)
+        } else {
+            console.log( `${this.ffmpegName} exited with code ${code}.` );
+            this.emit('error', { code: code, cmd: `${this.opts.ffmpegPath} ${ffmpegArgs.join(' ')}` })
+        }
+    }
+    // Runs an h264_nvenc command. If that ffmpeg dies before sending a single
+    // byte, the same item is run again with libx264 (see NVENC_RETRY_AFTER_MS)
+    // and the viewer gets that stream instead; the failed attempt is never
+    // reported. Hands back a stream that outlasts both, which is why only this
+    // path has one: the other encoders return their ffmpeg's own stdout.
+    spawnWithFallback(nvencArgs, doLogs) {
+        let out = new PassThrough();
+        let fallbackArgs = libx264FallbackArgs(nvencArgs);
+        let run = (args, isFallback, rescuing) => {
+            let sent = 0;
+            let lastOutput = '';
+            let child = spawn(this.ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            this.ffmpeg = child;
+            markHighQos(child);
+            if (this.hasBeenKilled) {
+                console.log("Send SIGKILL to ffmpeg");
+                child.kill("SIGKILL");
+                out.end();
+                return;
+            }
+            child.on('error', (code, signal) => {
+                console.log( `${this.ffmpegName} received error event: ${code}, ${signal}` );
+            });
+            if (child.stderr) {
+                child.stderr.on('data', (chunk) => {
+                    if (doLogs) {
+                        process.stderr.write(chunk);
+                    }
+                    lastOutput = (lastOutput + chunk.toString()).slice(-2000);
+                });
+            }
+            child.stdout.on('data', (chunk) => {
+                if (sent === 0 && rescuing) {
+                    // libx264 delivering where nvenc just failed shows the encoder was at fault, not the file.
+                    nvencBrokenUntil = Date.now() + NVENC_RETRY_AFTER_MS;
+                    console.log(`${this.ffmpegName}: libx264 took over from h264_nvenc; going straight to libx264 for the next ${NVENC_RETRY_AFTER_MS / 60000} minutes.`);
+                }
+                sent += chunk.length;
+            });
+            child.stdout.pipe(out, { end: false });
+            child.on('close', (code, signal) => {
+                if (!isFallback && code !== null && code !== 0 && sent === 0 && !this.hasBeenKilled) {
+                    let reason = lastOutput.trim().split(/\r?\n/).filter(Boolean).slice(-2).join(' | ');
+                    console.log(`${this.ffmpegName} with h264_nvenc exited with code ${code} before sending any data; running this item again with libx264. ${reason}`);
+                    run(fallbackArgs, true, true);
+                    return;
+                }
+                this.handleExit(code, signal, args);
+                out.end();
+            });
+        };
+        if (Date.now() < nvencBrokenUntil) {
+            run(fallbackArgs, true, false);
+        } else {
+            run(nvencArgs, false, false);
+        }
+        return out;
     }
     kill() {
         console.log(`${this.ffmpegName} RECEIVED kill() command`);
@@ -740,4 +869,12 @@ function gcd(a, b) {
 }
 
 FFMPEG.isFullyNormalized = isFullyNormalized;
+FFMPEG.libx264FallbackArgs = libx264FallbackArgs;
+FFMPEG.NVENC_RETRY_AFTER_MS = NVENC_RETRY_AFTER_MS;
+// What the nvenc fallback remembers, for tests to set and clear.
+FFMPEG.nvencFailure = {
+    reset: () => { nvencBrokenUntil = 0; },
+    expireNow: () => { nvencBrokenUntil = Date.now() - 1; },
+    isActive: () => Date.now() < nvencBrokenUntil,
+};
 module.exports = FFMPEG

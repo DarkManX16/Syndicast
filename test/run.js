@@ -20,6 +20,7 @@ const suites = [
     './backup-task-xml',
     './aspect-mark',
     './ffmpeg-encoder-flags',
+    './ffmpeg-nvenc-fallback',
     './ffmpeg-qos',
     './bundle-freshness',
     './program-row-heights',
