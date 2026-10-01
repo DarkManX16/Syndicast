@@ -280,6 +280,14 @@ for the full spec, stages and acceptance tests.
 - [x] Season exclusion / season start, per slot, for Play Next
 - [x] Setting a season range across a group of slots in one go, and a filter for
       finding the slots to set it on
+- [ ] Episode start: start a show or custom show at a specific episode, not
+      just a season
+
+      Extends the existing per-slot season start (the ticked line above).
+      Opus 5.5 designs, Sonnet 5 builds. Our stamp: pick the starting
+      episode by title from a list of that season's episodes (or the custom
+      show's items), and preview the date and time it will first air in that
+      slot.
 - [ ] Save time-slot editing progress without generating a lineup
 
       `channel.scheduleBackup` already round-trips the schedule -
@@ -923,6 +931,10 @@ on shows.
 ### Library management
 
 - [ ] Swap out episodes of a show, and plug library items in anywhere
+
+      Includes inserting individual items from a custom show into the
+      programming lineup. Designed in the same Opus 5.5 session as swap
+      episodes and the Flex auto-adjust line below.
 - [x] Program rows show the episode title, with a slot-fit gauge
 
       Rebuilt Tunarr's duration bar around how Ron schedules: a slot-fit gauge
@@ -1444,10 +1456,13 @@ be built:
       the Model guide below). See the "Per-position stored progress, which
       fixes two things at once" Known issues entry above, which covers the
       four roadmap lines it unblocks.
-- [ ] Swap out episodes of a show, and plug library items in anywhere, and
-      Flex adjusts itself when lineup items are added, swapped or deleted -
-      designed together in the same Opus 5.5 design session, built by
-      Sonnet 5.
+- [ ] Episode start: start a show or custom show at a specific episode, not
+      just a season (Opus 5.5 designs, Sonnet 5 builds). See its Scheduling
+      roadmap line above.
+- [ ] Swap out episodes of a show, and plug library items in anywhere
+      (including individual items from a custom show), and Flex adjusts
+      itself when lineup items are added, swapped or deleted - designed
+      together in the same Opus 5.5 design session, built by Sonnet 5.
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
