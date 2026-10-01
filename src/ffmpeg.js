@@ -506,7 +506,13 @@ class FFMPEG extends events.EventEmitter {
             // If no filters have been applied, then the stream will still be
             // [video] , in that case, we do not actually add the video stuff to
             // filter_complex and this allows us to avoid transcoding.
-            var transcodeVideo = (this.opts.normalizeVideoCodec &&  isDifferentVideoCodec( streamStats.videoCodec, this.opts.videoEncoder) );
+            // An H.264 encoder encodes everything it is given and copies nothing. A copied H.264 item brings its own
+            // profile, level and reference frames (High@4.0 or High@5.1 against the encoder's Main@4.0), so a stream
+            // mixing copied and encoded items makes a TV box's decoder reconfigure at every join, and a copied 10-bit
+            // file would go through as it is. mpeg2video still copies a source that is already MPEG-2.
+            // See "Fix NVIDIA / h264_nvenc encoder issues" in NOTES.md.
+            var alwaysEncode = this.opts.videoEncoder.includes("264");
+            var transcodeVideo = (this.opts.normalizeVideoCodec &&  (alwaysEncode || isDifferentVideoCodec( streamStats.videoCodec, this.opts.videoEncoder)) );
             var transcodeAudio = (this.opts.normalizeAudioCodec &&  isDifferentAudioCodec( streamStats.audioCodec, this.opts.audioEncoder) );
             var filterComplex = '';
             if ( (!transcodeVideo) && (currentVideo == '[minsiz]') ) {

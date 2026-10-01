@@ -124,15 +124,38 @@ module.exports = async function () {
         const args = await itemArgs({});
         s.check('mpeg2video item: no -pix_fmt added', !args.includes('-pix_fmt'), args.join(' '));
     }
-    {
-        // A 1080p H.264 source at 29.97fps or below, no watermark, is copied, so
-        // there is nothing for -pix_fmt to apply to.
+    // Under an H.264 encoder every source is encoded, never copied. A copied
+    // 1080p H.264 item carries its own profile, level and reference frames
+    // (High@4.0 or High@5.1 against the encoder's Main@4.0), so a stream mixing
+    // copied and encoded items makes a TV box's decoder reconfigure at each
+    // join, and a copied 10-bit file would pass straight through. mpeg2video
+    // keeps copying what is already MPEG-2, as it always has.
+    const COPYABLE = Object.assign({}, BEBOP, { videoCodec: 'h264', videoFramerate: 24, duration: 30000 });
+    async function copyableArgs(encoder, stats) {
         recorded = null;
-        const ff = new FFMPEG(Object.assign({}, SETTINGS, { videoEncoder: 'h264_nvenc' }), CHANNEL);
+        const ff = new FFMPEG(Object.assign({}, SETTINGS, { videoEncoder: encoder }), CHANNEL);
         ff.setAudioOnly(false);
-        await ff.spawnStream('input.mkv', Object.assign({}, BEBOP, { videoCodec: 'h264', videoFramerate: 23.976, duration: 30000 }), 0, 30, null, 'episode');
-        const args = recorded.args;
-        s.check('h264_nvenc item that is copied: -c:v copy, no -pix_fmt', valueOf(args, '-c:v') === 'copy' && !args.includes('-pix_fmt'), args.join(' '));
+        await ff.spawnStream('input.mkv', stats, 0, 30, null, 'episode');
+        return recorded.args;
+    }
+    for (const encoder of ['h264_nvenc', 'libx264']) {
+        const args = await copyableArgs(encoder, COPYABLE);
+        s.check(`${encoder}: a 1080p 24fps H.264 source is encoded, not copied`, valueOf(args, '-c:v') === encoder && valueOf(args, '-pix_fmt') === 'yuv420p', args.join(' '));
+    }
+    {
+        const args = await copyableArgs('mpeg2video', Object.assign({}, COPYABLE, { videoCodec: 'mpeg2video' }));
+        s.check('mpeg2video: an MPEG-2 source is still copied', valueOf(args, '-c:v') === 'copy', args.join(' '));
+    }
+    {
+        const args = await copyableArgs('h264_nvenc', COPYABLE);
+        const off = await (async () => {
+            recorded = null;
+            const ff = new FFMPEG(Object.assign({}, SETTINGS, { videoEncoder: 'h264_nvenc', normalizeVideoCodec: false }), CHANNEL);
+            ff.setAudioOnly(false);
+            await ff.spawnStream('input.mkv', COPYABLE, 0, 30, null, 'episode');
+            return recorded.args;
+        })();
+        s.check('h264_nvenc with "normalize video codec" off: still copied (the setting is respected)', valueOf(off, '-c:v') === 'copy' && valueOf(args, '-c:v') === 'h264_nvenc', off.join(' '));
     }
 
     // h264_nvenc targets its own 2000 kb/s default unless it is given -b:v, so
