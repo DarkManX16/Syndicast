@@ -1247,6 +1247,58 @@ on shows.
       afterward. Not yet confirmed: Ron scrolling it himself, a week ahead,
       on his own window - the actual gate, same as last time, before this
       merges.
+
+      **Custom shows and filler lists got the same one-line row (Oct 1,
+      2026, Sonnet 5.5, worktree `list-rows`).** The two-line
+      `program-list-row` directive these two lists still used had the same
+      exposure the programming list's first attempt did - a second line and
+      a gauge line that a row's height depended on - so they now use the
+      programming list's design instead, and the directive, its CSS and its
+      registration in `app.js` are deleted (nothing else used it). One line
+      per row, and every row exactly `commonProgramTools.contentListRowHeight`
+      (26) tall: the row's own `style="height: {{ contentRowHeight }}px"` and
+      `vs-repeat="{size: contentRowHeight}"` both read that one scope value,
+      with `flex-shrink: 0`. Inline in `show-config.html` and
+      `filler-config.html`, like the programming list's, with the row's
+      fields as pure functions in `common-program-tools.js` (`rowShow`,
+      `rowTag`, `rowTitle` and `rowDuration` are shared with the programming
+      list; `rowSlotLabel`, `rowSlotFillPercent` and `rowFillerName` are
+      new).
+
+      - **Custom shows** keep the slot-fit gauge, redrawn as a 3px bar along
+        the row's bottom edge (`position: absolute`, so it has no way to
+        change the row's height) filled to the item's slot-fit percentage,
+        with its "30-min slot · 7:31 for breaks" text as a small tag at the
+        right end, after the duration. Line: color square, show/album, `S1 ·
+        E2` tag, episode title or a movie's year, duration, tag. The tag is
+        the one field allowed to shrink (with an ellipsis) before the info
+        and delete buttons would be pushed out of a narrow row.
+      - **Filler lists**: the name and the exact duration, nothing else - an
+        episode or track reads `Show · Title`, anything else is its title.
+      - Long names end in "…" (CSS `text-overflow`, with the same real
+        `min-width` floors as `.psr-show`, so a narrow row truncates instead
+        of collapsing a field to nothing).
+
+      `test/program-row-heights.js` now covers all three lists - the same
+      real-template, real-CSS, real-Chrome measurement, with fixtures for
+      each list's row types. Beyond height it checks that the gauge bar sits
+      flush on the bottom edge at 3px and fills the right share of the row,
+      that a row with no usable duration draws none, and that long names
+      keep real width and end in an ellipsis in a 700px-wide row. Dropping
+      `flex-shrink: 0` from `.lr-row` fails every custom show and filler row
+      at 24px against 26, confirmed by doing it. Verified live on a copy of
+      `.dizquetv-dev` (port 18123, from the worktree, never 18000): Batman's
+      107 episodes and CN Powerhouse's 548 clips rendered 18-22 rows at a
+      time at 1900x900, every one 26px, with a scroll height of exactly rows
+      x 26 plus the list's padding, and rows landing correctly at 0%, 25%,
+      50%, 75% and 100%; delete removed the right row (including from a
+      filtered view), the info panel opened, and a 900px window kept both
+      buttons visible with the names ellipsised. Not exercised from here:
+      drag to reorder (browser automation can't drive native HTML5 drag and
+      drop; `dnd-draggable` is on the same row element, as in the
+      programming list). **Confirmed by Ron in his own browser before this
+      merged:** one-line rows, the gauge, scrolling to the bottom of both
+      lists, drag to reorder, and a narrow window all right.
 - [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
 
       Swapping an item for one of a different length makes the Flex right

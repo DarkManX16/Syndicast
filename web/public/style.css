@@ -406,102 +406,108 @@ div.programming-programs div.list-group-item {
   background-color: #eeeeee;
 }
 
-/* program-list-row: the shared two-line row (color square, name/tag/duration,
-   episode title or year, slot-fit gauge). Self-contained - it does not reuse
-   .program-start/.title, so it can't be nudged by tweaks aimed at the older
-   single-line rows still used by filler lists and the channel programming
-   list. */
-.program-list-row {
-  align-items: center;
-  padding: 3px 8px;
-  /* vs-repeat's scroll container is flex-direction:column, and a flex
-     item's default flex-shrink:1 would otherwise squash every row down to
-     fit the visible viewport - bottoming out at min-height (below) and
-     silently clipping the extra line and gauge behind the next row. The
-     single-line rows this replaces never hit this because their fixed
-     height was already smaller than their fair share. */
+/* lr-row: the one-line row of the custom show editor and filler lists. Its
+   height is set inline, bound to the same scope value handed to vs-repeat
+   (commonProgramTools.contentListRowHeight), so CSS never gets a chance to
+   disagree with it; flex-shrink:0 is still needed because vs-repeat's scroll
+   container is flex-direction:column, and a flex item's default
+   flex-shrink:1 would otherwise squash the row short regardless of its
+   declared height. Nothing inside it can make it taller: no wrapping, and
+   the slot-fit gauge is absolutely positioned along the bottom edge. */
+.lr-row {
   flex-shrink: 0;
+  position: relative;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
 }
-.program-list-row:nth-child(odd) {
+.lr-row:nth-child(odd) {
   background-color: #eeeeee;
 }
-.program-list-row .plr-square {
+.lr-row .lr-square {
   flex: 0 0 auto;
   width: 14px;
   height: 14px;
   border: 1px solid black;
-  margin-right: 10px;
+  margin-right: 8px;
 }
-.program-list-row .plr-body {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.program-list-row .plr-line1 {
-  display: flex;
-  align-items: baseline;
-  white-space: nowrap;
-  overflow: hidden;
-}
-.program-list-row .plr-start-time {
-  flex: 0 0 auto;
-  font-family: monospace;
-  font-size: 80%;
-  color: #0c5c68;
-  margin-right: 10px;
-  white-space: nowrap;
-}
-.program-list-row .plr-name {
+/* overflow:hidden makes a flex item's automatic minimum width 0, so every
+   text field below carries a real min-width (see the .psr-show note above) -
+   a row too narrow for everything truncates with an ellipsis rather than
+   dropping a field to nothing. */
+.lr-row .lr-show {
+  flex: 0 1 auto;
+  max-width: 30%;
+  min-width: 4em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-right: 6px;
   font-weight: 500;
 }
-.program-list-row .plr-tag {
+.lr-row .lr-tag {
   flex: 0 0 auto;
   font-family: monospace;
   font-size: 80%;
   color: #666;
   margin-right: 8px;
+  white-space: nowrap;
 }
-.program-list-row .plr-duration {
+.lr-row .lr-title, .lr-row .lr-name {
+  flex: 1 1 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+.lr-row .lr-title {
+  color: #555;
+  font-size: 90%;
+}
+.lr-row .lr-name {
+  font-weight: 500;
+}
+.lr-row .lr-duration {
   flex: 0 0 auto;
-  margin-left: auto;
-  padding-left: 8px;
   font-family: monospace;
   font-size: 85%;
   color: #0c5c68;
-}
-.program-list-row .plr-line2 {
-  min-height: 1.1em;
-  font-size: 85%;
-  color: #555;
+  margin-right: 8px;
   white-space: nowrap;
+}
+.lr-row .lr-slot {
+  /* The one field allowed to give way, with an ellipsis, before the info and
+     delete buttons would be pushed out of a narrow row. */
+  flex: 0 1 auto;
+  min-width: 3em;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.program-list-row .plr-gauge {
-  display: flex;
-  align-items: center;
-  margin-top: 2px;
-}
-.program-list-row .plr-gauge-bar {
-  flex: 1 1 auto;
-  max-width: 220px;
-  height: 6px;
-  border-radius: 3px;
-  background: #ddd;
-  overflow: hidden;
-  margin-right: 8px;
-}
-.program-list-row .plr-gauge-fill {
-  height: 100%;
-  background: #4a90d9;
-}
-.program-list-row .plr-gauge-label {
   font-size: 75%;
   color: #777;
+  background: #ddd;
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-right: 4px;
   white-space: nowrap;
+}
+.lr-row .btn {
+  flex: 0 0 auto;
+}
+.lr-row .lr-gauge-track, .lr-row .lr-gauge-fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  pointer-events: none;
+}
+.lr-row .lr-gauge-track {
+  right: 0;
+  background: #ddd;
+}
+.lr-row .lr-gauge-fill {
+  background: #4a90d9;
 }
 
 .tools-pane button {

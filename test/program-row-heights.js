@@ -3,14 +3,18 @@
  * guards: a fixed vs-repeat size (`{size: 66}`) and a real per-row-type
  * rendered height that disagreed - Flex/redirect rows measured 53.39px
  * against a declared 66px, because an empty gauge label collapsed to 0px in
- * a flex layout. The channel programming list's row (web/public/templates/
- * channel-config.html) now sets its own height inline, bound to the exact
- * same scope value handed to vs-repeat (commonProgramTools.
- * programScheduleRowHeight), so the two can't drift apart by construction -
- * this test renders the real markup and the real CSS in a real browser and
- * fails if any row type's measured height isn't exactly that value.
+ * a flex layout. Every list that uses vs-repeat now sets its rows' height
+ * inline, bound to the exact same scope value handed to vs-repeat, so the
+ * two can't drift apart by construction. This test renders each list's real
+ * markup and the real CSS in a real browser and fails if any row's measured
+ * height isn't exactly that value:
  *
- * Real files, not transcriptions: the row's HTML is extracted from the real
+ * - the channel programming list (channel-config.html), at
+ *   commonProgramTools.programScheduleRowHeight
+ * - the custom show editor (show-config.html) and filler lists
+ *   (filler-config.html), at commonProgramTools.contentListRowHeight
+ *
+ * Real files, not transcriptions: each row's HTML is extracted from the real
  * template by tag-balance matching (the same reasoning as test/support.js's
  * liftSource - "so a test can drive the real thing instead of a
  * transcription that would go stale silently"), the CSS is the real
@@ -33,7 +37,7 @@ const path = require('path');
 const { Suite } = require('./support');
 
 const ROOT = path.join(__dirname, '..');
-const TEMPLATE_FILE = path.join(ROOT, 'web/public/templates/channel-config.html');
+const TEMPLATES = path.join(ROOT, 'web/public/templates');
 const STYLE_FILE = path.join(ROOT, 'web/public/style.css');
 const commonProgramTools = require('../web/services/common-program-tools')(() => ({}));
 
@@ -54,18 +58,17 @@ function findChromeExecutable() {
     return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
-// Pulls the programming list's one row out of the real template by counting
-// <div>/</div> depth from its ng-repeat, the same "drive the real thing"
-// reasoning liftSource uses for JS function bodies.
-function extractRowTemplate(html) {
-    const marker = 'ng-repeat="x in channel.programs track by x.$index"';
+// Pulls one list's row out of its real template by counting <div>/</div>
+// depth from its ng-repeat, the same "drive the real thing" reasoning
+// liftSource uses for JS function bodies.
+function extractRowTemplate(html, marker, file) {
     const markerIdx = html.indexOf(marker);
     if (markerIdx === -1) {
-        throw new Error('channel-config.html no longer has the programming list row (marker not found)');
+        throw new Error(`${file} no longer has its list row (marker not found: ${marker})`);
     }
     const start = html.lastIndexOf('<div', markerIdx);
     if (start === -1) {
-        throw new Error('could not find the opening <div of the programming list row');
+        throw new Error(`could not find the opening <div of the list row in ${file}`);
     }
     let pos = start;
     let depth = 0;
@@ -83,19 +86,21 @@ function extractRowTemplate(html) {
             pos++;
         }
     }
-    throw new Error('unbalanced <div> while extracting the programming list row template');
+    throw new Error(`unbalanced <div> while extracting the list row from ${file}`);
 }
 
-// The exact set of ng-if expressions and {{ }} calls the real row template
-// uses today - kept short and explicit rather than a general expression
-// evaluator, so an unrecognized one (the template grew a new conditional or
-// field) throws loudly instead of silently mis-rendering a fixture.
+// The exact set of ng-if expressions, {{ }} calls and ng-style bindings the
+// real row templates use today - kept short and explicit rather than a
+// general expression evaluator, so an unrecognized one (a template grew a
+// new conditional or field) throws loudly instead of silently mis-rendering
+// a fixture.
 function evalCondition(expr, x) {
     switch (expr) {
         case '!x.isOffline': return !x.isOffline;
         case 'x.isOffline': return !!x.isOffline;
         case 'rowTag(x)': return !!commonProgramTools.rowTag(x);
         case 'rowBreakAfter(x)': return !!commonProgramTools.rowBreakAfter(x);
+        case 'rowSlotLabel(x)': return !!commonProgramTools.rowSlotLabel(x);
         default:
             throw new Error(`program-row-heights.js doesn't know how to evaluate ng-if="${expr}" - update evalCondition`);
     }
@@ -109,21 +114,39 @@ function evalInterpolation(expr, x) {
         case 'rowOfflineLabel(x)': return commonProgramTools.rowOfflineLabel(x);
         case 'rowDuration(x)': return commonProgramTools.rowDuration(x);
         case 'rowBreakAfter(x)': return commonProgramTools.rowBreakAfter(x);
+        case 'rowSlotLabel(x)': return commonProgramTools.rowSlotLabel(x);
+        case 'rowFillerName(x)': return commonProgramTools.rowFillerName(x);
         default:
             throw new Error(`program-row-heights.js doesn't know how to interpolate "{{ ${expr} }}" - update evalInterpolation`);
     }
+}
+// ng-style="..." becomes a real style="..." where it matters to what is
+// being measured (the gauge's fill width) and is dropped where it is purely
+// cosmetic (the color square's background) - anything else throws.
+function resolveNgStyle(attrs, x) {
+    return attrs.replace(/\sng-style="([^"]*)"/, (_, expr) => {
+        if (expr === 'rowSquareStyle(x)' || expr === 'programSquareStyle(x)') {
+            return '';
+        }
+        if (expr === "{width: rowSlotFillPercent(x) + '%'}") {
+            return ` style="width: ${commonProgramTools.rowSlotFillPercent(x)}%"`;
+        }
+        throw new Error(`program-row-heights.js doesn't know how to resolve ng-style="${expr}" - update resolveNgStyle`);
+    });
 }
 
 // Resolves one row's real template against one fixture program: drops each
 // top-level ng-if child whose condition is false for this fixture, and
 // substitutes real computed text for every {{ }} left standing.
-function resolveRow(rowTemplate, x, rowHeightPx) {
-    let html = rowTemplate.replace('{{ programRowHeight }}', String(rowHeightPx));
+function resolveRow(rowTemplate, x, heightVar, rowHeightPx) {
+    let html = rowTemplate.replace(`{{ ${heightVar} }}`, String(rowHeightPx));
     const openTagEnd = html.indexOf('>');
     const openTag = html.slice(0, openTagEnd + 1);
     const closeTag = '</div>';
     const body = html.slice(openTagEnd + 1, html.length - closeTag.length);
 
+    // Row children are flat siblings - spans, and buttons with an <i> inside
+    // - never nested spans, so a lazy match to the closing tag is exact.
     const childRe = /<(span|button)\b([^>]*)>([\s\S]*?)<\/\1>/g;
     let resolvedBody = '';
     let match;
@@ -134,7 +157,7 @@ function resolveRow(rowTemplate, x, rowHeightPx) {
             continue;
         }
         const resolvedInner = inner.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, expr) => evalInterpolation(expr, x));
-        resolvedBody += `<${tag}${attrs}>${resolvedInner}</${tag}>`;
+        resolvedBody += `<${tag}${resolveNgStyle(attrs, x)}>${resolvedInner}</${tag}>`;
     }
     return openTag + resolvedBody + closeTag;
 }
@@ -151,12 +174,17 @@ body { margin: 0; font-family: sans-serif; font-size: 1rem; line-height: 1.5; }
 .list-group-item { border: 1px solid rgba(0,0,0,.125); }
 `;
 
-async function measureRowHeights(puppeteer, executablePath, rows, containerHeightPx) {
+// Narrower than the real modal on purpose: the fixtures' long titles have to
+// not fit, so the truncation checks are about a row that is actually too
+// narrow, not one with room to spare.
+const SCROLLER_WIDTH_PX = 700;
+
+async function measureRows(puppeteer, executablePath, list, rows, containerHeightPx) {
     const styleCss = fs.readFileSync(STYLE_FILE, 'utf8');
     const html = `<!doctype html><html><head><style>${BOOTSTRAP_SHIM_CSS}\n${styleCss}</style></head>
 <body>
-  <div id="scroller" style="display:flex; flex-direction:column; height:${containerHeightPx}px; overflow-y:auto;"
-       class="list-group list-group-root list-group-root programming-programs">
+  <div id="scroller" style="display:flex; flex-direction:column; width:${SCROLLER_WIDTH_PX}px; height:${containerHeightPx}px; overflow-y:auto;"
+       class="list-group list-group-root ${list.containerClass}">
     ${rows.map((r, i) => r.replace('class="list-group-item', `id="row-${i}" class="list-group-item`)).join('\n')}
   </div>
 </body></html>`;
@@ -166,21 +194,143 @@ async function measureRowHeights(puppeteer, executablePath, rows, containerHeigh
         const page = await browser.newPage();
         await page.setViewport({ width: 1200, height: 800 });
         await page.setContent(html, { waitUntil: 'load' });
-        const heights = [];
+        const measured = [];
         for (let i = 0; i < rows.length; i++) {
-            heights.push(await page.evaluate((id) => {
+            measured.push(await page.evaluate((id, textSelectors) => {
                 const el = document.getElementById(id);
-                return el ? el.getBoundingClientRect().height : null;
-            }, `row-${i}`));
+                if (!el) {
+                    return null;
+                }
+                const rowRect = el.getBoundingClientRect();
+                const text = {};
+                textSelectors.forEach((sel) => {
+                    const t = el.querySelector(sel);
+                    if (t) {
+                        text[sel] = {
+                            width: t.getBoundingClientRect().width,
+                            overflowing: t.scrollWidth > t.clientWidth,
+                            textOverflow: getComputedStyle(t).textOverflow,
+                        };
+                    }
+                });
+                const track = el.querySelector('.lr-gauge-track');
+                const fill = el.querySelector('.lr-gauge-fill');
+                return {
+                    height: rowRect.height,
+                    text,
+                    // The gauge's distance above the row's bottom edge, and
+                    // how much of the row's width its fill covers.
+                    gaugeBottomGap: track ? rowRect.bottom - track.getBoundingClientRect().bottom : null,
+                    gaugeHeight: track ? track.getBoundingClientRect().height : null,
+                    gaugeFillFraction: fill ? fill.getBoundingClientRect().width / rowRect.width : null,
+                };
+            }, `row-${i}`, list.textSelectors));
         }
-        return heights;
+        return measured;
     } finally {
         await browser.close();
     }
 }
 
+const MIN = 60 * 1000;
+const LONG_SHOW = 'A Fairly Long Show Name That Might Wrap Without Truncation Because It Just Keeps Going';
+const LONG_TITLE = 'An Episode Title Long Enough To Need The Ellipsis Truncation Rule, And Then Some More Words After That';
+
+const LISTS = [
+    {
+        name: 'channel programming list',
+        file: 'channel-config.html',
+        marker: 'ng-repeat="x in channel.programs track by x.$index"',
+        heightVar: 'programRowHeight',
+        heightPx: commonProgramTools.programScheduleRowHeight,
+        containerClass: 'programming-programs',
+        textSelectors: ['.psr-title', '.psr-show'],
+        longTextRows: ['program row'],
+        fixtures: [
+            ['program row', {
+                isOffline: false, type: 'episode',
+                start: new Date(2026, 8, 28, 14, 0, 5),
+                showTitle: LONG_SHOW, season: 1, episode: 12, title: LONG_TITLE,
+                duration: 23 * MIN + 47 * 1000,
+                $breakAfterMs: 4 * MIN + 46 * 1000,
+            }],
+            ['Flex row', {
+                isOffline: true, type: 'flex',
+                start: new Date(2026, 8, 28, 14, 24, 0),
+                duration: 6 * MIN,
+            }],
+            ['redirect row', {
+                isOffline: true, type: 'redirect', channel: 42,
+                start: new Date(2026, 8, 28, 14, 30, 0),
+                duration: 30 * MIN,
+            }],
+        ],
+    },
+    {
+        name: 'custom show editor list',
+        file: 'show-config.html',
+        marker: 'ng-repeat="x in filteredContent"',
+        heightVar: 'contentRowHeight',
+        heightPx: commonProgramTools.contentListRowHeight,
+        containerClass: 'show-list',
+        textSelectors: ['.lr-title', '.lr-show'],
+        longTextRows: ['episode row, long names'],
+        gaugeRows: ['episode row, long names', 'movie row', 'movie row without a year', 'track row', 'half-episode row'],
+        fixtures: [
+            ['episode row, long names', {
+                type: 'episode', showTitle: LONG_SHOW, season: 12, episode: 104, title: LONG_TITLE,
+                duration: 23 * MIN + 47 * 1000,
+            }],
+            ['movie row', {
+                type: 'movie', title: 'A Movie', year: 1999,
+                duration: 2 * 60 * MIN + 15 * MIN,
+            }],
+            ['movie row without a year', {
+                type: 'movie', title: 'A Clip With Nothing Else To Say',
+                duration: 12 * 1000,
+            }],
+            ['track row', {
+                type: 'track', showTitle: 'An Album', season: 2, episode: 7, title: 'A Track',
+                duration: 3 * MIN + 41 * 1000,
+            }],
+            ['half-episode row', {
+                type: 'episode', showTitle: 'A Show', season: 1, episode: 2, title: 'Half A Half Hour',
+                duration: 11 * MIN + 4 * 1000,
+            }],
+            ['row with no usable duration (no gauge)', {
+                type: 'movie', title: 'No Duration', year: 2001,
+                duration: 0,
+            }],
+        ],
+    },
+    {
+        name: 'filler list',
+        file: 'filler-config.html',
+        marker: 'ng-repeat="x in filteredContent"',
+        heightVar: 'contentRowHeight',
+        heightPx: commonProgramTools.contentListRowHeight,
+        containerClass: 'filler-list',
+        textSelectors: ['.lr-name'],
+        longTextRows: ['clip with a long title', 'episode in a filler list'],
+        fixtures: [
+            ['clip with a long title', {
+                type: 'movie', title: LONG_SHOW + ' ' + LONG_TITLE,
+                duration: 31 * 1000,
+            }],
+            ['short clip', {
+                type: 'movie', title: 'Bump',
+                duration: 4 * 1000,
+            }],
+            ['episode in a filler list', {
+                type: 'episode', showTitle: LONG_SHOW, season: 3, episode: 9, title: LONG_TITLE,
+                duration: 22 * MIN,
+            }],
+        ],
+    },
+];
+
 module.exports = async function run() {
-    const suite = new Suite('programming list row heights');
+    const suite = new Suite('list row heights');
 
     const executablePath = findChromeExecutable();
     if (!executablePath) {
@@ -195,65 +345,74 @@ module.exports = async function run() {
         return suite;
     }
 
-    const rowHeightPx = commonProgramTools.programScheduleRowHeight;
-    suite.check('programScheduleRowHeight is a positive number', typeof rowHeightPx === 'number' && rowHeightPx > 0);
+    for (const list of LISTS) {
+        suite.log(`-- ${list.name}`);
+        const rowHeightPx = list.heightPx;
+        suite.check(`${list.name}: its row height constant is a positive number`, typeof rowHeightPx === 'number' && rowHeightPx > 0);
 
-    const templateHtml = fs.readFileSync(TEMPLATE_FILE, 'utf8');
-    suite.check('the row still binds its own height to programRowHeight (not a separate hardcoded value)',
-        templateHtml.includes('style="height: {{ programRowHeight }}px"'));
-    suite.check('vs-repeat is still told the same programRowHeight value (not a separate hardcoded size)',
-        templateHtml.includes('vs-repeat="{size: programRowHeight}"'));
+        const templateHtml = fs.readFileSync(path.join(TEMPLATES, list.file), 'utf8');
+        suite.check(`${list.name}: the row binds its own height to ${list.heightVar} (not a separate hardcoded value)`,
+            templateHtml.includes(`style="height: {{ ${list.heightVar} }}px"`));
+        suite.check(`${list.name}: vs-repeat is told the same ${list.heightVar} value (not a separate hardcoded size)`,
+            templateHtml.includes(`vs-repeat="{size: ${list.heightVar}}"`));
 
-    const rowTemplate = extractRowTemplate(templateHtml);
+        const rowTemplate = extractRowTemplate(templateHtml, list.marker, list.file);
+        const resolvedRows = list.fixtures.map(([, x]) => resolveRow(rowTemplate, x, list.heightVar, rowHeightPx));
 
-    const MIN = 60 * 1000;
-    const programFixture = {
-        isOffline: false, type: 'episode',
-        start: new Date(2026, 8, 28, 14, 0, 5),
-        showTitle: 'A Fairly Long Show Name That Might Wrap Without Truncation',
-        season: 1, episode: 12,
-        title: 'An Episode Title Long Enough To Need The Ellipsis Truncation Rule',
-        duration: 23 * MIN + 47 * 1000,
-        $breakAfterMs: 4 * MIN + 46 * 1000,
-    };
-    const flexFixture = {
-        isOffline: true, type: 'flex',
-        start: new Date(2026, 8, 28, 14, 24, 0),
-        duration: 6 * MIN,
-    };
-    const redirectFixture = {
-        isOffline: true, type: 'redirect', channel: 42,
-        start: new Date(2026, 8, 28, 14, 30, 0),
-        duration: 30 * MIN,
-    };
+        let measured;
+        try {
+            // Shorter than 3 real rows, on purpose: vs-repeat's real scroll
+            // container is exactly this shape (flex-direction:column, real
+            // rows outnumbering the visible space), and that's what squashes
+            // a row lacking flex-shrink:0 below its declared height - see
+            // NOTES.md's root-cause writeup.
+            measured = await measureRows(puppeteer, executablePath, list, resolvedRows, Math.round(rowHeightPx * 1.5));
+        } catch (err) {
+            suite.check(`${list.name}: rendered the fixture rows in a real browser`, false, err.message);
+            continue;
+        }
 
-    const fixtures = [
-        ['program row', programFixture],
-        ['Flex row', flexFixture],
-        ['redirect row', redirectFixture],
-    ];
-    const resolvedRows = fixtures.map(([, x]) => resolveRow(rowTemplate, x, rowHeightPx));
+        list.fixtures.forEach(([label], i) => {
+            suite.check(`${list.name}: ${label} renders at exactly ${rowHeightPx}px (vs-repeat is told ${rowHeightPx})`,
+                measured[i] && measured[i].height === rowHeightPx, `measured ${measured[i] && measured[i].height}px`);
+        });
+        const heights = measured.map((m) => m && m.height);
+        suite.check(`${list.name}: every row measures the same real height as every other`,
+            heights.every((h) => h === heights[0]), JSON.stringify(heights));
 
-    let heights;
-    try {
-        // Shorter than 3 real rows, on purpose: vs-repeat's real scroll
-        // container is exactly this shape (flex-direction:column, real
-        // rows outnumbering the visible space), and that's what squashes a
-        // row lacking flex-shrink:0 below its declared height - see
-        // NOTES.md's root-cause writeup.
-        heights = await measureRowHeights(puppeteer, executablePath, resolvedRows, Math.round(rowHeightPx * 1.5));
-    } catch (err) {
-        suite.check('rendered the fixture rows in a real browser', false, err.message);
-        return suite;
+        // A long name ends in an ellipsis, and doesn't collapse to nothing
+        // to get there (the .psr-show min-width bug: a flex item with
+        // overflow:hidden has automatic min-width 0).
+        list.fixtures.forEach(([label], i) => {
+            if (!(list.longTextRows || []).includes(label)) {
+                return;
+            }
+            Object.entries(measured[i].text).forEach(([sel, t]) => {
+                suite.check(`${list.name}: ${label}: ${sel} still has real width`, t.width >= 40, `${t.width}px`);
+                suite.check(`${list.name}: ${label}: ${sel} is cut off with an ellipsis`,
+                    t.overflowing && t.textOverflow === 'ellipsis', JSON.stringify(t));
+            });
+        });
+
+        // The slot-fit gauge: a thin bar flush with the row's bottom edge,
+        // filled to the slot-fit percentage of the row's own width, and
+        // absent when there's no gauge to show.
+        if (list.gaugeRows) {
+            list.fixtures.forEach(([label, x], i) => {
+                const m = measured[i];
+                if (list.gaugeRows.includes(label)) {
+                    const expectFraction = commonProgramTools.rowSlotFillPercent(x) / 100;
+                    suite.check(`${list.name}: ${label}: gauge bar sits flush on the row's bottom edge, 3px thin`,
+                        m.gaugeBottomGap === 0 && m.gaugeHeight === 3, `gap ${m.gaugeBottomGap}, height ${m.gaugeHeight}`);
+                    suite.check(`${list.name}: ${label}: gauge fill covers the slot-fit share of the row`,
+                        m.gaugeFillFraction !== null && Math.abs(m.gaugeFillFraction - expectFraction) < 0.01,
+                        `${m.gaugeFillFraction} vs ${expectFraction}`);
+                } else {
+                    suite.check(`${list.name}: ${label}: draws no gauge`, m.gaugeBottomGap === null);
+                }
+            });
+        }
     }
-
-    fixtures.forEach(([label], i) => {
-        suite.check(`${label} renders at exactly ${rowHeightPx}px (vs-repeat is told ${rowHeightPx})`,
-            heights[i] === rowHeightPx, `measured ${heights[i]}px`);
-    });
-
-    const allEqual = heights.every((h) => h === heights[0]);
-    suite.check('every row type measures the same real height as every other', allEqual, JSON.stringify(heights));
 
     return suite;
 };
