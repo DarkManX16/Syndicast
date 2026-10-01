@@ -15,6 +15,15 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
             scope.error = undefined;
             scope.longDurationString = commonProgramTools.longDurationString;
 
+            // See show-config.js: one line per row, one height, handed to
+            // both the row's own inline style and vs-repeat.
+            scope.contentRowHeight = commonProgramTools.contentListRowHeight;
+            scope.rowFillerName = commonProgramTools.rowFillerName;
+            scope.rowDuration = commonProgramTools.rowDuration;
+            scope.rowSquareStyle = (program) => {
+                return { 'background': commonProgramTools.programColorStyle(program) };
+            }
+
             // See show-config.js for why this is here: ng-show="visible"
             // only hides this modal with CSS, so vs-repeat's own row-window
             // math can go stale against a container that still reads zero

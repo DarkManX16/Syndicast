@@ -130,7 +130,7 @@
     
                     </div>
                 </div>
-                <div ng-show="mode==='custom'" vs-repeat="{size: 45}" class="modal-body container list-group list-group-root filler-list"
+                <div ng-show="mode==='custom'" vs-repeat="{size: contentRowHeight}" class="modal-body container list-group list-group-root filler-list"
                  dnd-list="content" ng-if="showList()"
                     vs-repeat-reinitialized="vsReinitialized(event, startIndex, endIndex)"
                     ng-init="setUpWatcher()"
@@ -139,12 +139,23 @@
                     dnd-list=""
 
                 >
-                    <program-list-row ng-repeat="x in filteredContent" track-by="x.$index" dnd-draggable="x"
+                    <div ng-repeat="x in filteredContent"
+                        class="list-group-item flex-container lr-row" dnd-draggable="x"
                         dnd-disable-if="isFiltered()"
                         dnd-effect-allowed="move"
                         dnd-moved="movedFunction(x.$index)"
-                        program="x" show-gauge="false" on-info="showProgramInfo" on-delete="deleteRow"
-                        ></program-list-row>
+                        style="height: {{ contentRowHeight }}px"
+                    >
+                        <span class="lr-square" ng-style="rowSquareStyle(x)"></span>
+                        <span class="lr-name">{{ rowFillerName(x) }}</span>
+                        <span class="lr-duration">{{ rowDuration(x) }}</span>
+                        <button class="btn btn-sm btn-link" ng-click="showProgramInfo(x); $event.stopPropagation()">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+                        <button class="btn btn-sm btn-link" ng-click="deleteRow(x); $event.stopPropagation()">
+                            <i class="text-danger fa fa-trash-alt"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="modal-footer">

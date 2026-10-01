@@ -11,6 +11,13 @@ module.exports = function (getShowData) {
     // if its measured height doesn't match this constant.
     const PROGRAM_SCHEDULE_ROW_HEIGHT = 26;
 
+    // The same idea for the custom show editor and filler lists: one line per
+    // row, every row exactly this tall, and the row's inline height and
+    // vs-repeat's `{size: ...}` both read this one value. A custom show's
+    // slot-fit gauge is a thin bar along the row's bottom edge, positioned
+    // absolutely, so it has no way to add to the height.
+    const CONTENT_LIST_ROW_HEIGHT = 26;
+
 
     /*** Input: list of programs
      * output: sorted list of programs */
@@ -155,10 +162,10 @@ module.exports = function (getShowData) {
     }
 
     // Just the color/pattern a program's identity hashes to - no duration
-    // encoding. Split out of programSquareStyle so the new program-list-row
-    // component can show a plain color swatch while the older duration-width
-    // square (still used by filler lists and the channel programming list)
-    // keeps its own behavior untouched.
+    // encoding. Split out of programSquareStyle so the custom show editor and
+    // filler lists can show a plain color swatch while the older duration-width
+    // square (still used by the channel programming list) keeps its own
+    // behavior untouched.
     let programColorStyle = (program) => {
         let background ="";
         if  ( (program.isOffline) && (program.type !== 'redirect') ) {
@@ -296,8 +303,8 @@ module.exports = function (getShowData) {
     }
 
     // A program's absolute scheduled date/time - moved here from
-    // channel-config.js's own dateForGuide so program-list-row can show it
-    // too, in the channel programming list, without duplicating it.
+    // channel-config.js's own dateForGuide so it can be shared rather than
+    // duplicated.
     let startTimeString = (date) => {
         let t = date.toLocaleTimeString(undefined, {
             hour: "2-digit",
@@ -451,6 +458,31 @@ module.exports = function (getShowData) {
         return 'break after ' + exactDurationString(x.$breakAfterMs);
     }
 
+    // The custom show editor's slot-fit gauge, split into the two things its
+    // row shows: the "for breaks" text as a small tag at the right end, and
+    // how full the slot is as a thin bar along the row's bottom edge.
+    // slotFitGauge already returns null for a program with no usable
+    // duration, which means neither is drawn.
+    let rowSlotLabel = (x) => {
+        let gauge = x ? slotFitGauge(x) : null;
+        return gauge ? gauge.label : '';
+    }
+    let rowSlotFillPercent = (x) => {
+        let gauge = x ? slotFitGauge(x) : null;
+        return gauge ? gauge.fillPercent : 0;
+    }
+    // A filler list's one name per row: the episode or track gets its show
+    // and its own title, anything else (a clip, a movie) is just its title.
+    let rowFillerName = (x) => {
+        if (!x) {
+            return '';
+        }
+        if ((x.type === 'episode' || x.type === 'track') && x.showTitle) {
+            return x.showTitle + ' · ' + x.title;
+        }
+        return x.title;
+    }
+
     return {
         sortShows: sortShows,
         shuffle: shuffle,
@@ -466,6 +498,7 @@ module.exports = function (getShowData) {
         shortStartTimeString: shortStartTimeString,
         slotFitGauge: slotFitGauge,
         programScheduleRowHeight: PROGRAM_SCHEDULE_ROW_HEIGHT,
+        contentListRowHeight: CONTENT_LIST_ROW_HEIGHT,
         rowStartTime: rowStartTime,
         rowDuration: rowDuration,
         rowShow: rowShow,
@@ -473,6 +506,9 @@ module.exports = function (getShowData) {
         rowTitle: rowTitle,
         rowOfflineLabel: rowOfflineLabel,
         rowBreakAfter: rowBreakAfter,
+        rowSlotLabel: rowSlotLabel,
+        rowSlotFillPercent: rowSlotFillPercent,
+        rowFillerName: rowFillerName,
     }
 
 }

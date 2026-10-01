@@ -81,7 +81,7 @@ module.exports = function ($timeout, commonProgramTools) {
                 scope.content.splice(a,b)
                 refreshContentIndexes();
             }
-            // program-list-row calls back with the program itself, not an
+            // The row's delete button passes the program itself, not an
             // index/count pair, so it always deletes the right row even
             // though $index was only ever refreshed against the unfiltered
             // list.
@@ -89,6 +89,21 @@ module.exports = function ($timeout, commonProgramTools) {
                 scope.contentSplice(program.$index, 1);
             }
             scope.longDurationString = commonProgramTools.longDurationString;
+
+            // One line per row, every row exactly this tall: the row's own
+            // inline height and vs-repeat's `{size: ...}` both read this one
+            // value, so the two cannot disagree (see test/program-row-
+            // heights.js).
+            scope.contentRowHeight = commonProgramTools.contentListRowHeight;
+            scope.rowShow = commonProgramTools.rowShow;
+            scope.rowTag = commonProgramTools.rowTag;
+            scope.rowTitle = commonProgramTools.rowTitle;
+            scope.rowDuration = commonProgramTools.rowDuration;
+            scope.rowSlotLabel = commonProgramTools.rowSlotLabel;
+            scope.rowSlotFillPercent = commonProgramTools.rowSlotFillPercent;
+            scope.rowSquareStyle = (program) => {
+                return { 'background': commonProgramTools.programColorStyle(program) };
+            }
 
             scope.dropFunction = (dropIndex, program) => {
                 let y = program.$index;

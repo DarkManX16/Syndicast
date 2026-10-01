@@ -101,7 +101,7 @@
     
                     </div>
                 </div>
-                <div vs-repeat="{size: 66}" class="modal-body container list-group list-group-root show-list"
+                <div vs-repeat="{size: contentRowHeight}" class="modal-body container list-group list-group-root show-list"
                  dnd-list="content" ng-if="showList()"
                     vs-repeat-reinitialized="vsReinitialized(event, startIndex, endIndex)"
                     ng-init="setUpWatcher()"
@@ -110,12 +110,28 @@
                     dnd-list=""
 
                 >
-                    <program-list-row ng-repeat="x in filteredContent" track-by="x.$index" dnd-draggable="x"
+                    <div ng-repeat="x in filteredContent"
+                        class="list-group-item flex-container lr-row" dnd-draggable="x"
                         dnd-disable-if="isFiltered()"
                         dnd-effect-allowed="move"
                         dnd-moved="movedFunction(x.$index)"
-                        program="x" show-gauge="true" on-info="showProgramInfo" on-delete="deleteRow"
-                        ></program-list-row>
+                        style="height: {{ contentRowHeight }}px"
+                    >
+                        <span class="lr-square" ng-style="rowSquareStyle(x)"></span>
+                        <span class="lr-show">{{ rowShow(x) }}</span>
+                        <span class="lr-tag" ng-if="rowTag(x)">{{ rowTag(x) }}</span>
+                        <span class="lr-title">{{ rowTitle(x) }}</span>
+                        <span class="lr-duration">{{ rowDuration(x) }}</span>
+                        <span class="lr-slot" ng-if="rowSlotLabel(x)">{{ rowSlotLabel(x) }}</span>
+                        <button class="btn btn-sm btn-link" ng-click="showProgramInfo(x); $event.stopPropagation()">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+                        <button class="btn btn-sm btn-link" ng-click="deleteRow(x); $event.stopPropagation()">
+                            <i class="text-danger fa fa-trash-alt"></i>
+                        </button>
+                        <span class="lr-gauge-track" ng-if="rowSlotLabel(x)"></span>
+                        <span class="lr-gauge-fill" ng-if="rowSlotLabel(x)" ng-style="{width: rowSlotFillPercent(x) + '%'}"></span>
+                    </div>
                 </div>
 
                 <div class="modal-footer">
