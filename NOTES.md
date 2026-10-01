@@ -355,10 +355,10 @@ on shows.
 ### Media handling
 
 - [ ] Per-channel transcoding configs, so channels can use different video and audio formats
-- [ ] Fix NVIDIA / h264_nvenc encoder issues
+- [x] Fix NVIDIA / h264_nvenc encoder issues
 
-      **Investigated Sep 28 - Oct 1, 2026 (Opus 5.5); no code changed.
-      Waiting on OK before anything is built.** On Ron's RTX 3060 (driver
+      **Investigated Sep 28 - Oct 1, 2026 (Opus 5.5); built Oct 1 (Sonnet
+      5.5), see "Built" at the end of this entry.** On Ron's RTX 3060 (driver
       616.56, ffmpeg 7.1 gyan full build, the dev path) with `videoEncoder`
       set to `h264_nvenc` and everything else as in `.dizquetv-dev`.
 
@@ -432,6 +432,8 @@ on shows.
         file would be copied straight through. Untested: `-ss` with `-c:v
         copy` can only start on a keyframe, which matters on a mid-episode
         tune-in.
+        **Corrected Oct 1 (see "Built", 3): Plex rounds the frame rate, so
+        29.97fps was never copied and the 526 files overstate it.**
 
       **How many streams, alongside Tunarr.** Tunarr's CCN, Nick Picks and
       That's So Disney all use its "H264/Nvidia" config (cuda decode,
@@ -520,16 +522,116 @@ on shows.
          today's flags costs 2.15 cores on Batman TAS and 3.42 on Samurai
          Jack, and fell behind realtime (0.990, 0.988), partly the
          `-sc_threshold` quirk in "Heavy buffering during playback". So it
-         needs a faster preset to be a fallback at all - unmeasured.
+         needs a faster preset to be a fallback at all - unmeasured then;
+         superfast, measured, below.
       5. *Not needed now:* GPU scaling and cuda decode. Decode is most of
          what's left, and cuda decode saved 0.1 core per stream. If either is
          ever added, it must take its size from the same `cw`/`ch` decision,
          per the aspect plan below.
 
-      Left in place from the investigation: a worktree at
-      `C:\Projects\dizquetv-nvenc` (detached at aca020e, `node_modules`
-      junction-linked, nothing changed in it). The data copy and scripts are
-      in the session's scratchpad.
+      **Built Oct 1, 2026 (Sonnet 5.5): four commits, each its own, on branch
+      `nvenc` and merged into `blocks`.** All four of the list above, in that
+      order, except that 3 became "always encode". GPU scaling and cuda decode
+      were left out, as 5 said. Test count 269 -> 312. Ron's channels use
+      mpeg2video, and those 32 recorded commands (item, screens, watermark,
+      fit and mark, audio only, concat) are byte-identical across all four
+      commits. Every other number below is from the real `src/ffmpeg.js` and
+      real ffmpeg on Ron's files.
+
+      1. *8-bit (58cd9ad).* `-pix_fmt yuv420p` whenever the encoder name
+         contains "264", once (the screens already carried it). Samurai Jack
+         S01E01 (HEVC Main 10): nvenc went from exit 3752568763 and 0 bytes to
+         a clean stream, and libx264 from High 10 to High.
+      2. *nvenc bitrate (d8516aa).* `-b:v` at the channel's bitrate, no
+         `-crf`, no `-sc_threshold`. Batman TAS, 40s: the encoder target went
+         from 2000 to 5000 kb/s and the stream from 11.7 to 20.7 MB (2.3 to
+         4.1 Mbit/s with audio and mux). Both "option not used" warnings are
+         gone.
+      3. *Always encode (a42a9c6).* Under h264_nvenc **and libx264** nothing
+         is copied any more; mpeg2video still copies what is already MPEG-2,
+         and "normalize video codec" off still copies. **A libx264 channel
+         therefore stops copying H.264 too**, at the cost of that CPU. Ron
+         chose this without the TiviMate comparison, "for the smoothest
+         playback" and "one uniform stream" for TV-box players. The evidence,
+         from two scratch servers streamed over the LAN (copy as today against
+         always encode), five minutes of a clip loop alternating copied and
+         encoded items from each:
+         - *The copy-as-today stream changes codec settings at every join*:
+           the copied clips are High@4.0 and High@5.1, the encoded items
+           Main@4.0, with different reference frames and timing metadata each
+           time (104 parameter sets across High@4.0, High@5.1 and Main@4.0,
+           against 38, all Main@4.0, when always encoding; the 4.2 in both is
+           the loading screen). A TV box's hardware decoder may reconfigure at
+           each of those; that is what a TiviMate test was to show, and what
+           was skipped.
+         - *Not a difference on a PC:* no backward timestamps in 8,230 and
+           8,213 frames, no gap over 0.5s, and VLC (150s on each) never
+           re-created its decoder at a join. PotPlayer could not be observed.
+         - *A mid-episode tune-in on copy starts early*: at the keyframe
+           before the point (595.8s for a 600s tune-in on Attack on Titan
+           S01E01; keyframes there are up to 8.5s apart). Encoding is exact.
+         - *Cost:* about 0.3 core per NVENC stream.
+         - **Correction to the findings above: far less was copied than
+           "526 files, 10.7% of airtime".** `plexTranscoder.js` rounds the
+           frame rate (`Math.round`, line 260), so a 29.97fps source reads as
+           30, is over `maxFPS` and takes the fps filter, which encodes. Only
+           24 and 25fps 1080p H.264 was ever copied: 30 of 2,588 filler clips,
+           and mostly episodes. The 526 counted ffprobe's unrounded rate.
+      4. *libx264 fallback (411d471).* If an h264_nvenc ffmpeg exits non-zero
+         before sending a byte, the same item is run again with libx264, in
+         `FFMPEG.spawnWithFallback`, so items and every screen get it.
+         Only nvenc items go through it; mpeg2video, libx264 and the concat
+         process keep returning their ffmpeg's own stdout, as before. Once
+         libx264 has rescued an item, the next ones skip nvenc for five
+         minutes (process-wide, not per channel), then nvenc is tried again.
+         A failed rescue does not start the window. Not retried: nvenc dying
+         after data has gone out (it would repeat what was sent) and a kill.
+         The command is the nvenc one with the encoder swapped: `-preset
+         superfast`, `-profile:v main` (what the nvenc items come out as, so
+         a mid-session switch doesn't reconfigure a TV box), `-crf 22`, no
+         `-b:v`, no `-sc_threshold`. **The preset**, Samurai Jack at `-re`,
+         High QoS, 60s, with Tunarr's three streams, OBS and the live server
+         running (realtime is 0.995 and up; about 0.998 is the ceiling
+         because of start-up):
+
+         | preset | 1 stream | 3 streams | 6 streams | cores each (3) |
+         |---|---|---|---|---|
+         | today's libx264 (medium) | 0.987 | 0.915 | | 5.1 |
+         | faster | 0.987 | 0.989 | | 3.0 |
+         | veryfast | 0.998 | 0.995 | 0.990 | 2.1 |
+         | **superfast** | 0.999 | **0.997** | 0.993 | 1.7 |
+         | ultrafast | | 0.999 | 0.997 | 1.1 |
+
+         superfast is the slowest that holds realtime for three with margin.
+         It does not hold six (0.993); ultrafast does, at lower quality, since
+         it sits on the 5000k cap. If NVENC is ever down for good and more
+         than three people watch, that is the one to try. **Forced failure,
+         end to end**, on a scratch server whose environment hid the GPU
+         (`CUDA_VISIBLE_DEVICES=-1`, a genuine `CUDA_ERROR_NO_DEVICE`; it
+         exited 171 in a bare ffmpeg and 2981409195 through the server, and
+         any non-zero exit with no data counts): the two items that started
+         before anything was remembered were rescued, every later one went
+         straight to libx264, zero error screens, 10 items played, the stream
+         Main@4.0 throughout. The 10-bit episode played through that server
+         too. The same `CUDA_VISIBLE_DEVICES=-1` is the way to repeat it,
+         with nothing faked.
+
+      **Not tested:** TiviMate and a real TV box on the always-encode stream
+      (skipped by Ron's decision), and PotPlayer. An NVENC death after data
+      has gone out still ends in the error screen, as before.
+
+      **Two traps found on the way.** (1) A scratch server on a copy of the
+      data reads `xmltv-settings.json`'s `file`, which is a path relative to
+      the working directory (`./.dizquetv-dev/xmltv.xml`): started from the
+      main checkout it would overwrite the live `xmltv.xml`. These ran from a
+      worktree, where that folder doesn't exist and the write just failed;
+      the copies' setting was then made absolute. (2) `vlc -I dummy
+      --run-time=150 ... vlc://quit` does not exit. Two of them kept two
+      streams alive and, with their ffmpegs, ate enough CPU that the first
+      preset measurement came out wrong; the nvenc reference row in the same
+      run (0.79-0.93 where 0.997 had been measured) is what gave it away.
+      Always keep one reference row in a measurement, and look at what else
+      is running.
 - [x] Let the viewer's IPTV player (TiviMate, ImPlayer) stretch 4:3 to fill
       the screen with its own aspect setting, with "normalize resolution"
       still on
@@ -1487,9 +1589,10 @@ be built:
       Tunarr *running*: three `/video` streams at 0.98-1.00x realtime,
       including every short clip in a whole break. Confirmed Sep 28, 2026 on
       Ron's real client - the manual test this was left unticked for.
-- [ ] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
-      builds). Investigated Oct 1, 2026, waiting on OK: 10-bit sources fail,
-      42.7% of channel 1's airtime. See its Media handling roadmap line above.
+- [x] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
+      builds). Built Oct 1, 2026: 8-bit for every H.264 encoder, the channel's
+      bitrate for nvenc, every source encoded under an H.264 encoder, and a
+      libx264 fallback. See its Media handling roadmap line above.
 - [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
       "Fix very short items repeating or being skipped next to Flex" under
       Media handling above, and Stage 4 in
