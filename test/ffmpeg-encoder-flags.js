@@ -135,6 +135,24 @@ module.exports = async function () {
         s.check('h264_nvenc item that is copied: -c:v copy, no -pix_fmt', valueOf(args, '-c:v') === 'copy' && !args.includes('-pix_fmt'), args.join(' '));
     }
 
+    // h264_nvenc targets its own 2000 kb/s default unless it is given -b:v, so
+    // it takes the channel's bitrate as mpeg2video does. It ignores -crf and
+    // -sc_threshold (ffmpeg logs both as "not used for any stream"), so it no
+    // longer gets them. libx264 and mpeg2video keep both.
+    for (const [label, args] of [['item', await itemArgs({ videoEncoder: 'h264_nvenc' })], ['offline screen', await offlineArgs({ videoEncoder: 'h264_nvenc' })]]) {
+        s.check(`h264_nvenc ${label}: -b:v is the channel bitrate`, valueOf(args, '-b:v') === '5000k', `-b:v ${valueOf(args, '-b:v')}`);
+        s.check(`h264_nvenc ${label}: -maxrate:v and -bufsize:v kept`, valueOf(args, '-maxrate:v') === '5000k' && valueOf(args, '-bufsize:v') === '10000k');
+        s.check(`h264_nvenc ${label}: no -crf, no -sc_threshold`, !args.includes('-crf') && !args.includes('-sc_threshold'), args.join(' '));
+    }
+    {
+        const args = await itemArgs({ videoEncoder: 'h264_nvenc', videoBitrate: 3500 });
+        s.check('h264_nvenc item: -b:v follows the setting (3500)', valueOf(args, '-b:v') === '3500k', `-b:v ${valueOf(args, '-b:v')}`);
+    }
+    for (const encoder of ['mpeg2video', 'libx264']) {
+        const args = await itemArgs({ videoEncoder: encoder });
+        s.check(`${encoder} item: still has -crf 22 and -sc_threshold`, valueOf(args, '-crf') === '22' && valueOf(args, '-sc_threshold') === '1000000000', args.join(' '));
+    }
+
     return s;
 };
 

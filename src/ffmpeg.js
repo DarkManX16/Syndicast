@@ -142,6 +142,7 @@ class FFMPEG extends events.EventEmitter {
                           `-fflags`, `+genpts+discardcorrupt+igndts`];
         let stillImage = false;
         let pixFmtSet = false;
+        let isNvenc = String(this.opts.videoEncoder || '').toLowerCase().includes("nvenc");
 
         if (
             (limitRead === true)
@@ -542,8 +543,11 @@ class FFMPEG extends events.EventEmitter {
                 ffmpegArgs.push(
                     '-map', currentVideo,
                     `-c:v`, (transcodeVideo ? this.opts.videoEncoder : 'copy'),
-                    `-sc_threshold`, `1000000000`,
                 );
+                if (!isNvenc) {
+                    // nvenc has no scene-cut threshold; ffmpeg logs it as "not used for any stream".
+                    ffmpegArgs.push(`-sc_threshold`, `1000000000`);
+                }
                 // do not use -tune stillimage for nv
                 if (stillImage && ! this.opts.videoEncoder.toLowerCase().includes("nv") ) {
                     ffmpegArgs.push('-tune', 'stillimage');
@@ -555,8 +559,11 @@ class FFMPEG extends events.EventEmitter {
             );
             if ( transcodeVideo && (this.audioOnly !== true) ) {
                 // add the video encoder flags
+                if (!isNvenc) {
+                    // nvenc ignores -crf (ffmpeg logs it as "not used for any stream").
+                    ffmpegArgs.push('-crf', '22');
+                }
                 ffmpegArgs.push(
-                            '-crf', '22',
                             `-maxrate:v`, `${this.opts.videoBitrate}k`,
                             `-bufsize:v`, `${this.opts.videoBufSize}k`
                 );
@@ -566,6 +573,12 @@ class FFMPEG extends events.EventEmitter {
                     // TV-box hardware decoders can't play. mpeg2video only takes 8-bit, so ffmpeg has always
                     // converted for it and gets no flag. See "Fix NVIDIA / h264_nvenc encoder issues" in NOTES.md.
                     ffmpegArgs.push('-pix_fmt', 'yuv420p');
+                }
+                if (isNvenc) {
+                    // Without -b:v, nvenc targets its own 2000 kb/s default at 1080p and ignores the channel's bitrate.
+                    ffmpegArgs.push(
+                        '-b:v', `${this.opts.videoBitrate}k`
+                    );
                 }
                 if (this.opts.videoEncoder.toLowerCase() === "mpeg2video") {
                     // -b:v is what makes mpeg2video look good; without it the encoder targets its 200 kb/s default.
