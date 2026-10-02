@@ -13,6 +13,7 @@ const suites = [
     './save-resume',
     './channel-save',
     './dst-fall-back',
+    './lookahead',
     './backup-verified-copy',
     './backup-retention',
     './backup-restore-check',

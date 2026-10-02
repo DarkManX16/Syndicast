@@ -1,5 +1,6 @@
 module.exports = {
     getCurrentProgramAndTimeElapsed: getCurrentProgramAndTimeElapsed,
+    timeLeft: timeLeft,
     createLineup: createLineup,
     getWatermark: getWatermark,
     generateChannelContext: generateChannelContext,
@@ -44,11 +45,17 @@ function getCurrentProgramAndTimeElapsed(date, channel) {
     }
     let timeElapsed = (date - channelStartTime) % channel.duration
     let currentProgramIndex = -1
+    // How far ahead of its real start the returned program was handed over;
+    // 0 unless the hand-off below fired. timeElapsed stays 0 for a handed
+    // program, as before, because callers (the channel detail page among
+    // them) show it as is.
+    let startsIn = 0;
     for (let y = 0, l2 = channel.programs.length; y < l2; y++) {
         let program = channel.programs[y]
         if (timeElapsed - program.duration < 0) {
             currentProgramIndex = y
             if ( (program.duration > 2*SLACK) && (timeElapsed > program.duration - SLACK) ) {
+                startsIn = program.duration - timeElapsed;
                 timeElapsed = 0;
                 currentProgramIndex = (y + 1) % channel.programs.length;
             }
@@ -61,7 +68,17 @@ function getCurrentProgramAndTimeElapsed(date, channel) {
     if (currentProgramIndex === -1)
         throw new Error("No program found; find algorithm fucked up")
 
-    return { program: channel.programs[currentProgramIndex], timeElapsed: timeElapsed, programIndex: currentProgramIndex }
+    return { program: channel.programs[currentProgramIndex], timeElapsed: timeElapsed, programIndex: currentProgramIndex, startsIn: startsIn }
+}
+
+/*
+ * Time from now to the end of the program in obj (as returned by
+ * getCurrentProgramAndTimeElapsed), counting the seconds it may have been
+ * handed over before it really starts. For a break this is how much filler it
+ * really has room for.
+ */
+function timeLeft(obj) {
+    return obj.program.duration - obj.timeElapsed + (obj.startsIn || 0);
 }
 
 /*
@@ -100,7 +117,7 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
 
     if (activeProgram.isOffline === true) {
         //offline case
-        let remaining = activeProgram.duration - timeElapsed;
+        let remaining = timeLeft(obj);
         //look for a random filler to play
         let filler = null;
         let special = null;

@@ -233,7 +233,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
 
         while (true) {
             redirectChannels.push(  helperFuncs.generateChannelContext(brandChannel) );
-            upperBounds.push( prog.program.duration - prog.timeElapsed );
+            upperBounds.push( helperFuncs.timeLeft(prog) );
 
             if ( !(prog.program.isOffline) || (prog.program.type != 'redirect') ) {
                 break;
@@ -291,10 +291,10 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 duration: t,
                 isOffline : true,
             };
-        } else if ( allowSkip && (prog.program.isOffline && prog.program.duration - prog.timeElapsed <= constants.SLACK + 1) ) {
+        } else if ( allowSkip && (prog.program.isOffline && helperFuncs.timeLeft(prog) <= constants.SLACK + 1) ) {
             //it's pointless to show the offline screen for such a short time, might as well
             //skip to the next program
-            let dt = prog.program.duration - prog.timeElapsed;
+            let dt = helperFuncs.timeLeft(prog);
             for (let i = 0; i < redirectChannels.length; i++) {
                 channelCache.clearPlayback(redirectChannels[i].number );
             }
@@ -323,10 +323,11 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 + ` instead of ${prog.timeElapsed}ms.`
             );
             prog.timeElapsed = resumeAt;
+            prog.startsIn = 0;
             // the bound pushed for this program above was measured from the
             // wall-clock position, so it would cut the item short by however
             // far back the hint moved it
-            upperBounds[upperBounds.length - 1] = prog.program.duration - prog.timeElapsed;
+            upperBounds[upperBounds.length - 1] = helperFuncs.timeLeft(prog);
         }
 
         // Every list this channel could draw from, which for a channel without
