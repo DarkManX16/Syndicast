@@ -27,6 +27,8 @@ const constants = require('./src/constants')
 const ChannelDB = require("./src/dao/channel-db");
 const M3uService = require("./src/services/m3u-service");
 const FillerDB = require("./src/dao/filler-db");
+const ShowAliasDB = require("./src/dao/show-alias-db");
+const ShowMatchService = require("./src/services/show-match-service");
 const CustomShowDB = require("./src/dao/custom-show-db");
 const TVGuideService = require("./src/services/tv-guide-service");
 const EventService = require("./src/services/event-service");
@@ -147,6 +149,8 @@ let plexProxyService = new PlexProxyService(plexServerDB);
 
 let fillerService = new FillerService(fillerDB, plexProxyService,
     channelService);
+let showAliasDB = new ShowAliasDB(process.env.DATABASE);
+let showMatchService = new ShowMatchService(fillerDB, channelService, customShowDB, showAliasDB);
 
 i18next
     .use(i18nextBackend)
@@ -321,7 +325,7 @@ app.use('/favicon.svg', express.static(
 app.use('/custom.css', express.static(path.join(process.env.DATABASE, 'custom.css')))
 
 // API Routers
-app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker))
+app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService))
 app.use('/api/cache/images', cacheImageService.apiRouters())
 app.use('/' + fontAwesome, express.static(path.join(process.env.DATABASE, fontAwesome)))
 app.use('/' + bootstrap, express.static(path.join(process.env.DATABASE, bootstrap)))
