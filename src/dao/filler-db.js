@@ -1,5 +1,6 @@
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const showMatch = require('../show-match');
 let fs = require('fs');
  
 class FillerDB {
@@ -44,6 +45,7 @@ class FillerDB {
             throw Error("Mising filler id");
         }
         fixup(json);
+        warnAboutNames(id, json);
         if (typeof(json.rank) !== 'number') {
             // The filler editor posts only name and content. Without this the
             // list would lose its position every time someone edited its clips.
@@ -167,6 +169,26 @@ class FillerDB {
 
 
 
+}
+
+/*
+ * A clip may carry `names`: one show key, or two (now, then), saying which
+ * shows it is about. See docs/blocks-spec.md, Stage 5. Warned about at the one
+ * place every list write passes through, for the same reason channel-db.js
+ * warns about day-parts: nothing fails on a bad value, the clip just stops
+ * naming anything, and that should not happen silently. Warn-only, rewrites
+ * nothing; show-match.js's namesOf reads a malformed value as unnamed.
+ */
+function warnAboutNames(id, json) {
+    if (! Array.isArray(json.content) ) {
+        return;
+    }
+    for (const clip of json.content) {
+        const problem = showMatch.namesProblem(clip);
+        if (problem !== null) {
+            console.error(`Filler list ${id} ("${json.name}"): clip "${clip.title}" has an unusable names field - ${problem}. It will be treated as naming no show.`);
+        }
+    }
 }
 
 function fixup(json) {

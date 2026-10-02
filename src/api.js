@@ -25,7 +25,7 @@ function safeString(object) {
 }
 
 module.exports = { router: api }
-function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker ) {
+function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService ) {
     let m3uService = _m3uService;
     const router = express.Router()
 
@@ -512,6 +512,25 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
        res.status(500).send("error");
       }
     })
+
+    // Proposals for which show each clip of a list is about (stage 5). Read-only:
+    // it answers and saves nothing; fixing a proposal is the review screen's job.
+    router.get('/api/filler/:id/match', async(req, res) => {
+      try {
+        let id = req.params.id;
+        if (typeof(id) === 'undefined') {
+          return res.status(400).send("Missing id");
+        }
+        let proposals = await showMatchService.matchFiller(id);
+        if (proposals == null) {
+            return res.status(404).send("Filler not found");
+        }
+        res.send(proposals);
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
 
     router.get('/api/filler/:id/channels', async(req, res) => {
       try {
