@@ -379,6 +379,12 @@ list, not one per show.
   "Match shows" button that opens the review screen above.
 - The on-demand warning the Blocks tab shows applies unchanged.
 
+**How the lists are laid out.** One Up Next list per block or era, holding
+every show's bumpers - each clip names its show, so a `show` step picks the
+right one. That era's generic bumpers go in their own list, as the Up Next
+step's fallback. Back 2 Back and More bumpers go in their own list, for the
+Between episodes situation.
+
 #### Build order for Sonnet 5
 
 One session each, each verified on a copy of the real data folder (never the
@@ -398,8 +404,12 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    check: the matcher over Ron's ten lists, reporting what it proposes for
    the Adult Swim, Toonami and AcTN lists and what it leaves unnamed.
 3. **Plans** — matching and fallback, longest-idle choice, the never-a-
-   different-show rule, without `later` for now. The spec's stage 5
-   acceptance rows go into `test/blocks-acceptance.js`'s `ROWS` as
+   different-show rule, without `later` for now. A step can also be marked
+   *only when another step in this sequence found no match*: Nick at Nite
+   plays a WBRB clip on the way out and a BTTS clip on the way in only when
+   the Up Next step finds no bumper for the next show. The plan is built once
+   on entry, so it knows the outcome before the out side plays. The spec's
+   stage 5 acceptance rows go into `test/blocks-acceptance.js`'s `ROWS` as
    `row(5, …)`. Real-data check: plans for one day of channel 1 with a test
    sequence on Adult Swim, printed break by break.
 4. **The cursor phases** — `lineup-cursor.js`, `createLineup`'s time left,
@@ -412,8 +422,11 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    channel 1's copy with the Adult Swim NEXT sequence above.
 5. **The card editor** — the Transitions section on both cards, load-time
    defaults and save-time cleanup beside the day-part ones in
-   `channel-config.js`, the preview on this week's lineup. Verified by hand
-   on the dev fixture and a copy of channel 1, with screenshots.
+   `channel-config.js`, the preview on this week's lineup. In the channel's
+   programming list, each Flex row shows a one-line tag naming its planned
+   sequence (for example "Up Next · Full House" or "WBRB / BTTS"), without
+   changing the row's height. Verified by hand on the dev fixture and a copy
+   of channel 1, with screenshots.
 6. **The review screen** — the Names column and "Match shows" in the filler
    editor, writing `names` and aliases. Verified on Ron's lists: the SGC2C
    case above learns from one fix.
