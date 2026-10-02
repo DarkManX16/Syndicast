@@ -314,6 +314,48 @@ for the full spec, stages and acceptance tests.
       Only the split moves; the total and the 281 pairs depend on the lineup
       alone. Re-measure after any boundary edit before quoting the numbers.
 
+      **Step 2 built Oct 2, 2026 (Sonnet 5.5): names and the matcher.**
+      `src/show-match.js` proposes which show a filler clip is about from its
+      title; `names` on a clip is the stored answer (one show key, or two for
+      now and then), warned about at filler save and never written by this
+      step. `GET /api/filler/:id/match` returns each clip's names and its
+      proposal and saves nothing. `src/dao/show-alias-db.js` reads and writes
+      `<data>/show-aliases.json`; reading creates and repairs nothing, and
+      the writer is called by nothing yet - the save route is left for step 6,
+      where the review screen is its only caller.
+
+      Real-data check, `node scripts/match-lists.js <data-folder>` on a copy
+      (read-only; `--fix "<clip text>=<show key>"` simulates a review-screen
+      fix in memory): 24 lists, 5,528 clips, 621 named from titles alone, 4,907
+      unnamed. The Nick lists name nothing (their clips are idents). Adult
+      Swim [Weekday] names 67 of 395, Adult Swim [Sunday] 18 of 334, Toonami
+      38 of 230 (69 once `dbz` is learned) and Toonami AcTN 28 of 128. What
+      stays unnamed is mostly generic bumpers, plus clips for shows no channel
+      airs (Gundam, Samurai Champloo, Megalo Box, Fullmetal Alchemist): the
+      vocabulary is the shows on the channels, as designed, so those need the
+      show on a channel first. "DragonBall GT" is not "Dragon Ball GT";
+      spacing is not folded. The route answers in about 0.2s for a 395 clip
+      list against the real 27MB channel, on a scratch server on a copy.
+
+      **Two things the real data made me add or limit.** (1) A leading "The" is
+      optional when the rest is two words or more: 54 clips named nothing
+      without it ("Powerpuff Girls Promo", "Brak Show promo", "Big O Promo")
+      and 3 gained a second show, all correctly; a one-word rest ("Jetsons")
+      is not matched. (2) The learning rule. Read literally, mapping one clip
+      makes every word of its title an alias, so "Adult", "Swim" and "NEXT"
+      would each name the wrong show everywhere. A word is not learned if it
+      is a number, already means a show, is part of a show title, is a
+      structural word, is under three letters, or appears in a clip naming a
+      different show. Simulated on Ron's lists: one SGC2C fix learns `sgc2c`
+      and names all 7 SGC2C clips; one DBZ fix learns `dbz` and `piccolo` and
+      names 31 more Toonami clips plus a toy ad. It is not airtight: a fix on
+      "Grim Advs" learns `advs`, a generic abbreviation that also names three
+      unrelated clips ("The advs of Crimson Chin", "The New Batman Advs"), and
+      it will not learn `grim` at all - correctly, since "Grim & Evil" is its
+      own show on these channels. So the review screen must show the words
+      that would be learned and let them be unticked before anything is
+      saved; `learnAliases` only returns candidates.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
@@ -2810,6 +2852,18 @@ checks as of the fall-back fixes). Nine files:
   empty without writing anything, and `warnAboutTransitions` through
   `validateChannelJson`. Fixtures only; the real-data check is the script
   `scripts/transitions-week.js`.
+
+- `show-match.js` - stage 5 step 2: folding and the vocabulary (episodes,
+  custom shows, movies and slot-only shows; Flex and redirects add nothing),
+  longest title first, whole words only, one show or a pair in title order,
+  aliases, the optional leading "The", which words are and are not learned as
+  aliases, the `names` shape and its save-time warning, the alias store's
+  reader and writer on throwaway folders under the OS temp directory (reading
+  creates nothing and never rewrites an unreadable file; merging never changes
+  a word that already means a show), and the service and the real router:
+  proposals only, nothing saved, and no POST route. Mutation-checked: a
+  reversed sort, a learning rule with its guards removed and an overwriting
+  merge each fail it.
 
 - `blocks-schedule-view.js` - `dayParts.weeklySegments`, the function the
   Schedule tab and the Day-Parts strip both draw from: a hand-derived Saturday

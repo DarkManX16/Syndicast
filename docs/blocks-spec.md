@@ -248,15 +248,22 @@ proposed automatically and fixed on a review screen:
   channel's slots and programs: longest title first, case and punctuation
   folded, so "Adult Swim Promo - Cowboy Bebop [2003]" names Cowboy Bebop and
   "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
-  make a pair. Titles like "[As] NEXT - SGC2C [2003]" match nothing on the
-  first pass.
+  make a pair. A leading "The" is optional when the rest of the title is
+  still two words or more, so "Powerpuff Girls Promo" names The Powerpuff
+  Girls and "Jetsons" alone does not name The Jetsons. Titles like "[As] NEXT -
+  SGC2C [2003]" match nothing on the first pass.
 - **Review** is a table: clip, proposed show(s), a dropdown to fix it, and
   "none" for a clip that names no show. A one-time pass per list, redone only
   for new clips.
 - **Learning**: when the user maps a clip, every word of its title that is
   not a show title becomes an alias for that show (`SGC2C` → Space Ghost
   Coast to Coast, `DBZ` → Dragon Ball Z, `Grim` → The Grim Adventures of
-  Billy & Mandy) and the next proposal uses it. Aliases are stored once, in
+  Billy & Mandy) and the next proposal uses it. Not every word: a number, a
+  structural word ("promo", "next"), a word that is part of a show title, and
+  a word that clips naming a different show also use ("Adult", "Swim") are
+  never learned, and a word that already means another show is left alone and
+  reported. The review screen shows what would be learned before saving it.
+  Aliases are stored once, in
   `<data>/show-aliases.json`, shared by every list and channel. There is no
   alias editor; the review screen is the alias editor.
 
