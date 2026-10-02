@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-3 built; stage 4 (short-clip bug) next
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) next
 
 ## Summary
 
@@ -123,6 +123,8 @@ A weekly calendar like the one kept by hand today: day-parts as background bands
 
 Clips under ~20 seconds next to Flex repeat about three times or get skipped. Transitions are exactly that, so this is a hard prerequisite for stage 5. See NOTES.md.
 
+Fixed by a lineup cursor per viewer: a stream plays the next entry in the lineup, each program from its start, and only breaks stretch or shrink to bring it back to the clock. A break that has too little time left is dropped, and the stream's lateness carries on to the next break.
+
 ### Stage 5 — Transitions (Opus 5 design pass first, then build)
 
 Each day-part and block gets a transition template. **Every sequence defaults to empty**, so an unconfigured break is just commercials.
@@ -161,6 +163,8 @@ Each sequence is an ordered list of steps. A step says what to play and how to p
 **Matching falls back rather than skipping.** A step tries its most specific mapping, then the next, then its general list. A step is only skipped when it has nothing at all to draw on, or is marked optional. The one thing never done is substituting a clip that names a *different* show — a general bumper in place of a specific one is fine; "Up Next: Dexter's Lab" before Johnny Bravo is not.
 
 WBRB can never play after a block's last show, because at a block boundary the Leaving sequence fires instead.
+
+**Breaks bend; transitions don't.** Since stage 4, breaks are what bring a late or early stream back to the clock. A late stream gets a shorter break, and a stream later than the whole break skips it. Once breaks contain transition sequences, shrinking or dropping a break must cut filler first and keep the transition steps. Dropping a break drops its Flex, never its outgoing or incoming steps. Today `lineup-cursor.js` passes over a break with too little left for a clip, and the design pass has to change that rule so the steps still play. Whatever lateness the steps can't absorb carries on to the next break, as it does now.
 
 **Leave room for a "generated" step type.** The design pass must not assume every step draws from a filler list: after 1.0, Up Next, Later Tonight and "Tonight on [block]" bumpers are built live at airtime and slot into these sequences as a step of their own. See the "Generated Up Next bumpers" line in NOTES.md.
 

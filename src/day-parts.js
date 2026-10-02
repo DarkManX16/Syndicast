@@ -437,8 +437,11 @@ function weeklySegments(channel, referenceInstant) {
  * instant it starts at.
  *
  * obj is what getCurrentProgramAndTimeElapsed returned, so obj.programIndex
- * addresses channel.programs and the break began at t0 - obj.timeElapsed. The
- * duration is read from the array rather than from obj.program because video.js
+ * addresses channel.programs and the break began at t0 + obj.startsIn -
+ * obj.timeElapsed. startsIn is how far ahead of its real start the break was
+ * handed over; leaving it out put the next show up to 10 seconds early, before
+ * a boundary set at its start, so a break's first clip came from the outgoing
+ * mix. The duration is read from the array rather than from obj.program because video.js
  * substitutes a synthetic year-long program for a permanently offline channel;
  * that case has no real neighbour anyway and falls through to null below.
  *
@@ -455,7 +458,8 @@ function findNextProgram(channel, t0, obj) {
     if ( (typeof(index) !== 'number') || (index < 0) || (index >= programs.length) ) {
         return null;
     }
-    let at = t0 - obj.timeElapsed + programs[index].duration;
+    // startsIn: the break may have been handed over before it really starts
+    let at = t0 + (obj.startsIn || 0) - obj.timeElapsed + programs[index].duration;
     let limit = Math.min(MAX_NEIGHBOUR_SCAN, programs.length);
     for (let i = 1; i <= limit; i++) {
         let program = programs[ (index + i) % programs.length ];
