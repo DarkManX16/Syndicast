@@ -272,7 +272,23 @@ for the full spec, stages and acceptance tests.
 
 - [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
       and per block
-- [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL)
+
+      Designed Oct 1, 2026 on Fable 5.1 - Stage 5 in
+      [docs/blocks-spec.md](docs/blocks-spec.md), from channel 1's real
+      lineup (442 breaks a week: 113 between episodes, 301 between shows, 28
+      boundaries; 281 distinct show pairs). Sequences attach to the day-part
+      or block and are shaped around the break - out steps, Flex, in steps -
+      in four situations; a clip carries the shows it names, proposed from
+      its title and fixed once on a review screen. Our stamp against
+      ErsatzTV's per-item filler presets and Tunarr's positionless Flex is in
+      the spec's Editor section. The build order for Sonnet 5 is there too:
+      eight steps, TiviMate previews at steps 4 and 7. The two lines below
+      fold into this one when it ticks.
+
+- [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
+      stage 5's sequences, decided at its design pass: PRE and POST are the in
+      and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
+      see the spec. Nothing is left over.*
 - [ ] Midrolls
 - [ ] Generated Up Next bumpers (after 1.0)
 
@@ -327,7 +343,11 @@ for the full spec, stages and acceptance tests.
       sync by construction (`scheduleBackup` is never written except
       alongside the programs it produced).
 
-- [ ] Sign-ons and sign-offs
+- [ ] Sign-ons and sign-offs - *covered by stage 5's sequences, decided at
+      its design pass: a Leaving sequence at the end of the broadcast day and
+      an Entering one at its start. Left over as its own small item: an
+      overnight stretch that should look off-air, since the neighbour rule
+      plays one mix through a long break; see the spec's Stage 5.*
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
 - [ ] Rerun
@@ -1945,13 +1965,13 @@ be built:
       are a stronger lead for the skipping. See "A concat restart replayed
       the tune-in" under Resolved, and "Heavy buffering during playback"
       under Known issues.
-- [ ] Stage 5 transition bumpers (design pass on Opus 5.5 or Fable 5.1,
-      Sonnet 5 builds). See Stage 5 in
-      [docs/blocks-spec.md](docs/blocks-spec.md). The design pass decides
-      whether slot filler positions (HEAD/PRE/MID/POST/TAIL) and sign-ons and
-      sign-offs are covered by stage 5's own sequences; whatever isn't stays
-      its own item (Sonnet 5) - see those two roadmap lines under Blocks
-      system and Scheduling above.
+- [ ] Stage 5 transition bumpers (designed Oct 1, 2026 on Fable 5.1; Sonnet
+      5 builds). See Stage 5 in [docs/blocks-spec.md](docs/blocks-spec.md)
+      for the design and the eight-step build order. The design pass decided
+      that slot filler positions (HEAD/PRE/MID/POST/TAIL) and sign-ons and
+      sign-offs are covered by stage 5's own sequences - see those two
+      roadmap lines under Blocks system and Scheduling above - with one small
+      item left over, an off-air look overnight, recorded there.
 - [ ] Per-position stored progress, then rerun, shuffle and ordered shuffle
       (Opus 5.5 throughout - see "Work that stays on Opus 5 end to end" in
       the Model guide below). See the "Per-position stored progress, which
