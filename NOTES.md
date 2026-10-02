@@ -1274,7 +1274,63 @@ on shows.
       given - with nothing in the server's own log. The first scratch server
       died that way 3 minutes into a channel 1 break. Give a long-running
       scratch server an explicit two-hour limit, or start it outside the
-      session.
+      session. For the TiviMate preview below it was started with
+      PowerShell's `Start-Process -WindowStyle Hidden`, which outlives the
+      tool call and runs until stopped by its pid.
+
+      **Built Oct 1, 2026 (Opus 5.5), on branch `stage4`, three commits as
+      proposed. Waiting on Ron's check in TiviMate before it merges.** 312
+      tests -> 364.
+      1. *The look-ahead (62262f8)*, first, since the cursor needs the same
+         number: `getCurrentProgramAndTimeElapsed` also returns `startsIn`,
+         and a new `helperFuncs.timeLeft(obj)` (duration - elapsed +
+         startsIn) is what `createLineup`, `findNextProgram` and `video.js`'s
+         upper bound and short-break skip now count from. See the Stage 4
+         line on the 1.0 list.
+      2. *The cursor (31253d4)*, `src/lineup-cursor.js`, pure, as proposed.
+         The rule that drops a break is the one that already ended every
+         break: when no more than `SLACK` + 1ms (about 11s) of it is left at
+         the stream's position. So a stream drops a break once it is later
+         than the break less about 11 seconds, not only once it is later than
+         all of it. Two things beyond the proposal:
+         - *A viewer tuning in on the channel's replay cache inherits the
+           cursor.* `getCurrentLineupItem` hands a new viewer the item the
+           channel's last viewer was given, continued - right, they should
+           see the same thing - but that viewer then had no cursor, and with
+           the other viewer up to 10s ahead of the clock it would have taken
+           the old path at its next request. The item recorded in the cache
+           now carries the cursor it leaves its stream at.
+         - *`lineupItem` in `streamFunction` is declared.* It was never
+           declared, so it was one global shared by every `/stream` request
+           in flight: a second viewer's request could replace it across an
+           await. In practice only the active-channel bookkeeping after
+           `player.play` read it late; the cursor reads it too, so it is a
+           local now.
+         Not changed: `/m3u8` (the HLS "fast" playlist) mints no stream id,
+         so it works from the clock as before.
+      3. *The stage 5 note (5f02782)* in `docs/blocks-spec.md`: shrinking or
+         dropping a break cuts filler first and keeps the transition steps.
+
+      **Live, on a fresh copy of `.dizquetv-dev`** (port 18095, from the
+      worktree, the same preload):
+      - *Channel 1's real opening* (905): the 15s promo once, 3.3s late; the
+        184s break; "[As] NEXT - SGC2C [2003]" once, 7.0s late - the break's
+        last clip overran - then Space Ghost from its start, 6.8s late.
+        Before the fix, this exact sequence played the NEXT twice.
+      - *The look-ahead* (904, tuning in 5s before a show ends into a break
+        before a day-part boundary): the first clip came from the incoming
+        Checkerboard mix. The break then ended 6.8s early and the next show
+        started early, from its start; the request after it went on to the
+        next break, where the old path would have been back inside the show.
+      - *The compressed NEXT and 5-8s bumper channels* (900, 903), 12
+        minutes each at once: 34 programs, 0 repeated, 0 skipped, every one
+        from its start; 53 decisions from cursors and not one fallback to
+        the clock, through one item that took 10.3s to start. Both faults
+        came up and were avoided: "AcTN - Bumps Now!" (8s) after a break
+        that ended 7.2s early, where the clock was still 1s inside it when
+        it finished, and "CN City Bumper (2)" (5s) reached 13.9s late,
+        when the clock was already 8.9s into the show after it. That 13.9s
+        was gone by the next break.
 
 ### Library management
 
@@ -1874,6 +1930,10 @@ be built:
       from the break's real start. Tested at that Friday boundary for 0-10s
       early, every clip from the incoming mix. The lineup cursor needs the
       same number, which is why they go together.
+
+      **Built Oct 1, 2026 in 62262f8, with the cursor in 31253d4**, and
+      confirmed live on a scratch channel (the first clip from the incoming
+      mix). See "Built" in the stage 4 entry under Media handling.
 
       Two leads from fixing the concat restart (Sep 27, 2026). The restart
       is ruled out as the "plays three times" symptom, and can only start
@@ -2740,6 +2800,30 @@ checks as of the fall-back fixes). Nine files:
   **The one file here that starts a real process**: on Windows its last
   check runs the real PowerShell helper against a real child, which is
   what proves the C# in the script compiles.
+
+- `lookahead.js` - a break handed over early is counted from its real
+  start: the hand-off's `startsIn`, the first clip's mix at a boundary for a
+  stream 0.5-9.9s early (with the next show 0 and 920ms after the minute, as
+  channel 1's real Friday 12:30am one is), and the break's honest length.
+
+- `lineup-cursor.js` - the cursor's rules, then a simulated viewer making
+  the same calls as `/stream` (keep it in step with `video.js`, as
+  `save-resume.js` is) over 18 hours of 5, 10 and 15s items around 60-300s
+  and 15s breaks: every program once, in order, from its start. Its control
+  - the same viewers without the cursor - must show repeats, or the check
+  proves nothing; it shows about 140 repeats and 57 skips a run. Item
+  lengths jitter from a seeded generator, but the picker's own randomness
+  isn't seeded, so the counts in its log line vary a little run to run.
+
+- `stream-cursor.js` - the cursor's wiring through the real `video.js`
+  router, with `ProgramPlayer` and the concat's `FFMPEG` swapped for
+  recorders in the require cache: the stream id on every playlist entry,
+  kept across a restart and different per connection, cursors dropped on
+  close and on save, a viewer tuning in on the replay cache inheriting its
+  item's cursor, and `/stream` following a cursor. It puts the require cache
+  back for everything under `src/` it loaded - `aspect-mark.js` failed when
+  the real `ffmpeg.js` was left cached with the real `spawn` - and unrefs
+  the timers `video.js` arms per item, so `npm test` doesn't wait on them.
 
 The first two of those also take channel JSON paths on the command line and
 re-run their measurements against real channels, which is where they were
