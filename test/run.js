@@ -9,6 +9,7 @@ const suites = [
     './blocks-persistence',
     './blocks-guide',
     './blocks-schedule-view',
+    './transitions',
     './startTime-rotation',
     './save-resume',
     './channel-save',

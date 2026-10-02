@@ -1,5 +1,6 @@
 const path = require('path');
 var fs = require('fs');
+const transitions = require('../transitions');
 
 /*
  * A channel file that will not parse is retried rather than treated as missing,
@@ -265,6 +266,91 @@ function warnAboutBlocks(json) {
 }
 
 /*
+ * Transition sequences (stage 5), stored on each day-part and block as
+ * `transitions`: four situations, each with `out` and `in` lists of steps. See
+ * docs/blocks-spec.md. Warned about at the same write boundary and for the same
+ * reason as day-parts and blocks above, and with the same rule: warn-only,
+ * rewrites nothing. transitions.js's normalizeTransitions is what keeps a
+ * malformed one from reaching playback - it reads a bad side as empty and
+ * leaves out an unknown situation - so this only makes sure that is not
+ * happening silently. The accepted values come from transitions.js, so the two
+ * cannot drift apart.
+ *
+ * A step with no list is skipped at play time with one log line rather than
+ * failing, so it is a warning here and not an error; the reserved kind
+ * 'generated' and keyedOn 'later' are accepted because the stored shape
+ * reserves them already.
+ */
+function warnAboutTransitions(json) {
+    const complain = (message) => {
+        console.error(`Channel ${json.number}: ${message}`);
+    };
+    const check = (kind, list) => {
+        if (! Array.isArray(list) ) {
+            return;
+        }
+        for (let i = 0; i < list.length; i++) {
+            const context = list[i];
+            if ( (context == null) || (typeof(context.transitions) === 'undefined') ) {
+                continue;
+            }
+            const owner = `${kind} ${i}` + ( context.name ? ` ("${context.name}")` : '' );
+            const label = `${owner} transitions`;
+            const stored = context.transitions;
+            if ( (stored === null) || (typeof(stored) !== 'object') || Array.isArray(stored) ) {
+                complain(`${owner} has transitions saved as ${stored === null ? 'null' : Array.isArray(stored) ? 'an array' : typeof(stored)} rather than an object. It will be ignored and the ${kind} will play commercials only.`);
+                continue;
+            }
+            for (const name of Object.keys(stored)) {
+                if (transitions.SITUATIONS.indexOf(name) === -1) {
+                    complain(`${label} include "${name}", which is not one of ${transitions.SITUATIONS.join(', ')}. It will be ignored.`);
+                    continue;
+                }
+                const situation = stored[name];
+                if ( (situation == null) || (typeof(situation) !== 'object') ) {
+                    complain(`${label} ${name} is not an object with out and in lists. It will be ignored.`);
+                    continue;
+                }
+                for (const side of ['out', 'in']) {
+                    const steps = situation[side];
+                    if (typeof(steps) === 'undefined') {
+                        continue;
+                    }
+                    if (! Array.isArray(steps) ) {
+                        complain(`${label} ${name}.${side} is not an array of steps. It will be ignored.`);
+                        continue;
+                    }
+                    for (let j = 0; j < steps.length; j++) {
+                        const step = steps[j];
+                        const stepLabel = `${label} ${name}.${side} step ${j}`;
+                        if ( (step == null) || (typeof(step) !== 'object') ) {
+                            complain(`${stepLabel} is empty. It will be ignored.`);
+                            continue;
+                        }
+                        const kindOfStep = (typeof(step.kind) === 'undefined') ? 'list' : step.kind;
+                        if (transitions.KINDS.indexOf(kindOfStep) === -1) {
+                            complain(`${stepLabel} has kind "${step.kind}", which is not one of ${transitions.KINDS.join(', ')}. It will be skipped.`);
+                            continue;
+                        }
+                        if ( (kindOfStep === 'list') && ( (typeof(step.listId) === 'undefined') || (step.listId === null) || (step.listId === '') ) ) {
+                            complain(`${stepLabel} names no filler list, so it will be skipped.`);
+                        }
+                        if ( (typeof(step.match) !== 'undefined') && (transitions.MATCHES.indexOf(step.match) === -1) ) {
+                            complain(`${stepLabel} has match "${step.match}", which is not one of ${transitions.MATCHES.join(', ')}.`);
+                        }
+                        if ( (typeof(step.keyedOn) !== 'undefined') && (transitions.KEYED_ON.indexOf(step.keyedOn) === -1) ) {
+                            complain(`${stepLabel} has keyedOn "${step.keyedOn}", which is not one of ${transitions.KEYED_ON.join(', ')}.`);
+                        }
+                    }
+                }
+            }
+        }
+    };
+    check('day-part', json.dayParts);
+    check('block', json.blocks);
+}
+
+/*
  * Warned about at the same write boundary and for the same reason as
  * day-parts and blocks above: the one place every channel write passes
  * through, whatever wrote it. Warn-only, and it rewrites nothing - the
@@ -363,6 +449,7 @@ class ChannelDB {
         warnAboutAbsoluteImages(json);
         warnAboutDayParts(json);
         warnAboutBlocks(json);
+        warnAboutTransitions(json);
         warnAboutAspect(json);
     }
 

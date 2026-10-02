@@ -281,14 +281,37 @@ for the full spec, stages and acceptance tests.
 
       Designed Oct 1, 2026 on Fable 5.1 - Stage 5 in
       [docs/blocks-spec.md](docs/blocks-spec.md), from channel 1's real
-      lineup (442 breaks a week: 113 between episodes, 301 between shows, 28
-      boundaries; 281 distinct show pairs). Sequences attach to the day-part
+      lineup (442 breaks a week: 117 between episodes, 297 between shows, 28
+      boundaries; 281 distinct show pairs; the split was 113 / 301 / 28 before
+      the Oct 2 boundary edits, see the spec). Sequences attach to the day-part
       or block and are shaped around the break - out steps, Flex, in steps -
       in four situations; a clip carries the shows it names, proposed from
       its title and fixed once on a review screen. Why they attach to the day-part or block, not to items, is in the spec's
       Editor section. The build order for Sonnet 5 is there too:
       eight steps, TiviMate previews at steps 4 and 7. The two lines below
       fold into this one when it ticks.
+
+      **Step 1 built Oct 2, 2026 (Sonnet 5.5): situations and assembly.**
+      `src/transitions.js` is pure and nothing calls it from playback yet, so no
+      stream, guide or saved channel behaves differently. It finds a break (the
+      run of adjacent Flex entries, wrapping round the cyclic lineup, so a Flex
+      run at the head of the lineup takes the last program of the cycle as its
+      P), classifies it from the contexts at P's and N's starts, and assembles
+      the out and in step lists. `channel.dayParts[]` and `channel.blocks[]`
+      gain an optional `transitions` field; reading it fills defaults and
+      writes nothing. A movie is keyed by its own title, not the slot editor's
+      single `movie.` key, or a break between two films would read as between
+      episodes. `warnAboutTransitions` is in `channel-db.js`. A Flex entry
+      counts as Flex when `isOffline` is true, a redirect included, the same
+      test `findNextProgram` uses.
+
+      Real-data check, `node scripts/transitions-week.js <channel.json>` on a
+      copy: channel 1, week of Oct 18, reads 442 breaks, **117 / 297 / 28**.
+      The spec said 113 / 301 / 28 and that was right for the Oct 1 file (the
+      Oct 1 backup reproduces it exactly); Ron then moved day-part and block
+      boundaries, which moves 26 of the same 442 breaks between situations.
+      Only the split moves; the total and the 281 pairs depend on the lineup
+      alone. Re-measure after any boundary edit before quoting the numbers.
 
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
@@ -2771,6 +2794,14 @@ checks as of the fall-back fixes). Nine files:
   a guide build's program list is a windowed `{start, program}` array it
   builds itself, not the cyclic `channel.programs` the other three files
   drive through `createLineup`.
+
+- `transitions.js` - stage 5 step 1: show keys (a custom show is one show, a
+  movie is its own title), finding a break across a run of Flex entries and
+  across the lineup's wrap, the four situations and the order a boundary
+  assembles in, a missing neighbour contributing nothing, defaults reading as
+  empty without writing anything, and `warnAboutTransitions` through
+  `validateChannelJson`. Fixtures only; the real-data check is the script
+  `scripts/transitions-week.js`.
 
 - `blocks-schedule-view.js` - `dayParts.weeklySegments`, the function the
   Schedule tab and the Day-Parts strip both draw from: a hand-derived Saturday

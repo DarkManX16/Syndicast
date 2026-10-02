@@ -135,8 +135,19 @@ defaults to empty**, so an unconfigured break is just commercials and no saved
 channel changes until someone adds a step.
 
 Designed from channel 1's real lineup, not from the examples alone. In the
-week of Oct 18, 2026 it has 442 breaks: 113 between two episodes of one show,
-301 between different shows, 28 at a day-part or block boundary. The four
+week of Oct 18, 2026 it has 442 breaks: 117 between two episodes of one show,
+297 between different shows, 28 at a day-part or block boundary. (Measured on
+the Oct 1 file this was 113 / 301 / 28. The lineup did not change; the
+day-part and block boundaries did, between the Oct 1 and Oct 2 backups - CCN
+6:00 to 6:30, Toonami 2:50pm to 3:00pm, Miguzi 2:30pm and 2:45pm to 3:00pm,
+Sunday Adult Swim 10:00pm to 10:30pm, among others. Moving a boundary moves
+which break sits on it: the same 442 breaks fall at the same times, but 26 of
+them changed situation. 13 became boundaries and 13 stopped being one, so 28
+either way, and the 4 that stopped being a boundary were all breaks inside one
+show (I Am Weasel before Toonami, and a custom show's two halves before
+Miguzi), while the 13 that became one were all different-show breaks. The
+442 and the 281 distinct pairs depend only on the lineup, which is unchanged,
+so they hold whatever the boundaries are; the split moves with them.) The four
 NEXT promos it carries today sit in the lineup as ordinary items — show →
 15s NEXT promo → Flex → 10s NEXT bumper → show — which is exactly the shape a
 between-shows sequence produces, so the design is checked against them below.
@@ -379,7 +390,8 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    stored shape and its defaults, `warnAboutTransitions` in `channel-db.js`
    next to `warnAboutBlocks`. Tests in `test/transitions.js` on fixtures.
    Real-data check: a script over channel 1's week of Oct 18 reports 442
-   breaks as 113 / 301 / 28, the numbers above.
+   breaks as 117 / 297 / 28, the numbers above, for channel 1 as it stood on
+   Oct 2, 2026. Re-measure before trusting them after any boundary edit.
 2. **Names and the matcher** — `names` on filler clips, `src/show-match.js`
    (pure: titles and aliases in, proposals out), `<data>/show-aliases.json`,
    `GET /api/filler/:id/match` and the alias save. Tests on fixtures. Real-data
@@ -467,7 +479,7 @@ From channel 1's own lineup, with a between-shows sequence on the Adult Swim day
 - **A stream later than the whole break:** no Flex; both NEXT clips still play, from their start, then the show from its start
 - **Tuning in 8s before the break ends:** the 10s "NEXT - SGC2C" plays, then the show; the 15s promo does not
 - **Mon 2:50pm, weekday day-part → Toonami block:** Toonami `entering` fires with the day-part's `leaving`; a between-shows sequence on either context does not
-- **Week of Oct 18, 2026:** 442 breaks resolve as 113 between episodes, 301 between shows, 28 boundaries; a channel with no sequences configured plays exactly what it plays today in all 442
+- **Week of Oct 18, 2026:** 442 breaks resolve as 117 between episodes, 297 between shows, 28 boundaries (113 / 301 / 28 before the Oct 2 boundary edits); a channel with no sequences configured plays exactly what it plays today in all 442
 
 ## Open questions
 
