@@ -2,10 +2,16 @@
 
 ## Design principle
 
-When we take an idea from another program - Tunarr, ErsatzTV, Plex - we don't
-copy it. We rebuild it around how Ron actually programs channels and put
-Syndicast's own stamp on it. Any roadmap line below for a borrowed idea says
-what we do differently and why, not just that we built our own version.
+Every feature is built around how Ron programs his channels, with Syndicast's
+own identity. Ideas are never copied, and the docs and the code describe our
+designs on their own terms, without naming other programs. Any roadmap line
+below says what we do and why. **Syndicast is all about taking ideas and
+innovating, and that is a rule for every session.**
+
+## Rules for every session
+
+- Another streaming server runs on this PC, with its own processes and load.
+  Never stop or signal any process you didn't start.
 
 ## Feature roadmap
 
@@ -279,9 +285,8 @@ for the full spec, stages and acceptance tests.
       boundaries; 281 distinct show pairs). Sequences attach to the day-part
       or block and are shaped around the break - out steps, Flex, in steps -
       in four situations; a clip carries the shows it names, proposed from
-      its title and fixed once on a review screen. Our stamp against
-      ErsatzTV's per-item filler presets and Tunarr's positionless Flex is in
-      the spec's Editor section. The build order for Sonnet 5 is there too:
+      its title and fixed once on a review screen. Why they attach to the day-part or block, not to items, is in the spec's
+      Editor section. The build order for Sonnet 5 is there too:
       eight steps, TiviMate previews at steps 4 and 7. The two lines below
       fold into this one when it ticks.
 
@@ -292,9 +297,8 @@ for the full spec, stages and acceptance tests.
 - [ ] Midrolls
 - [ ] Generated Up Next bumpers (after 1.0)
 
-      Inspired by a RetroTVRevival post where a custom scheduler pre-renders
-      "Coming Up Next" bumpers with a separate script. Our stamp: Syndicast
-      builds them live at airtime from its own schedule, so they always match
+      Syndicast builds these live at airtime from its own schedule, so they
+      always match
       what actually airs next, even after a regeneration, a swap or an insert.
 
       Styled per day-part and block from a template (colors, logo, layout),
@@ -455,14 +459,14 @@ on shows.
         **Corrected Oct 1 (see "Built", 3): Plex rounds the frame rate, so
         29.97fps was never copied and the 526 files overstate it.**
 
-      **How many streams, alongside Tunarr.** Tunarr's CCN, Nick Picks and
-      That's So Disney all use its "H264/Nvidia" config (cuda decode,
-      `scale_cuda`, NVENC) and were all streaming throughout. Before
-      Syndicast uses the card at all, it holds 6 NVENC sessions, with the
-      engine 57-88% busy: Tunarr's 3, plus, most likely, the two OBS Studio
-      windows and Streamlabs, the only visible processes with
-      `nvEncodeAPI64.dll` loaded. (Tunarr runs elevated, so its own modules
-      can't be listed.)
+      **How many streams, alongside another streaming server on this PC.**
+      Three of that server's channels, each on cuda decode, `scale_cuda` and
+      NVENC, were all streaming throughout. Before Syndicast uses the card
+      at all, it holds 6 NVENC sessions, with the engine 57-88% busy: that
+      server's 3, plus, most likely, the two OBS Studio windows and
+      Streamlabs, the only visible processes with `nvEncodeAPI64.dll`
+      loaded. (The other server runs elevated, so its own modules can't be
+      listed.)
       - *There's no session cap here.* 20 extra encodes held open together
         made 26 at once, and every one ran, at about 150 MB of GPU memory
         each. The old consumer limit of 3, then 5, then 8, doesn't bind on
@@ -471,14 +475,14 @@ on shows.
         Syndicast's real Batman TAS command at `-re`, 30s each: 6 streams all
         at 1.000-1.001x realtime, engine 48-90% busy; 10 streams at
         0.997-0.999x, engine at 99% the whole time. So **about 6
-        comfortably, 8-9 at most**, alongside today's Tunarr and OBS load.
-        Whether Tunarr's own streams slowed during the 10-stream run wasn't
+        comfortably, 8-9 at most**, alongside today's load from the other streaming server and OBS.
+        Whether the other streaming server's own streams slowed during the 10-stream run wasn't
         measured.
 
       **CPU saved against today's mpeg2video.** Fixed content (from 300s in),
       `-re`, each ffmpeg's own CPU time from `-benchmark`, all marked High
       QoS, 60s (45s for Samurai Jack). The machine was already busy at about
-      40%: Tunarr's three streams, port 18000 streaming channel 1, and OBS.
+      40%: the other streaming server's three streams, port 18000 streaming channel 1, and OBS.
 
       - Batman TAS (1440x1080 8-bit H.264, scaled and padded): one stream,
         mpeg2video 0.76 cores against NVENC 0.30; three streams, 0.82-0.88
@@ -507,7 +511,7 @@ on shows.
       Throttled NVENC keeps up where mpeg2video starts to slip, because there
       is so little left on the CPU. But the helper costs nothing per stream.
       Throttling still bites anything CPU-heavy (the fallback below most of
-      all), and E-core headroom depends on what OBS and Tunarr are doing.
+      all), and E-core headroom depends on what OBS and the other streaming server are doing.
 
       **Is the graceful fallback still the right fix? Not as the fix, only as
       a safety net.** The failure isn't random: it is decided by the source's
@@ -610,7 +614,7 @@ on shows.
          superfast`, `-profile:v main` (what the nvenc items come out as, so
          a mid-session switch doesn't reconfigure a TV box), `-crf 22`, no
          `-b:v`, no `-sc_threshold`. **The preset**, Samurai Jack at `-re`,
-         High QoS, 60s, with Tunarr's three streams, OBS and the live server
+         High QoS, 60s, with the other streaming server's three streams, OBS and the live server
          running (realtime is 0.995 and up; about 0.998 is the ceiling
          because of start-up):
 
@@ -1287,7 +1291,8 @@ on shows.
       each `/stream` response, and logged every decision next to where the
       lineup really was at that instant; the repo's code ran unmodified. A
       plain HTTP client played each viewer, reading `/video` for 7-25
-      minutes. Tunarr, OBS and port 18000 kept running throughout.
+      minutes. The other streaming server, OBS and port 18000 kept running
+      throughout.
 
       **A trap.** A server started as a Claude Code background task is
       stopped when the task's time limit runs out - 30 minutes unless one is
@@ -1365,8 +1370,8 @@ on shows.
       episodes and the Flex auto-adjust line below.
 - [x] Program rows show the episode title, with a slot-fit gauge
 
-      Rebuilt Tunarr's duration bar around how Ron schedules: a slot-fit gauge
-      instead, since what matters when building a lineup isn't a program's raw
+      A slot-fit gauge built around how Ron schedules, in place of a plain
+      duration bar, since what matters when building a lineup isn't a program's raw
       length but how much of a real broadcast slot it leaves for breaks. Ships
       in the custom show editor - `web/directives/program-list-row.js`, one
       shared two-line row: line 1 is the color square (now a plain identity
@@ -1711,7 +1716,7 @@ on shows.
       time. Adding an item takes its time from the Flex after where it's
       inserted, and if there isn't enough, the following shows move later to
       the next clean start time (:00 or :30).
-- [x] Info panel and thumbnail per item - an "i" button, like Tunarr's, wherever
+- [x] Info panel and thumbnail per item - an "i" button, wherever
 
       a program is picked or reviewed. Shipped in c75cdf7: one shared
       `program-info-panel` directive mounted in the channel's programming
@@ -1791,7 +1796,7 @@ on shows.
 1.0 is a solid foundation for building real channels on - slowly, starting
 around Halloween 2026. **The must list below still sets the date, not the
 other way round:** 1.0 ships once everything on it is done, whenever that
-lands relative to Halloween. Moving viewers off Tunarr happens after that,
+lands relative to Halloween. Moving viewers onto Syndicast happens after that,
 one channel at a time, each only once it is ready - 1.0 is a foundation, not
 a cutover.
 
@@ -1882,13 +1887,13 @@ be built:
       note above.
 - [x] Program rows show the episode title, with a slot-fit gauge (Sonnet 5 ·
       High). See the Library management roadmap line above.
-- [x] Buffering, tested with three streams at once and Tunarr stopped
+- [x] Buffering, tested with three streams at once and the other streaming server stopped
       (manual test; Opus 5.5 investigates and fixes if it turns out not to be
-      Tunarr). See the Known issues entry below.
+      the other server). See the Known issues entry below.
 
-      It wasn't Tunarr. Both causes fixed Sep 27, 2026 (fecfd2f, f8f4dc7),
+      It wasn't the other server. Both causes fixed Sep 27, 2026 (fecfd2f, f8f4dc7),
       and measured on the real server path with Claude minimized and
-      Tunarr *running*: three `/video` streams at 0.98-1.00x realtime,
+      the other streaming server *running*: three `/video` streams at 0.98-1.00x realtime,
       including every short clip in a whole break. Confirmed Sep 28, 2026 on
       Ron's real client - the manual test this was left unticked for.
 - [x] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
@@ -2443,7 +2448,7 @@ ordering silently breaks again.
 
 Happens on real channels. **Diagnosed Sep 27, 2026, and both causes fixed
 the same day - see "Both fixes built and verified" at the end of this entry.
-Two causes multiply, and Tunarr isn't one of them:**
+Two causes multiply, and the other streaming server isn't one of them:**
 
 1. **`-qscale:v 1` makes every mpeg2video item 4-8x the work it needs to
    be.** One stream needs 4-5 cores to keep up, and three at once fall
@@ -2452,7 +2457,7 @@ Two causes multiply, and Tunarr isn't one of them:**
    at most about 1.4 cores for all of them together while the P-cores sit
    idle. A stream then gets 0.13-0.45x realtime.
 
-Tunarr, the leading suspect before this, measured minor (below). The first
+The other streaming server, the leading suspect before this, measured minor (below). The first
 reports, for the record: through `/video` with the dev settings
 (`mpeg2video`, 1920x1080, 5000k), about 40 seconds of video in 200 seconds,
 twice; the exact command for a 15.1s clip took 66.9s with `-re` and 41.5s
@@ -2557,14 +2562,14 @@ way, and explicit High QoS prevents it for a single benchmarked command.
 Not yet tried: High QoS on the server's own ffmpegs while throttled.
 
 The E-cores are busy before Syndicast starts: 75-79% in an idle sample
-with Tunarr running, 54% with it stopped. By elimination most of the rest
+with the other streaming server running, 54% with it stopped. By elimination most of the rest
 is two minimized OBS Studio windows and Streamlabs, about 2.3 cores by
 their counters, which Windows treats as background too. But crowding isn't
-the whole of it: with Tunarr stopped and E-cores to spare, throttled
+the whole of it: with the other streaming server stopped and E-cores to spare, throttled
 streams still got about 1.2 cores for one and 1.4 in total for three.
 
-**Tunarr didn't hold.** Stopping it took idle E-core load from 75-79% to
-54%, about one E-core's worth. Same content, same placement, Tunarr on then
+**The other server didn't hold.** Stopping it took idle E-core load from 75-79% to
+54%, about one E-core's worth. Same content, same placement, the other streaming server on then
 off:
 
 - One stream, High QoS: 0.996 / 0.994.
@@ -2580,13 +2585,13 @@ video in 49s), and three at once 0.13x each.
 **The planned test, one `/video` stream then three**, on channel 1's real
 lineup, so what was on is noted:
 
-- Current code, Claude visible, Tunarr on: one stream 0.96, three 0.99
+- Current code, Claude visible, the other streaming server on: one stream 0.96, three 0.99
   each (Attack on Titan S01E09, 932s and 1037s in). Forced High QoS,
   three again, minutes later: 0.72-0.74 each (the same episode at 1190s).
-- Current code, Claude minimized, Tunarr off: one stream 0.26, three 0.13
+- Current code, Claude minimized, the other streaming server off: one stream 0.26, three 0.13
   each. The WMI-started server a minute after each: 0.34, then 0.18-0.19.
   All four on the same HEVC Main 10 1080p episode.
-- Pinned to the E-cores, Tunarr on, one stream: current code 0.45 (a CN
+- Pinned to the E-cores, the other streaming server on, one stream: current code 0.45 (a CN
   Groovies clip), a scratch copy without `-qscale:v 1` 0.98 (an X-Men
   Evolution episode) - different items, so see the fixed-content numbers
   below for the comparison.
@@ -2595,8 +2600,8 @@ lineup, so what was on is noted:
 What's on matters, so the same 20s of Attack on Titan, three copies of the
 exact command at once: with `-qscale:v 1` and the P-cores free, 0.75-0.81
 each (about 4.3 cores each); without it, 0.99 each (0.7-1.3 cores each).
-One copy pinned to the E-cores, Tunarr on: 0.35 with it, 0.99 without.
-Three pinned, Tunarr off: 0.14 each with it, 0.78 each without. Dropping
+One copy pinned to the E-cores, the other streaming server on: 0.35 with it, 0.99 without.
+Three pinned, the other streaming server off: 0.14 each with it, 0.78 each without. Dropping
 the flag alone carries three streams on a free CPU and one stream even
 throttled, but not three throttled - that needs both fixes.
 
@@ -2610,7 +2615,7 @@ throttled, but not three throttled - that needs both fixes.
    for it, and how to do it is untested: a small helper per spawn, a mark
    on the server process if children inherit it, or `os.setPriority` if
    priority alone is enough. Needs another run with Claude minimized, which
-   can happen with Tunarr running.
+   can happen with the other streaming server running.
 3. Optional: `ilme` costs about 30% on mpeg2 for progressive sources.
 
 There is also a lead for Stage 4 here. A `/stream` item works out where the
@@ -2692,7 +2697,7 @@ binary, which is a build step this project doesn't have.
 
 **The live test**, on the real server path: the working tree with both
 fixes, on a copy of `.dizquetv-dev` on port 18096, channel 1's real
-lineup, Claude minimized throughout (every 5s sample), Tunarr running - and
+lineup, Claude minimized throughout (every 5s sample), the other streaming server running - and
 itself streaming, its ffmpeg using 0.1-0.7 cores. A `node -r` preload
 recorded each ffmpeg's spawn time, the helper's reply for it, and each
 item's output with arrival times, so every item's own pace could be
@@ -2715,7 +2720,7 @@ measured from its own start; Syndicast's code ran unmodified.
   5:30:32-5:30:57, while VSDC, Streamlabs and Explorer were being switched
   between - something outside Syndicast took 10 or more logical processors:
   P-cores 76-93% busy while Syndicast's ffmpegs used 0-6 cores and
-  Tunarr's 0.3, and the per-second sampler itself stalled for 12s and 25s.
+  the other streaming server's 0.3, and the per-second sampler itself stalled for 12s and 25s.
   The three items starting in the first window took 1.2-1.5s to first
   audio instead of about 0.3s; in the second, all three copies of Powerpuff
   slipped together by up to 2.2s at 41s in and caught up within about 10s.

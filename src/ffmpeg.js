@@ -16,7 +16,7 @@ const REALLY_RIDICULOUSLY_HIGH_FPS_FOR_DIZQUETVS_USECASE = 120;
 // See "Fix NVIDIA / h264_nvenc encoder issues" in NOTES.md.
 const NVENC_RETRY_AFTER_MS = 5 * 60 * 1000;
 // superfast: the slowest preset that kept realtime for three streams of a 10-bit
-// episode with Tunarr and OBS running (0.997, 1.7 cores each); veryfast was
+// episode with another streaming server and OBS running (0.997, 1.7 cores each); veryfast was
 // borderline (0.995), and today's default medium fell to 0.915 at 5 cores each.
 const FALLBACK_PRESET = 'superfast';
 let nvencBrokenUntil = 0;

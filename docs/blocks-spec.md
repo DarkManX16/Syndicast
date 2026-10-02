@@ -342,11 +342,7 @@ Adult Swim break with a matching clip and does nothing for the rest.
 
 #### Editor
 
-Our design principle, applied: ErsatzTV attaches filler presets (pre-roll,
-mid-roll, post-roll, tail, fallback, each in count, duration or pad mode) to
-individual schedule items, and decos (watermark, default filler, dead-air
-fallback) to templates by time. Tunarr fills Flex from weighted lists and has
-no positions at all. We attach transitions to the **context** the viewer is
+Our design principle, applied: we attach transitions to the **context** the viewer is
 in — the day-part or block — because the lineup is regenerated, channel 1 has
 335 slots and 137 shows a week, and a per-item attachment would be redone
 each time. We shape them **around the break**, out → Flex → in, in four
