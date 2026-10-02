@@ -281,8 +281,9 @@ for the full spec, stages and acceptance tests.
 
       Designed Oct 1, 2026 on Fable 5.1 - Stage 5 in
       [docs/blocks-spec.md](docs/blocks-spec.md), from channel 1's real
-      lineup (442 breaks a week: 113 between episodes, 301 between shows, 28
-      boundaries; 281 distinct show pairs). Sequences attach to the day-part
+      lineup (442 breaks a week: 117 between episodes, 297 between shows, 28
+      boundaries; 281 distinct show pairs; the split was 113 / 301 / 28 before
+      the Oct 2 boundary edits, see the spec). Sequences attach to the day-part
       or block and are shaped around the break - out steps, Flex, in steps -
       in four situations; a clip carries the shows it names, proposed from
       its title and fixed once on a review screen. Why they attach to the day-part or block, not to items, is in the spec's
