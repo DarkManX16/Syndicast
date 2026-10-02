@@ -343,6 +343,13 @@ for the full spec, stages and acceptance tests.
       Depends on stage 5 and the chapter and segment detector, which picks a
       clip that avoids cold opens and credits.
 
+- [ ] Date-aware promos (after 1.0)
+
+      Promos whose titles say tonight, tomorrow or a weekday (for example
+      "DCOM Horse Sense promo (tomorrow)") air only when that's true on the
+      schedule; a "tomorrow" promo plays only on the day before that program
+      actually airs. Builds on the `later` key.
+
 ### Scheduling
 
 - [x] Season exclusion / season start, per slot, for Play Next
