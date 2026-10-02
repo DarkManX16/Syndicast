@@ -8,6 +8,8 @@ const ProgramPlayer = require('./program-player');
 const channelCache  = require('./channel-cache')
 const dayParts = require('./day-parts');
 const wereThereTooManyAttempts = require('./throttler');
+const lineupCursor = require('./lineup-cursor');
+const crypto = require('crypto');
 
 module.exports = { router: video, shutdown: shutdown }
 
@@ -17,6 +19,21 @@ let stopPlayback = false;
 
 async function shutdown() {
     stopPlayback = true;
+}
+
+/*
+ * A stream id names one viewer's connection to /video or /radio. It rides on
+ * every /stream entry of that connection's playlists, the 100-entry restarts
+ * included, so /stream can keep that viewer's lineup cursor (lineup-cursor.js).
+ * Anything that isn't a plain token is ignored: it is written into the
+ * ffconcat playlist inside quotes.
+ */
+function validStreamId(value) {
+    return ( (typeof(value) === 'string') && /^[A-Za-z0-9_-]{1,64}$/.test(value) ) ? value : null;
+}
+
+function newStreamId() {
+    return crypto.randomBytes(8).toString('hex');
 }
 
 function video( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB ) {
@@ -52,9 +69,12 @@ function video( channelService, fillerService, db, programmingService, activeCha
         })
     })
     // Continuously stream video to client. Leverage ffmpeg concat for piecing together videos
-    let concat = async (req, res, audioOnly, step) => {
+    let concat = async (req, res, audioOnly, step, streamId) => {
         if ( typeof(step) === 'undefined') {
             step = 0;
+        }
+        if ( typeof(streamId) === 'undefined') {
+            streamId = newStreamId();
         }
         if (stopPlayback) {
             res.status(503).send("Server is shutting down.")
@@ -117,16 +137,18 @@ function video( channelService, fillerService, db, programmingService, activeCha
         
         res.on('close', () => { // on HTTP close, kill ffmpeg
             console.log(`\r\nStream ended. Channel: ${channel.number} (${channel.name})`);
+            channelCache.dropCursor(streamId);
             stop();
         })
 
         ffmpeg.on('end', () => {
             console.log("Queue exhausted so we are appending the channel stream again to the http output.")
-            concat(req, res, audioOnly, step+1);
+            // the same viewer, so the same stream id: its cursor carries on
+            concat(req, res, audioOnly, step+1, streamId);
         })
 
         let channelNum = parseInt(req.query.channel, 10)
-        let ff = await ffmpeg.spawnConcat(`http://localhost:${process.env.PORT}/playlist?channel=${channelNum}&audioOnly=${audioOnly}&stepNumber=${step}`);
+        let ff = await ffmpeg.spawnConcat(`http://localhost:${process.env.PORT}/playlist?channel=${channelNum}&audioOnly=${audioOnly}&stepNumber=${step}&stream=${streamId}`);
         ff.pipe(res,  { end: false}  );
     };
     router.get('/video', async(req, res) => {
@@ -155,6 +177,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
         let audioOnly = ("true" == req.query.audioOnly);
         console.log(`/stream audioOnly=${audioOnly}`);
         let session = parseInt(req.query.session);
+        let streamId = validStreamId(req.query.stream);
         let m3u8 = (req.query.m3u8 === '1');
         let number = parseInt(req.query.channel);
         let channel = await channelService.getChannel( number);
@@ -194,7 +217,13 @@ function video( channelService, fillerService, db, programmingService, activeCha
 
         // Get video lineup (array of video urls with calculated start times and durations.)
 
+      // Declared here: it used to be an undeclared global, shared by every
+      // /stream request in flight, so one viewer's item could be read by
+      // another's request across an await.
+      let lineupItem = null;
       let prog = null;
+      // this stream's next entry, from its lineup cursor; null when the clock decides
+      let cursorProg = null;
       let brandChannel = channel;
       let redirectChannels = [];
       let upperBounds = [];
@@ -221,14 +250,22 @@ function video( channelService, fillerService, db, programmingService, activeCha
             start: 0,
         };
       } else {
-        lineupItem = channelCache.getCurrentLineupItem( channel.number, t0);
+        // A stream that has played something already plays the next entry in
+        // the lineup (lineup-cursor.js), not whatever the clock lands on; the
+        // clock, and the channel's replay cache, only decide when it can't.
+        if (streamId !== null) {
+            cursorProg = lineupCursor.nextEntry(channel, channelCache.getCursor(streamId), t0);
+        }
+        if (cursorProg === null) {
+            lineupItem = channelCache.getCurrentLineupItem( channel.number, t0);
+        }
       }
       if (lineupItem != null) {
           redirectChannels = lineupItem.redirectChannels;
           upperBounds = lineupItem.upperBounds;
           brandChannel = redirectChannels[ redirectChannels.length -1];
       } else {
-        prog = programmingService.getCurrentProgramAndTimeElapsed(t0, channel);
+        prog = (cursorProg !== null) ? cursorProg : programmingService.getCurrentProgramAndTimeElapsed(t0, channel);
         activeChannelService.peekChannel(t0, channel.number);
 
         while (true) {
@@ -312,7 +349,9 @@ function video( channelService, fillerService, db, programmingService, activeCha
          * does not apply and this takes the path it always did. See
          * channel-cache.js's resumeHints for why the flush itself stays.
          */
-        let resumeAt = channelCache.takeResumeHint(
+        // (A stream following its cursor was not interrupted by a save: a
+        // save drops every cursor on the channel.)
+        let resumeAt = (cursorProg !== null) ? null : channelCache.takeResumeHint(
             brandChannel.number,
             t0,
             prog.program.isOffline === true ? null : prog.program
@@ -322,6 +361,8 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 `Resuming after a channel update at ${resumeAt}ms`
                 + ` instead of ${prog.timeElapsed}ms.`
             );
+            // the cursor keeps to the lineup's own schedule, not the resumed position
+            prog.lineupStart = t0 + (prog.startsIn || 0) - prog.timeElapsed;
             prog.timeElapsed = resumeAt;
             prog.startsIn = 0;
             // the bound pushed for this program above was measured from the
@@ -348,6 +389,25 @@ function video( channelService, fillerService, db, programmingService, activeCha
             };
         }
       }
+
+        /*
+         * Where a stream will be in the lineup once it has played this item
+         * (lineup-cursor.js), carried on the item so the channel's cache keeps
+         * it: a viewer tuning in on that cache picks up the same item, and so
+         * the same cursor. Only for an entry of this channel's own lineup - a
+         * redirect or an error leaves the next request to the clock.
+         */
+        if ( !isBetween && !isLoading && (lineupItem != null) ) {
+            let cursor = null;
+            if (prog !== null) {
+                if ( (brandChannel === channel) && (typeof(lineupItem.err) === 'undefined') ) {
+                    cursor = lineupCursor.cursorAfter(channel, prog, t0);
+                }
+            } else if ( (typeof(lineupItem.cursor) === 'object') && (redirectChannels.length === 1) ) {
+                cursor = lineupItem.cursor;
+            }
+            lineupItem.cursor = cursor;
+        }
 
         if ( !isBetween && !isLoading && (lineupItem != null) ) {
             let upperBound = 1000000000;
@@ -402,7 +462,10 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 duration : 60000,
             };
         }
-        
+        if ( (streamId !== null) && !isLoading && !isBetween ) {
+            channelCache.setCursor(streamId, (typeof(lineupItem.err) === 'undefined') ? lineupItem.cursor : null);
+        }
+
         let combinedChannel = helperFuncs.generateChannelContext(brandChannel);
         combinedChannel.transcoding = channel.transcoding;
 
@@ -618,6 +681,9 @@ function video( channelService, fillerService, db, programmingService, activeCha
 
         let sessionId = StreamCount++;
         let audioOnly = ("true" == req.query.audioOnly);
+        // the viewer connection this playlist is for, passed on to every entry
+        let streamId = validStreamId(req.query.stream);
+        let streamParam = (streamId === null) ? '' : `&stream=${streamId}`;
 
         let transcodingEnabled = FFMPEG.isFullyNormalized(ffmpegSettings);
 
@@ -627,22 +693,22 @@ function video( channelService, fillerService, db, programmingService, activeCha
             && (stepNumber == 0)
         ) {
             //loading screen
-            data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&first=0&session=${sessionId}&audioOnly=${audioOnly}'\n`;
+            data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&first=0&session=${sessionId}&audioOnly=${audioOnly}${streamParam}'\n`;
         }
         let remaining = maxStreamsToPlayInARow;
         if (stepNumber == 0) {
-            data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&first=1&session=${sessionId}&audioOnly=${audioOnly}'\n`
+            data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&first=1&session=${sessionId}&audioOnly=${audioOnly}${streamParam}'\n`
 
             if (transcodingEnabled && (audioOnly !== true)) {
-                data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&between=1&session=${sessionId}&audioOnly=${audioOnly}'\n`;
+                data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&between=1&session=${sessionId}&audioOnly=${audioOnly}${streamParam}'\n`;
             }
             remaining--;
         }
 
         for (var i = 0; i < remaining; i++) {
-            data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&session=${sessionId}&audioOnly=${audioOnly}'\n`
+            data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&session=${sessionId}&audioOnly=${audioOnly}${streamParam}'\n`
             if (transcodingEnabled && (audioOnly !== true) ) {
-                data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&between=1&session=${sessionId}&audioOnly=${audioOnly}'\n`
+                data += `file 'http://localhost:${process.env.PORT}/stream?channel=${channelNum}&between=1&session=${sessionId}&audioOnly=${audioOnly}${streamParam}'\n`
             }
         }
 

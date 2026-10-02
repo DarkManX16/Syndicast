@@ -14,6 +14,8 @@ const suites = [
     './channel-save',
     './dst-fall-back',
     './lookahead',
+    './lineup-cursor',
+    './stream-cursor',
     './backup-verified-copy',
     './backup-retention',
     './backup-restore-check',

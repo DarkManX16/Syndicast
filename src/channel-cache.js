@@ -22,6 +22,16 @@ let cache = {};
  */
 let resumeHints = {};
 
+/*
+ * Each viewer stream's lineup cursor (see lineup-cursor.js), keyed by the
+ * stream id video.js gives a /video or /radio connection. Dropped when the
+ * connection closes, and for every stream on a channel when it is saved, since
+ * a save can renumber the lineup. `touched` lets a cursor whose close was never
+ * seen be swept up.
+ */
+let cursors = {};
+const CURSOR_IDLE_MS = 60 * 60 * 1000;
+
 let configCache = {};
 let numbers = null;
 
@@ -108,7 +118,35 @@ function saveChannelConfig(number, channel ) {
         delete cache[number];
 
     }
+    for (let id of Object.keys(cursors)) {
+        if (cursors[id].cursor.channel === number) {
+            delete cursors[id];
+        }
+    }
     numbers = null;
+}
+
+function getCursor(streamId) {
+    let held = cursors[streamId];
+    return (typeof(held) === 'undefined') ? null : held.cursor;
+}
+
+function setCursor(streamId, cursor) {
+    if ( (cursor === null) || (typeof(cursor) === 'undefined') ) {
+        delete cursors[streamId];
+        return;
+    }
+    let now = (new Date()).getTime();
+    for (let id of Object.keys(cursors)) {
+        if (now - cursors[id].touched > CURSOR_IDLE_MS) {
+            delete cursors[id];
+        }
+    }
+    cursors[streamId] = { cursor: cursor, touched: now };
+}
+
+function dropCursor(streamId) {
+    delete cursors[streamId];
 }
 
 /*
@@ -306,6 +344,7 @@ function clear() {
     configCache = {};
     cache = {};
     resumeHints = {};
+    cursors = {};
     numbers = null;
 }
 
@@ -321,4 +360,7 @@ module.exports = {
     saveChannelConfig: saveChannelConfig,
     getFillerLastPlayTime: getFillerLastPlayTime,
     clearPlayback: clearPlayback,
+    getCursor: getCursor,
+    setCursor: setCursor,
+    dropCursor: dropCursor,
 }
