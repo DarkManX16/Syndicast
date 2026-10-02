@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) next
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, build next
 
 ## Summary
 
@@ -23,6 +23,9 @@ Settled. Revisit only with new evidence.
 | Not on on-demand channels | On-demand deliberately severs the lineup from wall clock. |
 | Transitions go inside breaks | The between-items interlude seam sits outside time accounting; bumpers there would drift the channel ~7 minutes a day. |
 | Transition templates are per day-part/block, default empty | Break shapes differ by block, and most breaks are one bumper or none. |
+| Transitions attach to the context, shaped around the break | The lineup is regenerated and has hundreds of slots; a per-item attachment would be redone each time. Whether the show or the block changed decides the sequence, and that is computed, not entered. |
+| A clip names the shows it is about | Channel 1 has 281 distinct adjacent show pairs a week. Tags on clips, proposed from titles and fixed once on a review screen, scale; per-pair rules do not. |
+| Breaks bend, transition steps never | Flex is what absorbs a stream's lateness (stage 4). Steps play whole and in order; a dropped break keeps them. |
 
 ## Concepts
 
@@ -125,48 +128,294 @@ Clips under ~20 seconds next to Flex repeat about three times or get skipped. Tr
 
 Fixed by a lineup cursor per viewer: a stream plays the next entry in the lineup, each program from its start, and only breaks stretch or shrink to bring it back to the clock. A break that has too little time left is dropped, and the stream's lateness carries on to the next break.
 
-### Stage 5 — Transitions (Opus 5 design pass first, then build)
+### Stage 5 — Transitions (designed Oct 1, 2026 on Fable 5.1; Sonnet 5 builds)
 
-Each day-part and block gets a transition template. **Every sequence defaults to empty**, so an unconfigured break is just commercials.
+Each day-part and block gets a set of transition sequences. **Every sequence
+defaults to empty**, so an unconfigured break is just commercials and no saved
+channel changes until someone adds a step.
 
-Each situation has two ordered sequences — **outgoing** (before the Flex) and **incoming** (after it). Nothing is fixed by role: any step can go in either sequence, so an Up Next can sit before the Flex or after it, whichever that block does.
+Designed from channel 1's real lineup, not from the examples alone. In the
+week of Oct 18, 2026 it has 442 breaks: 113 between two episodes of one show,
+301 between different shows, 28 at a day-part or block boundary. The four
+NEXT promos it carries today sit in the lineup as ordinary items — show →
+15s NEXT promo → Flex → 10s NEXT bumper → show — which is exactly the shape a
+between-shows sequence produces, so the design is checked against them below.
 
-| Situation | Applies to |
+#### Situations and assembly
+
+A sequence belongs to a **situation** on a context. Each situation has two
+ordered lists of steps: **out** (before the Flex) and **in** (after it).
+Nothing is fixed by role: an Up Next can sit on either side.
+
+| Situation | Fires when |
 |---|---|
 | **Leaving** | A boundary break out of this context |
 | **Entering** | A boundary break into this context |
-| **Between episodes** | Inside this context, the same show continues |
-| **Between shows** | Inside this context, a different show starts |
+| **Between episodes** | Inside this context; the show after the break is the show before it |
+| **Between shows** | Inside this context; a different show follows |
 
-Break assembly:
+A break is the run of adjacent Flex entries between program **P** and program
+**N**. P's context is resolved at P's start, N's at N's start, by
+`resolveContext` as everywhere else. "The same show" means the same show key:
+`custom.<id>` for an item of a custom show, else `tv.<showTitle>`, else
+`movie.<title>` — the key the slot editor already uses, so a custom show
+counts as one show, which is what makes a block of Looney Tunes shorts one
+show and not thirty.
 
-- Same context, same show: `between-episodes out` → Flex → `between-episodes in`
-- Same context, different show: `between-shows out` → Flex → `between-shows in`
-- Boundary: `P.leaving out` → `N.entering out` → Flex (N's mix) → `P.leaving in` → `N.entering in`
+- Same context, same show: `betweenEpisodes.out` → Flex → `betweenEpisodes.in`
+- Same context, different show: `betweenShows.out` → Flex → `betweenShows.in`
+- Boundary: `P.leaving.out` → `N.entering.out` → Flex (N's mix) → `P.leaving.in` → `N.entering.in`
+- No program on one side (the start of a lineup): that side contributes nothing.
+- Two programs with no Flex between them get no sequence. Sequences live in breaks.
 
-All four "between shows" shapes are expressible purely by where the steps sit:
+A sequence is chosen per break, never per Flex entry: the out steps attach to
+the first Flex entry of the run and the in steps to the last, so a break the
+generator left as two Flex entries still gets one sequence.
 
+#### Steps
+
+A step says which clips it may draw from and how it chooses one:
+
+```js
+{ id, kind: 'list',
+  listId,                            // the filler list it draws from
+  match: 'any' | 'show' | 'pair',    // any clip; a clip naming the keyed show; a clip naming now→then
+  keyedOn: 'now' | 'next' | 'later', // which show a 'show' step must name (see below)
+  fallbackListId: null }             // when nothing names the show: null skips the step, a list plays one from it
 ```
-Up Next → Flex → Ident → show
-Up Next → Flex → Ident → Intro → show
-Flex → Up Next → Ident → show
-Flex → Up Next → Ident → Intro → show
+
+- **`match: 'any'`** is the fixed-list step: an ident, a block bumper, a
+  "we'll be right back".
+- **`match: 'show'`** is the per-show step. The clip must name the keyed
+  show: `next` for an Up Next or a show intro, `now` for a "that was" card or
+  a show's own closing bumper. A per-series bumper is simply a `show` step
+  whose fallback is *skip*: "DBZ intro" before Dragon Ball Z and nothing before
+  anyone else. There are no per-show sequences; this step is what "per
+  series" means.
+- **`match: 'pair'`** is the Now/Then step. It wants a clip naming both P and
+  N in that order. If none exists it tries a clip naming only N (a plain Up
+  Next for the same show), then the fallback list, then skips.
+- **`keyedOn: 'later'`** keys a step on the first program of this context's
+  *next* airing or start, for Cartoon Theatre's "Next Time" — the one bumper
+  in the examples that names neither neighbour. It is the last build step and
+  may slip past 1.0; the field is reserved either way.
+
+**Matching falls back rather than skipping.** A step tries its most specific
+match, then the next, then its fallback list. A step with no fallback is the
+spec's "optional" step. A step whose list is empty or missing is skipped with
+one log line. The one thing never done is playing a clip that names a
+different show: a clip plays only if every show it names is one the step is
+keyed on. A general bumper in place of a specific one is fine; "Up Next:
+Dexter's Lab" before Johnny Bravo is not.
+
+Among the clips a step may use, the longest-idle plays first, read from the
+same per-clip play times filler uses, so a show with three Up Nexts rotates
+them. Cooldowns are a preference here, not a bar: the only clip that names
+the show plays even if it played an hour ago. Step clips record playback like
+filler, so filler's own rotation sees them too.
+
+**Room for a "generated" step.** `kind` is the extension point. After 1.0,
+`{ kind: 'generated', template: 'up-next' | 'later-tonight' | 'tonight-on',
+durationMs }` slots in beside `list` steps: the plan below carries each step
+as `{ kind, durationMs, ... }` and the cursor's phase machine reads only
+`durationMs`, so a generated step needs a renderer in `video.js` and nothing
+in the cursor. The `now`/`next`/`later` lookups are the same ones its three
+templates need.
+
+#### Which shows a clip names (settles open question 1)
+
+Pair and show steps need to know which show a clip is about. Nobody is going
+to enter that per pair: channel 1 has 281 distinct adjacent pairs in a week,
+222 of them seen once, and 293 across the whole 323-day lineup — a week *is*
+the schedule, and the set is the size of the lineup, not of the examples.
+
+So the mapping lives on the clip, not the step. Each clip in a filler list
+may carry `names: [showKey]` or `names: [showKey, showKey]` (now, then). It is
+proposed automatically and fixed on a review screen:
+
+- **Proposal** matches the clip's title against the show keys of every
+  channel's slots and programs: longest title first, case and punctuation
+  folded, so "Adult Swim Promo - Cowboy Bebop [2003]" names Cowboy Bebop and
+  "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
+  make a pair. Titles like "[As] NEXT - SGC2C [2003]" match nothing on the
+  first pass.
+- **Review** is a table: clip, proposed show(s), a dropdown to fix it, and
+  "none" for a clip that names no show. A one-time pass per list, redone only
+  for new clips.
+- **Learning**: when the user maps a clip, every word of its title that is
+  not a show title becomes an alias for that show (`SGC2C` → Space Ghost
+  Coast to Coast, `DBZ` → Dragon Ball Z, `Grim` → The Grim Adventures of
+  Billy & Mandy) and the next proposal uses it. Aliases are stored once, in
+  `<data>/show-aliases.json`, shared by every list and channel. There is no
+  alias editor; the review screen is the alias editor.
+
+Our stamp, against the two programs we took the idea from: the clip knows
+what it is about, so one list serves every show and every pair, and the
+schedule can be regenerated or a show swapped without touching a single
+mapping.
+
+#### Playing through the lineup cursor
+
+Since stage 4 a viewer's stream follows a cursor and only breaks bend. A
+break with a sequence becomes three phases, carried on the cursor:
+
+```js
+cursor = { ..., inBreak: true, phase: 'out' | 'flex' | 'in', step: k,
+           plan: { out: [ {kind, key, durationMs, ...} ], in: [ ... ], runEnd } }
 ```
 
-Each sequence is an ordered list of steps. A step says what to play and how to pick it:
+- **Entering the break from the previous program** (the cursor's normal
+  path) resolves the situation, builds the plan once — clips chosen then, so
+  every call of this break sees the same plan — and plays the out steps in
+  order, from their start, however early or late the stream is.
+- **Flex** then runs with time left = (break end − in-steps' total) − now.
+  A late stream gets a shorter Flex, an early one a longer one, exactly as
+  today. When less than `SLACK` + 1 is left, Flex ends.
+- **In steps** play in order, then the next program from its start.
+- **Breaks bend; transitions don't.** Shrinking a break shrinks its Flex.
+  Dropping a break drops its Flex and still plays its steps; whatever
+  lateness the steps add carries to the next break, as lateness does today.
+  This replaces `lineup-cursor.js`'s rule that passes over a break with too
+  little left for a clip: a break is now passed over only when it has no
+  steps *and* too little left.
+- **Tuning in without a cursor** (the clock path, and `/m3u8`) lands in a
+  break by time: in the `in` phase when the time left is within the in steps'
+  total plus `SLACK`, otherwise in `flex`. The out steps are in the past; a
+  viewer who tunes in mid-break missed the Up Next, as on real TV. The
+  random start inside a clip at tune-in applies to Flex only, never a step.
+- **A viewer tuning in on the replay cache** inherits the item and its cursor
+  as today, plan included, so two viewers 10 seconds apart see the same
+  sequence.
+- **The 60-second tolerance** is unchanged and measured at the Flex, where it
+  always was: a stream further off than that falls back to the clock as now.
+- A step's lineup item has `type: 'transition'`, so the channel detail page
+  can say what it is; the player treats it as it treats a commercial.
 
-- **Fixed list** — draw from one filler list.
-- **Per-show** — the user maps shows to lists themselves, with a general list as the fallback.
-- **Per-pair** — for Now/Then, mapped by the pair of shows, falling back to per-show and then to general.
-- **Optional** — skipped when nothing applies (Cartoon Theatre's "Next Time").
+`src/transitions.js` is a pure module like `day-parts.js`: situation of a
+break, assembly, matching, plan. `lineup-cursor.js` grows the phases.
+`createLineup` learns to subtract the in steps from a break's time left.
+`video.js` serves a step like a filler clip. Nothing stored changes shape
+except the new optional fields.
 
-**Matching falls back rather than skipping.** A step tries its most specific mapping, then the next, then its general list. A step is only skipped when it has nothing at all to draw on, or is marked optional. The one thing never done is substituting a clip that names a *different* show — a general bumper in place of a specific one is fine; "Up Next: Dexter's Lab" before Johnny Bravo is not.
+#### Stage 5, stage 6 and the roadmap lines
 
-WBRB can never play after a block's last show, because at a block boundary the Leaving sequence fires instead.
+- **Stage 5** (between programs): "we'll be right back" and "back to the
+  show" around a break between episodes; Up Next, idents, intros, host intros
+  and show closers between shows; block sign-ons and sign-offs at boundaries;
+  "Next Time" via `later`.
+- **Stage 6** (inside an episode): the same WBRB and BTTS clips around a
+  midroll. Stage 6 adds a fifth situation, **Midroll**, with the same step
+  model and the same empty default, once chapter detection exists.
+- **Slot filler positions (HEAD / PRE / MID / POST / TAIL)** are covered and
+  the roadmap line folds into this stage. PRE and POST are the in and out
+  steps of the between-* situations; HEAD and TAIL are Entering and Leaving
+  when the stretch is a block, and between-shows when it is not; MID is
+  stage 6. What positions would add that contexts don't is a per-slot
+  override — this Monday 8pm slot, not the same show on Tuesday — and no real
+  channel asks for one.
+- **Sign-ons and sign-offs** are a Leaving sequence at the end of the
+  broadcast day and an Entering sequence at its start, so that line folds in
+  too. Left over, and not stage 5: an overnight stretch that should look
+  off-air. The neighbour rule plays one mix through a long break (open
+  question 2), so an "Off Air" day-part with an empty mix is never the
+  context of the overnight break — its neighbours are the evening and morning
+  shows. Revisit as its own small item: a break longer than some hours
+  resolves per clip from the clock.
+- **Generated Up Next bumpers** stay after 1.0, as the `generated` kind above.
 
-**Breaks bend; transitions don't.** Since stage 4, breaks are what bring a late or early stream back to the clock. A late stream gets a shorter break, and a stream later than the whole break skips it. Once breaks contain transition sequences, shrinking or dropping a break must cut filler first and keep the transition steps. Dropping a break drops its Flex, never its outgoing or incoming steps. Today `lineup-cursor.js` passes over a break with too little left for a clip, and the design pass has to change that rule so the steps still play. Whatever lateness the steps can't absorb carries on to the next break, as it does now.
+#### Channel 1's NEXT promos
 
-**Leave room for a "generated" step type.** The design pass must not assume every step draws from a filler list: after 1.0, Up Next, Later Tonight and "Tonight on [block]" bumpers are built live at airtime and slot into these sequences as a step of their own. See the "Generated Up Next bumpers" line in NOTES.md.
+Nothing to migrate. The four items are hand inserts at the head of the lineup,
+played once on Sep 30, 2026; the lineup cycles every 323 days, so they come
+round again on Aug 19, 2027 at the earliest, after the point the lineup has to
+be regenerated anyway, and Time Slots never produced them, so a regeneration
+drops them. Until then they are ordinary programs the cursor plays once, from
+their start.
+
+To get the same shape from a sequence: put the NEXT clips in a filler list
+("[As] NEXT promos"), run the review screen (the 15s "SGC2C NEXT promo" and
+the 10s "NEXT - SGC2C" both learn the SGC2C alias from one fix), then on the
+Adult Swim day-parts set *between shows* to
+`out: [show step, keyed on next, from that list, skip if none]` and
+`in: [the same]`. That reproduces show → NEXT → Flex → NEXT → show for every
+Adult Swim break with a matching clip and does nothing for the rest.
+
+#### Editor
+
+Our design principle, applied: ErsatzTV attaches filler presets (pre-roll,
+mid-roll, post-roll, tail, fallback, each in count, duration or pad mode) to
+individual schedule items, and decos (watermark, default filler, dead-air
+fallback) to templates by time. Tunarr fills Flex from weighted lists and has
+no positions at all. We attach transitions to the **context** the viewer is
+in — the day-part or block — because the lineup is regenerated, channel 1 has
+335 slots and 137 shows a week, and a per-item attachment would be redone
+each time. We shape them **around the break**, out → Flex → in, in four
+situations, because whether the show changed and whether the block changed
+is what decides a WBRB from an Up Next from a sign-off, and that decision is
+made for the user. And the clip carries the show it names, so there is one
+list, not one per show.
+
+- **On each day-part and block card**, under Mix, a **Transitions** section:
+  four rows (Leaving, Entering, Between episodes, Between shows). Each row
+  reads left to right as the break will play: `[+ step] … → Flex → … [+ step]`.
+  A step is a chip — list name, then "any", "names next show", "names
+  now → then", and "skip" or the fallback list — that opens inline to edit.
+  Empty rows read "commercials only".
+- **"Preview on this week's lineup"** under the section walks the channel's
+  saved programs (the editor already loads them) and lists the next few breaks
+  of each situation with the plan they would get — "Fri 2:50pm, Ed, Edd n
+  Eddy → Dragon Ball Z: Toonami bumper → Flex 4:12 → DBZ intro" — so a
+  sequence is checked against what will actually air, not against an example.
+  The clip picks in the preview are the longest-idle ones at preview time;
+  the live pick may differ.
+- **In the filler list editor**, a **Names** column per clip and a
+  "Match shows" button that opens the review screen above.
+- The on-demand warning the Blocks tab shows applies unchanged.
+
+#### Build order for Sonnet 5
+
+One session each, each verified on a copy of the real data folder (never the
+live one, and never the server on port 18000). Steps 4 and 7 need a TiviMate
+preview from Ron; the rest are verified by tests and scripts against channel 1.
+
+1. **Situations and assembly** — `src/transitions.js`: show keys, P and N
+   with their contexts, the four situations, the run of Flex entries, the
+   stored shape and its defaults, `warnAboutTransitions` in `channel-db.js`
+   next to `warnAboutBlocks`. Tests in `test/transitions.js` on fixtures.
+   Real-data check: a script over channel 1's week of Oct 18 reports 442
+   breaks as 113 / 301 / 28, the numbers above.
+2. **Names and the matcher** — `names` on filler clips, `src/show-match.js`
+   (pure: titles and aliases in, proposals out), `<data>/show-aliases.json`,
+   `GET /api/filler/:id/match` and the alias save. Tests on fixtures. Real-data
+   check: the matcher over Ron's ten lists, reporting what it proposes for
+   the Adult Swim, Toonami and AcTN lists and what it leaves unnamed.
+3. **Plans** — matching and fallback, longest-idle choice, the never-a-
+   different-show rule, without `later` for now. The spec's stage 5
+   acceptance rows go into `test/blocks-acceptance.js`'s `ROWS` as
+   `row(5, …)`. Real-data check: plans for one day of channel 1 with a test
+   sequence on Adult Swim, printed break by break.
+4. **The cursor phases** — `lineup-cursor.js`, `createLineup`'s time left,
+   `video.js` serving steps, the clock-path tune-in rule, `type: 'transition'`.
+   `test/lineup-cursor.js`'s simulated viewer gains steps: every step once,
+   Flex shrinks first, a dropped break keeps its steps; `test/stream-cursor.js`
+   follows a plan through the real router. **TiviMate preview**: a scratch
+   server from a worktree on a copy of `.dizquetv-dev` as stage 4 was done,
+   with the compressed 5-15s channels from stage 4 given sequences, and
+   channel 1's copy with the Adult Swim NEXT sequence above.
+5. **The card editor** — the Transitions section on both cards, load-time
+   defaults and save-time cleanup beside the day-part ones in
+   `channel-config.js`, the preview on this week's lineup. Verified by hand
+   on the dev fixture and a copy of channel 1, with screenshots.
+6. **The review screen** — the Names column and "Match shows" in the filler
+   editor, writing `names` and aliases. Verified on Ron's lists: the SGC2C
+   case above learns from one fix.
+7. **End to end on channel 1** — the Adult Swim NEXT sequence and one Toonami
+   boundary configured on the copy, a day walked by script, then a
+   **TiviMate preview** of two real breaks. Then the roadmap: tick the
+   transition line, fold the slot-positions and sign-on lines into it, and
+   record the off-air leftover.
+8. **`keyedOn: 'later'`** and the Cartoon Theatre "Next Time" row — last, and
+   only once 1-7 are in.
 
 ### Stage 6 — Midrolls
 
@@ -214,9 +463,19 @@ Built from the real channels. A stage merges only when its tests pass.
 - **Now/Then when Grim is followed by anything other than Foster's:** skipped
 - **CCF's last show:** no WBRB; the boundary sequences fire instead
 
+From channel 1's own lineup, with a between-shows sequence on the Adult Swim day-parts of one `show` step keyed on `next` from a list of NEXT clips, skip if none, on both sides:
+
+- **ATHF → Space Ghost, Wed 1:56am (the Sep 30 airing):** 15s "SGC2C NEXT promo" → Flex → 10s "NEXT - SGC2C" → Space Ghost — the shape the hand-inserted items have today
+- **Space Ghost → a show with no NEXT clip:** Flex only; both steps skipped
+- **A stream 20s late into that break:** both NEXT clips play whole; the Flex is 20s shorter
+- **A stream later than the whole break:** no Flex; both NEXT clips still play, from their start, then the show from its start
+- **Tuning in 8s before the break ends:** the 10s "NEXT - SGC2C" plays, then the show; the 15s promo does not
+- **Mon 2:50pm, weekday day-part → Toonami block:** Toonami `entering` fires with the day-part's `leaving`; a between-shows sequence on either context does not
+- **Week of Oct 18, 2026:** 442 breaks resolve as 113 between episodes, 301 between shows, 28 boundaries; a channel with no sequences configured plays exactly what it plays today in all 442
+
 ## Open questions
 
-1. **Per-pair bumpers** (stage 5). The lineup varies by day, so the set of adjacent pairs across a week is large — on the order of a hundred — and there are many two-show bumpers. Hand-entered pair rules won't scale. Intended shape instead: pair bumpers live in a filler list, and each clip carries the two shows it names. That mapping is proposed automatically by matching clip titles against the channel's shows, with a review screen to fix what it gets wrong — a one-time pass rather than ongoing per-pair configuration. When no pair clip matches the real neighbours, it falls back to the per-show mapping, then to a general list. Settled at the stage 5 design session.
+1. **Per-pair bumpers** (stage 5). Settled Oct 1, 2026, by measurement: channel 1 has 281 distinct adjacent show pairs in a week, 222 of them seen once, and 293 across the whole lineup, so the week is the schedule and hand-entered pair rules cannot scale. Pair bumpers live in an ordinary filler list and each clip carries the shows it names, proposed from its title and fixed once on a review screen that also learns aliases such as SGC2C. A pair step falls back to a clip naming only the next show, then to a general list. See Stage 5, "Which shows a clip names".
 2. **Long breaks spanning several contexts.** Settled during stage 1, by measurement rather than by reading. `createLineup` is re-invoked **once per filler clip**, each time with a fresh wall-clock `t0` — a two hour break produced 48 calls and no cache hits, because `getCurrentLineupItem` returns null as soon as a clip is exhausted. Across all of them `programIndex` never moves, so the neighbour the rule reads is the same on the first call and the last. A long break therefore plays **one** mix throughout, even where it spans a boundary, which is what "the filler starts after the 2:30 show" requires. The clock only re-enters for a break with no program neighbour, and there it should: nothing anchors it, so an all-Flex channel does change mix partway through.
 3. **Per-list cooldown persistence.** Fixed in stage 1. Per-list last-played now lives in the same store as per-clip times (`<data>/play-cache/<channel>/`), under a key that cannot collide with a program key, so it is loaded at boot like everything else there. No new DAO and no migration.
 
