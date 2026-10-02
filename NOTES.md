@@ -1042,7 +1042,7 @@ on shows.
       4. One look on the real client (Plex Live TV) - the stream is the
          same bytes either way, but the client is what the viewer sees.
 
-- [ ] Fix very short items repeating or being skipped next to Flex
+- [x] Fix very short items repeating or being skipped next to Flex
 
       Items under roughly 20 seconds, placed adjacent to Flex in the lineup,
       either play about three times over or get skipped entirely. This is a
@@ -1279,7 +1279,7 @@ on shows.
       tool call and runs until stopped by its pid.
 
       **Built Oct 1, 2026 (Opus 5.5), on branch `stage4`, three commits as
-      proposed. Waiting on Ron's check in TiviMate before it merges.** 312
+      proposed. Confirmed in TiviMate by Ron: on 900, 903 and 905 every bumper played once and every show started from its beginning.** 312
       tests -> 364.
       1. *The look-ahead (62262f8)*, first, since the cursor needs the same
          number: `getCurrentProgramAndTimeElapsed` also returns `startsIn`,
@@ -1306,8 +1306,12 @@ on shows.
            await. In practice only the active-channel bookkeeping after
            `player.play` read it late; the cursor reads it too, so it is a
            local now.
-         Not changed: `/m3u8` (the HLS "fast" playlist) mints no stream id,
-         so it works from the clock as before.
+         **Known limitation: `/m3u8`** (the HLS "fast" playlist) mints no stream
+         id, so it still picks every item from the clock and can still repeat
+         or skip a very short item next to Flex. Ron's channels use `/video`.
+         Fixing it means a stream id on that playlist's entries, which a
+         player that fetches them as separate segments may not keep to one
+         viewer; not attempted.
       3. *The stage 5 note (5f02782)* in `docs/blocks-spec.md`: shrinking or
          dropping a break cuts filler first and keeps the transition steps.
 
@@ -1871,7 +1875,7 @@ be built:
       builds). Built Oct 1, 2026: 8-bit for every H.264 encoder, the channel's
       bitrate for nvenc, every source encoded under an H.264 encoder, and a
       libx264 fallback. See its Media handling roadmap line above.
-- [ ] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
+- [x] Stage 4, short items next to Flex (Opus 5.5, investigate and fix). See
       "Fix very short items repeating or being skipped next to Flex" under
       Media handling above, and Stage 4 in
       [docs/blocks-spec.md](docs/blocks-spec.md).
