@@ -5,13 +5,14 @@
 Every feature is built around how Ron programs his channels, with Syndicast's
 own identity. Ideas are never copied, and the docs and the code describe our
 designs on their own terms, without naming other programs. Any roadmap line
-below says what we do and why. **Syndicast is all about taking ideas and
-innovating, and that is a rule for every session.**
+below says what we do and why. **Syndicast innovates.**
 
 ## Rules for every session
 
 - Another streaming server runs on this PC, with its own processes and load.
   Never stop or signal any process you didn't start.
+- Docs and code describe our designs on their own terms and never name other
+  playout programs.
 
 ## Feature roadmap
 
