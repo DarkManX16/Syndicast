@@ -8,6 +8,7 @@
  */
 const { helperFuncs, dayParts, MIN, HOUR, at, freshStore, clip, show, flex, mix, Suite } = require('./support');
 const transitions = require('../src/transitions');
+const lineupCursor = require('../src/lineup-cursor');
 
 // ---------------------------------------------------------------- fixtures
 //
@@ -275,6 +276,63 @@ function render(plan) {
     return plan.out.map((s) => s.clip.title).concat(['Flex'], plan.in.map((s) => s.clip.title)).join(' -> ');
 }
 
+/*
+ * A stream through the break at programs[flexIndex], followed the way /stream
+ * follows it (step 4): either coming out of the show before the break
+ * `lateSecs` late, on its lineup cursor, or tuning in `tuneInSecs` before the
+ * break ends, from the clock. Every item plays exactly its length. The line
+ * names each step with how long it played, a run of Flex once with the room
+ * its first decision had (and, given `onTimeRoom`, how much less that is),
+ * and the show after the break with where it started and how late.
+ */
+function streamThrough(base, programs, firstStart, flexIndex, opts) {
+    const channel = Object.assign({}, base, { programs,
+        duration: programs.reduce((a, p) => a + p.duration, 0), startTime: new Date(at(firstStart)).toISOString() });
+    let breakStart = at(firstStart);
+    for (let i = 0; i < flexIndex; i++) {
+        breakStart += programs[i].duration;
+    }
+    const breakEnd = breakStart + programs[flexIndex].duration;
+    const planFor = (brk) => transitions.buildPlan(channel, brk, seqEnv);
+    const store = freshStore();
+    const fillers = fillersFor(channel);
+    let t;
+    let obj;
+    if (typeof opts.tuneInSecs === 'number') {
+        t = breakEnd - opts.tuneInSecs * 1000;
+        obj = lineupCursor.placeByClock(channel, helperFuncs.getCurrentProgramAndTimeElapsed(t, channel), t, planFor);
+    } else {
+        t = breakStart + opts.lateSecs * 1000;
+        const cursor = { channel: channel.number, index: flexIndex - 1, end: breakStart, inBreak: false,
+            fingerprint: lineupCursor.fingerprint(programs[flexIndex - 1]) };
+        obj = lineupCursor.nextEntry(channel, cursor, t, planFor);
+    }
+    const parts = [];
+    let inFlex = false;
+    for (let guard = 0; (guard < 50) && (obj !== null); guard++) {
+        const item = helperFuncs.createLineup(store, obj, channel, fillers, false, t)[0];
+        if (obj.transition) {
+            parts.push(`${item.title} (${item.streamDuration / 1000}s${item.streamDuration === item.duration ? '' : ', CUT'})`);
+            inFlex = false;
+        } else if (obj.program.isOffline === true) {
+            if (!inFlex) {
+                const room = helperFuncs.timeLeft(obj) / 1000;
+                parts.push(`Flex with ${room}s of room` + ((typeof opts.onTimeRoom === 'number') ? `, ${opts.onTimeRoom - room}s less than on time` : ''));
+            }
+            inFlex = true;
+        } else {
+            const late = Math.round((t + item.start - breakEnd) / 1000);
+            parts.push(`${obj.program.title} from ${item.start === 0 ? 'its start' : `${item.start / 1000}s in`}, `
+                + (late === 0 ? 'on time' : (late > 0 ? `${late}s late` : `${-late}s early`)));
+            break;
+        }
+        const cursor = lineupCursor.cursorAfter(channel, obj, t);
+        t += item.streamDuration;
+        obj = lineupCursor.nextEntry(channel, cursor, t, planFor);
+    }
+    return parts.join(' -> ');
+}
+
 // One day of 25-minute shows with a 5-minute break after each, seven days
 // round, so the week is a plain 336-break cycle whose split can be worked out
 // by hand. A day-part runs all week; a block airs 20:00-22:00 daily.
@@ -514,11 +572,11 @@ const ROWS = [
         ['Powerhouse'],
         () => breakEndingAt(overlapping, at('2026-01-05T11:30:00'))),
 
-    // --- Stage 5: docs/blocks-spec.md "Stage 5". Plans only - which clips a
-    // break's steps choose. How a stream plays them (late, early, tuning in)
-    // is step 4's cursor and is tested there. "Next Time" needs keyedOn
-    // "later", which is step 8, so the Cartoon Theatre -> Grim row has no
-    // Next Time step yet.
+    // --- Stage 5: docs/blocks-spec.md "Stage 5". Most rows are plans - which
+    // clips a break's steps choose. The three about a stream that is late,
+    // very late or tuning in are played through the cursor (streamThrough,
+    // step 4). "Next Time" needs keyedOn "later", which is step 8, so the
+    // Cartoon Theatre -> Grim row has no Next Time step yet.
     //
     // Each row lays out its own lineup against the ccnSeq / nickSeq fixtures
     // above, so it holds whatever Ron's real block times are.
@@ -576,6 +634,24 @@ const ROWS = [
         'Flex',
         () => render(planOf(ccnSeq, [episode('Space Ghost', 2, 15), flex(5), episode('The Venture Bros', 1, 25)],
             '2026-01-06T02:00:00', 1))),
+
+    // The three that need the cursor (step 4): the same ATHF -> Space Ghost
+    // break, played through it. The Flex absorbs a late stream; the steps
+    // never do.
+    planRow(5, 'A stream 20s late into that break | both NEXT clips play whole; the Flex is 20s shorter',
+        'SGC2C NEXT promo (15s) -> Flex with 195s of room, 20s less than on time -> NEXT - SGC2C (10s) -> Space Ghost 1 from its start, on time',
+        () => streamThrough(ccnSeq, [episode('ATHF', 1, 26), flex(4), episode('Space Ghost', 1, 15)],
+            '2026-01-06T01:30:00', 1, { lateSecs: 20, onTimeRoom: 215 })),
+
+    planRow(5, 'A stream later than the whole break | no Flex; both NEXT clips still play, from their start, then the show from its start',
+        'SGC2C NEXT promo (15s) -> NEXT - SGC2C (10s) -> Space Ghost 1 from its start, 30s late',
+        () => streamThrough(ccnSeq, [episode('ATHF', 1, 26), flex(0.75), episode('Space Ghost', 1, 15)],
+            '2026-01-06T01:30:00', 1, { lateSecs: 50 })),
+
+    planRow(5, 'Tuning in 8s before the break ends | the 10s NEXT - SGC2C plays, then the show; the 15s promo does not',
+        'NEXT - SGC2C (10s) -> Space Ghost 1 from its start, 2s late',
+        () => streamThrough(ccnSeq, [episode('ATHF', 1, 26), flex(4), episode('Space Ghost', 1, 15)],
+            '2026-01-06T01:30:00', 1, { tuneInSecs: 8 })),
 
     // Nick at Nite: Next Promos, then Up Next, then WBRB / BTTS only if the Up
     // Next step found nothing. The promo step is why the marked steps name a

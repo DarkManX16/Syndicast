@@ -1,10 +1,10 @@
 /*
  * Transitions: the steps that play around a break - out before the Flex, in
- * after it. See docs/blocks-spec.md, Stage 5. Two pieces of it so far: which
- * situation a break is and which steps its contexts hand it (assemble), and
- * which clip each of those steps plays (buildPlan). Playing any of it comes in
- * later steps; nothing here is called by playback yet, so no stream, guide or
- * channel behaves differently.
+ * after it. See docs/blocks-spec.md, Stage 5. Which situation a break is and
+ * which steps its contexts hand it (assemble), and which clip each of those
+ * steps plays (buildPlan). lineup-cursor.js plays a plan, through video.js,
+ * which asks hasSteps first: a channel with no steps never builds a plan, so
+ * it plays exactly as it did before transitions existed.
  *
  * Pure and free of I/O, the same way day-parts.js is: every function is a
  * function of a channel object and numbers, so it can be exercised without a
@@ -107,6 +107,66 @@ function normalizeTransitions(context) {
         }
     }
     return all;
+}
+
+// Every day-part and block of the channel, each a context that may carry steps.
+function contextsOf(channel) {
+    const all = [];
+    for (const list of [channel.dayParts, channel.blocks]) {
+        if (Array.isArray(list)) {
+            for (const context of list) {
+                if (context != null) {
+                    all.push(context);
+                }
+            }
+        }
+    }
+    return all;
+}
+
+function isOnDemand(channel) {
+    return (channel.onDemand != null) && (channel.onDemand.isOnDemand === true);
+}
+
+/*
+ * Whether any break of this channel can have steps at all. Playback asks this
+ * before anything else: a channel answering false - no sequences, sequences
+ * that are all empty, or an on-demand channel, which has no contexts - plays
+ * every break exactly as it did before transitions existed, with no plan
+ * built and no step list loaded.
+ */
+function hasSteps(channel) {
+    if ( (channel == null) || isOnDemand(channel) ) {
+        return false;
+    }
+    for (const context of contextsOf(channel)) {
+        const all = normalizeTransitions(context);
+        for (const name of SITUATIONS) {
+            if ( (all[name].out.length > 0) || (all[name].in.length > 0) ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Every filler list a step of this channel may draw from, fallbacks included,
+// each once: what playback loads so buildPlan can read them synchronously.
+function stepListIds(channel) {
+    const ids = [];
+    for (const context of contextsOf(channel)) {
+        const all = normalizeTransitions(context);
+        for (const name of SITUATIONS) {
+            for (const step of all[name].out.concat(all[name].in)) {
+                for (const id of [step.listId, step.fallbackListId]) {
+                    if ( (typeof(id) === 'string') && (id !== '') && ! ids.includes(id) ) {
+                        ids.push(id);
+                    }
+                }
+            }
+        }
+    }
+    return ids;
 }
 
 /*
@@ -592,6 +652,8 @@ module.exports = {
     showKey: showKey,
     emptyTransitions: emptyTransitions,
     normalizeTransitions: normalizeTransitions,
+    hasSteps: hasSteps,
+    stepListIds: stepListIds,
     findBreak: findBreak,
     breaksBetween: breaksBetween,
     assemble: assemble,

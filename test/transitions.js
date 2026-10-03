@@ -624,6 +624,30 @@ module.exports = async function run() {
         }
     }
 
+    // ---- what playback asks before it builds any plan (step 4) -------------
+    {
+        const plain = Object.assign(fixtureChannel(), { dayParts: [], blocks: [] });
+        suite.check('a channel with no day-parts or blocks has no steps', transitions.hasSteps(plain) === false);
+        const emptyRows = Object.assign(fixtureChannel(), {
+            dayParts: [{ name: 'Day', fillerCollections: [], starts: [{ days: [5], time: 0 }],
+                transitions: { betweenShows: { out: [], in: [] }, leaving: { out: [] } } }],
+            blocks: [],
+        });
+        suite.check('sequences that are there but empty: no steps', transitions.hasSteps(emptyRows) === false);
+        const one = Object.assign(fixtureChannel(), {
+            dayParts: [], blocks: [{ name: 'Late', fillerCollections: [], airings: [],
+                transitions: { entering: { in: [step('a', { fallbackListId: 'list-generic' })] },
+                    betweenShows: { out: [step('b'), step('c', { listId: 'list-a' })] } } }],
+        });
+        suite.check('one step on one block: the channel has steps', transitions.hasSteps(one) === true);
+        suite.check('an on-demand channel never has steps, whatever is configured',
+            transitions.hasSteps(Object.assign({}, one, { onDemand: { isOnDemand: true } })) === false);
+        const listIds = transitions.stepListIds(one);
+        suite.check('the lists its steps draw from, fallbacks included, each once',
+            JSON.stringify(listIds.slice().sort()) === JSON.stringify(['list-a', 'list-b', 'list-generic']), JSON.stringify(listIds));
+        suite.check('... and none for a channel with no steps', transitions.stepListIds(plain).length === 0);
+    }
+
     return suite;
 };
 

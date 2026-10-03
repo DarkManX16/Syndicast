@@ -9,6 +9,7 @@ const channelCache  = require('./channel-cache')
 const dayParts = require('./day-parts');
 const wereThereTooManyAttempts = require('./throttler');
 const lineupCursor = require('./lineup-cursor');
+const transitions = require('./transitions');
 const crypto = require('crypto');
 
 module.exports = { router: video, shutdown: shutdown }
@@ -158,6 +159,45 @@ function video( channelService, fillerService, db, programmingService, activeCha
         return await concat(req, res, true);
     } );
 
+    /*
+     * The plan-builder lineup-cursor.js calls when a stream enters a break with
+     * transition steps (stage 5): the lists the channel's steps draw from,
+     * loaded here because building a plan is synchronous, and the same per-clip
+     * play times filler picks by. One plan per break per channel, kept in
+     * channel-cache.js, so every viewer of a break plays the same steps. null
+     * for a channel with no steps, which then takes exactly the path it took
+     * before transitions existed.
+     */
+    let plannerFor = async (channel, t0) => {
+        if (! transitions.hasSteps(channel)) {
+            return null;
+        }
+        let ids = transitions.stepListIds(channel);
+        let loaded = await fillerService.getFillersFromCollections(channel, ids.map( (id) => ({ id: id }) ));
+        let lists = {};
+        for (let i = 0; i < loaded.length; i++) {
+            lists[ loaded[i].id ] = loaded[i].content;
+        }
+        let env = {
+            getList: (id) => (Array.isArray(lists[id]) ? lists[id] : null),
+            lastPlayed: (clip) => channelCache.getProgramLastPlayTime(programPlayTimeDB, channel.number, clip),
+        };
+        return (brk) => {
+            let plan = channelCache.getPlan(channel.number, brk);
+            if (plan === null) {
+                plan = transitions.buildPlan(channel, brk, env);
+                channelCache.setPlan(channel.number, brk, plan, t0);
+                let titles = (steps) => (steps.length === 0) ? '(none)' : steps.map( (s) => s.clip.title ).join(', ');
+                console.log(`Break plan, channel ${channel.number}, ${plan.situation} break ending ${new Date(brk.endTime).toLocaleTimeString()}: `
+                    + `${titles(plan.out)} -> Flex -> ${titles(plan.in)}`);
+                for (let i = 0; i < plan.notes.length; i++) {
+                    console.log(`  Break plan note: ${plan.notes[i]}`);
+                }
+            }
+            return plan;
+        };
+    };
+
     // Stream individual video to ffmpeg concat above. This is used by the server, NOT the client
     let streamFunction = async (req, res, t0, allowSkip) => {
         if (stopPlayback) {
@@ -224,6 +264,8 @@ function video( channelService, fillerService, db, programmingService, activeCha
       let prog = null;
       // this stream's next entry, from its lineup cursor; null when the clock decides
       let cursorProg = null;
+      // builds a break's transition plan; null for a channel with no steps
+      let planFor = null;
       let brandChannel = channel;
       let redirectChannels = [];
       let upperBounds = [];
@@ -253,8 +295,9 @@ function video( channelService, fillerService, db, programmingService, activeCha
         // A stream that has played something already plays the next entry in
         // the lineup (lineup-cursor.js), not whatever the clock lands on; the
         // clock, and the channel's replay cache, only decide when it can't.
+        planFor = await plannerFor(channel, t0);
         if (streamId !== null) {
-            cursorProg = lineupCursor.nextEntry(channel, channelCache.getCursor(streamId), t0);
+            cursorProg = lineupCursor.nextEntry(channel, channelCache.getCursor(streamId), t0, planFor);
         }
         if (cursorProg === null) {
             lineupItem = channelCache.getCurrentLineupItem( channel.number, t0);
@@ -266,6 +309,10 @@ function video( channelService, fillerService, db, programmingService, activeCha
           brandChannel = redirectChannels[ redirectChannels.length -1];
       } else {
         prog = (cursorProg !== null) ? cursorProg : programmingService.getCurrentProgramAndTimeElapsed(t0, channel);
+        if ( (cursorProg === null) && (planFor !== null) ) {
+            // from the clock, in or next to a break with steps: which phase of it
+            prog = lineupCursor.placeByClock(channel, prog, t0, planFor);
+        }
         activeChannelService.peekChannel(t0, channel.number);
 
         while (true) {
@@ -328,9 +375,10 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 duration: t,
                 isOffline : true,
             };
-        } else if ( allowSkip && (prog.program.isOffline && helperFuncs.timeLeft(prog) <= constants.SLACK + 1) ) {
+        } else if ( allowSkip && (typeof(prog.transition) === 'undefined')
+            && (prog.program.isOffline && helperFuncs.timeLeft(prog) <= constants.SLACK + 1) ) {
             //it's pointless to show the offline screen for such a short time, might as well
-            //skip to the next program
+            //skip to the next program (never past a transition step, which plays whole)
             let dt = helperFuncs.timeLeft(prog);
             for (let i = 0; i < redirectChannels.length; i++) {
                 channelCache.clearPlayback(redirectChannels[i].number );

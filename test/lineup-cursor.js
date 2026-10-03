@@ -12,9 +12,16 @@
  * keep the two in step. Every program must play exactly once, in order,
  * from its start. The same viewer without the cursor is the control: it has
  * to show the repeat, or this file proves nothing.
+ *
+ * Stage 5 step 4 adds transition steps (docs/blocks-spec.md, "Playing
+ * through the lineup cursor"): the phases a break with steps goes through -
+ * out steps, Flex, in steps - where a tune-in lands in one, and a viewer
+ * watching breaks that carry steps: every step once and whole, the Flex
+ * shrinking first, a break too short for its steps still playing them all.
  */
 const { helperFuncs, dayParts, freshStore, mix, Suite } = require('./support');
 const lineupCursor = require('../src/lineup-cursor');
+const transitions = require('../src/transitions');
 const SLACK = require('../src/constants').SLACK;
 
 const SEC = 1000;
@@ -57,28 +64,35 @@ function rng(seed) {
 
 /*
  * One viewer. Mirrors streamFunction in src/video.js: the cursor first; when
- * it has no answer, the clock, with the skip past a break that has too little
- * left; createLineup; then the cursor moves on. Each item lasts its
- * streamDuration, plus or minus 0.4s, plus 0.2-0.8s before the next request,
- * which is what was measured on the real server path.
+ * it has no answer, the clock - placed in a break's phases when the channel
+ * has steps - with the skip past a break that has too little left; then
+ * createLineup; then the cursor moves on. Each item lasts its streamDuration,
+ * plus or minus 0.4s, plus 0.2-0.8s before the next request, which is what was
+ * measured on the real server path. `planFor` is video.js's plan-builder: null
+ * for a channel with no steps, as video.js passes it.
  */
-function watch(channel, fillers, from, until, seed, useCursor) {
+function watch(channel, fillers, from, until, seed, useCursor, planFor) {
     const random = rng(seed);
     const store = freshStore();
     const played = [];
+    const items = [];
     let cursor = null;
     let fallbacks = 0;
     let t = from;
     let first = true;
+    const byClock = (at) => {
+        const obj = helperFuncs.getCurrentProgramAndTimeElapsed(at, channel);
+        return planFor ? lineupCursor.placeByClock(channel, obj, at, planFor) : obj;
+    };
     while (t < until) {
-        let obj = (useCursor && cursor !== null) ? lineupCursor.nextEntry(channel, cursor, t) : null;
+        let obj = (useCursor && cursor !== null) ? lineupCursor.nextEntry(channel, cursor, t, planFor || null) : null;
         if (useCursor && cursor !== null && obj === null) fallbacks++;
         let at = t;
         if (obj === null) {
-            obj = helperFuncs.getCurrentProgramAndTimeElapsed(at, channel);
-            if (obj.program.isOffline && helperFuncs.timeLeft(obj) <= SLACK + 1) {
+            obj = byClock(at);
+            if (!obj.transition && obj.program.isOffline && helperFuncs.timeLeft(obj) <= SLACK + 1) {
                 at = at + helperFuncs.timeLeft(obj) + 1;
-                obj = helperFuncs.getCurrentProgramAndTimeElapsed(at, channel);
+                obj = byClock(at);
             }
         }
         const item = helperFuncs.createLineup(store, obj, channel, fillers, first, at)[0];
@@ -88,10 +102,44 @@ function watch(channel, fillers, from, until, seed, useCursor) {
             const scheduled = (typeof obj.lineupStart === 'number') ? obj.lineupStart : at + (obj.startsIn || 0) - obj.timeElapsed;
             played.push({ index: obj.programIndex, start: item.start, t, first, late: t + item.start - scheduled });
         }
+        items.push({ type: item.type, title: item.title, index: obj.programIndex, start: item.start,
+            streamDuration: item.streamDuration, duration: item.duration, first });
         t += item.streamDuration + Math.round((random() - 0.5) * 800) + 200 + Math.round(random() * 600);
         first = false;
     }
-    return { played, fallbacks };
+    return { played, fallbacks, items };
+}
+
+// --- Stage 5 step 4: steps. One-clip lists, so which clip a step plays never
+// depends on idleness; `any` steps, so they play at every break.
+function stepClip(title, sec) {
+    return { title, key: '/t/' + title, duration: sec * SEC, serverKey: 'srv' };
+}
+function anyStep(id, listId) {
+    return { id, kind: 'list', listId, match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null };
+}
+// The channel with an all-week day-part carrying `sequence` on both
+// between-shows and between-episodes, so every break inside it gets it.
+function withSteps(channel, sequence) {
+    return Object.assign({}, channel, {
+        dayParts: [{ name: 'All week', fillerCollections: mix([['Fill', 100]]),
+            starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }],
+            transitions: { betweenShows: sequence, betweenEpisodes: sequence } }],
+    });
+}
+// video.js's plan-builder, without its per-channel sharing: buildPlan on the
+// real step lists.
+function plannerFor(channel, lists) {
+    const env = { getList: (id) => lists[id] || null, lastPlayed: () => 0 };
+    return (brk) => transitions.buildPlan(channel, brk, env);
+}
+function afterProgram(channel, index, end) {
+    return { channel: channel.number, index, end, inBreak: false, fingerprint: lineupCursor.fingerprint(channel.programs[index]) };
+}
+function titleOf(obj) {
+    if (obj === null) return 'null';
+    if (obj.transition) return `step ${obj.transition.clip.title}`;
+    return obj.program.isOffline ? `Flex[${obj.programIndex}]` : `${obj.program.title}`;
 }
 
 // The next real program after `index`, round the lineup.
@@ -235,6 +283,186 @@ module.exports = async function run() {
             next ? `${next.startTime - startOf(b, 2)}ms off` : 'null');
     }
 
+    // ------------------------------------------------------ the phases (stage 5)
+    // A 10 minute show, a 3 minute break with a 15s out step and a 10s in
+    // step, another show.
+    const LISTS = { OUT: [stepClip('Out', 15)], IN: [stepClip('In', 10)] };
+    const SEQ = { out: [anyStep('o', 'OUT')], in: [anyStep('i', 'IN')] };
+    const sc = withSteps(channelOf([prog('A', 600), brk(180), prog('B', 600)], T), SEQ);
+    const plan = plannerFor(sc, LISTS);
+    const S = startOf(sc, 1), E = startOf(sc, 2);
+    const store = freshStore();
+    const play = (obj, t0) => helperFuncs.createLineup(store, obj, sc, FILLERS, false, t0)[0];
+    {
+        const out = lineupCursor.nextEntry(sc, afterProgram(sc, 0, S), S, plan);
+        const item = out && play(out, S);
+        suite.check('out of the show on time: the out step, as a transition, whole and from its start',
+            out !== null && out.transition && out.transition.clip.title === 'Out' && item.type === 'transition'
+                && item.start === 0 && item.streamDuration === 15 * SEC && helperFuncs.timeLeft(out) === 15 * SEC,
+            out ? `${titleOf(out)}, ${item.type} ${item.start}+${item.streamDuration}` : 'null');
+        const c1 = lineupCursor.cursorAfter(sc, out, S);
+        const flexObj = c1 && lineupCursor.nextEntry(sc, c1, S + 15 * SEC, plan);
+        suite.check('... then Flex, with room up to the in step: 180 - 15 - 10 = 155s',
+            flexObj !== null && !flexObj.transition && flexObj.programIndex === 1 && helperFuncs.timeLeft(flexObj) === 155 * SEC,
+            flexObj ? `${titleOf(flexObj)}, time left ${helperFuncs.timeLeft(flexObj)}` : 'null');
+        const fill = flexObj && play(flexObj, S + 15 * SEC);
+        suite.check('... a Flex clip never runs into the in step by more than SLACK',
+            fill !== null && fill.type === 'commercial' && fill.streamDuration <= 155 * SEC + SLACK, fill && `${fill.streamDuration}`);
+        const c2 = flexObj && lineupCursor.cursorAfter(sc, flexObj, S + 15 * SEC);
+        const more = c2 && lineupCursor.nextEntry(sc, c2, E - 40 * SEC, plan);
+        suite.check('40s before the break ends, more Flex: 30s of it',
+            more !== null && !more.transition && helperFuncs.timeLeft(more) === 30 * SEC,
+            more ? `${titleOf(more)}, time left ${helperFuncs.timeLeft(more)}` : 'null');
+        const inStep = c2 && lineupCursor.nextEntry(sc, c2, E - 15 * SEC, plan);
+        suite.check('15s before it ends, 5s of Flex is too little: the in step',
+            inStep !== null && inStep.transition && inStep.transition.clip.title === 'In', titleOf(inStep));
+        const c3 = inStep && lineupCursor.cursorAfter(sc, inStep, E - 15 * SEC);
+        const b = c3 && lineupCursor.nextEntry(sc, c3, E - 5 * SEC, plan);
+        suite.check('... then the show after the break, from its start',
+            b !== null && b.programIndex === 2 && b.timeElapsed === 0, titleOf(b));
+        const flexAgain = c2 && lineupCursor.nextEntry(sc, c2, E + 30 * SEC, plan);
+        suite.check('a stream past the end of the Flex still gets the in step, not the show',
+            flexAgain !== null && flexAgain.transition && flexAgain.transition.clip.title === 'In', titleOf(flexAgain));
+    }
+    {
+        const late = lineupCursor.nextEntry(sc, afterProgram(sc, 0, S), S + 20 * SEC, plan);
+        const c1 = late && lineupCursor.cursorAfter(sc, late, S + 20 * SEC);
+        const flexObj = c1 && lineupCursor.nextEntry(sc, c1, S + 35 * SEC, plan);
+        suite.check('20s late: the out step still plays whole, and the Flex gets 20s less (135s)',
+            late !== null && late.transition && helperFuncs.timeLeft(late) === 15 * SEC
+                && flexObj !== null && helperFuncs.timeLeft(flexObj) === 135 * SEC,
+            `${titleOf(late)}; ${flexObj ? helperFuncs.timeLeft(flexObj) : 'null'}`);
+        const early = lineupCursor.nextEntry(sc, afterProgram(sc, 0, S), S - 8 * SEC, plan);
+        const ce = early && lineupCursor.cursorAfter(sc, early, S - 8 * SEC);
+        const flexEarly = ce && lineupCursor.nextEntry(sc, ce, S + 7 * SEC, plan);
+        suite.check('8s early: the out step from its start, and the Flex gets 8s more (163s)',
+            early !== null && early.transition && flexEarly !== null && helperFuncs.timeLeft(flexEarly) === 163 * SEC,
+            `${titleOf(early)}; ${flexEarly ? helperFuncs.timeLeft(flexEarly) : 'null'}`);
+        const c2 = lineupCursor.cursorAfter(sc, late, S + 20 * SEC);
+        const at59 = lineupCursor.nextEntry(sc, c2, E - 10 * SEC + 59 * SEC, plan);
+        suite.check('the minute\'s tolerance is measured at the Flex: 59s past where it ends, the in step',
+            at59 !== null && at59.transition && at59.transition.clip.title === 'In', titleOf(at59));
+        suite.check('... 61s past it, no answer: the clock decides',
+            lineupCursor.nextEntry(sc, c2, E - 10 * SEC + 61 * SEC, plan) === null);
+        suite.check('... and 61s before it starts, no answer either',
+            lineupCursor.nextEntry(sc, c2, S + 15 * SEC - 61 * SEC, plan) === null);
+        const c3 = lineupCursor.cursorAfter(sc, late, S + 20 * SEC);
+        const f = lineupCursor.nextEntry(sc, c3, S + 40 * SEC, plan);
+        const cf = f && lineupCursor.cursorAfter(sc, f, S + 40 * SEC);
+        const i = cf && lineupCursor.nextEntry(sc, cf, E - 15 * SEC, plan);
+        const ci = i && lineupCursor.cursorAfter(sc, i, E - 15 * SEC);
+        const b = ci && lineupCursor.nextEntry(sc, ci, E + 120 * SEC, plan);
+        suite.check('the tolerance is not applied after a step: 2 minutes late out of the in step, the show still plays from its start',
+            i && i.transition && b && b.programIndex === 2 && b.timeElapsed === 0, `${titleOf(i)}; ${titleOf(b)}`);
+    }
+    {
+        // A 30s break, shorter than its 25s of steps plus a clip: a stream
+        // 50s late gets no Flex, both steps, then the show from its start.
+        const short = withSteps(channelOf([prog('A', 600), brk(30), prog('B', 600)], T), SEQ);
+        const p = plannerFor(short, LISTS);
+        const s = startOf(short, 1);
+        const seen = [];
+        let cursor = afterProgram(short, 0, s);
+        let t = s + 50 * SEC;
+        for (let k = 0; k < 4; k++) {
+            const obj = lineupCursor.nextEntry(short, cursor, t, p);
+            seen.push(titleOf(obj));
+            if (obj === null || obj.program.isOffline !== true) break;
+            const item = helperFuncs.createLineup(freshStore(), obj, short, FILLERS, false, t)[0];
+            cursor = lineupCursor.cursorAfter(short, obj, t);
+            t += item.streamDuration;
+        }
+        suite.check('later than the whole break: no Flex, both steps, then the show from its start',
+            seen.join(', ') === 'step Out, step In, B', seen.join(', '));
+        const without = channelOf([prog('A', 600), brk(30), prog('B', 600)], T);
+        const dropped = lineupCursor.nextEntry(without, afterProgram(without, 0, s), s + 50 * SEC);
+        suite.check('control: the same break with no steps is dropped, as in stage 4',
+            dropped !== null && dropped.programIndex === 2, titleOf(dropped));
+    }
+    {
+        // A break the generator left as two Flex entries: one sequence, the
+        // out step at the first, the in step taken off the second.
+        const two = withSteps(channelOf([prog('A', 600), brk(100), brk(80), prog('B', 600)], T), SEQ);
+        const p = plannerFor(two, LISTS);
+        const s = startOf(two, 1), e = startOf(two, 3);
+        const out = lineupCursor.nextEntry(two, afterProgram(two, 0, s), s, p);
+        const c1 = out && lineupCursor.cursorAfter(two, out, s);
+        const f1 = c1 && lineupCursor.nextEntry(two, c1, s + 15 * SEC, p);
+        const cf1 = f1 && lineupCursor.cursorAfter(two, f1, s + 15 * SEC);
+        const f2 = cf1 && lineupCursor.nextEntry(two, cf1, s + 95 * SEC, p);
+        const cf2 = f2 && lineupCursor.cursorAfter(two, f2, s + 95 * SEC);
+        const i = cf2 && lineupCursor.nextEntry(two, cf2, e - 12 * SEC, p);
+        suite.check('two Flex entries, one break: out step, Flex in the first (85s), Flex in the second up to the in step (75s), the in step',
+            out && out.transition && f1 && f1.programIndex === 1 && helperFuncs.timeLeft(f1) === 85 * SEC
+                && f2 && f2.programIndex === 2 && helperFuncs.timeLeft(f2) === 75 * SEC
+                && i && i.transition && i.transition.clip.title === 'In',
+            `${titleOf(out)}; ${titleOf(f1)} ${f1 && helperFuncs.timeLeft(f1)}; ${titleOf(f2)} ${f2 && helperFuncs.timeLeft(f2)}; ${titleOf(i)}`);
+    }
+    {
+        // Steps configured somewhere, none for this break: the cursor answers
+        // exactly as it does with no plan-builder at all.
+        const plain = channelOf([prog('A', 600), brk(180), prog('B', 600)], T);
+        const empty = withSteps(plain, { out: [], in: [] });
+        const p = plannerFor(empty, LISTS);
+        const cursors = [afterProgram(plain, 0, S), { channel: 9, index: 1, end: E, inBreak: true, fingerprint: lineupCursor.fingerprint(plain.programs[1]) }];
+        let same = true;
+        for (const c of cursors) {
+            for (const dt of [-12, -3, 0, 5, 30, 170, 175, 185]) {
+                const a = lineupCursor.nextEntry(plain, c, S + dt * SEC);
+                const b = lineupCursor.nextEntry(empty, c, S + dt * SEC, p);
+                if (JSON.stringify(a) !== JSON.stringify(b)) same = false;
+                const ca = a && lineupCursor.cursorAfter(plain, a, S + dt * SEC);
+                const cb = b && lineupCursor.cursorAfter(empty, b, S + dt * SEC);
+                if (JSON.stringify(ca) !== JSON.stringify(cb)) same = false;
+            }
+        }
+        suite.check('a break whose plan has no steps: the same answers and cursors as without steps', same);
+    }
+    {
+        // Tuning in, from the clock.
+        const at = (t0) => lineupCursor.placeByClock(sc, helperFuncs.getCurrentProgramAndTimeElapsed(t0, sc), t0, plan);
+        const mid = at(S + 60 * SEC);
+        suite.check('tuning in mid-break: Flex, up to the in step (110s); the out step is in the past',
+            mid && !mid.transition && helperFuncs.timeLeft(mid) === 110 * SEC, `${titleOf(mid)} ${helperFuncs.timeLeft(mid)}`);
+        const late8 = at(E - 8 * SEC);
+        suite.check('tuning in 8s before the break ends (the clock has already handed over the show): the in step',
+            late8 && late8.transition && late8.transition.clip.title === 'In', titleOf(late8));
+        const c = late8 && lineupCursor.cursorAfter(sc, late8, E - 8 * SEC);
+        const after = c && lineupCursor.nextEntry(sc, c, E + 2 * SEC, plan);
+        suite.check('... then the show, from its start', after && after.programIndex === 2 && after.timeElapsed === 0, titleOf(after));
+        const at105 = at(E - 10500);
+        suite.check('10.5s before it ends (too little for Flex): the in step, not a skip to the show',
+            at105 && at105.transition && at105.transition.clip.title === 'In', titleOf(at105));
+        const handed = at(S - 5 * SEC);
+        suite.check('5s before the show ends (the break handed over early): the out step',
+            handed && handed.transition && handed.transition.clip.title === 'Out', titleOf(handed));
+        const show = helperFuncs.getCurrentProgramAndTimeElapsed(T + 300 * SEC, sc);
+        suite.check('mid-show: what the clock said, untouched', JSON.stringify(at(T + 300 * SEC)) === JSON.stringify(show));
+        // Three in steps, 10s each (CCF's intros): a tune-in gets the one on
+        // the air, not the first.
+        const three = withSteps(channelOf([prog('A', 600), brk(180), prog('B', 600)], T),
+            { out: [], in: [anyStep('i1', 'I1'), anyStep('i2', 'I2'), anyStep('i3', 'I3')] });
+        const p3 = plannerFor(three, { I1: [stepClip('Intro 1', 10)], I2: [stepClip('Intro 2', 10)], I3: [stepClip('Intro 3', 10)] });
+        const at3 = (t0) => lineupCursor.placeByClock(three, helperFuncs.getCurrentProgramAndTimeElapsed(t0, three), t0, p3);
+        const titles = [35, 25, 15, 5].map((s) => titleOf(at3(E - s * SEC)));
+        suite.check('three in steps: 35s, 25s, 15s and 5s before the end land on the first, first, second and third',
+            titles.join(', ') === 'step Intro 1, step Intro 1, step Intro 2, step Intro 3', titles.join(', '));
+        const od = Object.assign({}, sc, { onDemand: { isOnDemand: true } });
+        const odObj = helperFuncs.getCurrentProgramAndTimeElapsed(S + 60 * SEC, od);
+        suite.check('an on-demand channel: untouched', lineupCursor.placeByClock(od, odObj, S + 60 * SEC, plan) === odObj);
+        const inDrop = at(E - 8 * SEC);
+        const firstItem = inDrop && helperFuncs.createLineup(freshStore(), inDrop, sc, FILLERS, true, E - 8 * SEC)[0];
+        suite.check('a step at tune-in plays from its start; the random start is for Flex only',
+            firstItem && firstItem.type === 'transition' && firstItem.start === 0 && firstItem.streamDuration === 10 * SEC,
+            firstItem && `${firstItem.start}+${firstItem.streamDuration}`);
+    }
+    {
+        const ch2 = { disableFillerOverlay: true, watermark: { enabled: true, url: 'x.png' } };
+        const settings = { enableFFMPEGTranscoding: true, disableChannelOverlay: false };
+        suite.check('"hide watermark during filler" hides it during a step too',
+            helperFuncs.getWatermark(settings, ch2, 'transition') === null && helperFuncs.getWatermark(settings, ch2, 'program') !== null);
+    }
+
     // ------------------------------------------------- the simulated viewer
     //
     // Every combination of a 5, 10 or 15s item on both sides of a 60, 150 or
@@ -272,6 +500,57 @@ module.exports = async function run() {
         total.repeats === 0 && total.skips === 0, `repeats ${total.repeats}, skips ${total.skips}`);
     suite.check('... every one from its start, after tuning in', total.partial === 0, `${total.partial} started partway`);
     suite.check('... and the stream never drifted a minute off the clock', total.fallbacks === 0, `${total.fallbacks} fallbacks`);
+
+    // ------------------------------------ the simulated viewer, with steps
+    //
+    // The same lineup and viewers with an 8s out step and a 5s in step on
+    // every break, plus a 5s break: shorter than its own 13s of steps, so it
+    // never has room for Flex and a stage 4 cursor would always drop it.
+    const stepLineup = lineup.concat([prog('Show-tiny-break', 40), brk(5), prog('After-tiny-break', 10)]);
+    const stepped = withSteps(channelOf(stepLineup, T), { out: [anyStep('o', 'OUT')], in: [anyStep('i', 'IN')] });
+    const stepPlan = plannerFor(stepped, { OUT: [stepClip('Out', 8)], IN: [stepClip('In', 5)] });
+    const st = { repeats: 0, skips: 0, partial: 0, programs: 0, fallbacks: 0, breaks: 0, wrong: [], cut: 0, tinyFlex: 0, tiny: 0 };
+    for (let seed = 1; seed <= 6; seed++) {
+        const from = T + seed * 977 * SEC;
+        const run = watch(stepped, FILLERS, from, from + 3 * 3600 * SEC, seed, true, stepPlan);
+        const f = faults(stepped, run.played);
+        st.repeats += f.repeats; st.skips += f.skips; st.partial += f.partial;
+        st.programs += run.played.length; st.fallbacks += run.fallbacks;
+        // What played between two programs: nothing when the lineup has no
+        // Flex between them; otherwise Out, Flex, In.
+        let prev = null;
+        let between = [];
+        for (const it of run.items) {
+            if (it.type === 'transition' && it.streamDuration !== it.duration) st.cut++;
+            if (it.type !== 'program') {
+                between.push(it);
+                continue;
+            }
+            if (prev !== null) {
+                const hasBreak = stepped.programs[(prev + 1) % stepped.programs.length].isOffline === true;
+                const shape = between.map((b) => (b.type === 'transition' ? b.title : 'Flex'))
+                    .filter((b, k, all) => !(b === 'Flex' && all[k - 1] === 'Flex')).join(' ');
+                const want = hasBreak ? ['Out Flex In', 'Out In'] : [''];
+                if (hasBreak) st.breaks++;
+                if (!want.includes(shape) && st.wrong.length < 5) st.wrong.push(`${stepped.programs[prev].title}: "${shape}"`);
+                if (stepped.programs[prev].title === 'Show-tiny-break') {
+                    st.tiny++;
+                    if (shape !== 'Out In') st.tinyFlex++;
+                }
+            }
+            prev = it.index;
+            between = [];
+        }
+    }
+    suite.log(`with steps: ${st.programs} programs, ${st.breaks} breaks followed, ${st.tiny} of them the 5s one`);
+    suite.check('with steps, 18 hours of viewing: every program once, in order, from its start',
+        st.repeats === 0 && st.skips === 0 && st.partial === 0, `repeats ${st.repeats}, skips ${st.skips}, partial ${st.partial}`);
+    suite.check('... every break played its out step, Flex, then its in step - each step once', st.wrong.length === 0 && st.breaks > 100,
+        st.wrong.join('; '));
+    suite.check('... no step ever cut short', st.cut === 0, `${st.cut} cut`);
+    suite.check('... the 5s break, shorter than its steps, kept both steps and never had Flex', st.tiny > 0 && st.tinyFlex === 0,
+        `${st.tinyFlex} of ${st.tiny}`);
+    suite.check('... and the stream never drifted a minute off the clock', st.fallbacks === 0, `${st.fallbacks} fallbacks`);
 
     return suite;
 };
