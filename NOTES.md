@@ -499,6 +499,74 @@ for the full spec, stages and acceptance tests.
       editor in step 5 is the next writer and must offer the mark as a choice
       of the other steps in the same row, not free text.
 
+      **Step 4 built Oct 3, 2026 (Sonnet 5.5), on branch `stage5-step4`: playing
+      plans through the lineup cursor. Confirmed in TiviMate by Ron on 910, 911,
+      912 and 913: every bumper once and whole, every show from its start, and a
+      tune-in 8s before a break's end gave NEXT - SGC2C then the show.** 614 to
+      662 tests.
+
+      A break with steps plays out steps, Flex, in steps, then the next show
+      from its start, as the spec's "Playing through the lineup cursor" says.
+      The cursor carries `phase`, `step` and the plan; the Flex's time left is
+      the break's end minus the in steps (`reserveMs`, read by
+      `helperFuncs.timeLeft`), so lateness shortens Flex and never a step. A
+      break is passed over only when it has no steps and too little left; one
+      too short for its steps drops its Flex and keeps them. The minute's
+      tolerance is measured at the Flex (after the out steps, before the in
+      steps), never during a step. `lineup-cursor.js` takes the plan-builder
+      as an argument and stays pure; `placeByClock` is the clock path.
+
+      **Decisions beyond the spec's words.** (1) A tune-in with no cursor lands
+      on the in step *on the air*, not always the first (three CCF intros: 5s
+      before the end plays the third). (2) The clock hands a show over up to
+      10s early and `video.js` used to skip a break with 11s or less left, so
+      tuning in anywhere in a break's last ~11s went straight to the show;
+      `placeByClock` catches both, and the skip never jumps over a step. (3)
+      One plan per break per channel, in `channel-cache.js`, shared by every
+      viewer and every `/m3u8` request (otherwise a second viewer could pick
+      another clip once the first one's playback moved the rotation), dropped
+      on save. (4) A step is a `type: 'transition'` item and counts as filler
+      for "hide watermark during filler"; that is the only place playback reads
+      the type.
+
+      **A channel with no steps takes exactly the old path.** `transitions.hasSteps`
+      is asked first; false builds no plan and loads no list. Proved by running
+      69e2db2 and the new code side by side behind their real `video.js`
+      routers, same fake clock, same seeded picks, viewers with and without
+      stream ids and one joining on the replay cache: channel 1 for Wed Oct 21
+      and Sat Oct 24 (24 viewer-hours each), channels 2 and 3, a stage 4 style
+      channel with a 15s break and a two-Flex break, and two with empty
+      sequences: 7,629 requests, every item and cursor identical. A control
+      channel with an out step differed from request 3, so the comparison can
+      see a difference. A harness trap: reusing one `session` number across
+      scenarios tripped the throttler on one side only.
+
+      **Tests.** `test/lineup-cursor.js` (phases, tolerance, two Flex entries,
+      tune-in placement, and an 18-hour simulated viewer with steps: every
+      program once and from its start, every step once and uncut, a 5s break
+      keeping both steps), `test/stream-cursor.js` (one viewer through the
+      real router on a fake clock, plan sharing, rebuild after a save, tune-in
+      at 8s and 10.5s), `test/transitions.js` (`hasSteps`, `stepListIds`), and
+      the three held-over timing rows in `test/blocks-acceptance.js`
+      (`streamThrough`: 20s late, later than the whole break, tuning in 8s
+      before the end). Mutation-checked: the step-on-the-air rule and plan
+      sharing each fail their checks when removed.
+
+      **Real data, on a copy of `.dizquetv-dev`.** One viewer through Wed Oct 21
+      of channel 1 with the Adult Swim NEXT sequence (the four real NEXT clips
+      plus the Adult Swim lists named in memory): 69 programs, no repeats or
+      skips, none partway, started 10.0s early to 0.7s late, 12 steps all
+      whole; Broodwich to Explode played the SGC2C promo, Flex, NEXT - SGC2C.
+      Preview channels 910 to 913: real episodes of ATHF, Space Ghost, Home
+      Movies and The Venture Bros. (910), I Love Lucy, The Brady Bunch, The
+      Wonder Years and Full House from Plex (911), and stage 4's compressed and
+      5-8s-bumper channels (912, 913). **On Ron's Nick channel a WBRB clip
+      names the show coming back after the break**, so the Nick at Nite
+      sequence keys WBRB, like BTTS, on the next show, both only when Up Next
+      finds nothing; this settles the step 3 question about keying WBRB on now.
+      **Still true:** `/m3u8` has no stream id, so no cursor; it gets
+      `placeByClock` and the shared plan, nothing more.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
@@ -3089,6 +3157,11 @@ checks as of the fall-back fixes). Nine files:
   back for everything under `src/` it loaded - `aspect-mark.js` failed when
   the real `ffmpeg.js` was left cached with the real `spawn` - and unrefs
   the timers `video.js` arms per item, so `npm test` doesn't wait on them.
+
+`lineup-cursor.js`, `stream-cursor.js`, `transitions.js` and the stage 5 rows
+of `blocks-acceptance.js` also cover step 4: phases, tune-in placement, one
+plan per break through the real router, `hasSteps`, and the three stream
+timing rows. See the Step 4 entry in the Blocks system roadmap.
 
 The first two of those also take channel JSON paths on the command line and
 re-run their measurements against real channels, which is where they were
