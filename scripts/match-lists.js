@@ -5,11 +5,15 @@
  *
  * Usage: node scripts/match-lists.js <data-folder> [--list <text>]...
  *            [--unnamed <n|all>] [--fix "<clip text>=<show key>"]...
+ *            [--shows "<title>|<title>|..."]
  *
  *   --list     only lists whose name contains <text> (repeatable, any case);
  *              without it every list gets its one-line summary and the
  *              Adult Swim, Toonami and AcTN lists are shown in full
  *   --unnamed  how many unnamed clips to print per shown list (default 25)
+ *   --shows    add stand-in shows to the vocabulary, as Plex would title them,
+ *              for a show no channel in this folder carries yet (a Nick at Nite
+ *              lineup that is not in the dev data, say). Output is labelled.
  *   --fix      simulate one review-screen fix in memory: the first clip whose
  *              title contains <clip text> is mapped to <show key>, the aliases
  *              that would be learned are applied, and the lists are matched
@@ -25,13 +29,15 @@ const path = require('path');
 const showMatch = require('../src/show-match');
 
 function parseArgs(argv) {
-    const args = { folder: null, lists: [], unnamed: 25, fixes: [] };
+    const args = { folder: null, lists: [], unnamed: 25, fixes: [], shows: [] };
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === '--list' && i + 1 < argv.length) {
             args.lists.push(argv[++i].toLowerCase());
         } else if (argv[i] === '--unnamed' && i + 1 < argv.length) {
             const v = argv[++i];
             args.unnamed = (v === 'all') ? Infinity : parseInt(v, 10);
+        } else if (argv[i] === '--shows' && i + 1 < argv.length) {
+            args.shows = argv[++i].split('|').map( (t) => t.trim() ).filter( (t) => t !== '' );
         } else if (argv[i] === '--fix' && i + 1 < argv.length) {
             args.fixes.push(argv[++i]);
         } else if (args.folder === null) {
@@ -73,6 +79,12 @@ for (const show of readJsonFiles(path.join(args.folder, 'custom-shows')) ) {
 const lists = readJsonFiles(path.join(args.folder, 'filler'))
     .map( (f) => ({ id: f.id, name: f.json.name, content: f.json.content || [] }) )
     .sort( (a, b) => a.name.localeCompare(b.name) );
+if (args.shows.length > 0) {
+    // Stand-ins ride in as a channel of one-off episodes, the way a real one
+    // would carry them, so they go through exactly the same vocabulary rules.
+    channels.push( { number: 'stand-in', programs: args.shows.map( (title) => ({
+        title: title + ' 1', type: 'episode', showTitle: title, duration: 22 * 60 * 1000 }) ) } );
+}
 const vocabulary = showMatch.buildVocabulary(channels, customShowNames);
 let aliases = readAliases(args.folder);
 
@@ -87,6 +99,9 @@ function matchAll() {
     }) );
 }
 
+if (args.shows.length > 0) {
+    console.log(`STAND-IN shows added to the vocabulary: ${args.shows.join(' | ')}`);
+}
 console.log(`${channels.length} channels, ${Object.keys(vocabulary.names).length} shows in the vocabulary, ${Object.keys(aliases).length} aliases, ${lists.length} filler lists`);
 const ambiguous = Object.keys(vocabulary.ambiguous);
 if (ambiguous.length > 0) {
@@ -126,7 +141,7 @@ function detail(results) {
         for (const [label, group] of Array.from(byShow).sort( (a, b) => b[1].length - a[1].length )) {
             console.log(`  ${label}  (${group.length})`);
             for (const r of group.slice(0, 3) ) {
-                const via = r.proposal.found.map( (f) => f.via === 'alias' ? `alias "${f.text}"` : 'title' ).join(', ');
+                const via = r.proposal.found.map( (f) => f.via === 'alias' ? `alias "${f.text}"` : (f.standalone ? 'title, bracketed word alone' : 'title') ).join(', ');
                 console.log(`      ${r.clip.title}   [${via}]`);
             }
             if (group.length > 3) {

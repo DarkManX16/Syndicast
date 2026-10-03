@@ -130,6 +130,146 @@ module.exports = async function run() {
             propose('Powerpuff Girls Promo').found[0].text === 'powerpuff girls');
     }
 
+    // ---- Up Next lists: the real clip titles, against Plex-style show titles ----
+    {
+        // Shows as Plex titles them, with and without a leading "The".
+        const nite = (titles) => showMatch.buildVocabulary([channel(9, titles.map(ep))], {});
+        const plex = nite(['Cheers', 'The Cosby Show', 'Full House', 'Roseanne', 'The Fresh Prince of Bel-Air',
+            "Three's Company", 'All in the Family', 'The Jeffersons', 'The Brady Bunch', 'Happy Days',
+            'Murphy Brown', 'The Facts of Life', "Who's the Boss?", 'The Wonder Years']);
+        // The same shows titled the other way round on the article.
+        const bare = nite(['Cheers', 'Cosby Show', 'Full House', 'Roseanne', 'Fresh Prince of Bel-Air',
+            "Three's Company", 'All in the Family', 'Jeffersons', 'Brady Bunch', 'Happy Days',
+            'Murphy Brown', 'Facts of Life', "Who's the Boss", 'Wonder Years']);
+        const T = {
+            cheers: 'Cheers', cosby: 'Cosby Show', house: 'Full House', rose: 'Roseanne',
+            prince: 'Fresh Prince of Bel-Air', three: "Three's Company", family: 'All in the Family',
+            jeff: 'Jeffersons', brady: 'Brady Bunch', days: 'Happy Days', murphy: 'Murphy Brown',
+            facts: 'Facts of Life', boss: "Who's the Boss", wonder: 'Wonder Years',
+        };
+        // [clip title, show(s) it names] - every title in the Nick at Nite Up Next lists.
+        const CLIPS = [
+            ['Up Next Bumper (Cheers) (2003) (Back 2 Back)', ['cheers']],
+            ['Up Next Bumper (Cheers) (Back 2 Back)', ['cheers']],
+            ['Up Next Bumper (Cosby Show) (more)', ['cosby']],
+            ['Up Next Bumper (Full House) (Back 2 Back)', ['house']],
+            ['Up Next Bumper (Full House) (More)', ['house']],
+            ['Up Next bumper (Roseanne) (Back 2 Back)', ['rose']],
+            ['Up Next Bumper (The Cosby Show) (back 2 back)', ['cosby']],
+            ['Up Next Bumper (The Fresh Prince of Bel-Air) (back2back)', ['prince']],
+            ["Up Next Bumper (Three's Company) (back2back)", ['three']],
+            ["Up Next Bumper (Three's Company) (more)", ['three']],
+            ['Up Next Bumper (All in the family-The Jeffersons)', ['family', 'jeff']],
+            ['Up Next Bumper (All in the family)', ['family']],
+            ['Up Next Bumper (All in the Family) (2002)', ['family']],
+            ['Up Next Bumper (Brady Bunch) (2003)', ['brady']],
+            ['Up Next Bumper (Cheers)', ['cheers']],
+            ['Up Next Bumper (Cosby Show) (2002)', ['cosby']],
+            ['Up Next Bumper (Fresh Prince of Bel-Air) (2004)', ['prince']],
+            ['Up Next Bumper (Fresh Prince of Bel-Air) (2004) (2024)', ['prince']],
+            ['Up Next Bumper (Fresh Prince of Bel-Air) (2006) 2', ['prince']],
+            ['Up Next Bumper (Full House) (2005)', ['house']],
+            ['Up Next Bumper (Happy Days) (2000)', ['days']],
+            ['Up Next Bumper (Jeffersons) (2001)', ['jeff']],
+            ['Up Next Bumper (Murphy Brown)', ['murphy']],
+            ['Up Next Bumper (Roseanne) (2005)', ['rose']],
+            ['Up Next Bumper (The Facts of Life)', ['facts']],
+            ["Up Next Bumper (Three's Company) (2001)", ['three']],
+            ["Up Next Bumper (Who's the boss)", ['boss']],
+            ['Full House NEXT promo', ['house']],
+            ['Wonder Years NEXT Promo', ['wonder']],
+        ];
+        // Compare ignoring a leading "The" and a trailing "?", which is the only thing the two vocabularies differ by.
+        const plain = (t) => showMatch.fold(t).replace(/^the /, '');
+        for (const [label, v] of [['with "The"', plex], ['without "The"', bare]]) {
+            const wrong = CLIPS.filter( ([title, want]) => {
+                const got = showMatch.propose(title, v, {}).names.map( (k) => plain(k.slice(3)) );
+                return got.join() !== want.map( (w) => plain(T[w]) ).join();
+            } ).map( ([title]) => title );
+            suite.check(`every Up Next clip names its show when Plex titles the shows ${label}`, wrong.length === 0, wrong.join(' | '));
+        }
+        suite.check('"(Back 2 Back)", "(More)" and "(back2back)" do not stop the show being found',
+            ['(Back 2 Back)', '(back 2 back)', '(back2back)', '(More)', '(more)'].every( (tag) =>
+                showMatch.propose(`Up Next Bumper (Full House) ${tag}`, plex, {}).names.join() === 'tv.Full House') );
+        suite.check('two years in parentheses do not stop it either',
+            showMatch.propose('Up Next Bumper (Fresh Prince of Bel-Air) (2004) (2024)', plex, {}).names.join() === 'tv.The Fresh Prince of Bel-Air');
+
+        // A show stood alone in its own brackets can drop "The" even when one word is left.
+        suite.check('"(Jeffersons)" names The Jeffersons: a bracketed word is a title on its own',
+            showMatch.propose('Up Next Bumper (Jeffersons) (2001)', plex, {}).names.join() === 'tv.The Jeffersons');
+        suite.check('a hit found only because the word stood alone says so, and an ordinary hit does not',
+            showMatch.propose('Up Next Bumper (Jeffersons)', plex, {}).found[0].standalone === true
+            && typeof(showMatch.propose('Up Next Bumper (The Jeffersons)', plex, {}).found[0].standalone) === 'undefined');
+        suite.check('but "Jeffersons" inside a longer phrase still names nothing',
+            showMatch.propose('Jeffersons promo', plex, {}).names.length === 0
+            && showMatch.propose('The Jeffersons promo', plex, {}).names.join() === 'tv.The Jeffersons');
+        const office = nite(['The Office', 'Office Space Spoof']);
+        suite.check('"Office Space" does not name The Office, "(Office)" does',
+            showMatch.propose('Office Space promo', office, {}).names.join() === ''
+            && showMatch.propose('Promo (Office)', office, {}).names.join() === 'tv.The Office');
+        suite.check('a bracketed word is only a title on its own when it is long enough to be one',
+            showMatch.propose('Promo (Wire)', nite(['The Wire']), {}).names.length === 0);
+        suite.check('a one-word show is found after a dash too',
+            showMatch.propose('Bumper - Jeffersons', plex, {}).names.join() === 'tv.The Jeffersons');
+    }
+
+    // ---- years inside show titles ---------------------------------------------
+    {
+        const years = showMatch.buildVocabulary([channel(8, [
+            ep('ThunderCats (2011)'), ep('Teenage Mutant Ninja Turtles (2003)'), ep('Doodle Squad'),
+            ep("G.I. Joe: A Real American Hero ('83)"), ep("G.I. Joe: A Real American Hero ('89)"),
+            ep('The Wonder Years'), ep('The Wonder Years (2021)'),
+        ].map( (p) => p ))], {});
+        const n = (t) => showMatch.propose(t, years, {}).names.join();
+        suite.check('a show Plex titles with a year is found without it', n('ThunderCats Promo') === 'tv.ThunderCats (2011)');
+        suite.check('and with it', n('ThunderCats (2011) Promo') === 'tv.ThunderCats (2011)');
+        suite.check('the year-less title is shown as what matched',
+            showMatch.propose('ThunderCats Promo', years, {}).found[0].text === 'thundercats');
+        suite.check('a longer title with a year still beats a shorter one without',
+            n('Teenage Mutant Ninja Turtles (2003) Promo') === 'tv.Teenage Mutant Ninja Turtles (2003)');
+        suite.check('two eras of one show: the year in the clip picks the era',
+            n("G.I. Joe: A Real American Hero ('89) Promo") === "tv.G.I. Joe: A Real American Hero ('89)");
+        const either = showMatch.propose('G.I. Joe: A Real American Hero Promo', years, {});
+        suite.check('and with no year the match says another era exists',
+            either.names.length === 1 && either.found[0].alsoKeys.length === 1, JSON.stringify(either.found));
+        suite.check('a remake and the original: the plain title keeps the original',
+            n('The Wonder Years Promo') === 'tv.The Wonder Years'
+            && showMatch.propose('The Wonder Years Promo', years, {}).found[0].alsoKeys.join() === 'tv.The Wonder Years (2021)');
+        suite.check('a year in the middle of a title is left alone',
+            showMatch.buildVocabulary([channel(7, [ep('Class of 3000'), ep('Sealab 2021')])], {})
+                .entries.every( (e) => e.folded === 'class of 3000' || e.folded === 'sealab 2021' ));
+    }
+
+    // ---- a clip in a lineup is not a show --------------------------------------
+    {
+        const lineup = channel(6, [
+            ep('Home Movies'),
+            { title: '[As] NEXT - Home Movies (2003)', type: 'movie', duration: 10 * 1000, key: '/m/n', serverKey: 's' },
+            { title: 'Quick Gag', type: 'episode', showTitle: 'Quick Gag', duration: 40 * 1000 },
+            custom('shorts', 'Tiny Toons Shorts'),
+        ]);
+        lineup.programs[3].duration = 20 * 1000;
+        const v = showMatch.buildVocabulary([lineup], {});
+        const keys = v.entries.map( (e) => e.key );
+        suite.check('a movie or episode under a minute is a clip, not a show',
+            keys.indexOf('movie.[As] NEXT - Home Movies (2003)') === -1 && keys.indexOf('tv.Quick Gag') === -1);
+        suite.check('so a NEXT promo for Home Movies names Home Movies, not itself',
+            showMatch.propose('[As] NEXT - Home Movies (2003)', v, {}).names.join() === 'tv.Home Movies');
+        suite.check('an episode of real length still counts', keys.indexOf('tv.Home Movies') !== -1);
+        suite.check('a custom show of short items is still a show', keys.indexOf('custom.shorts') !== -1);
+    }
+
+    // ---- words that describe a clip are never learned as aliases ---------------
+    {
+        const own = showMatch.buildVocabulary([channel(5, [ep('Full House'), ep('Roseanne')])], {});
+        const learned = showMatch.learnAliases('Up Next Bumper (Full House) (Back 2 Back)', 'tv.Full House', own, {}, []);
+        suite.check('"back", "up" and a number are not learned from a "(Back 2 Back)" clip',
+            Object.keys(learned.added).length === 0, JSON.stringify(learned.added));
+        const more = showMatch.learnAliases('Up Next Bumper (Roseanne) (More) (back2back)', 'tv.Roseanne', own, {}, []);
+        suite.check('"more" and "back2back" are not learned either',
+            Object.keys(more.added).length === 0, JSON.stringify(more.added));
+    }
+
     // ---- pairs ---------------------------------------------------------------
     {
         const p = propose('Cowboy Bebop to Sealab 2021 bridge');
