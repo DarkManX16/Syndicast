@@ -250,8 +250,12 @@ proposed automatically and fixed on a review screen:
   "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
   make a pair. A leading "The" is optional when the rest of the title is
   still two words or more, so "Powerpuff Girls Promo" names The Powerpuff
-  Girls and "Jetsons" alone does not name The Jetsons. Titles like "[As] NEXT -
-  SGC2C [2003]" match nothing on the first pass.
+  Girls; a single word left (five letters or more) counts only when it stands
+  alone as its own segment, so "Up Next Bumper (Jeffersons)" names The
+  Jeffersons and "Jeffersons promo" does not. A trailing year in a Plex title
+  ("ThunderCats (2011)") is optional too, and a program under a minute in a
+  lineup is a clip, not a show. Titles like "[As] NEXT - SGC2C [2003]" match
+  nothing on the first pass.
 - **Review** is a table: clip, proposed show(s), a dropdown to fix it, and
   "none" for a clip that names no show. A one-time pass per list, redone only
   for new clips.

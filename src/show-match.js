@@ -25,6 +25,33 @@ const KIND_ORDER = { custom: 0, tv: 1, audio: 2, movie: 3 };
 const MIN_TITLE_LENGTH = 3;
 
 /*
+ * A program shorter than this is a clip someone put in a lineup (a NEXT promo
+ * inserted by hand, an ident), not an episode, so it does not make a show. On
+ * channel 1 the four such clips are movie items of 10-15 seconds, and the
+ * shortest real episode in the lineup is over three minutes. Left in, a clip
+ * titled "[As] NEXT - Home Movies (2003)" would be a show of its own, and as the
+ * longest title it would beat "Home Movies" on the very clips this exists for.
+ * Custom shows are exempt: a custom show of short gags is a show.
+ */
+const CLIP_MAX_MS = 60 * 1000;
+
+/*
+ * Plex tells two shows of one name apart with a year in the title, "ThunderCats
+ * (2011)", and a clip rarely says it. This is a trailing "(2011)", "[2011]" or
+ * "('83)".
+ */
+const TRAILING_YEAR = /\s*[(\[]\s*'?\d{2,4}\s*[)\]]\s*$/;
+
+/*
+ * A show whose title is "The X" with a single word left can drop "The" only
+ * where that word stands alone as its own segment of the clip title - "Up Next
+ * Bumper (Jeffersons)" - and not as part of a phrase, or "Office Space" would
+ * name The Office. Under this length it is never offered: "The Wire" would be
+ * any clip with a wire in it.
+ */
+const STANDALONE_MIN_LENGTH = 5;
+
+/*
  * Words that describe what a clip is, not which show it is about. They are the
  * floor under the "used elsewhere" rule in learnAliases: that rule can only see
  * a word is generic when the corpus happens to contain a clip of another show
@@ -35,6 +62,7 @@ const STRUCTURAL = new Set([
     'trailer', 'teaser', 'preview', 'intro', 'outro', 'ident', 'next', 'later', 'tonight',
     'tomorrow', 'videogame', 'video', 'game', 'dvd', 'toy', 'toys', 'season', 'series', 'show',
     'new', 'special', 'episode', 'the', 'and', 'for', 'with', 'from', 'you', 'your', 'now', 'then',
+    'more', 'back', 'back2back', 'b2b',
 ]);
 
 /*
@@ -102,6 +130,8 @@ function buildVocabulary(channels, customShowNames) {
             }
             if (typeof(program.customShowId) !== 'undefined') {
                 addCustom(program.customShowId, program.customShowName);
+            } else if ( (typeof(program.duration) === 'number') && (program.duration < CLIP_MAX_MS) ) {
+                continue;
             } else if (program.type === 'episode') {
                 add('tv.' + program.showTitle, program.showTitle);
             } else if (program.type === 'track') {
@@ -130,35 +160,52 @@ function buildVocabulary(channels, customShowNames) {
     }
 
     const entries = [];
+    const standalone = [];
     const owners = {};
+    const byLength = (a, b) => (b.folded.length - a.folded.length)
+        || (KIND_ORDER[keyKind(a.key)] - KIND_ORDER[keyKind(b.key)])
+        || (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0));
     for (const [key, titles] of found) {
         const seen = new Set();
-        for (const name of titles) {
-            const folded = fold(name);
+        const offer = (name, folded, alone) => {
             if ( (folded.length < MIN_TITLE_LENGTH) || seen.has(folded) ) {
-                continue;
+                return;
             }
             seen.add(folded);
-            entries.push( { key: key, name: name, folded: folded } );
+            (alone ? standalone : entries).push( { key: key, name: name, folded: folded } );
             (owners[folded] = owners[folded] || new Set()).add(key);
-            const bare = folded.replace(/^(the|a|an) /, '');
-            if ( (bare !== folded) && (bare.indexOf(' ') !== -1) && ! seen.has(bare) ) {
-                seen.add(bare);
-                entries.push( { key: key, name: name, folded: bare } );
-                (owners[bare] = owners[bare] || new Set()).add(key);
+        };
+        for (const name of titles) {
+            // The title as Plex has it, then without a trailing year ("ThunderCats
+            // (2011)"), and each of those without a leading article.
+            const forms = [ fold(name) ];
+            const withoutYear = fold(name.replace(TRAILING_YEAR, ''));
+            if (withoutYear !== forms[0]) {
+                forms.push(withoutYear);
+            }
+            for (const folded of forms) {
+                offer(name, folded, false);
+                const bare = folded.replace(/^(the|a|an) /, '');
+                if (bare === folded) {
+                    continue;
+                }
+                if (bare.indexOf(' ') !== -1) {
+                    offer(name, bare, false);
+                } else if (bare.length >= STANDALONE_MIN_LENGTH) {
+                    offer(name, bare, true);
+                }
             }
         }
     }
-    entries.sort( (a, b) => (b.folded.length - a.folded.length)
-        || (KIND_ORDER[keyKind(a.key)] - KIND_ORDER[keyKind(b.key)])
-        || (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0)) );
+    entries.sort(byLength);
+    standalone.sort(byLength);
     const ambiguous = {};
     for (const folded of Object.keys(owners)) {
         if (owners[folded].size > 1) {
             ambiguous[folded] = Array.from(owners[folded]).sort();
         }
     }
-    return { entries: entries, names: display, ambiguous: ambiguous };
+    return { entries: entries, standalone: standalone, names: display, ambiguous: ambiguous };
 }
 
 /*
@@ -167,22 +214,41 @@ function buildVocabulary(channels, customShowNames) {
  * Z") is never read as a second show. Returns the hits and the text with the
  * matched words gone.
  */
-function consumeTitles(folded, vocabulary) {
-    let text = ' ' + folded + ' ';
+function consumeTitles(title, vocabulary) {
+    let text = ' ' + fold(title) + ' ';
     const hits = [];
-    for (const entry of vocabulary.entries) {
-        const needle = ' ' + entry.folded + ' ';
-        const at = text.indexOf(needle);
-        if (at === -1) {
-            continue;
-        }
+    const take = (entry, at, needle, alone) => {
         const hit = { pos: at + 1, key: entry.key, text: entry.folded, via: 'title' };
+        if (alone) {
+            hit.standalone = true;      // a one-word title, found only because it stood alone: less certain
+        }
         const others = vocabulary.ambiguous[entry.folded];
         if (typeof(others) !== 'undefined') {
             hit.alsoKeys = others.filter( (k) => k !== entry.key );
         }
         hits.push(hit);
         text = text.slice(0, at) + ' '.repeat(needle.length) + text.slice(at + needle.length);
+    };
+    for (const entry of vocabulary.entries) {
+        const needle = ' ' + entry.folded + ' ';
+        const at = text.indexOf(needle);
+        if (at !== -1) {
+            take(entry, at, needle);
+        }
+    }
+    // One-word titles that dropped their "The" count only as a segment of their
+    // own: between brackets, dashes, colons or slashes, or the whole title.
+    const segments = new Set(String(title == null ? '' : title)
+        .split(/[()\[\]\-–—:;|\/,]+/).map(fold).filter( (s) => s !== '' ));
+    for (const entry of (vocabulary.standalone || []) ) {
+        if (! segments.has(entry.folded) ) {
+            continue;
+        }
+        const needle = ' ' + entry.folded + ' ';
+        const at = text.indexOf(needle);
+        if (at !== -1) {
+            take(entry, at, needle, true);
+        }
     }
     return { hits: hits, remaining: text };
 }
@@ -198,7 +264,7 @@ function consumeTitles(folded, vocabulary) {
  */
 function propose(title, vocabulary, aliases) {
     const known = aliases || {};
-    const { hits, remaining } = consumeTitles(fold(title), vocabulary);
+    const { hits, remaining } = consumeTitles(title, vocabulary);
     const wordPattern = /\S+/g;
     let match;
     while ( (match = wordPattern.exec(remaining)) !== null ) {
@@ -249,7 +315,7 @@ function learnAliases(title, showKey, vocabulary, aliases, corpus) {
     const known = aliases || {};
     const folded = fold(title);
     const explained = new Set();
-    const { remaining } = consumeTitles(folded, vocabulary);
+    const { remaining } = consumeTitles(title, vocabulary);
     const left = new Set(remaining.split(' ').filter( (w) => w !== '' ));
     for (const word of folded.split(' ')) {
         if ( (word !== '') && ! left.has(word) ) {

@@ -78,6 +78,16 @@ module.exports = async function run() {
             fs.utimesSync(outFile, t, t);
         }
 
+        // The same for any other file: pin its mtime to a known time in the past.
+        // A check that a file was rewritten, or that two edits are different
+        // states, must not depend on two writes a few milliseconds apart getting
+        // different timestamps. On Windows they sometimes do not, which made the
+        // two checks that use this fail in about one run in three.
+        function ageFile(file, secondsBack) {
+            const t = (Date.now() - secondsBack * 1000) / 1000;
+            fs.utimesSync(file, t, t);
+        }
+
         // ---- first build: no manifest yet, must build ------------------------
         await checker.ensureFresh();
         let built = readIfExists(outFile);
@@ -104,6 +114,7 @@ module.exports = async function run() {
             built && built.includes('SHARED_V2'));
 
         // ---- a brand new, unreferenced .js file under web/ also triggers one --
+        ageFile(manifestFile, 10);   // so a rewrite of it cannot land on the same timestamp
         const manifestBeforeNewFile = fs.statSync(manifestFile).mtimeMs;
         const moduleC = path.join(webRoot, 'dir', 'module-c.js');
         fs.writeFileSync(moduleC, "// not required anywhere\n");
@@ -120,6 +131,9 @@ module.exports = async function run() {
         const goodBundle = readIfExists(outFile);
         ageBundle(10);
         fs.writeFileSync(moduleA, "this is not } valid javascript (((\n");
+        // Still newer than the bundle, but a different state from the fix below:
+        // the checker will not retry a state it has already failed on.
+        ageFile(moduleA, 5);
         let threw = false;
         try {
             await checker.ensureFresh();
