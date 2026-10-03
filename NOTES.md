@@ -567,6 +567,84 @@ for the full spec, stages and acceptance tests.
       **Still true:** `/m3u8` has no stream id, so no cursor; it gets
       `placeByClock` and the shared plan, nothing more.
 
+      **Step 3b built Oct 3, 2026 (Sonnet 5.5), on branch `stage5-step3b`: days,
+      chance and lists whose clips feature shows.** Three options so Ron can
+      lay breaks out freely, each off by default: nothing saved changes, and the
+      existing 662 tests passed untouched before any new one was added. 662 to
+      724 tests.
+
+      - **`days`** on a step: it plays only when the break's local weekday is
+        listed (0 = Sunday, as in day-parts). The day is the day the break
+        *starts*; an 11:50pm Friday break running into Saturday is a Friday
+        break. An empty list plays on no day and is warned about at save,
+        never read as "every day".
+      - **`chance`** on a step, a whole percent 1 to 99 (100 or unset is
+        always). **The roll is derived, not random**: a hash of channel, break
+        start and step id. A plan is dropped on every save and on a restart, and a
+        re-rolled break could change what a half-watched break shows; derived, every
+        rebuild and every viewer agrees. The first hash (plain FNV-1a) failed
+        its own test: only the last byte of the step id differed, and that barely
+        reaches FNV's high bits, so two steps of one break rolled nearly alike
+        (1 break in 200 differed instead of half). It now takes murmur3's final
+        mix, and over 20,000 breaks 49.6% roll under 50 and two steps disagree
+        49.5% of the time. `env.roll(brk, stepKey)` overrides it for tests.
+      - **A step left out by day or chance has found nothing**, so a step marked
+        `onlyIfNoMatch` on it plays. That is what makes "Up Next before the break
+        sometimes, otherwise right before the show" two steps, and the Monday
+        sign-on two steps with different days.
+      - **`clipsFeatureShows`** on a filler list, a checkbox in the list editor
+        ("These clips feature shows"). In a step reading such a list, as its
+        list or its fallback: clips naming the keyed show first, then any clip,
+        named or not, the longest idle first (`via: 'featured'`). A list without
+        it keeps the old rule. Unusable `names` and no-length clips are still
+        never chosen, a clip still plays once per plan, and a featured clip
+        counts as a match for a watching step. **It is a setting of the list, not
+        of the step**, so it applies to every step that reads that list: on a
+        list of promos for particular shows (Adult Swim) it would play a promo
+        for the wrong show, which is exactly what it is for on the CN City
+        bumpers and exactly wrong there.
+
+      **Writers of the new fields, enumerated:** `normalizeTransitions` (defaults
+      `days` and `chance` to null), `buildPlan` (the reader), `daysProblem` and
+      `chanceProblem` (one rule for the builder and for `warnAboutTransitions`),
+      `transitions-plan-day.js` (`--days`, `--sometimes`, `--feature`), and the
+      spec. For `clipsFeatureShows`: the list editor posts a hand-built object, so
+      it had to be added there or every editor save would drop it (it is written
+      only when ticked, so a list that never used it stays byte for byte as it
+      was, and unticking restores the original file exactly, checked); the other
+      writers (`saveFillerOrder`, the import refresh, `fixupAllFillers`) pass the
+      whole object through. `FillerService.getFillersFromCollections` now carries
+      the flag, and `video.js` passes it to `buildPlan` as `env.featuresShows`.
+      `FillerDB` warns if it is not true or false.
+
+      **What there is no UI for yet.** The card editor is step 5, which now has
+      to offer days (seven toggles) and chance (a percent box) on a step's chip
+      (the spec says so). Until then a step's `days` and `chance` are set in the
+      channel file; the list checkbox is the one visible change.
+
+      **Tests.** `test/transitions.js` (days and chance each way and at the edges,
+      the local day across midnight, the roll, every featured tier, the save-time
+      warning, the defaults) and 18 plan rows in `test/blocks-acceptance.js`: the
+      five Nick patterns (Hey Dude to Clarissa; Clarissa to Doug entering
+      Nicktoons; Hey Arnold to Are You Afraid of the Dark? and to a show with no
+      promo; into Kenan & Kel; entering Nick at Nite on a Tuesday, a Sunday and a
+      Monday), a step skipped for its day and the marked step that plays then,
+      "Up Next sometimes" both ways, and the CN City cases. Mutation-checked:
+      removing the day check, the chance check, the featured setting, either
+      featured tier, or shifting the weekday by one each fails rows.
+
+      **Real data, on a copy of `.dizquetv-dev`.** Wed Oct 21 of channel 1 with
+      the Adult Swim sequence, nothing new set: 68 breaks (22 / 42 / 4), 7 with
+      steps, 11 steps, the same as step 3 recorded. `--sometimes 50`: every break
+      that had steps now has exactly one side (4 out, 3 in), the same answer on a
+      second run, and 2 to 4 on the out side across five days. `--days 0,6`
+      gives none on a Wednesday. `--feature` gives all 11 breaks steps (22) with a
+      clip for another show in the second step, as designed. A scratch server
+      from the worktree on the full copy: the list editor shows the checkbox,
+      ticking and Done wrote `clipsFeatureShows: true` to that one list and
+      nothing else, reopening showed it ticked, and unticking made the file
+      identical to the original.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;

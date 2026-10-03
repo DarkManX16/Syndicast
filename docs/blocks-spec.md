@@ -193,8 +193,14 @@ A step says which clips it may draw from and how it chooses one:
   match: 'any' | 'show' | 'pair',    // any clip; a clip naming the keyed show; a clip naming now→then
   keyedOn: 'now' | 'next' | 'later', // which show a 'show' step must name (see below)
   fallbackListId: null,              // when nothing names the show: null skips the step, a list plays one from it
-  onlyIfNoMatch: null }              // null, or the id of another step in this sequence: play only if that one found no clip
+  onlyIfNoMatch: null,               // null, or the id of another step in this sequence: play only if that one found no clip
+  days: null,                        // null, or the weekdays it plays on, 0 = Sunday (step 3b)
+  chance: null }                     // null, or a whole percent 1-99 it plays at (step 3b)
 ```
+
+A filler list may also carry `clipsFeatureShows: true` (step 3b, below). Every
+one of these three is off when absent, so a channel, list or plan saved before
+step 3b reads, and plays, exactly as it did.
 
 - **`match: 'any'`** is the fixed-list step: an ident, a block bumper, a
   "we'll be right back".
@@ -239,6 +245,30 @@ A step says which clips it may draw from and how it chooses one:
     plays. A step cannot watch itself, another marked step, a step that is not
     in the sequence or an id used twice in it: such a step is skipped, with a
     note and a warning at save, rather than guessed at.
+- **`days`: only on these days (step 3b).** A step with `days` plays only when
+  the break's local weekday is listed, 0 for Sunday as in day-parts and blocks.
+  The break's day is the local day it *starts*, the moment the program before it
+  ends, so a break that begins at 11:50pm Friday and runs into Saturday is a
+  Friday break. A step left out by its day has found nothing, so a step marked
+  `onlyIfNoMatch` on it plays; that is what lets one sign-on sit on the out side
+  on Mondays and, as a second step, on the in side the rest of the week. An empty
+  list is a mistake, not "every day": it plays on no day and is warned about at
+  save, and so is anything that is not a list of whole numbers 0 to 6. Leave
+  `days` off for every day.
+- **`chance`: sometimes (step 3b).** A step with `chance` plays only some of the
+  time, a whole percent from 1 to 99; unset and 100 mean always, and anything else
+  (0, a fraction, a string) is a mistake: the step is skipped and warned about.
+  The roll is **derived, not random**: a hash of the channel, the break's start
+  and the step's id, in [0, 1), and the step plays when it is under the percent.
+  A plan is dropped on every save and lost on a restart, and a re-rolled break
+  could change what a half-watched break shows; derived, every build of one
+  break, for every viewer, gets the same answer, while the same break one lineup
+  cycle later (another start) gets its own, and two steps of one break roll
+  apart. A step that loses its roll has found nothing, so "Up Next before the
+  break sometimes, otherwise right before the show" is an Up Next step with a
+  `chance` on the out side and an Up Next step on the in side marked
+  `onlyIfNoMatch` on it: exactly one of them plays. Tests, and the plan-day
+  script, may supply their own roll (`env.roll`).
 - **`keyedOn: 'later'`** keys a step on the first program of this context's
   *next* airing or start, for Cartoon Theatre's "Next Time" — the one bumper
   in the examples that names neither neighbour. It is the last build step and
@@ -264,6 +294,23 @@ clips on either side of the Flex. The never-a-different-show rule holds for
 every `match`, `any` included: `any` needs no name, but a clip that does name
 a show must name one the step is keyed on. A clip whose `names` field is not
 usable is never chosen.
+
+**Lists whose clips feature shows (step 3b).** The never-a-different-show rule
+suits a list of Up Next bumpers, and it is wrong for character bumpers: a Courage
+or Johnny Bravo bumper features its show without announcing it, and is as good
+before any show. A filler list can say so with the setting **"These clips feature
+shows"** (`clipsFeatureShows`, set in the list editor, off by default). A step
+drawing from such a list, as its list or as its fallback, tries in order:
+(1) clips naming the show the step is keyed on, the pair where the step wants
+one, as above; then (2) **any clip in the list**, named or not, a clip naming a
+different show included, the longest-idle first. So a list like "CN City Bumpers
+[DAY]" serves as the fallback for shows with no Up Next or promo, and as a
+WBRB or BTTS between episodes, and when the next show has its own bumper there,
+that one wins. A tier-2 clip is a match like any other: a step marked
+`onlyIfNoMatch` on it stays out. Unchanged: a clip plays at most once in a plan,
+a clip with an unusable `names` or no length is never chosen, and a list without
+the setting keeps the rule above, a named clip never playing before a different
+show. The setting belongs to the list, so it applies to every step that reads it.
 
 **Room for a "generated" step.** `kind` is the extension point. After 1.0,
 `{ kind: 'generated', template: 'up-next' | 'later-tonight' | 'tonight-on',
@@ -404,6 +451,27 @@ Adult Swim day-parts set *between shows* to
 `in: [the same]`. That reproduces show → NEXT → Flex → NEXT → show for every
 Adult Swim break with a matching clip and does nothing for the rest.
 
+#### Worked examples from the Nick channel
+
+Real patterns from Ron's Nick channel, each a fixture row in
+`test/blocks-acceptance.js` (and listed under Acceptance tests below). Each reads
+in play order, out steps, Flex, in steps. A clip's name is the show it names, as
+the review screen will have set it ("Up Next Bumper (Doug)" names Doug).
+
+| Break | Plays | Built from |
+|---|---|---|
+| Hey Dude → Clarissa | Clarissa WBRB → commercials → Up Next (Clarissa) | Between shows: out, a `show` step keyed on `next` from the WBRB list; in, the same from the Up Next list |
+| Clarissa → Doug, entering Nicktoons | Nicktoons Intro → commercials → Up Next (Doug) → Nick Bumper (Doug) | Nicktoons' Entering: out, an `any` step from the intro list; in, two `show` steps keyed on `next`, the Up Next list then the Nick Bumpers list |
+| Hey Arnold → Are You Afraid of the Dark? | commercials → NEXT promo for the show | Between shows, in: a `show` step keyed on `next`, skip if none. A show with no promo gets none |
+| Into Kenan & Kel | commercials → Nick Bumper → Back to the Show | Between shows, in: two `any` steps, each from a list of generic clips |
+| Entering Nick at Nite | Tue-Sun: commercials → Up Next (The Cosby Show) (More) → Sign On, right before the first show. **Mon:** Sign On → commercials → Up Next (The Cosby Show) (More) | Entering: out, a Sign On step with `days: [1]`; in, the Up Next `show` step then a second Sign On step with `days: [0, 2, 3, 4, 5, 6]` |
+| A show with no Up Next, on CN City | commercials → a character bumper for a different show. When the next show has a bumper of its own in the list, that one | Between shows, in: a `show` step keyed on `next` from the Up Next list, fallback "CN City Bumpers [DAY]", a list set to **These clips feature shows**. The same list serves as WBRB and BTTS between episodes |
+
+Two more the options above make possible: **Up Next before the break sometimes,
+otherwise right before the show** (an Up Next step at `chance: 50` out, the same
+Up Next marked `onlyIfNoMatch` on it in), and **a step that skips a day**, whose
+absence the marked step covers.
+
 #### Editor
 
 Our design principle, applied: we attach transitions to the **context** the viewer is
@@ -429,7 +497,8 @@ list, not one per show.
   The clip picks in the preview are the longest-idle ones at preview time;
   the live pick may differ.
 - **In the filler list editor**, a **Names** column per clip and a
-  "Match shows" button that opens the review screen above.
+  "Match shows" button that opens the review screen above, and the **These
+  clips feature shows** checkbox (built at step 3b).
 - The on-demand warning the Blocks tab shows applies unchanged.
 
 **How the lists are laid out.** One Up Next list per block or era, holding
@@ -467,6 +536,18 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    lineups, not against channel 1's block times. Real-data check: plans for one
    day of channel 1 with a test sequence on Adult Swim, printed break by break
    (`scripts/transitions-plan-day.js`). **Built Oct 3, 2026**; see NOTES.md.
+3b. **Days, chance and lists that feature shows** — three options so breaks can be
+   laid out freely, each off by default so nothing saved changes: a step's `days`
+   (only on these weekdays, by the break's local day), its `chance` (a whole
+   percent, rolled once per break from a hash of the channel, the break and the
+   step, so every viewer and every rebuild agrees), and a filler list's
+   `clipsFeatureShows` (a clip naming any show may play before any show, after
+   the clips naming the keyed one). `buildPlan` learns all three; a step skipped
+   by day or chance counts as having found nothing, for `onlyIfNoMatch`;
+   `warnAboutTransitions` warns on a bad `days` or `chance` from the same two
+   functions the builder uses; the list editor gets the checkbox. Built before
+   step 5, so the card editor is written once with these in it. The Nick channel's
+   patterns above are the fixture rows. **Built Oct 3, 2026**; see NOTES.md.
 4. **The cursor phases** — `lineup-cursor.js`, `createLineup`'s time left,
    `video.js` serving steps, the clock-path tune-in rule, `type: 'transition'`.
    `test/lineup-cursor.js`'s simulated viewer gains steps: every step once,
@@ -477,7 +558,11 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    channel 1's copy with the Adult Swim NEXT sequence above. **Built Oct 3,
    2026, confirmed in TiviMate**; see NOTES.md. A tune-in lands on the in step
    on the air, and one plan per break is shared by every viewer.
-5. **The card editor** — the Transitions section on both cards, load-time
+5. **The card editor** — the Transitions section on both cards (a step's chip
+   also carries "only on these days" as seven day toggles and "sometimes" as a
+   percent box, 1 to 99, both off by default and both shown on the chip, since
+   they decide whether it plays; the mark offers the other steps of the same
+   row, as before), load-time
    defaults and save-time cleanup beside the day-part ones in
    `channel-config.js`, the preview on this week's lineup. In the channel's
    programming list, each Flex row shows a one-line tag naming its planned
@@ -563,6 +648,19 @@ From channel 1's own lineup, with a between-shows sequence on the Adult Swim day
 - **Tuning in 8s before the break ends:** the 10s "NEXT - SGC2C" plays, then the show; the 15s promo does not
 - **Mon 2:50pm, weekday day-part → Toonami block:** Toonami `entering` fires with the day-part's `leaving`; a between-shows sequence on either context does not
 - **Week of Oct 18, 2026:** 442 breaks resolve as 117 between episodes, 297 between shows, 28 boundaries (113 / 301 / 28 before the Oct 2 boundary edits); a channel with no sequences configured plays exactly what it plays today in all 442
+
+Added at step 3b, each a plan row on a fixture of its own (the Nick channel's
+patterns under "Worked examples from the Nick channel", the CN City lists, and
+the two options):
+
+- **Hey Dude → Clarissa:** Clarissa WBRB → Flex → Up Next (Clarissa)
+- **Clarissa → Doug, entering Nicktoons:** Nicktoons Intro → Flex → Up Next (Doug) → Nick Bumper (Doug)
+- **Hey Arnold → Are You Afraid of the Dark?:** Flex → the show's NEXT promo; **Hey Arnold → a show with no promo:** Flex only
+- **Into Kenan & Kel:** Flex → Nick Bumper → Back to the Show
+- **Entering Nick at Nite, Tue and Sun:** Flex → Up Next (The Cosby Show) (More) → Sign On; **Mon:** Sign On → Flex → Up Next (The Cosby Show) (More)
+- **A step limited to Mondays, on a Tuesday:** found nothing, so the step marked `onlyIfNoMatch` on it plays; **on a Monday:** it plays and the marked step stays out
+- **A 50% Up Next out with the same Up Next marked in, roll under 50:** Up Next → Flex; **roll over:** Flex → Up Next
+- **CN City, a show with no Up Next:** Flex → a bumper for a different show from "CN City Bumpers [DAY]"; **when the show has its own bumper there:** that one, though another has been idle longer; **a show with an Up Next:** the Up Next; **the same clips in a list without the setting:** Flex only; **between two episodes of a show with no bumper:** two different bumpers, out then in
 
 ## Open questions
 
