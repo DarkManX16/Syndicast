@@ -7,7 +7,7 @@
  *
  * Usage: node scripts/transitions-plan-day.js <data-folder> [--channel 1]
  *            [--day YYYY-MM-DD] [--seq "<context text>=<list text>"]...
- *            [--breaks <n>]
+ *            [--breaks <n>] [--sometimes <percent>] [--days <0-6,...>] [--feature]
  *
  *   --channel  the channel number to walk (default 1)
  *   --day      the day to walk, local midnight to midnight (default 2026-10-21)
@@ -18,6 +18,13 @@
  *                "Adult Swim (Sun=Adult Swim [Sunday]"
  *                "Adult Swim=Adult Swim [Weekday]"
  *   --breaks   how many breaks to print in full (default: every one)
+ *   --sometimes <percent>
+ *              make the out step play with that chance, and the in step play only
+ *              when the out step found nothing: "before the break sometimes,
+ *              otherwise right before the show". Judged by the same roll
+ *              playback uses, so the split printed is the split a viewer sees.
+ *   --days     limit both steps to these weekdays (0 = Sunday), comma separated
+ *   --feature  treat the test lists as lists whose clips feature shows
  *
  * The test sequence is the one the spec gives the NEXT promos: between shows,
  * on both sides of the Flex, one `show` step keyed on the next show from the
@@ -39,7 +46,7 @@ const showMatch = require('../src/show-match');
 const transitions = require('../src/transitions');
 
 function parseArgs(argv) {
-    const args = { folder: null, channel: '1', day: '2026-10-21', seqs: [], breaks: Infinity };
+    const args = { folder: null, channel: '1', day: '2026-10-21', seqs: [], breaks: Infinity, sometimes: null, days: null, feature: false };
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === '--channel' && i + 1 < argv.length) {
             args.channel = argv[++i];
@@ -47,6 +54,12 @@ function parseArgs(argv) {
             args.day = argv[++i];
         } else if (argv[i] === '--seq' && i + 1 < argv.length) {
             args.seqs.push(argv[++i]);
+        } else if (argv[i] === '--sometimes' && i + 1 < argv.length) {
+            args.sometimes = parseInt(argv[++i], 10);
+        } else if (argv[i] === '--days' && i + 1 < argv.length) {
+            args.days = argv[++i].split(',').map(Number);
+        } else if (argv[i] === '--feature') {
+            args.feature = true;
         } else if (argv[i] === '--breaks' && i + 1 < argv.length) {
             args.breaks = parseInt(argv[++i], 10);
         } else if (args.folder === null) {
@@ -70,7 +83,7 @@ function readJsonFiles(dir) {
 
 const args = parseArgs(process.argv.slice(2));
 if (args.folder === null) {
-    console.error('usage: node scripts/transitions-plan-day.js <data-folder> [--channel 1] [--day YYYY-MM-DD] [--seq "<context text>=<list text>"]... [--breaks <n>]');
+    console.error('usage: node scripts/transitions-plan-day.js <data-folder> [--channel 1] [--day YYYY-MM-DD] [--seq "<context text>=<list text>"]... [--breaks <n>] [--sometimes <percent>] [--days <0-6,...>] [--feature]');
     process.exit(2);
 }
 
@@ -117,6 +130,7 @@ const rules = args.seqs.map( (s) => {
     return { context: s.slice(0, at).toLowerCase(), list: s.slice(at + 1) };
 });
 const sequenced = [];
+const featuring = {};
 const withSequence = (context) => {
     const rule = rules.find( (r) => (context.name || '').toLowerCase().includes(r.context) );
     if (typeof(rule) === 'undefined') {
@@ -128,15 +142,20 @@ const withSequence = (context) => {
         process.exit(2);
     }
     sequenced.push(`${context.name} <- ${listNames[listId]}`);
-    const step = (id) => ({ id: id, kind: 'list', listId: listId, match: 'show', keyedOn: 'next', fallbackListId: null });
-    return Object.assign({}, context, { transitions: { betweenShows: { out: [step('next-out')], in: [step('next-in')] } } });
+    featuring[listId] = args.feature;
+    const step = (id, extra) => Object.assign({ id: id, kind: 'list', listId: listId, match: 'show', keyedOn: 'next', fallbackListId: null },
+        (args.days !== null) ? { days: args.days } : {}, extra || {});
+    const sometimes = (args.sometimes !== null);
+    return Object.assign({}, context, { transitions: { betweenShows: {
+        out: [step('next-out', sometimes ? { chance: args.sometimes } : {})],
+        in: [step('next-in', sometimes ? { onlyIfNoMatch: 'next-out' } : {})] } } });
 };
 const copy = Object.assign({}, channel, {
     dayParts: (channel.dayParts || []).map(withSequence),
     blocks: (channel.blocks || []).map(withSequence),
 });
 
-const env = { getList: (id) => lists[id] || null, lastPlayed: () => 0 };
+const env = { getList: (id) => lists[id] || null, lastPlayed: () => 0, featuresShows: (id) => featuring[id] === true };
 const [y, m, d] = args.day.split('-').map(Number);
 const from = new Date(y, m - 1, d).getTime();
 const to = new Date(y, m - 1, d + 1).getTime();
@@ -147,12 +166,17 @@ const mmss = (ms) => `${Math.floor(ms / 60000)}:${String(Math.round(ms / 1000) %
 const label = (entry) => shownAs(transitions.showKey(entry.program));
 
 console.log(`${channel.name} (channel ${channel.number}), ${args.day}`);
-console.log(`test sequence (between shows, show step keyed on next, skip if none, both sides):`);
+console.log(`test sequence (between shows, show step keyed on next, skip if none, both sides`
+    + (args.sometimes !== null ? `, out ${args.sometimes}% of the time and in otherwise` : '')
+    + (args.days !== null ? `, days ${args.days.join(',')}` : '')
+    + (args.feature ? ', lists feature shows' : '') + '):');
 sequenced.forEach( (line) => console.log(`  ${line}`) );
 console.log(`filler clips named in memory from their titles: ${proposed} (${alreadyNamed} already carried names)\n`);
 
 const counts = { betweenEpisodes: 0, betweenShows: 0, boundary: 0, none: 0 };
 const playing = {};
+let outSide = 0;
+let inSide = 0;
 let withSteps = 0;
 let overrun = 0;
 let printed = 0;
@@ -164,6 +188,8 @@ for (const brk of breaks) {
     const configured = plan.skipped.length > 0 || hasSteps;
     if (hasSteps) {
         withSteps++;
+        outSide += plan.out.length;
+        inSide += plan.in.length;
         for (const s of plan.out.concat(plan.in)) {
             playing[listNames[s.listId]] = (playing[listNames[s.listId]] || 0) + 1;
         }
@@ -198,4 +224,5 @@ console.log(`${withSteps} breaks have steps; ${sequencedBreaks.length - withStep
 for (const name of Object.keys(playing).sort() ) {
     console.log(`  ${playing[name]} steps from ${name}`);
 }
+console.log(`steps on the out side: ${outSide}, on the in side: ${inSide}`);
 console.log(`steps longer than their whole break: ${overrun}`);

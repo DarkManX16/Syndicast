@@ -16,6 +16,12 @@
                             <select class="custom-select"
                                 ng-model="mode"
                                 ng-options="theMode.name as theMode.description for theMode in modes" ></select>
+
+                            <div class="form-check" style="margin-top: 0.75rem;">
+                                <input type="checkbox" class="form-check-input" id="clipsFeatureShows" ng-model="clipsFeatureShows" ></input>
+                                <label class="form-check-label" for="clipsFeatureShows">These clips feature shows</label>
+                                <small class="form-text text-muted">For character bumpers that feature a show without announcing it. In a transition step, a clip naming the next show plays first, then any clip in this list, named or not.</small>
+                            </div>
                         </div>
 
                       <div ng-show="mode==='import'">

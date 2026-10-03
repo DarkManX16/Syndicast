@@ -261,6 +261,7 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                 if ( typeof(filler) === 'undefined') {
                     scope.name = "";
                     scope.content = [];
+                    scope.clipsFeatureShows = false;
                     scope.id = undefined;
                     scope.title = "Create Filler List";
                     scope.mode = "import";
@@ -270,6 +271,7 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                 } else {
                     scope.name = filler.name;
                     scope.content = filler.content;
+                    scope.clipsFeatureShows = (filler.clipsFeatureShows === true);
                     scope.id = filler.id;
                     scope.title = "Edit Filler List";
                     scope.mode = filler.mode;
@@ -331,6 +333,11 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                     mode: scope.mode,
 
                 };
+                // Written only when on, so a list that never used it stays
+                // byte-for-byte as it was and unticking it removes the field.
+                if (scope.clipsFeatureShows === true) {
+                    object.clipsFeatureShows = true;
+                }
                 if (object.mode === "import") {
                     object.content = [];
                     //In reality  dizqueTV only needs to know the server name

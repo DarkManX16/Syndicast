@@ -94,16 +94,19 @@ class FillerService extends events.EventEmitter {
 
         let loadChannelFiller = async(fillerEntry) => {
             let content = [];
+            let clipsFeatureShows = false;
             try {
                 let filler = await this.fillerDB.getFiller(fillerEntry.id);
                 await this.fillerUsageWatcher(fillerEntry.id, filler);
                 content = filler.content;
+                clipsFeatureShows = (filler.clipsFeatureShows === true);
             } catch(e) {
                 console.error(`Channel #${channel.number} - ${channel.name} references an unattainable filler id: ${fillerEntry.id}`, e);
             }
             return {
                 id: fillerEntry.id,
                 content: content,
+                clipsFeatureShows: clipsFeatureShows,
                 weight: fillerEntry.weight,
                 cooldown: fillerEntry.cooldown,
             }
