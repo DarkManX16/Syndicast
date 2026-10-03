@@ -314,6 +314,314 @@ module.exports = async function run() {
         suite.check('a block\'s transitions are checked too, and the warning names the block',
             lines.filter((l) => /ransition/.test(l) && /block 0/.test(l)).length === 1, lines.join(' | '));
         suite.check('warning rewrites nothing', channel.blocks[0].transitions === 7);
+
+        const mark = (value) => warningsFor({ transitions: { betweenShows: {
+            out: [step('up'), step('w', { onlyIfNoMatch: value })], in: [] } } });
+        suite.check('a step marked to watch a real step is not warned about', mark('up').length === 0);
+        suite.check('an empty or false mark means "not marked", and is not warned about',
+            mark('').length === 0 && mark(false).length === 0 && mark(null).length === 0);
+        suite.check('a mark that is not a step id (true, a number) is warned about',
+            mark(true).length === 1 && mark(3).length === 1);
+        suite.check('a mark naming no step of the situation is warned about', mark('nope').length === 1);
+        suite.check('a step that watches itself is warned about', mark('w').length === 1);
+        suite.check('a step watching a step on the other side of its Flex is fine',
+            warningsFor({ transitions: { betweenShows: { out: [step('up')], in: [step('w', { onlyIfNoMatch: 'up' })] } } }).length === 0);
+        suite.check('a step watching a step of another situation is warned about',
+            warningsFor({ transitions: { betweenShows: { out: [step('w', { onlyIfNoMatch: 'up' })], in: [] },
+                betweenEpisodes: { out: [step('up')], in: [] } } }).length === 1);
+        suite.check('a step watching a marked step is warned about',
+            warningsFor({ transitions: { betweenShows: { out: [step('up'), step('a', { onlyIfNoMatch: 'up' }),
+                step('b', { onlyIfNoMatch: 'a' })], in: [] } } }).length === 1);
+        suite.check('a watched id used twice is warned about, once for each watcher',
+            warningsFor({ transitions: { betweenShows: { out: [step('up'), step('up'), step('w', { onlyIfNoMatch: 'up' })], in: [] } } }).length === 1);
+    }
+
+    // ---- the show after the next one ----------------------------------------
+    {
+        const programs = [episode('Alpha', 1, 30), flex(5), episode('Beta', 1, 30), flex(5), episode('Beta', 2, 30),
+            flex(5), flex(5), episode('Gamma', 1, 30), flex(5)];
+        const channel = { number: 13, programs, dayParts: [], blocks: [],
+            duration: programs.reduce((a, p) => a + p.duration, 0), startTime: new Date(start).toISOString() };
+        const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+        suite.check('the show after the next one skips the next show\'s own other episodes and all Flex',
+            transitions.showAfter(channel, brk) === 'tv.Gamma', String(transitions.showAfter(channel, brk)));
+        const wrap = transitions.findBreak(channel, 8, start + 30 * MIN + 5 * MIN + 30 * MIN + 5 * MIN + 30 * MIN + 10 * MIN + 30 * MIN);
+        suite.check('and wraps round the cyclic lineup', transitions.showAfter(channel, wrap) === 'tv.Beta',
+            String(transitions.showAfter(channel, wrap)));
+        const one = [episode('Alpha', 1, 30), flex(5), episode('Alpha', 2, 30), flex(5)];
+        const lone = { number: 14, programs: one, dayParts: [], blocks: [], duration: 70 * MIN, startTime: new Date(start).toISOString() };
+        suite.check('a lineup of one show has no show after it',
+            transitions.showAfter(lone, transitions.findBreak(lone, 1, start + 30 * MIN)) === null);
+        suite.check('a break with no next program has none either',
+            transitions.showAfter(channel, Object.assign({}, brk, { next: null })) === null);
+    }
+
+    // ---- plans: which clip each step plays ----------------------------------
+    {
+        const T = 1000;
+        const clipOf = (title, secs, names) => Object.assign({ title, key: '/c/' + title, serverKey: 'srv',
+            duration: secs * T }, (typeof names === 'undefined') ? {} : { names });
+        // Alpha -> Beta, and Gamma after Beta: P = tv.Alpha, N = tv.Beta, then = tv.Gamma.
+        const programs = [episode('Alpha', 1, 30), flex(5), episode('Beta', 1, 30), flex(5), episode('Gamma', 1, 30), flex(5)];
+        const channelWith = (situationSpec, situation) => ({
+            number: 15, name: 'Plans', offlineMode: 'pic', fallback: [], fillerRepeatCooldown: 0, fillerCollections: [],
+            dayParts: [{ id: 'd', name: 'D', fillerCollections: mix([['A', 100]]),
+                starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }],
+                transitions: { [situation || 'betweenShows']: situationSpec } }],
+            programs: programs, duration: programs.reduce((a, p) => a + p.duration, 0),
+            startTime: new Date(start).toISOString(),
+        });
+        const env = (lists, played) => ({
+            getList: (id) => lists[id] || null,
+            lastPlayed: (c) => (played || {})[c.title] || 0,
+        });
+        // out/in: arrays of steps. Returns the plan for the Alpha -> Beta break.
+        function planFor(out, inn, lists, played) {
+            const channel = channelWith({ out: out, in: inn });
+            const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+            return transitions.buildPlan(channel, brk, env(lists, played));
+        }
+        const S = (id, listId, extra) => step(id, Object.assign({ listId: listId }, extra || {}));
+        const titles = (side) => side.map((s) => s.clip.title).join(' | ');
+
+        // -- show steps
+        {
+            const lists = { U: [clipOf('Up Alpha', 10, ['tv.Alpha']), clipOf('Up Beta', 10, ['tv.Beta']),
+                clipOf('Up Gamma', 10, ['tv.Gamma']), clipOf('Generic', 10)] };
+            const p = planFor([S('up', 'U', { match: 'show' })], [], lists);
+            suite.check('a show step keyed on next plays the clip naming the next show, and no other',
+                titles(p.out) === 'Up Beta' && p.out[0].via === 'show', titles(p.out));
+            suite.check('a general clip is not "naming the show", so a show step does not take it',
+                planFor([S('up', 'U', { match: 'show' })], [], { U: [clipOf('Generic', 10)] }).out.length === 0);
+            const q = planFor([S('up', 'U', { match: 'show' })], [], { U: [clipOf('Up Gamma', 10, ['tv.Gamma'])] });
+            suite.check('with no clip naming it and no fallback the step is skipped, and that is not a problem',
+                q.out.length === 0 && q.skipped.length === 1 && q.skipped[0].problem === false && q.notes.length === 0,
+                JSON.stringify(q.skipped));
+            const now = planFor([S('gone', 'U', { match: 'show', keyedOn: 'now' })], [], lists);
+            suite.check('keyed on now it plays the clip naming the show that just ended',
+                titles(now.out) === 'Up Alpha', titles(now.out));
+        }
+
+        // -- fallback
+        {
+            const lists = {
+                U: [clipOf('Up Gamma', 10, ['tv.Gamma'])],
+                G: [clipOf('Up Gamma too', 10, ['tv.Gamma']), clipOf('Generic', 10)],
+            };
+            const p = planFor([S('up', 'U', { match: 'show', fallbackListId: 'G' })], [], lists);
+            suite.check('the fallback list supplies a general clip, never one naming a different show',
+                titles(p.out) === 'Generic' && p.out[0].via === 'fallback' && p.out[0].listId === 'G', titles(p.out));
+            suite.check('the clip carries the list it came from, like a filler pick',
+                p.out[0].clip.fillerId === 'G');
+            const onlyOther = planFor([S('up', 'U', { match: 'show', fallbackListId: 'G' })], [],
+                { U: lists.U, G: [clipOf('Up Gamma too', 10, ['tv.Gamma'])] });
+            suite.check('a fallback holding only clips for other shows plays nothing',
+                onlyOther.out.length === 0);
+            const named = planFor([S('up', 'U', { match: 'show', fallbackListId: 'G' })], [],
+                { U: lists.U, G: [clipOf('Up Beta late', 10, ['tv.Beta']), clipOf('Generic', 10)] });
+            suite.check('a fallback clip that does name the keyed show is fine, and idle order decides',
+                titles(named.out) === 'Up Beta late', titles(named.out));
+            const missing = planFor([S('up', 'U', { match: 'show', fallbackListId: 'NOPE' })], [], { U: lists.U });
+            suite.check('a missing fallback list is noted, and the step is skipped if nothing else fits',
+                missing.out.length === 0 && missing.notes.length === 1 && /fallback list "NOPE"/.test(missing.notes[0]), missing.notes.join());
+        }
+
+        // -- any steps
+        {
+            const lists = { I: [clipOf('Ident', 5), clipOf('For Gamma', 5, ['tv.Gamma']), clipOf('For Beta', 5, ['tv.Beta'])] };
+            const first = planFor([S('i', 'I', { match: 'any' })], [], lists, { 'For Beta': 9, 'Ident': 5 });
+            suite.check('an any step needs no name: the longest-idle clip that fits plays',
+                titles(first.out) === 'Ident', titles(first.out));
+            const second = planFor([S('i', 'I', { match: 'any' })], [], { I: [clipOf('For Gamma', 5, ['tv.Gamma'])] });
+            suite.check('but even an any step never plays a clip naming a show it is not keyed on',
+                second.out.length === 0);
+            const third = planFor([S('i', 'I', { match: 'any' })], [], { I: [clipOf('For Beta', 5, ['tv.Beta'])] });
+            suite.check('and plays one naming exactly the show it is keyed on', titles(third.out) === 'For Beta');
+        }
+
+        // -- longest idle, ties, cooldowns
+        {
+            const U = [clipOf('B1', 10, ['tv.Beta']), clipOf('B2', 10, ['tv.Beta']), clipOf('B3', 10, ['tv.Beta'])];
+            const pick = (played) => titles(planFor([S('u', 'U', { match: 'show' })], [], { U: U }, played).out);
+            suite.check('the longest-idle clip plays first', pick({ B1: 300, B2: 100, B3: 200 }) === 'B2');
+            suite.check('a clip that never played is the longest idle', pick({ B1: 300, B3: 200 }) === 'B2');
+            suite.check('ties go to list order, so one break always builds one plan', pick({}) === 'B1');
+            const the = planFor([S('u', 'U', { match: 'show' })], [], { U: [U[0]] }, { B1: Date.now() });
+            suite.check('cooldowns are a preference: the only clip naming the show plays even if it just played',
+                titles(the.out) === 'B1');
+        }
+
+        // -- a clip never plays twice in one plan
+        {
+            const two = { U: [clipOf('B1', 15, ['tv.Beta']), clipOf('B2', 10, ['tv.Beta'])] };
+            const p = planFor([S('o', 'U', { match: 'show' })], [S('i', 'U', { match: 'show' })], two, { B1: 1, B2: 2 });
+            suite.check('the out and in steps of one break take different clips of one list, longest idle first',
+                titles(p.out) === 'B1' && titles(p.in) === 'B2', `${titles(p.out)} / ${titles(p.in)}`);
+            const one = planFor([S('o', 'U', { match: 'show' })], [S('i', 'U', { match: 'show' })], { U: [two.U[0]] });
+            suite.check('with one fitting clip the second step skips rather than repeat it',
+                titles(one.out) === 'B1' && one.in.length === 0);
+            const fb = planFor([S('o', 'U', { match: 'show' })], [S('i', 'U', { match: 'show', fallbackListId: 'G' })],
+                { U: [two.U[0]], G: [clipOf('Generic', 5)] });
+            suite.check('or falls through to its own fallback',
+                titles(fb.in) === 'Generic');
+            suite.check('total durations are summed per side',
+                p.outMs === 15 * T && p.inMs === 10 * T);
+        }
+
+        // -- two-name clips in a step keyed on next
+        {
+            const lists = { U: [clipOf('Beta then Gamma', 10, ['tv.Beta', 'tv.Gamma']), clipOf('Beta then Alpha', 10, ['tv.Beta', 'tv.Alpha']),
+                clipOf('Gamma then Beta', 10, ['tv.Gamma', 'tv.Beta']), clipOf('Gamma then Alpha', 10, ['tv.Gamma', 'tv.Alpha'])] };
+            const p = planFor([S('u', 'U', { match: 'show' })], [], lists);
+            suite.check('keyed on next, a clip naming two shows matches only when they are the next show and the one after, in order',
+                titles(p.out) === 'Beta then Gamma', titles(p.out));
+            const none = planFor([S('u', 'U', { match: 'show' })], [], { U: lists.U.slice(1) });
+            suite.check('a two-name clip with the right first show and the wrong second plays nothing',
+                none.out.length === 0);
+            const mixed = planFor([S('u', 'U', { match: 'show' })], [],
+                { U: [clipOf('Just Beta', 10, ['tv.Beta']), lists.U[0]] }, { 'Just Beta': 5 });
+            suite.check('one-name and two-name clips share one pool, and idle order decides between them',
+                titles(mixed.out) === 'Beta then Gamma', titles(mixed.out));
+            const now = planFor([S('n', 'U', { match: 'show', keyedOn: 'now' })], [], lists);
+            suite.check('keyed on now, a two-name clip is never read as "now, then"', now.out.length === 0);
+        }
+
+        // -- pair steps
+        {
+            const lists = {
+                P: [clipOf('Alpha / Beta', 10, ['tv.Alpha', 'tv.Beta']), clipOf('Beta only', 10, ['tv.Beta']),
+                    clipOf('Beta / Alpha', 10, ['tv.Beta', 'tv.Alpha']), clipOf('Alpha only', 10, ['tv.Alpha'])],
+                G: [clipOf('Generic', 10)],
+            };
+            const run = (p, fallback) => planFor([S('p', 'P', { match: 'pair', fallbackListId: fallback || null })], [], { P: p, G: lists.G });
+            suite.check('a pair step plays a clip naming now then next',
+                titles(run(lists.P).out) === 'Alpha / Beta' && run(lists.P).out[0].via === 'pair');
+            suite.check('and prefers it to a clip naming only the next show even if that one is idler',
+                titles(planFor([S('p', 'P', { match: 'pair' })], [], { P: lists.P }, { 'Alpha / Beta': 99 }).out) === 'Alpha / Beta');
+            const nextOnly = run([lists.P[1], lists.P[2], lists.P[3]]);
+            suite.check('without one it takes a clip naming only the next show',
+                titles(nextOnly.out) === 'Beta only' && nextOnly.out[0].via === 'next', titles(nextOnly.out));
+            suite.check('the reversed pair and a clip naming only the show that ended never match',
+                run([lists.P[2], lists.P[3]]).out.length === 0);
+            suite.check('then it takes the fallback list, then skips',
+                titles(run([lists.P[2]], 'G').out) === 'Generic' && run([lists.P[2]]).out.length === 0);
+        }
+
+        // -- things that cannot be played
+        {
+            const none = planFor([S('e', 'EMPTY', { match: 'show' }), S('m', 'MISSING', { match: 'show' }),
+                { id: 'nolist', kind: 'list', match: 'any' }], [], { EMPTY: [] });
+            suite.check('a step whose list is empty, missing or unnamed is skipped, with one note each',
+                none.out.length === 0 && none.notes.length === 3 && none.skipped.every((s) => s.problem), none.notes.join(' | '));
+            const later = planFor([S('l', 'U', { match: 'show', keyedOn: 'later' }),
+                { id: 'g', kind: 'generated', template: 'up-next', durationMs: 5000 },
+                S('x', 'U', { match: 'maybe' })], [], { U: [clipOf('B', 10, ['tv.Beta'])] });
+            suite.check('keyedOn later, the generated kind and an unknown match are skipped as problems, not played',
+                later.out.length === 0 && later.notes.length === 3, later.notes.join(' | '));
+            const bad = planFor([S('u', 'U', { match: 'show' })], [], { U: [
+                clipOf('Bad 1', 10, 'tv.Beta'), clipOf('Bad 2', 10, []), clipOf('Bad 3', 10, ['tv.Beta', 'tv.Gamma', 'tv.Alpha']),
+                clipOf('Bad 4', 0, ['tv.Beta']), clipOf('Good', 10, ['tv.Beta'])] });
+            suite.check('a clip whose names are unusable, or that has no length, is never chosen',
+                titles(bad.out) === 'Good', titles(bad.out));
+        }
+
+        // -- purity
+        {
+            const lists = { U: [clipOf('B1', 10, ['tv.Beta'])] };
+            const channel = channelWith({ out: [S('u', 'U', { match: 'show' })], in: [] });
+            const beforeChannel = JSON.stringify(channel);
+            const beforeLists = JSON.stringify(lists);
+            const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+            const p = transitions.buildPlan(channel, brk, env(lists));
+            suite.check('building a plan changes neither the channel nor the lists',
+                JSON.stringify(channel) === beforeChannel && JSON.stringify(lists) === beforeLists);
+            suite.check('the planned clip is a copy: tagging it with its list leaves the list\'s clip alone',
+                p.out[0].clip !== lists.U[0] && typeof lists.U[0].fillerId === 'undefined' && p.out[0].clip.fillerId === 'U');
+            suite.check('and the same inputs build the same plan',
+                JSON.stringify(transitions.buildPlan(channel, brk, env(lists))) === JSON.stringify(p));
+            let threw = false;
+            try { transitions.buildPlan(channel, brk, {}); } catch (err) { threw = true; }
+            suite.check('a plan cannot be built without somewhere to read lists from', threw);
+            const bare = channelWith(undefined);
+            delete bare.dayParts[0].transitions;
+            const empty = transitions.buildPlan(bare, transitions.findBreak(bare, 1, start + 30 * MIN), env({}));
+            suite.check('a channel with no transitions builds an empty plan',
+                empty.out.length === 0 && empty.in.length === 0 && empty.skipped.length === 0 && empty.notes.length === 0);
+        }
+
+        // -- onlyIfNoMatch: a step that plays only when the step it names found nothing
+        {
+            const lists = {
+                PROMOS: [clipOf('Promo Gamma', 10, ['tv.Gamma'])],            // names no one this break
+                UP: [clipOf('Up Beta', 10, ['tv.Beta'])],
+                UPG: [clipOf('Up Generic', 10)],
+                WB: [clipOf('WBRB', 5)], BT: [clipOf('BTTS', 5)],
+            };
+            const seq = (upExtra, withPromo) => ({
+                out: (withPromo ? [S('promo', 'PROMOS', { match: 'show' })] : []).concat([
+                    S('up', 'UP', Object.assign({ match: 'show' }, upExtra || {})),
+                    S('wbrb', 'WB', { onlyIfNoMatch: 'up' })]),
+                in: [S('btts', 'BT', { onlyIfNoMatch: 'up' })],
+            });
+            const run = (spec, l) => planFor(spec.out, spec.in, Object.assign({}, lists, l || {}));
+            const all = (p) => p.out.concat(p.in).map((s) => s.clip.title).join(' | ');
+
+            suite.check('the watched step plays: the marked steps stay out',
+                all(run(seq())) === 'Up Beta', all(run(seq())));
+            const noUp = run(seq(), { UP: [clipOf('Up Gamma', 10, ['tv.Gamma'])] });
+            suite.check('the watched step finds nothing: the marked steps play, out and in',
+                titles(noUp.out) === 'WBRB' && titles(noUp.in) === 'BTTS', all(noUp));
+            suite.check('a skipped marked step is a normal skip, not a problem',
+                run(seq()).notes.length === 0 && run(seq()).skipped.length === 2);
+            const viaFallback = run(seq({ fallbackListId: 'UPG' }), { UP: [clipOf('Up Gamma', 10, ['tv.Gamma'])] });
+            suite.check('a clip from the watched step\'s fallback list counts as a match: the marked steps stay out',
+                all(viaFallback) === 'Up Generic', all(viaFallback));
+
+            // The reason the step is named: another optional step before the Up Next.
+            const promoPlays = run(seq(null, true), { PROMOS: [clipOf('Promo Beta', 10, ['tv.Beta'])] });
+            suite.check('a step before the Up Next that finds nothing does not bring the marked steps in when the Up Next plays',
+                all(promoPlays) === 'Promo Beta | Up Beta', all(promoPlays));
+            const promoMiss = run(seq(null, true));
+            suite.check('with no promo for the show and an Up Next that plays, the marked steps stay out',
+                all(promoMiss) === 'Up Beta', all(promoMiss));
+            const promoOnly = run(seq(null, true), { PROMOS: [clipOf('Promo Beta', 10, ['tv.Beta'])], UP: [clipOf('Up Gamma', 10, ['tv.Gamma'])] });
+            suite.check('a promo that plays does not stop the marked steps when the Up Next found nothing',
+                titles(promoOnly.out) === 'Promo Beta | WBRB' && titles(promoOnly.in) === 'BTTS', all(promoOnly));
+            const neither = run(seq(null, true), { UP: [clipOf('Up Gamma', 10, ['tv.Gamma'])] });
+            suite.check('with neither a promo nor an Up Next the marked steps play',
+                titles(neither.out) === 'WBRB' && titles(neither.in) === 'BTTS', all(neither));
+
+            const before = planFor([S('wbrb', 'WB', { onlyIfNoMatch: 'up' }), S('up', 'UP', { match: 'show' })], [], lists);
+            suite.check('where the marked step sits does not matter: it still reads the outcome of the step it names',
+                titles(before.out) === 'Up Beta', titles(before.out));
+
+            // Things that cannot be honoured fail closed.
+            const absent = planFor([S('w', 'WB', { onlyIfNoMatch: 'nope' })], [], lists);
+            suite.check('a mark naming a step that is not there skips the step as a problem',
+                absent.out.length === 0 && absent.notes.length === 1 && /"nope"/.test(absent.notes[0]), absent.notes.join());
+            const chained = planFor([S('up', 'UP', { match: 'show' }), S('a', 'WB', { onlyIfNoMatch: 'up' }),
+                S('b', 'BT', { onlyIfNoMatch: 'a' })], [], Object.assign({}, lists, { UP: [] }));
+            suite.check('a step cannot watch a marked step',
+                titles(chained.out) === 'WBRB' && chained.skipped.filter((s) => s.stepId === 'b' && s.problem).length === 1);
+            const sloppy = planFor([S('up', 'UP', { match: 'show' }), S('w', 'WB', { onlyIfNoMatch: true })], [], lists);
+            suite.check('a mark of true, which names no step, is a problem and never plays',
+                sloppy.out.length === 1 && sloppy.notes.length === 1);
+            const blank = planFor([S('w', 'WB', { onlyIfNoMatch: '' })], [], lists);
+            suite.check('an empty mark means "not marked", and the step plays as usual', titles(blank.out) === 'WBRB');
+
+            // A sequence is one context's one situation: a boundary joins two contexts, and a step
+            // does not watch across them.
+            const channel = fixtureChannel();
+            channel.blocks[0].transitions.entering = {
+                out: [step('en-up', { listId: 'UP', match: 'show' })],
+                in: [step('en-w', { listId: 'WB', onlyIfNoMatch: 'd-lv-out' })] };
+            const brk = transitions.findBreak(channel, 3, start + 63 * MIN);
+            const across = transitions.buildPlan(channel, brk, env({ UP: [clipOf('Up Beta', 10, ['tv.Beta'])], WB: [clipOf('WBRB', 5)],
+                'list-d-lv-out': [clipOf('Leave', 5)] }));
+            suite.check('across a boundary a step watches only steps of its own context\'s situation',
+                across.skipped.some((s) => s.stepId === 'en-w' && s.problem && /not in this situation/.test(s.reason)),
+                JSON.stringify(across.skipped));
+        }
     }
 
     return suite;

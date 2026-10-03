@@ -394,7 +394,9 @@ for the full spec, stages and acceptance tests.
       With the stand-ins, 34 of 34 are named, and all lists together go from
       621 to 629 named on the real vocabulary. "Up Next Bumper (All in the
       family-The Jeffersons)" proposes a pair, now then; whether a pair in an
-      Up Next list means that or "both are coming up" is for step 3 to decide.
+      Up Next list means that or "both are coming up" is for step 3 to decide
+      (decided there: in a step keyed on next it means "coming up, in this
+      order"; see the step 3 entry below).
       `learnAliases` also treats "more", "back", "back2back" and "b2b" as
       structural words.
 
@@ -407,6 +409,95 @@ for the full spec, stages and acceptance tests.
       it had already failed on and did not retry. Each now pins the earlier
       state's mtime in the past, as `ageBundle` already did for the bundle: 0
       failures in 60 runs. The checker is unchanged.
+
+      **Step 3 built Oct 3, 2026 (Sonnet 5.5): plans.** `buildPlan(channel,
+      brk, env)` in `src/transitions.js` turns a break's steps into the clips
+      that will play: `{ out, in, outMs, inMs, skipped, notes }`, each played
+      step carrying its clip (a copy tagged `fillerId`, like a filler pick) and
+      its `durationMs`. It is pure; `env` gives it `getList(listId)` and
+      `lastPlayed(clip)`, so step 4 wires the filler DAO and the play-time
+      store in. Nothing calls it from playback: `createLineup`,
+      `lineup-cursor.js` and `video.js` are untouched, and the only change on a
+      write path is a save-time warning.
+
+      **Two rules were decided here, and both are in the spec's Steps section.**
+      (1) *A clip naming two shows, in a step keyed on next, means "coming up:
+      these two, in this order".* It plays only when the next show is the first
+      name and `showAfter` (the first later program that is neither Flex nor
+      the next show's own episodes) is the second. Only a `pair` step reads two
+      names as now then; a step keyed on now never plays one. The spec's own
+      "Now/Then (Grim / Foster's)" row needed this, since that clip plays before
+      Grim. On Ron's real lists, with a stand-in lineup of the real show titles
+      (below), "Up Next Bumper (All in the family-The Jeffersons)" plays before
+      All in the Family when The Jeffersons follows and not when Cheers does.
+      (2) *`onlyIfNoMatch` names a step; it does not mean "any step found
+      nothing".* Ron's sequences put a Next Promos step before the Up Next
+      bumper and most shows have no promo, so "any" would play WBRB and BTTS even
+      when the Up Next bumper played. A clip from the watched step's fallback
+      list counts as a match. The mutation that turns it back into "any" fails
+      two acceptance rows and one unit test, which is how the rows were checked
+      to be able to fail. A step that watches itself, a marked step, a missing
+      or duplicated id, or something that is not an id (`true`) is skipped as a
+      problem and warned about at save, never guessed at; one rule
+      (`watchProblem`) serves both.
+
+      **What else a plan does**, all in the spec: tiers (a pair step: both
+      names, then only the next show, then the fallback list), a clip never
+      plays twice in one plan, ties go to list order so one break always builds
+      one plan, the never-a-different-show rule holds for `any` steps too, a
+      clip with an unusable `names` or no length is never chosen, and
+      `keyedOn: 'later'` and the `generated` kind are skipped as problems.
+      `notes` is the problems only (a missing list, an unhonourable mark); a
+      step that simply found nothing is not one, and the caller logs `notes`.
+
+      **Tests: 535 to 614.** Unit tests in `test/transitions.js` (the show
+      after the next one, every tier, idle order, the mark rules, purity, the
+      save-time warning) and 15 stage 5 plan rows in `test/blocks-acceptance.js`
+      (`planRow`), each on a fixture with its own day-parts, blocks and lineup
+      so none depends on channel 1's block times: Toonami to CCF, between
+      episodes inside CCF, CCF's last show, Miguzi to Cartoon Theatre, Cartoon
+      Theatre to Grim with and without Foster's after it, weekday to Toonami,
+      ATHF to Space Ghost, Space Ghost to a show with no NEXT clip, five Nick at
+      Nite rows for the mark (promo and Up Next, promo finds nothing and Up Next
+      plays, neither, promo plays and Up Next finds nothing, Up Next via its
+      fallback), and a 7-day fixture week whose 336 breaks split 105 / 217 / 14
+      by hand with no sequences and every plan empty. Not here: the three
+      stream-timing rows (step 4's cursor) and Next Time (step 8).
+
+      **Real-data check, on a copy of `.dizquetv-dev`.**
+      `node scripts/transitions-plan-day.js <copy> [--day YYYY-MM-DD] [--seq
+      "<context>=<list>"]` walks one day of channel 1 with the spec's test
+      sequence (between shows, both sides, a show step keyed on next, skip if
+      none) on the Adult Swim day-parts, in memory. No NEXT list exists in the
+      dev data, so the Adult Swim [Weekday] and [Sunday] lists stand in, named
+      from their titles in memory (747 clips; none carries `names` yet). Wed
+      Oct 21: 68 breaks (22 / 42 / 4), 7 with steps (11 steps, all from the
+      weekday list) and 4 more under the sequence that found no clip; Sun Oct
+      25: 51 breaks, 3 with steps, 6 steps. No plan's steps outlast their
+      break. A break with one fitting clip gets its out step and no in step
+      (The PJs to The Venture Bros.: one Venture Bros. promo). Channel 1's week
+      of Oct 18 with no sequences configured: 442 breaks, 117 / 297 / 28, none
+      with anything in its plan, in 12 ms, and the channel untouched.
+
+      **The Nick at Nite lists, with a stand-in lineup** (the dev data has no
+      Nick at Nite lineup; ad hoc, not kept): the real Up Next Bumpers, Up Next
+      Promos, Back 2 Back, WBRB and BTTS lists, named from titles, against a
+      lineup of the real show titles. Next Promos then Up Next played as
+      intended ("Full House NEXT promo -> Up Next Bumper (Full House)"), Back 2
+      Back on Full House to Full House, and the two-name clip as above.
+      **A finding for the review screen:** the WBRB and BTTS clips are titled
+      "(I Love Lucy)" and "(The Brady Bunch)", so they are *named*, and a
+      WBRB or BTTS step keyed on next plays them only before those two shows.
+      That is the right reading of the titles, but if those clips are meant as
+      general ones, they need "none" on the review screen, or the step should
+      be keyed on now.
+
+      Enumerating the writers of a step's shape, as the rule for this kind of
+      change asks: `normalizeTransitions` (default `onlyIfNoMatch: null`),
+      `warnAboutTransitions` (the mark check), `buildPlan` (the reader), the
+      spec, and `transitions-plan-day.js` (builds steps in memory). The card
+      editor in step 5 is the next writer and must offer the mark as a choice
+      of the other steps in the same row, not free text.
 
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in

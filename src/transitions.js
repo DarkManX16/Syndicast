@@ -1,9 +1,10 @@
 /*
  * Transitions: the steps that play around a break - out before the Flex, in
- * after it. See docs/blocks-spec.md, Stage 5. This is the first piece of it:
- * which situation a break is, and which steps its contexts hand it. Choosing a
- * clip for a step, and playing any of it, come in later steps; nothing here is
- * called by playback yet, so no stream, guide or channel behaves differently.
+ * after it. See docs/blocks-spec.md, Stage 5. Two pieces of it so far: which
+ * situation a break is and which steps its contexts hand it (assemble), and
+ * which clip each of those steps plays (buildPlan). Playing any of it comes in
+ * later steps; nothing here is called by playback yet, so no stream, guide or
+ * channel behaves differently.
  *
  * Pure and free of I/O, the same way day-parts.js is: every function is a
  * function of a channel object and numbers, so it can be exercised without a
@@ -27,13 +28,14 @@
  */
 
 const dayParts = require('./day-parts');
+const showMatch = require('./show-match');
 
 const SITUATIONS = ['leaving', 'entering', 'betweenEpisodes', 'betweenShows'];
 const KINDS = ['list', 'generated'];
 const MATCHES = ['any', 'show', 'pair'];
 const KEYED_ON = ['now', 'next', 'later'];
 
-const STEP_DEFAULTS = { kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null };
+const STEP_DEFAULTS = { kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null };
 
 /*
  * The key the slot editor uses for "the same show" (get-show-data.js), with
@@ -265,6 +267,323 @@ function assemble(channel, brk) {
     return plan;
 }
 
+/*
+ * The show that follows the next one: the first program after N's own run that
+ * is neither Flex nor another episode of N's show, walking the cyclic lineup.
+ * A clip naming two shows in a step keyed on next means "coming up: these two,
+ * in this order", and this is the second of the two. null when N has no
+ * successor (the whole lineup is one show, or there is no N).
+ */
+function showAfter(channel, brk) {
+    if ( (brk == null) || (brk.next == null) ) {
+        return null;
+    }
+    const programs = channel.programs;
+    const n = programs.length;
+    const nextKey = showKey(brk.next.program);
+    for (let i = 1; i < n; i++) {
+        const program = programs[(brk.next.index + i) % n];
+        if (program.isOffline === true) {
+            continue;
+        }
+        const key = showKey(program);
+        if (key !== nextKey) {
+            return key;
+        }
+    }
+    return null;
+}
+
+/*
+ * A step marked `onlyIfNoMatch: <step id>` plays only when the step it names
+ * found no clip. Unset, null, false and '' all mean "not marked"; any other
+ * value that is not a string is a marked step that can never be honoured.
+ */
+function watchOf(step) {
+    const w = step.onlyIfNoMatch;
+    if ( (typeof(w) === 'undefined') || (w === null) || (w === false) || (w === '') ) {
+        return { marked: false, id: null };
+    }
+    return { marked: true, id: (typeof(w) === 'string') ? w : null };
+}
+
+/*
+ * Why a marked step cannot be honoured, or null when it can (or is not marked).
+ * `sequence` is every step of one context's one situation, out and in together:
+ * a step watches another step of its own sequence and nothing outside it. It
+ * may not watch itself, a step that does not exist or is not unique, or
+ * another marked step (what "found no match" would mean for a step that was
+ * never tried is not something to guess at). buildPlan and channel-db.js's
+ * save-time warning both ask this, so they cannot drift apart.
+ */
+function watchProblem(step, sequence) {
+    const watch = watchOf(step);
+    if (! watch.marked) {
+        return null;
+    }
+    if (watch.id === null) {
+        return `onlyIfNoMatch must be the id of the step it watches, not ${JSON.stringify(step.onlyIfNoMatch)}`;
+    }
+    if (watch.id === step.id) {
+        return 'watches itself';
+    }
+    const named = sequence.filter( (s) => (s !== step) && (s != null) && (s.id === watch.id) );
+    if (named.length === 0) {
+        return `watches step "${watch.id}", which is not in this situation`;
+    }
+    if (named.length > 1) {
+        return `watches step "${watch.id}", but that id is used more than once in this situation`;
+    }
+    if (watchOf(named[0]).marked) {
+        return `watches step "${watch.id}", which is itself conditional`;
+    }
+    return null;
+}
+
+/*
+ * A clip's names as plan-building reads them: [] when it has none, the one or
+ * two keys when it has, and null when the field is there but unusable, which
+ * makes the clip ineligible everywhere. An unusable `names` must never turn a
+ * clip into a general one - that would play a clip meant for some show before a
+ * different one.
+ */
+function namesState(clip) {
+    if (showMatch.namesProblem(clip) !== null) {
+        return null;
+    }
+    return showMatch.namesOf(clip);
+}
+
+/*
+ * Which clip each step of a break's sequence plays: the plan, built once when
+ * the break is entered. `env` is the outside world, so this stays pure:
+ *
+ *   env.getList(listId)   the clips of a filler list, or null if there is none
+ *   env.lastPlayed(clip)  when the clip last played, ms (0 = never); the same
+ *                         per-clip times filler picks by
+ *   env.log               unused here; a caller logs plan.notes
+ *
+ * Returns the assembled break plus what each step chose:
+ *   out, in      the steps that will play, in order, each
+ *                { kind: 'list', stepId, situation, side, listId, via, names,
+ *                  clip, durationMs }; clip is a copy carrying fillerId, like a
+ *                filler pick, so playback is credited to the list it came from
+ *   outMs, inMs  their total durations
+ *   skipped      every step that does not play, { stepId, side, situation,
+ *                reason, problem }
+ *   notes        the problems among them (a missing list, a step that cannot
+ *                be honoured) as one line each, for the caller to log. A step
+ *                that merely found nothing - "skip if none" - is not a problem.
+ *
+ * A step tries its most specific match, then the next, then its fallback list,
+ * then skips. Whatever it tries, a clip plays only if every show it names is
+ * one the step is keyed on, so a general clip stands in for a specific one but
+ * a clip for another show never does:
+ *
+ *   show, keyed on next   a clip naming N; or naming two shows, N then the show
+ *                         after N. Keyed on now: a clip naming P. A two-name
+ *                         clip is never read as "now, then" outside a pair step.
+ *   pair                  a clip naming P then N, else one naming only N
+ *   any                   no name needed; a named clip must fit as above
+ *   fallback list         an unnamed clip, or a named one that fits
+ *
+ * Among the clips that fit a tier the longest idle plays, and a clip never
+ * plays twice in one plan, so the in step of a break whose out step took the
+ * only fitting clip falls through to its fallback or skips. Ties go to list
+ * order, so one break always builds one plan. `keyedOn: 'later'` and the
+ * 'generated' kind are not built and are skipped as problems.
+ *
+ * A step marked onlyIfNoMatch is decided after the unmarked ones, whose
+ * outcomes are all known by then. A clip from a fallback list counts as a
+ * match, so the marked step stays out when the step it watches fell back.
+ */
+function buildPlan(channel, brk, env) {
+    if ( (env == null) || (typeof(env.getList) !== 'function') ) {
+        throw new Error('transitions.buildPlan: env.getList is required');
+    }
+    const lastPlayed = (typeof(env.lastPlayed) === 'function') ? env.lastPlayed : () => 0;
+    const assembled = assemble(channel, brk);
+    const plan = {
+        situation: assembled.situation, from: assembled.from, to: assembled.to,
+        out: [], in: [], outMs: 0, inMs: 0, skipped: [], notes: [],
+    };
+
+    const entries = [];
+    for (const side of ['out', 'in']) {
+        for (const e of assembled[side]) {
+            entries.push( { side: side, situation: e.situation, context: e.context, step: e.step, found: null } );
+        }
+    }
+
+    const prevKey = (brk.prev != null) ? showKey(brk.prev.program) : null;
+    const nextKey = (brk.next != null) ? showKey(brk.next.program) : null;
+    let afterKey;
+    const showAfterLazily = () => {
+        if (typeof(afterKey) === 'undefined') {
+            afterKey = showAfter(channel, brk);
+        }
+        return afterKey;
+    };
+    const keyedShows = (keyedOn) => {
+        if (keyedOn === 'next') {
+            const then = showAfterLazily();
+            return { singles: [nextKey], pair: (then != null) ? [nextKey, then] : null };
+        }
+        if (keyedOn === 'now') {
+            return { singles: [prevKey], pair: null };
+        }
+        return null;
+    };
+    const fits = (names, keyed) => {
+        if (names.length === 0) {
+            return true;
+        }
+        if (names.length === 1) {
+            return (names[0] === keyed.singles[0]) || ( (keyed.singles.length > 1) && (names[0] === keyed.singles[1]) );
+        }
+        return (keyed.pair != null) && (names[0] === keyed.pair[0]) && (names[1] === keyed.pair[1]);
+    };
+
+    const lists = new Map();
+    const clipsOf = (listId) => {
+        if ( (listId == null) || (listId === '') ) {
+            return null;
+        }
+        if (! lists.has(listId) ) {
+            const found = env.getList(listId);
+            lists.set(listId, (Array.isArray(found) && (found.length > 0)) ? found : null);
+        }
+        return lists.get(listId);
+    };
+
+    const used = new Set();
+    const skip = (entry, reason, problem) => {
+        plan.skipped.push( { stepId: entry.step.id, side: entry.side, situation: entry.situation, reason: reason, problem: problem } );
+        if (problem) {
+            plan.notes.push(`${entry.situation}.${entry.side} step "${entry.step.id}": ${reason}`);
+        }
+    };
+
+    const tiersOf = (step) => {
+        let own;
+        let general;
+        if (step.match === 'pair') {
+            general = { singles: [prevKey, nextKey], pair: [prevKey, nextKey] };
+            own = [
+                { via: 'pair', accept: (names) => (names.length === 2) && (names[0] === prevKey) && (names[1] === nextKey) },
+                { via: 'next', accept: (names) => (names.length === 1) && (names[0] === nextKey) },
+            ];
+        } else if ( (step.match === 'show') || (step.match === 'any') ) {
+            general = keyedShows(step.keyedOn);
+            if (general === null) {
+                return null;
+            }
+            own = [ { via: step.match, accept: (names) => ( (step.match === 'any') || (names.length > 0) ) && fits(names, general) } ];
+        } else {
+            return undefined;
+        }
+        return { own: own, fallback: { via: 'fallback', accept: (names) => fits(names, general) } };
+    };
+
+    const choose = (tier, clips) => {
+        const eligible = [];
+        for (let i = 0; i < clips.length; i++) {
+            const clip = clips[i];
+            if ( (clip == null) || used.has(clip) || ! (clip.duration > 0) ) {
+                continue;
+            }
+            const names = namesState(clip);
+            if ( (names !== null) && tier.accept(names) ) {
+                const played = lastPlayed(clip);
+                eligible.push( { clip: clip, played: (typeof(played) === 'number') ? played : 0, order: i } );
+            }
+        }
+        eligible.sort( (a, b) => (a.played - b.played) || (a.order - b.order) );
+        return (eligible.length > 0) ? eligible[0].clip : null;
+    };
+
+    const resolve = (entry) => {
+        const step = entry.step;
+        if (step.kind !== 'list') {
+            skip(entry, `${step.kind} steps are not built yet`, true);
+            return;
+        }
+        const tiers = tiersOf(step);
+        if (typeof(tiers) === 'undefined') {
+            skip(entry, `has match "${step.match}", which is not one of ${MATCHES.join(', ')}`, true);
+            return;
+        }
+        if (tiers === null) {
+            skip(entry, (step.keyedOn === 'later') ? 'keyedOn "later" is not built yet' : `has keyedOn "${step.keyedOn}", which is not one of ${KEYED_ON.join(', ')}`, true);
+            return;
+        }
+        const primary = clipsOf(step.listId);
+        if (primary === null) {
+            skip(entry, `its list ${step.listId == null ? '(none chosen)' : `"${step.listId}"`} is missing or empty`, true);
+            return;
+        }
+        const attempts = tiers.own.map( (tier) => ({ tier: tier, listId: step.listId, clips: primary }) );
+        if ( (step.fallbackListId != null) && (step.fallbackListId !== '') ) {
+            const fallback = clipsOf(step.fallbackListId);
+            if (fallback === null) {
+                plan.notes.push(`${entry.situation}.${entry.side} step "${step.id}": its fallback list "${step.fallbackListId}" is missing or empty`);
+            } else {
+                attempts.push( { tier: tiers.fallback, listId: step.fallbackListId, clips: fallback } );
+            }
+        }
+        for (const attempt of attempts) {
+            const clip = choose(attempt.tier, attempt.clips);
+            if (clip !== null) {
+                used.add(clip);
+                const copy = JSON.parse( JSON.stringify(clip) );
+                copy.fillerId = attempt.listId;
+                entry.found = {
+                    kind: 'list', stepId: step.id, situation: entry.situation, side: entry.side,
+                    listId: attempt.listId, via: attempt.tier.via, names: namesState(clip),
+                    clip: copy, durationMs: clip.duration,
+                };
+                return;
+            }
+        }
+        skip(entry, 'found no clip', false);
+    };
+
+    const sequenceOf = (entry) => entries
+        .filter( (e) => (e.context === entry.context) && (e.situation === entry.situation) )
+        .map( (e) => e.step );
+
+    for (const entry of entries) {
+        if (! watchOf(entry.step).marked) {
+            resolve(entry);
+        }
+    }
+    for (const entry of entries) {
+        if (! watchOf(entry.step).marked) {
+            continue;
+        }
+        const problem = watchProblem(entry.step, sequenceOf(entry));
+        if (problem !== null) {
+            skip(entry, problem, true);
+            continue;
+        }
+        const watched = entries.find( (e) => (e !== entry) && (e.context === entry.context)
+            && (e.situation === entry.situation) && (e.step.id === entry.step.onlyIfNoMatch) );
+        if (watched.found !== null) {
+            skip(entry, `only plays if "${watched.step.id}" finds no clip, and it did`, false);
+            continue;
+        }
+        resolve(entry);
+    }
+
+    for (const entry of entries) {
+        if (entry.found !== null) {
+            plan[entry.side].push(entry.found);
+            plan[entry.side === 'out' ? 'outMs' : 'inMs'] += entry.found.durationMs;
+        }
+    }
+    return plan;
+}
+
 module.exports = {
     SITUATIONS: SITUATIONS,
     KINDS: KINDS,
@@ -276,4 +595,7 @@ module.exports = {
     findBreak: findBreak,
     breaksBetween: breaksBetween,
     assemble: assemble,
+    showAfter: showAfter,
+    watchProblem: watchProblem,
+    buildPlan: buildPlan,
 };

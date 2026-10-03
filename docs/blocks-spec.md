@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, build next
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-3 built (situations, names, plans), the cursor is next
 
 ## Summary
 
@@ -192,7 +192,8 @@ A step says which clips it may draw from and how it chooses one:
   listId,                            // the filler list it draws from
   match: 'any' | 'show' | 'pair',    // any clip; a clip naming the keyed show; a clip naming now→then
   keyedOn: 'now' | 'next' | 'later', // which show a 'show' step must name (see below)
-  fallbackListId: null }             // when nothing names the show: null skips the step, a list plays one from it
+  fallbackListId: null,              // when nothing names the show: null skips the step, a list plays one from it
+  onlyIfNoMatch: null }              // null, or the id of another step in this sequence: play only if that one found no clip
 ```
 
 - **`match: 'any'`** is the fixed-list step: an ident, a block bumper, a
@@ -206,6 +207,38 @@ A step says which clips it may draw from and how it chooses one:
 - **`match: 'pair'`** is the Now/Then step. It wants a clip naming both P and
   N in that order. If none exists it tries a clip naming only N (a plain Up
   Next for the same show), then the fallback list, then skips.
+- **A clip naming two shows, in a step keyed on `next`,** means "coming up:
+  these two, in this order". It plays only when the next show is the first
+  name and the show after it is the second: "Up Next Bumper (All in the
+  family-The Jeffersons)" plays before All in the Family when The Jeffersons
+  follows it, and never when something else does. "The show after" is the first
+  program after the next show's own run that is neither Flex nor another
+  episode of that show. A **`pair`** step is the only place two names read as
+  now → then, and a step keyed on `now` never plays a two-name clip. (Settled
+  at step 3, and it is what this spec's own "Now/Then (Grim / Foster's)"
+  acceptance row needs: that clip plays before Grim, so it cannot be a clip
+  naming the show that ended and the one starting.) Two-name clips and
+  one-name clips share one pool; the longest-idle plays.
+- **`onlyIfNoMatch: <step id>`** marks a step to play only when the step it
+  names found no clip. The Nick at Nite sequence: an Up Next step, then a WBRB
+  step out and a BTTS step in, both marked with the Up Next step's id, so they
+  play only for a show that has no Up Next bumper. A step *names* the one it
+  watches, rather than reacting to "any other step", because sequences carry
+  optional steps ahead of the one that matters: with a Next Promos step before
+  the Up Next bumper, and most shows having no promo, "any step found nothing"
+  would play WBRB and BTTS even when the Up Next bumper played. The rules:
+  - It watches a step of its own sequence, meaning the same context's same
+    situation, out and in together. A boundary joins two contexts' sequences;
+    a step never watches across them.
+  - "Found no clip" is what the step ended with: a clip from its **fallback
+    list counts as a match**, so a watched step that fell back to a generic
+    bumper keeps the marked steps out. A step skipped because its list is
+    empty or missing found no clip.
+  - The marked step is decided after every unmarked one, so where it sits in
+    the sequence does not matter and the plan is complete before the out side
+    plays. A step cannot watch itself, another marked step, a step that is not
+    in the sequence or an id used twice in it: such a step is skipped, with a
+    note and a warning at save, rather than guessed at.
 - **`keyedOn: 'later'`** keys a step on the first program of this context's
   *next* airing or start, for Cartoon Theatre's "Next Time" — the one bumper
   in the examples that names neither neighbour. It is the last build step and
@@ -223,7 +256,14 @@ Among the clips a step may use, the longest-idle plays first, read from the
 same per-clip play times filler uses, so a show with three Up Nexts rotates
 them. Cooldowns are a preference here, not a bar: the only clip that names
 the show plays even if it played an hour ago. Step clips record playback like
-filler, so filler's own rotation sees them too.
+filler, so filler's own rotation sees them too. Ties go to list order, so a
+break always builds the same plan. A clip plays at most once in a plan: the in
+step of a break whose out step took the only fitting clip falls through to its
+fallback or skips, so the SGC2C promo and the SGC2C NEXT clip are two different
+clips on either side of the Flex. The never-a-different-show rule holds for
+every `match`, `any` included: `any` needs no name, but a clip that does name
+a show must name one the step is keyed on. A clip whose `names` field is not
+usable is never chosen.
 
 **Room for a "generated" step.** `kind` is the extension point. After 1.0,
 `{ kind: 'generated', template: 'up-next' | 'later-tonight' | 'tonight-on',
@@ -248,7 +288,9 @@ proposed automatically and fixed on a review screen:
   channel's slots and programs: longest title first, case and punctuation
   folded, so "Adult Swim Promo - Cowboy Bebop [2003]" names Cowboy Bebop and
   "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
-  make a pair. A leading "The" is optional when the rest of the title is
+  make a pair - which is how the pair is *read* is up to the step: now → then
+  in a `pair` step, "coming up, in this order" in one keyed on `next` (see
+  Steps). A leading "The" is optional when the rest of the title is
   still two words or more, so "Powerpuff Girls Promo" names The Powerpuff
   Girls; a single word left (five letters or more) counts only when it stands
   alone as its own segment, so "Up Next Bumper (Jeffersons)" names The
@@ -416,13 +458,15 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    the Adult Swim, Toonami and AcTN lists and what it leaves unnamed.
 3. **Plans** — matching and fallback, longest-idle choice, the never-a-
    different-show rule, without `later` for now. A step can also be marked
-   *only when another step in this sequence found no match*: Nick at Nite
-   plays a WBRB clip on the way out and a BTTS clip on the way in only when
-   the Up Next step finds no bumper for the next show. The plan is built once
-   on entry, so it knows the outcome before the out side plays. The spec's
-   stage 5 acceptance rows go into `test/blocks-acceptance.js`'s `ROWS` as
-   `row(5, …)`. Real-data check: plans for one day of channel 1 with a test
-   sequence on Adult Swim, printed break by break.
+   *only when the step it names found no match* (`onlyIfNoMatch`): Nick at
+   Nite plays a WBRB clip on the way out and a BTTS clip on the way in only
+   when the Up Next step finds no bumper for the next show. The plan is built
+   once on entry, so it knows the outcome before the out side plays. The
+   spec's stage 5 acceptance rows go into `test/blocks-acceptance.js`'s `ROWS`
+   as `planRow(5, …)`, written as fixtures with their own day-parts, blocks and
+   lineups, not against channel 1's block times. Real-data check: plans for one
+   day of channel 1 with a test sequence on Adult Swim, printed break by break
+   (`scripts/transitions-plan-day.js`). **Built Oct 3, 2026**; see NOTES.md.
 4. **The cursor phases** — `lineup-cursor.js`, `createLineup`'s time left,
    `video.js` serving steps, the clock-path tune-in rule, `type: 'transition'`.
    `test/lineup-cursor.js`'s simulated viewer gains steps: every step once,
@@ -487,6 +531,19 @@ Built from the real channels. A stage merges only when its tests pass.
 | CCN | Fri, break between Toonami's last show and CCF's first | CCF |
 
 ### Stage 5
+
+These are built as plan rows in `test/blocks-acceptance.js` (step 3), each on a
+fixture of its own, so they hold whatever the real block times are; the times
+named below are the spec's examples and not what the rows depend on. The three
+rows about a stream running late, very late or tuning in need the cursor and
+are tested with step 4's; "Next Time" in the Cartoon Theatre row needs
+`keyedOn: 'later'` (step 8). Added at step 3: the Nick at Nite rows, in which a
+WBRB and a BTTS marked `onlyIfNoMatch` play only when the Up Next step found
+no bumper - with a Next Promos step ahead of it that finds nothing and an Up
+Next that plays (both stay out), neither finding anything (both play), a promo
+that plays and an Up Next that finds nothing (both still play), and an Up Next
+that falls back to its generic list (both stay out) - and a Grim row where the
+show after Grim is not Foster's.
 
 - **Fri, Toonami → CCF:** Toonami sign-off → CCF Up Next → Flex → CCF intro → CCF host intro → CCF show intro → first show
 - **Inside CCF, episodes of one show:** WBRB → Flex → BTTS

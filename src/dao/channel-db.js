@@ -279,7 +279,8 @@ function warnAboutBlocks(json) {
  * A step with no list is skipped at play time with one log line rather than
  * failing, so it is a warning here and not an error; the reserved kind
  * 'generated' and keyedOn 'later' are accepted because the stored shape
- * reserves them already.
+ * reserves them already. A step's onlyIfNoMatch names the step it watches, so
+ * one that names nothing usable is a step that will never play.
  */
 function warnAboutTransitions(json) {
     const complain = (message) => {
@@ -340,6 +341,17 @@ function warnAboutTransitions(json) {
                         }
                         if ( (typeof(step.keyedOn) !== 'undefined') && (transitions.KEYED_ON.indexOf(step.keyedOn) === -1) ) {
                             complain(`${stepLabel} has keyedOn "${step.keyedOn}", which is not one of ${transitions.KEYED_ON.join(', ')}.`);
+                        }
+                        // The sequence a marked step watches within is this
+                        // situation, out and in together, so that is what it is
+                        // checked against.
+                        const sequence = [].concat(
+                            Array.isArray(situation.out) ? situation.out : [],
+                            Array.isArray(situation.in) ? situation.in : []
+                        );
+                        const watching = transitions.watchProblem(step, sequence);
+                        if (watching !== null) {
+                            complain(`${stepLabel} ${watching}, so it will be skipped.`);
                         }
                     }
                 }
