@@ -46,6 +46,7 @@ class FillerDB {
         }
         fixup(json);
         warnAboutNames(id, json);
+        warnAboutFeatureSetting(id, json);
         if (typeof(json.rank) !== 'number') {
             // The filler editor posts only name and content. Without this the
             // list would lose its position every time someone edited its clips.
@@ -188,6 +189,19 @@ function warnAboutNames(id, json) {
         if (problem !== null) {
             console.error(`Filler list ${id} ("${json.name}"): clip "${clip.title}" has an unusable names field - ${problem}. It will be treated as naming no show.`);
         }
+    }
+}
+
+/*
+ * `clipsFeatureShows` marks a list whose clips feature shows without always
+ * naming them (character bumpers): in a transition step such a list may play
+ * any clip before any show, after the clips naming that show. Optional, off
+ * when absent. Anything but true or false is read as off, so it is warned about
+ * here; warn-only, rewrites nothing.
+ */
+function warnAboutFeatureSetting(id, json) {
+    if ( (typeof(json.clipsFeatureShows) !== 'undefined') && (typeof(json.clipsFeatureShows) !== 'boolean') ) {
+        console.error(`Filler list ${id} ("${json.name}"): clipsFeatureShows is ${JSON.stringify(json.clipsFeatureShows)}, not true or false. It will be treated as off.`);
     }
 }
 

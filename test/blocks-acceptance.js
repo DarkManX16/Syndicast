@@ -187,13 +187,36 @@ const SEQ_LISTS = {
     'NN Up Next generic': [named('Up Next (generic)', 10)],
     'NN WBRB': [named('WBRB', 10)],
     'NN BTTS': [named('BTTS', 10)],
+
+    // --- the Nick channel's own patterns (step 3b). The Nick lists name shows the
+    // way Ron's titles do: "Up Next Bumper (Doug)" is a clip naming Doug.
+    'Nick WBRB': [named('Clarissa WBRB', 10, ['tv.Clarissa']), named('Doug WBRB', 10, ['tv.Doug'])],
+    'Nick Up Next': [named('Up Next (Clarissa)', 10, ['tv.Clarissa']), named('Up Next (Doug)', 10, ['tv.Doug'])],
+    'Nick Bumpers': [named('Nick Bumper (Clarissa)', 10, ['tv.Clarissa']), named('Nick Bumper (Doug)', 10, ['tv.Doug'])],
+    'Nicktoons Intro': [named('Nicktoons Intro', 10)],
+    'Nick NEXT Promos': [named('NEXT promo (Are You Afraid of the Dark?)', 10, ['tv.Are You Afraid of the Dark?'])],
+    'Nick Bumper': [named('Nick Bumper', 10)],
+    'Back to the Show': [named('Back to the Show', 10)],
+    'NaN Cosby Up Next': [named('Up Next (The Cosby Show) (More)', 10, ['tv.The Cosby Show'])],
+    'NaN Sign On': [named('Nick at Nite Sign On', 10)],
+    // --- the CN City bumpers: character bumpers that feature a show without announcing it.
+    'CN Up Next': [named('Up Next (Dexter)', 10, ['tv.Dexter'])],
+    'CN City Bumpers [DAY]': [named('CN City Bumper (Courage)', 10, ['tv.Courage']),
+        named('CN City Bumper (Johnny Bravo)', 10, ['tv.Johnny Bravo'])],
+    // the same clips in a list that does not feature shows
+    'CN City Bumpers [plain]': [named('CN City Bumper (Courage)', 10, ['tv.Courage']),
+        named('CN City Bumper (Johnny Bravo)', 10, ['tv.Johnny Bravo'])],
 };
+const FEATURING = { 'CN City Bumpers [DAY]': true };
 // The SGC2C promo has been idle longer than the other SGC2C clip, so which one
 // plays first is decided by idleness and not by where it sits in the list.
-const SEQ_PLAYED = { 'NEXT - SGC2C': 5 };
+// Courage's bumper has never played, so it is the longest idle: Johnny Bravo's wins
+// for Johnny Bravo only because it names him.
+const SEQ_PLAYED = { 'NEXT - SGC2C': 5, 'CN City Bumper (Johnny Bravo)': 5 };
 const seqEnv = {
     getList: (id) => SEQ_LISTS[id] || null,
     lastPlayed: (c) => SEQ_PLAYED[c.title] || 0,
+    featuresShows: (id) => FEATURING[id] === true,
 };
 
 const ccnSeq = withTransitions(Object.assign({}, ccn, {
@@ -252,6 +275,27 @@ function nickSequence(upNextExtra) {
 const nickSeq = nickSequence();
 const nickSeqFallback = nickSequence({ fallbackListId: 'NN Up Next generic' });
 
+// --- Step 3b: the Nick channel's own patterns. Every row gets its own sequence
+// on the one day-part / block layout below (a Nick day-part all week, Nicktoons
+// 16:00-18:00 daily, Nick at Nite 20:00-02:00 daily), so each reads on its own.
+const nickReal = channelOf(11, 'Nick', [
+    { name: 'Nick', fillerCollections: mix([['90s Nick', 100]]), starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 6 * HOUR }] },
+]);
+nickReal.blocks = [
+    { name: 'Nicktoons', fillerCollections: mix([['90s Nick', 100]]),
+      airings: [{ days: [0, 1, 2, 3, 4, 5, 6], start: 16 * HOUR, end: 18 * HOUR }] },
+    { name: 'Nick at Nite', fillerCollections: mix([['Nick at Nite', 100]]),
+      airings: [{ days: [0, 1, 2, 3, 4, 5, 6], start: 20 * HOUR, end: 2 * HOUR }] },
+];
+const nickWith = (byName) => withTransitions(nickReal, byName);
+// CN City Day (Saturday from 6am) with the given situations on it.
+const cnWith = (situations) => withTransitions(ccn, { 'CN City Day': situations });
+// Up Next for the show coming, else whatever the CN City list holds; the list's setting decides what that is.
+const cnUpNext = (fallback) => ({ betweenShows: { out: [], in: [nextStep('bump', 'CN Up Next', { fallbackListId: fallback })] } });
+// A roll that comes up under any percent, or over every one.
+const winRoll = Object.assign({}, seqEnv, { roll: () => 0.0 });
+const loseRoll = Object.assign({}, seqEnv, { roll: () => 0.999 });
+
 function episode(showTitle, n, mins) {
     return { title: `${showTitle} ${n}`, key: `/e/${showTitle}${n}`, type: 'episode', showTitle,
         season: 1, episode: n, duration: mins * MIN, serverKey: 'srv' };
@@ -262,14 +306,14 @@ function movie(title, mins) {
 
 // The plan for the break at programs[flexIndex], with programs[0] starting at
 // `firstStart` (a local-time ISO string), as the lineup would lay it out.
-function planOf(base, programs, firstStart, flexIndex) {
+function planOf(base, programs, firstStart, flexIndex, env) {
     const channel = Object.assign({}, base, { programs,
         duration: programs.reduce((a, p) => a + p.duration, 0), startTime: new Date(at(firstStart)).toISOString() });
     let t = at(firstStart);
     for (let i = 0; i < flexIndex; i++) {
         t += programs[i].duration;
     }
-    return transitions.buildPlan(channel, transitions.findBreak(channel, flexIndex, t), seqEnv);
+    return transitions.buildPlan(channel, transitions.findBreak(channel, flexIndex, t), env || seqEnv);
 }
 // What a plan plays, as a line a row can state: out steps, Flex, in steps.
 function render(plan) {
@@ -681,6 +725,111 @@ const ROWS = [
         'Up Next (generic) -> Flex',
         () => render(planOf(nickSeqFallback, [episode('Frasier', 1, 25), flex(5), episode('Perfect Strangers', 1, 25)],
             '2026-01-05T21:00:00', 1))),
+
+    // --- Step 3b: real patterns from Ron's Nick channel, each its own fixture.
+    // The spec's "Worked examples from the Nick channel" says what each is for.
+    planRow(5, 'Hey Dude -> Clarissa | a Clarissa WBRB (keyed on next) before the commercials, then Up Next (Clarissa) after them',
+        'Clarissa WBRB -> Flex -> Up Next (Clarissa)',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: {
+            out: [nextStep('wbrb', 'Nick WBRB')], in: [nextStep('up', 'Nick Up Next')] } } }),
+            [episode('Hey Dude', 1, 25), flex(5), episode('Clarissa', 1, 25)], '2026-01-05T13:00:00', 1))),
+
+    planRow(5, 'Clarissa -> Doug, entering Nicktoons | Nicktoons Intro before the commercials, then Up Next (Doug) and Nick Bumper (Doug) before the show',
+        'Nicktoons Intro -> Flex -> Up Next (Doug) -> Nick Bumper (Doug)',
+        () => render(planOf(nickWith({ 'Nicktoons': { entering: {
+            out: [sseq('intro', 'Nicktoons Intro')],
+            in: [nextStep('up', 'Nick Up Next'), nextStep('bump', 'Nick Bumpers')] } } }),
+            [episode('Clarissa', 1, 25), flex(5), episode('Doug', 1, 25)], '2026-01-05T15:35:00', 1))),
+
+    planRow(5, 'Hey Arnold -> Are You Afraid of the Dark? | commercials, then the show\'s NEXT promo',
+        'Flex -> NEXT promo (Are You Afraid of the Dark?)',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: { out: [], in: [nextStep('promo', 'Nick NEXT Promos')] } } }),
+            [episode('Hey Arnold', 1, 25), flex(5), episode('Are You Afraid of the Dark?', 1, 25)], '2026-01-05T13:00:00', 1))),
+
+    planRow(5, 'Hey Arnold -> a show without a NEXT promo | none: commercials only',
+        'Flex',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: { out: [], in: [nextStep('promo', 'Nick NEXT Promos')] } } }),
+            [episode('Hey Arnold', 1, 25), flex(5), episode('Rugrats', 1, 25)], '2026-01-05T13:00:00', 1))),
+
+    planRow(5, 'Into Kenan & Kel | commercials, a generic Nick Bumper, then a generic Back to the Show',
+        'Flex -> Nick Bumper -> Back to the Show',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: { out: [],
+            in: [sseq('bump', 'Nick Bumper'), sseq('back', 'Back to the Show')] } } }),
+            [episode('Hey Arnold', 1, 25), flex(5), episode('Kenan & Kel', 1, 25)], '2026-01-05T13:00:00', 1))),
+
+    // Up Next (More), then the Sign On right before the first show - except on
+    // Mondays, when the Sign On plays before the commercials: two Sign On steps
+    // limited to different days.
+    ...[
+        ['Tue', '2026-01-06T19:35:00', 'Flex -> Up Next (The Cosby Show) (More) -> Nick at Nite Sign On'],
+        ['Sun', '2026-01-04T19:35:00', 'Flex -> Up Next (The Cosby Show) (More) -> Nick at Nite Sign On'],
+        ['Mon', '2026-01-05T19:35:00', 'Nick at Nite Sign On -> Flex -> Up Next (The Cosby Show) (More)'],
+    ].map(([day, when, expect]) => planRow(5, `Entering Nick at Nite, ${day} | Up Next (The Cosby Show) (More), and the Sign On ` +
+        (day === 'Mon' ? 'before the commercials' : 'right before the first show'),
+        expect,
+        () => render(planOf(nickWith({ 'Nick at Nite': { entering: {
+            out: [sseq('so-mon', 'NaN Sign On', { days: [1] })],
+            in: [nextStep('up', 'NaN Cosby Up Next'), sseq('so', 'NaN Sign On', { days: [0, 2, 3, 4, 5, 6] })] } } }),
+            [episode('Nick Show', 1, 25), flex(5), episode('The Cosby Show', 1, 25)], when, 1)))),
+
+    // A step skipped for its day has found nothing: a step marked to watch it plays.
+    planRow(5, 'A step limited to Mondays | a Tuesday break counts it as having found nothing, so the step marked "only when it found nothing" plays',
+        'Flex -> BTTS',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: {
+            out: [nextStep('up', 'NN Up Next', { days: [1] })], in: [sseq('btts', 'NN BTTS', { onlyIfNoMatch: 'up' })] } } }),
+            [episode('Frasier', 1, 25), flex(5), episode('Cheers', 1, 25)], '2026-01-06T13:00:00', 1))),
+
+    planRow(5, 'The same step on a Monday | it plays, and the marked step stays out',
+        'Up Next (Cheers) -> Flex',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: {
+            out: [nextStep('up', 'NN Up Next', { days: [1] })], in: [sseq('btts', 'NN BTTS', { onlyIfNoMatch: 'up' })] } } }),
+            [episode('Frasier', 1, 25), flex(5), episode('Cheers', 1, 25)], '2026-01-05T13:00:00', 1))),
+
+    // "Up Next before the break sometimes, otherwise right before the show":
+    // an Up Next step at 50% out, and the same Up Next marked to watch it in.
+    planRow(5, 'Sometimes | the 50% Up Next wins its roll: before the break, and not again before the show',
+        'Up Next (Cheers) -> Flex',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: {
+            out: [nextStep('up-out', 'NN Up Next', { chance: 50 })],
+            in: [nextStep('up-in', 'NN Up Next', { onlyIfNoMatch: 'up-out' })] } } }),
+            [episode('Frasier', 1, 25), flex(5), episode('Cheers', 1, 25)], '2026-01-05T13:00:00', 1, winRoll))),
+
+    planRow(5, 'Sometimes | the 50% Up Next loses its roll: it counts as found nothing, so the Up Next plays right before the show',
+        'Flex -> Up Next (Cheers)',
+        () => render(planOf(nickWith({ 'Nick': { betweenShows: {
+            out: [nextStep('up-out', 'NN Up Next', { chance: 50 })],
+            in: [nextStep('up-in', 'NN Up Next', { onlyIfNoMatch: 'up-out' })] } } }),
+            [episode('Frasier', 1, 25), flex(5), episode('Cheers', 1, 25)], '2026-01-05T13:00:00', 1, loseRoll))),
+
+    // CN City Bumpers [DAY]: character bumpers that feature a show without
+    // announcing it. A show with no Up Next falls back to them.
+    planRow(5, 'CN City | a show with no Up Next falls back to the DAY list and gets a character bumper for a different show',
+        'Flex -> CN City Bumper (Courage)',
+        () => render(planOf(cnWith(cnUpNext('CN City Bumpers [DAY]')),
+            [episode('Ed Edd n Eddy', 1, 25), flex(5), episode('Dexter Jr', 1, 25)], '2026-01-17T10:00:00', 1))),
+
+    planRow(5, 'CN City | when the show has its own bumper in the list, that one wins over a longer-idle one for another show',
+        'Flex -> CN City Bumper (Johnny Bravo)',
+        () => render(planOf(cnWith(cnUpNext('CN City Bumpers [DAY]')),
+            [episode('Ed Edd n Eddy', 1, 25), flex(5), episode('Johnny Bravo', 1, 25)], '2026-01-17T10:00:00', 1))),
+
+    planRow(5, 'CN City | a show with an Up Next gets it, not a bumper',
+        'Flex -> Up Next (Dexter)',
+        () => render(planOf(cnWith(cnUpNext('CN City Bumpers [DAY]')),
+            [episode('Ed Edd n Eddy', 1, 25), flex(5), episode('Dexter', 1, 25)], '2026-01-17T10:00:00', 1))),
+
+    planRow(5, 'CN City | the same clips in a list that does not feature shows: no bumper for a different show, as before',
+        'Flex',
+        () => render(planOf(cnWith(cnUpNext('CN City Bumpers [plain]')),
+            [episode('Ed Edd n Eddy', 1, 25), flex(5), episode('Dexter Jr', 1, 25)], '2026-01-17T10:00:00', 1))),
+
+    // The same list as WBRB / BTTS between episodes of one show.
+    planRow(5, 'CN City | between two episodes of a show with no bumper of its own, the character bumpers serve as WBRB and BTTS',
+        'CN City Bumper (Courage) -> Flex -> CN City Bumper (Johnny Bravo)',
+        () => render(planOf(cnWith({ betweenEpisodes: {
+            out: [nextStep('wbrb', 'CN Up Next', { fallbackListId: 'CN City Bumpers [DAY]' })],
+            in: [nextStep('btts', 'CN Up Next', { fallbackListId: 'CN City Bumpers [DAY]' })] } }),
+            [episode('Ed Edd n Eddy', 1, 25), flex(5), episode('Ed Edd n Eddy', 2, 25)], '2026-01-17T10:00:00', 1))),
 
     // 7 days x 48 half-hours is 336 breaks. A show runs A, A, B on a repeating
     // cycle: 112 breaks follow an A that is followed by another A, and 224 are

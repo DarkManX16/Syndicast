@@ -342,6 +342,14 @@ function warnAboutTransitions(json) {
                         if ( (typeof(step.keyedOn) !== 'undefined') && (transitions.KEYED_ON.indexOf(step.keyedOn) === -1) ) {
                             complain(`${stepLabel} has keyedOn "${step.keyedOn}", which is not one of ${transitions.KEYED_ON.join(', ')}.`);
                         }
+                        const badDays = transitions.daysProblem(step);
+                        if (badDays !== null) {
+                            complain(`${stepLabel}: ${badDays}, so it will be skipped.`);
+                        }
+                        const badChance = transitions.chanceProblem(step);
+                        if (badChance !== null) {
+                            complain(`${stepLabel}: ${badChance}, so it will be skipped.`);
+                        }
                         // The sequence a marked step watches within is this
                         // situation, out and in together, so that is what it is
                         // checked against.

@@ -35,7 +35,10 @@ const KINDS = ['list', 'generated'];
 const MATCHES = ['any', 'show', 'pair'];
 const KEYED_ON = ['now', 'next', 'later'];
 
-const STEP_DEFAULTS = { kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null };
+const STEP_DEFAULTS = {
+    kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null,
+    days: null, chance: null,
+};
 
 /*
  * The key the slot editor uses for "the same show" (get-show-data.js), with
@@ -368,6 +371,67 @@ function watchOf(step) {
 }
 
 /*
+ * A step may be limited to some weekdays (`days`, 0 = Sunday as in day-parts) and
+ * may play only some of the time (`chance`, a whole percent from 1 to 99; 100
+ * and unset both mean always). Unset and null are off. Like watchProblem, each
+ * returns why the value cannot be honoured, or null; buildPlan skips such a step
+ * and channel-db.js warns at save, from these same two functions. An empty
+ * `days` is a mistake and plays on no day, never on every day.
+ */
+function daysProblem(step) {
+    const d = step.days;
+    if ( (typeof(d) === 'undefined') || (d === null) ) {
+        return null;
+    }
+    if (! Array.isArray(d) ) {
+        return 'days must be a list of weekday numbers, 0 (Sunday) to 6 (Saturday)';
+    }
+    if (d.length === 0) {
+        return 'days is empty, so it plays on no day';
+    }
+    if (d.some( (x) => (! Number.isInteger(x)) || (x < 0) || (x > 6) )) {
+        return 'days must be weekday numbers, 0 (Sunday) to 6 (Saturday)';
+    }
+    return null;
+}
+
+function chanceProblem(step) {
+    const c = step.chance;
+    if ( (typeof(c) === 'undefined') || (c === null) ) {
+        return null;
+    }
+    if ( (! Number.isInteger(c)) || (c < 1) || (c > 100) ) {
+        return 'chance must be a whole percent from 1 to 99 (100 or unset means always)';
+    }
+    return null;
+}
+
+/*
+ * The roll a step with a chance is judged by, in [0, 1): a hash of the channel,
+ * the break's start and the step, not a random number. A plan is dropped on
+ * every save and lost on a restart, and rebuilding a half-played break must not
+ * change what it showed; this way every build of one break, for every viewer,
+ * gets the same answer, while the same break a lineup cycle later (a different
+ * start) gets its own. FNV-1a over the text, then mixed.
+ */
+function defaultRoll(channel, brk, key) {
+    const text = channel.number + '|' + brk.startTime + '|' + key;
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0;
+    }
+    // FNV's last byte barely reaches the high bits, so two steps whose ids differ
+    // only at the end would roll nearly alike; a final mix (murmur3's) spreads it.
+    h ^= h >>> 16;
+    h = Math.imul(h, 2246822507) >>> 0;
+    h ^= h >>> 13;
+    h = Math.imul(h, 3266489909) >>> 0;
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+}
+
+/*
  * Why a marked step cannot be honoured, or null when it can (or is not marked).
  * `sequence` is every step of one context's one situation, out and in together:
  * a step watches another step of its own sequence and nothing outside it. It
@@ -421,6 +485,13 @@ function namesState(clip) {
  *   env.getList(listId)   the clips of a filler list, or null if there is none
  *   env.lastPlayed(clip)  when the clip last played, ms (0 = never); the same
  *                         per-clip times filler picks by
+ *   env.featuresShows(listId)
+ *                         true when the list's clips feature shows (optional;
+ *                         unset reads as false, so no list does)
+ *   env.roll(brk, stepKey)
+ *                         a number in [0, 1) judging a step's chance (optional;
+ *                         default is defaultRoll, derived from the break, so
+ *                         tests can force one)
  *   env.log               unused here; a caller logs plan.notes
  *
  * Returns the assembled break plus what each step chose:
@@ -456,12 +527,21 @@ function namesState(clip) {
  * A step marked onlyIfNoMatch is decided after the unmarked ones, whose
  * outcomes are all known by then. A clip from a fallback list counts as a
  * match, so the marked step stays out when the step it watches fell back.
+ *
+ * A step with `days` plays only when the break's local weekday (its start,
+ * 0 = Sunday) is listed, and one with `chance` only when its roll comes up
+ * under the percent. A step left out either way has found nothing, so a step
+ * marked to watch it plays. In a list whose clips feature shows, a step tries
+ * clips naming the keyed show first, then any clip of the list, named or not
+ * (via 'featured'); a list without the setting never plays a clip naming a
+ * different show.
  */
 function buildPlan(channel, brk, env) {
     if ( (env == null) || (typeof(env.getList) !== 'function') ) {
         throw new Error('transitions.buildPlan: env.getList is required');
     }
     const lastPlayed = (typeof(env.lastPlayed) === 'function') ? env.lastPlayed : () => 0;
+    const roll = (key) => (typeof(env.roll) === 'function') ? env.roll(brk, key) : defaultRoll(channel, brk, key);
     const assembled = assemble(channel, brk);
     const plan = {
         situation: assembled.situation, from: assembled.from, to: assembled.to,
@@ -524,25 +604,38 @@ function buildPlan(channel, brk, env) {
         }
     };
 
+    // A list whose clips feature shows (env.featuresShows) lets any clip play
+    // before any show, after the clips that name the keyed show have had their turn.
+    const featured = (listId) => (typeof(env.featuresShows) === 'function') && (env.featuresShows(listId) === true);
+    const anyClip = { via: 'featured', accept: () => true };
+
     const tiersOf = (step) => {
         let own;
         let general;
+        let ownFeatured;
         if (step.match === 'pair') {
             general = { singles: [prevKey, nextKey], pair: [prevKey, nextKey] };
             own = [
                 { via: 'pair', accept: (names) => (names.length === 2) && (names[0] === prevKey) && (names[1] === nextKey) },
                 { via: 'next', accept: (names) => (names.length === 1) && (names[0] === nextKey) },
             ];
+            ownFeatured = own.concat([anyClip]);
         } else if ( (step.match === 'show') || (step.match === 'any') ) {
             general = keyedShows(step.keyedOn);
             if (general === null) {
                 return null;
             }
             own = [ { via: step.match, accept: (names) => ( (step.match === 'any') || (names.length > 0) ) && fits(names, general) } ];
+            ownFeatured = [ { via: step.match, accept: (names) => (names.length > 0) && fits(names, general) }, anyClip ];
         } else {
             return undefined;
         }
-        return { own: own, fallback: { via: 'fallback', accept: (names) => fits(names, general) } };
+        return {
+            own: own,
+            ownFeatured: ownFeatured,
+            fallback: [ { via: 'fallback', accept: (names) => fits(names, general) } ],
+            fallbackFeatured: [ { via: 'fallback', accept: (names) => (names.length > 0) && fits(names, general) }, anyClip ],
+        };
     };
 
     const choose = (tier, clips) => {
@@ -562,10 +655,38 @@ function buildPlan(channel, brk, env) {
         return (eligible.length > 0) ? eligible[0].clip : null;
     };
 
+    // Whether this step is left out before it looks for a clip: a day or chance
+    // it cannot honour (a problem), a weekday it is not limited to, or a lost
+    // roll. Either way it has found nothing, so a step watching it plays.
+    const leftOut = (entry) => {
+        const step = entry.step;
+        const bad = daysProblem(step) || chanceProblem(step);
+        if (bad !== null) {
+            skip(entry, bad, true);
+            return true;
+        }
+        if ( (step.days != null) && (brk.startTime != null)
+            && ! step.days.includes( new Date(brk.startTime).getDay() ) ) {
+            skip(entry, 'not one of its days', false);
+            return true;
+        }
+        if ( (step.chance != null) && (step.chance < 100) ) {
+            const key = (step.id != null) ? step.id : `${entry.situation}.${entry.side}`;
+            if (! (roll(key) * 100 < step.chance) ) {
+                skip(entry, `lost its ${step.chance}% chance`, false);
+                return true;
+            }
+        }
+        return false;
+    };
+
     const resolve = (entry) => {
         const step = entry.step;
         if (step.kind !== 'list') {
             skip(entry, `${step.kind} steps are not built yet`, true);
+            return;
+        }
+        if (leftOut(entry)) {
             return;
         }
         const tiers = tiersOf(step);
@@ -582,13 +703,16 @@ function buildPlan(channel, brk, env) {
             skip(entry, `its list ${step.listId == null ? '(none chosen)' : `"${step.listId}"`} is missing or empty`, true);
             return;
         }
-        const attempts = tiers.own.map( (tier) => ({ tier: tier, listId: step.listId, clips: primary }) );
+        const attempts = (featured(step.listId) ? tiers.ownFeatured : tiers.own)
+            .map( (tier) => ({ tier: tier, listId: step.listId, clips: primary }) );
         if ( (step.fallbackListId != null) && (step.fallbackListId !== '') ) {
             const fallback = clipsOf(step.fallbackListId);
             if (fallback === null) {
                 plan.notes.push(`${entry.situation}.${entry.side} step "${step.id}": its fallback list "${step.fallbackListId}" is missing or empty`);
             } else {
-                attempts.push( { tier: tiers.fallback, listId: step.fallbackListId, clips: fallback } );
+                for (const tier of (featured(step.fallbackListId) ? tiers.fallbackFeatured : tiers.fallback) ) {
+                    attempts.push( { tier: tier, listId: step.fallbackListId, clips: fallback } );
+                }
             }
         }
         for (const attempt of attempts) {
@@ -659,5 +783,8 @@ module.exports = {
     assemble: assemble,
     showAfter: showAfter,
     watchProblem: watchProblem,
+    daysProblem: daysProblem,
+    chanceProblem: chanceProblem,
+    defaultRoll: defaultRoll,
     buildPlan: buildPlan,
 };

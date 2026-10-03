@@ -175,11 +175,14 @@ function video( channelService, fillerService, db, programmingService, activeCha
         let ids = transitions.stepListIds(channel);
         let loaded = await fillerService.getFillersFromCollections(channel, ids.map( (id) => ({ id: id }) ));
         let lists = {};
+        let featuring = {};
         for (let i = 0; i < loaded.length; i++) {
             lists[ loaded[i].id ] = loaded[i].content;
+            featuring[ loaded[i].id ] = (loaded[i].clipsFeatureShows === true);
         }
         let env = {
             getList: (id) => (Array.isArray(lists[id]) ? lists[id] : null),
+            featuresShows: (id) => (featuring[id] === true),
             lastPlayed: (clip) => channelCache.getProgramLastPlayTime(programPlayTimeDB, channel.number, clip),
         };
         return (brk) => {

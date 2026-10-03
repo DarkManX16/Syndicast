@@ -622,6 +622,203 @@ module.exports = async function run() {
                 across.skipped.some((s) => s.stepId === 'en-w' && s.problem && /not in this situation/.test(s.reason)),
                 JSON.stringify(across.skipped));
         }
+
+        // -- days: a step limited to some weekdays (the break starts Friday 20:30, local)
+        {
+            const lists = { U: [clipOf('Up Beta', 10, ['tv.Beta'])], W: [clipOf('WBRB', 5)] };
+            const on = (days) => planFor([S('up', 'U', { match: 'show', days: days })], [], lists);
+            suite.check('a step with no days plays on any day, and so does null', titles(on(undefined).out) === 'Up Beta' && titles(on(null).out) === 'Up Beta');
+            suite.check('days [5] (Friday, Sunday being 0) plays on a Friday break', titles(on([5]).out) === 'Up Beta');
+            suite.check('days that leave out Friday skip the step, and that is not a problem',
+                on([0, 1, 2, 3, 4, 6]).out.length === 0 && on([0, 1, 2, 3, 4, 6]).notes.length === 0
+                && on([4]).skipped[0].problem === false && /days/.test(on([4]).skipped[0].reason), JSON.stringify(on([4]).skipped));
+            suite.check('Thursday and Saturday are not Friday (no off-by-one either way)', on([4]).out.length === 0 && on([6]).out.length === 0);
+            const empty = on([]);
+            suite.check('an empty days list plays on no day, and is noted as a problem',
+                empty.out.length === 0 && empty.notes.length === 1 && empty.skipped[0].problem === true, empty.notes.join());
+            suite.check('days that are not weekday numbers are a problem and skip the step',
+                [7, -1, 5.5, '5', 'Fri'].every( (bad) => { const p = on([bad]); return p.out.length === 0 && p.notes.length === 1; })
+                && on('Fri').out.length === 0 && on('Fri').notes.length === 1 && on(5).notes.length === 1);
+
+            // the break's own local day is its start, even when the break runs past midnight
+            const late = [episode('Alpha', 1, 30), flex(20), episode('Beta', 1, 30)];
+            const lateChannel = Object.assign(channelWith({ out: [S('up', 'U', { match: 'show', days: [5] })], in: [] }), {
+                programs: late, duration: 80 * MIN, startTime: new Date(at('2026-10-02T23:20:00')).toISOString() });
+            const lateBrk = transitions.findBreak(lateChannel, 1, at('2026-10-02T23:50:00'));
+            suite.check('the day is the local day the break starts: 23:50 Friday into Saturday counts as Friday',
+                transitions.buildPlan(lateChannel, lateBrk, env(lists)).out.length === 1);
+            lateChannel.dayParts[0].transitions.betweenShows.out[0].days = [6];
+            suite.check('... and not Saturday', transitions.buildPlan(lateChannel, lateBrk, env(lists)).out.length === 0);
+
+            // a day-skipped step has found nothing: a step watching it plays
+            const gated = (days) => planFor([S('up', 'U', { match: 'show', days: days })], [S('b', 'W', { onlyIfNoMatch: 'up' })], lists);
+            suite.check('a step watching a step skipped for its day plays', titles(gated([4]).in) === 'WBRB');
+            suite.check('and stays out when the watched step plays that day', gated([5]).in.length === 0 && titles(gated([5]).out) === 'Up Beta');
+        }
+
+        // -- chance: a step that plays some of the time
+        {
+            const lists = { U: [clipOf('Up Beta', 10, ['tv.Beta'])] };
+            const planWith = (chance, roll, inn) => {
+                const channel = channelWith({ out: [S('up', 'U', { match: 'show', chance: chance })], in: inn || [] });
+                const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+                return transitions.buildPlan(channel, brk, Object.assign(env(lists), { roll: () => roll }));
+            };
+            suite.check('with no chance, or null or 100, a step plays whatever the roll is',
+                titles(planWith(undefined, 0.999).out) === 'Up Beta' && titles(planWith(null, 0.999).out) === 'Up Beta'
+                && titles(planWith(100, 0.999).out) === 'Up Beta');
+            suite.check('a roll under the percent plays, at the percent it does not',
+                titles(planWith(50, 0.49).out) === 'Up Beta' && planWith(50, 0.5).out.length === 0 && planWith(50, 0.9).out.length === 0);
+            suite.check('1 percent plays only on the lowest rolls', titles(planWith(1, 0.0).out) === 'Up Beta' && planWith(1, 0.01).out.length === 0);
+            const lost = planWith(50, 0.9);
+            suite.check('a step that lost its roll found nothing, and that is not a problem',
+                lost.skipped.length === 1 && lost.skipped[0].problem === false && lost.notes.length === 0, JSON.stringify(lost.skipped));
+            suite.check('a chance that is not a whole percent from 1 to 100 is a problem and skips the step',
+                [0, -5, 101, 12.5, '50', NaN, true].every( (bad) => { const p = planWith(bad, 0.0); return p.out.length === 0 && p.notes.length === 1; }));
+
+            // "Up Next before the break sometimes, otherwise right before the show"
+            const both = (roll) => planWith(50, roll, [S('up2', 'U', { match: 'show', onlyIfNoMatch: 'up' })]);
+            suite.check('a step marked to watch a chance step plays when that one lost',
+                both(0.9).out.length === 0 && titles(both(0.9).in) === 'Up Beta');
+            suite.check('and stays out when that one played',
+                titles(both(0.1).out) === 'Up Beta' && both(0.1).in.length === 0);
+
+            // the default roll is derived from the break, not random
+            const channel = channelWith({ out: [S('up', 'U', { match: 'show', chance: 50 })], in: [] });
+            const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+            const once = JSON.stringify(transitions.buildPlan(channel, brk, env(lists)).skipped);
+            let same = true;
+            for (let i = 0; i < 50; i++) {
+                same = same && (JSON.stringify(transitions.buildPlan(channel, brk, env(lists)).skipped) === once);
+            }
+            suite.check('with no roll given, rebuilding one break always gives one answer', same);
+            let under = 0;
+            const N = 4000;
+            for (let i = 0; i < N; i++) {
+                if (transitions.defaultRoll({ number: 3 }, { startTime: start + i * 30 * MIN }, 'up') < 0.5) {
+                    under++;
+                }
+            }
+            suite.check('and across many breaks about half of the 50% rolls come up under', Math.abs(under / N - 0.5) < 0.03, `${under}/${N}`);
+            let differ = 0;
+            for (let i = 0; i < 200; i++) {
+                const b = { startTime: start + i * 30 * MIN };
+                if ( (transitions.defaultRoll({ number: 3 }, b, 'a') < 0.5) !== (transitions.defaultRoll({ number: 3 }, b, 'b') < 0.5) ) {
+                    differ++;
+                }
+            }
+            suite.check('two steps of one break roll independently', differ > 40 && differ < 160, String(differ));
+            const rolls = [0, 1, 2, 3].map( (i) => transitions.defaultRoll({ number: 3 }, { startTime: start + i * 86400000 }, 'up') );
+            suite.check('rolls stay in [0, 1)', rolls.every( (r) => r >= 0 && r < 1 ));
+        }
+
+        // -- lists whose clips feature shows
+        {
+            const T0 = { }; // no play times
+            const feat = (ids) => (ids.length === 0) ? {} : { featuresShows: (id) => ids.includes(id) };
+            const planOf = (step, lists, ids, played, inn) => {
+                const channel = channelWith({ out: [step], in: inn || [] });
+                const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+                return transitions.buildPlan(channel, brk, Object.assign(env(lists, played), feat(ids)));
+            };
+            const lists = { F: [clipOf('Bumper Gamma', 5, ['tv.Gamma']), clipOf('Bumper Beta', 5, ['tv.Beta']), clipOf('Bumper', 5)] };
+            const show = S('s', 'F', { match: 'show' });
+
+            suite.check('without the setting a show step never plays a clip naming a different show (and not an unnamed one)',
+                titles(planOf(show, { F: [lists.F[0], lists.F[2]] }, [], T0).out) === '');
+            suite.check('with the setting, a clip naming the next show plays first, even if another has idled longer',
+                titles(planOf(show, lists, ['F'], { 'Bumper Beta': 9 }).out) === 'Bumper Beta'
+                && planOf(show, lists, ['F'], { 'Bumper Beta': 9 }).out[0].via === 'show');
+            const noBeta = { F: [lists.F[0], lists.F[2]] };
+            suite.check('with no clip for the next show, any clip plays: the longest idle, named or not',
+                titles(planOf(show, noBeta, ['F'], T0).out) === 'Bumper Gamma'
+                && titles(planOf(show, noBeta, ['F'], { 'Bumper Gamma': 9 }).out) === 'Bumper'
+                && planOf(show, noBeta, ['F'], T0).out[0].via === 'featured');
+            suite.check('a list that is not marked beside one that is keeps its own rule',
+                titles(planOf(S('s', 'N', { match: 'show' }), { N: noBeta.F }, ['F'], T0).out) === '');
+
+            // as the fallback list of a step
+            const withFallback = S('s', 'U', { match: 'show', fallbackListId: 'F' });
+            const upNext = { U: [clipOf('Up Gamma', 10, ['tv.Gamma'])] };
+            suite.check('a featuring fallback list supplies a clip for another show when nothing names the next one',
+                titles(planOf(withFallback, Object.assign({ }, upNext, noBeta), ['F'], T0).out) === 'Bumper Gamma');
+            suite.check('... and the next show\'s own clip wins there too',
+                titles(planOf(withFallback, Object.assign({ }, upNext, lists), ['F'], { 'Bumper Beta': 9 }).out) === 'Bumper Beta');
+            suite.check('... while a fallback list without the setting still plays only unnamed clips and the next show\'s',
+                titles(planOf(withFallback, Object.assign({ }, upNext, noBeta), [], T0).out) === 'Bumper');
+            suite.check('the step\'s own list is tried before the fallback, whatever the fallback holds',
+                titles(planOf(S('s', 'U', { match: 'show', keyedOn: 'now', fallbackListId: 'F' }), Object.assign({ }, { U: [clipOf('Up Alpha', 10, ['tv.Alpha'])] }, lists), ['F'], T0).out) === 'Up Alpha');
+            suite.check('a clip from a featuring fallback counts as a match for a step watching it',
+                titles(planOf(withFallback, Object.assign({ }, upNext, noBeta), ['F'], T0, [S('b', 'W', { onlyIfNoMatch: 's' })]).in) === ''
+                && planOf(withFallback, Object.assign({ }, upNext, noBeta), ['F'], T0, [S('b', 'W', { onlyIfNoMatch: 's' })]).out.length === 1);
+
+            // pair and any steps
+            const pair = S('p', 'F', { match: 'pair' });
+            const pairs = { F: [clipOf('Bumper Gamma', 5, ['tv.Gamma']), clipOf('Bumper Alpha-Beta', 5, ['tv.Alpha', 'tv.Beta']), clipOf('Bumper Beta', 5, ['tv.Beta']), clipOf('Bumper', 5)] };
+            suite.check('a pair step in a featuring list: the pair, then the next show alone, then any clip',
+                titles(planOf(pair, pairs, ['F'], T0).out) === 'Bumper Alpha-Beta'
+                && titles(planOf(pair, { F: pairs.F.filter( (c) => c.title !== 'Bumper Alpha-Beta') }, ['F'], T0).out) === 'Bumper Beta'
+                && titles(planOf(pair, { F: [pairs.F[0], pairs.F[3]] }, ['F'], T0).out) === 'Bumper Gamma');
+            const any = S('a', 'F', { match: 'any' });
+            suite.check('an any step in a featuring list: clips naming the keyed show first, then any',
+                titles(planOf(any, lists, ['F'], { 'Bumper Beta': 9 }).out) === 'Bumper Beta'
+                && titles(planOf(any, noBeta, ['F'], { 'Bumper Gamma': 9 }).out) === 'Bumper');
+
+            // the rules that stay
+            suite.check('a clip with an unusable names field is still never chosen',
+                titles(planOf(show, { F: [clipOf('Broken', 5, 'tv.Beta'), clipOf('Bumper', 5)] }, ['F'], T0).out) === 'Bumper');
+            suite.check('a clip with no length is still never chosen',
+                titles(planOf(show, { F: [Object.assign(clipOf('Empty', 0, ['tv.Beta']), { duration: 0 }), clipOf('Bumper', 5)] }, ['F'], T0).out) === 'Bumper');
+            const twice = planOf(show, lists, ['F'], T0, [S('i', 'F', { match: 'show' })]);
+            suite.check('a clip still plays at most once in a plan, out and in',
+                twice.out.length === 1 && twice.in.length === 1 && twice.out[0].clip.title !== twice.in[0].clip.title, titles(twice.out) + ' / ' + titles(twice.in));
+            suite.check('a list that does not exist is still skipped and noted, setting or not',
+                planOf(S('s', 'NOPE', { match: 'show' }), lists, ['NOPE'], T0).notes.length === 1);
+            suite.check('without env.featuresShows no list is featuring (the existing rules hold)',
+                (() => {
+                    const channel = channelWith({ out: [show], in: [] });
+                    const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+                    return titles(transitions.buildPlan(channel, brk, env({ F: [lists.F[0]] })).out) === '';
+                })());
+        }
+    }
+
+    // ---- the save-time warning for days and chance ---------------------------
+    {
+        const db = new ChannelDB('unused');
+        const warnings = (extra) => {
+            const lines = [];
+            const real = console.error;
+            console.error = (...args) => lines.push(args.join(' '));
+            try {
+                db.validateChannelJson(7, { dayParts: [{ name: 'D', starts: [{ days: [1], time: 0 }],
+                    transitions: { betweenShows: { out: [step('a', extra)], in: [] } } }] });
+            } finally {
+                console.error = real;
+            }
+            return lines.filter((l) => /ransition/.test(l));
+        };
+        suite.check('days and chance that are fine, or absent, or null, are not warned about',
+            warnings({}).length === 0 && warnings({ days: [1, 2], chance: 50 }).length === 0
+            && warnings({ days: null, chance: null }).length === 0 && warnings({ chance: 100 }).length === 0
+            && warnings({ days: [0, 6], chance: 1 }).length === 0);
+        suite.check('an empty days list is warned about, and says it plays on no day',
+            warnings({ days: [] }).length === 1 && /no day/.test(warnings({ days: [] })[0]), warnings({ days: [] }).join());
+        suite.check('days that are not weekday numbers are warned about',
+            warnings({ days: [7] }).length === 1 && warnings({ days: 'Mon' }).length === 1 && warnings({ days: [1.5] }).length === 1);
+        suite.check('a chance outside 1 to 100, or not whole, or not a number, is warned about',
+            [0, 101, -1, 12.5, '50'].every( (bad) => warnings({ chance: bad }).length === 1 ));
+        suite.check('a step with both wrong is warned about twice', warnings({ days: [], chance: 0 }).length === 2);
+    }
+
+    // ---- defaults: the new fields are off unless set -------------------------
+    {
+        const channel = { dayParts: [{ name: 'D', transitions: { betweenShows: { out: [{ id: 'a', listId: 'x' }], in: [] } } }] };
+        const read = transitions.normalizeTransitions(channel.dayParts[0]).betweenShows.out[0];
+        suite.check('a step saved before days and chance existed reads with both off', read.days === null && read.chance === null);
+        suite.check('and reading wrote nothing', typeof channel.dayParts[0].transitions.betweenShows.out[0].days === 'undefined');
+        const set = transitions.normalizeTransitions({ transitions: { betweenShows: { out: [{ id: 'a', days: [1], chance: 30 }], in: [] } } }).betweenShows.out[0];
+        suite.check('a step that sets them keeps them', JSON.stringify(set.days) === '[1]' && set.chance === 30);
     }
 
     // ---- what playback asks before it builds any plan (step 4) -------------
