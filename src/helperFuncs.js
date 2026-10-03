@@ -75,10 +75,15 @@ function getCurrentProgramAndTimeElapsed(date, channel) {
  * Time from now to the end of the program in obj (as returned by
  * getCurrentProgramAndTimeElapsed), counting the seconds it may have been
  * handed over before it really starts. For a break this is how much filler it
- * really has room for.
+ * really has room for: a break with transition steps keeps reserveMs back for
+ * its in steps (lineup-cursor.js), so the Flex shrinks and the steps never do.
+ * A step is played whole, so its own length is its time left.
  */
 function timeLeft(obj) {
-    return obj.program.duration - obj.timeElapsed + (obj.startsIn || 0);
+    if ( (typeof(obj.transition) === 'object') && (obj.transition !== null) ) {
+        return obj.transition.durationMs;
+    }
+    return obj.program.duration - obj.timeElapsed + (obj.startsIn || 0) - (obj.reserveMs || 0);
 }
 
 /*
@@ -114,6 +119,29 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
         return lineup;
     }
 
+    /*
+     * A transition step (stage 5), from its break's plan: the clip the plan
+     * chose, whole and from its start, never the random start a tune-in gives
+     * Flex. It plays like a filler clip and is credited to the list it came
+     * from; its type says what it is.
+     */
+    if ( (typeof(obj.transition) === 'object') && (obj.transition !== null) ) {
+        let clip = obj.transition.clip;
+        return [ {
+            type: 'transition',
+            title: clip.title,
+            key: clip.key,
+            plexFile: clip.plexFile,
+            file: clip.file,
+            ratingKey: clip.ratingKey,
+            start: 0,
+            streamDuration: obj.transition.durationMs,
+            duration: clip.duration,
+            fillerId: clip.fillerId,
+            beginningOffset: beginningOffset,
+            serverKey: clip.serverKey
+        } ];
+    }
 
     if (activeProgram.isOffline === true) {
         //offline case
@@ -414,7 +442,8 @@ function getWatermark(  ffmpegSettings, channel, type) {
     if (typeof(d) === 'undefined') {
         d = true;
     }
-    if ( (typeof type !== `undefined`) && (type == 'commercial') && d ) {
+    // a transition step is filler as far as the watermark goes
+    if ( (typeof type !== `undefined`) && ( (type == 'commercial') || (type == 'transition') ) && d ) {
         return null;
     }
     let e = false;

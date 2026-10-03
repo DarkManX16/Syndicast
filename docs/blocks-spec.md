@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-3 built (situations, names, plans), the cursor is next
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-4 built (situations, names, plans, playing them through the cursor)
 
 ## Summary
 
@@ -474,7 +474,9 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    follows a plan through the real router. **TiviMate preview**: a scratch
    server from a worktree on a copy of `.dizquetv-dev` as stage 4 was done,
    with the compressed 5-15s channels from stage 4 given sequences, and
-   channel 1's copy with the Adult Swim NEXT sequence above.
+   channel 1's copy with the Adult Swim NEXT sequence above. **Built Oct 3,
+   2026, confirmed in TiviMate**; see NOTES.md. A tune-in lands on the in step
+   on the air, and one plan per break is shared by every viewer.
 5. **The card editor** — the Transitions section on both cards, load-time
    defaults and save-time cleanup beside the day-part ones in
    `channel-config.js`, the preview on this week's lineup. In the channel's
@@ -536,7 +538,7 @@ These are built as plan rows in `test/blocks-acceptance.js` (step 3), each on a
 fixture of its own, so they hold whatever the real block times are; the times
 named below are the spec's examples and not what the rows depend on. The three
 rows about a stream running late, very late or tuning in need the cursor and
-are tested with step 4's; "Next Time" in the Cartoon Theatre row needs
+are tested with step 4's (built); "Next Time" in the Cartoon Theatre row needs
 `keyedOn: 'later'` (step 8). Added at step 3: the Nick at Nite rows, in which a
 WBRB and a BTTS marked `onlyIfNoMatch` play only when the Up Next step found
 no bumper - with a Next Promos step ahead of it that finds nothing and an Up

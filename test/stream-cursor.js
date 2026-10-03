@@ -10,6 +10,11 @@
  * playlist ran out) and ProgramPlayer (records the item it was asked to play,
  * plays one byte, ends). Everything else is real: helperFuncs, channel-cache,
  * day-parts, lineup-cursor and express.
+ *
+ * Stage 5 step 4: a viewer followed through a break with transition steps,
+ * on a fake clock that the player moves on by each item's length - out step,
+ * Flex, in step, the show from its start - one plan per break shared by every
+ * viewer and rebuilt after a save, and tuning in near the end of the break.
  */
 const http = require('http');
 const path = require('path');
@@ -17,8 +22,29 @@ const { EventEmitter } = require('events');
 const { PassThrough } = require('stream');
 const express = require('express');
 const { helperFuncs, channelCache, freshStore, mix, Suite } = require('./support');
+const lineupCursor = require('../src/lineup-cursor');
 
 const SEC = 1000;
+
+/*
+ * A clock the test moves by hand: `new Date()` and Date.now() read it while it
+ * is set, so video.js's t0 for each /stream request is whatever the test says.
+ * Dates built from a value are untouched.
+ */
+const RealDate = Date;
+let fakeNow = null;
+class FakeDate extends RealDate {
+    constructor(...args) {
+        if ( (args.length === 0) && (fakeNow !== null) ) {
+            super(fakeNow);
+        } else {
+            super(...args);
+        }
+    }
+    static now() {
+        return (fakeNow !== null) ? fakeNow : RealDate.now();
+    }
+}
 
 const concats = [];   // { url, ff }
 const played = [];    // lineup items handed to the player, in order
@@ -143,10 +169,37 @@ module.exports = async function run() {
             transcoding: {},
         };
         const fill = [{ title: 'Fill#1', key: '/f/1', duration: 30 * SEC, serverKey: 'srv' }];
+        // Channel 11: a 10 minute show, a 60s break with an out step from a
+        // list of two 15s clips and a 10s in step, another show.
+        const STEP_LISTS = {
+            OUT: [{ title: 'Out A', key: '/t/OutA', duration: 15 * SEC, serverKey: 'srv' },
+                { title: 'Out B', key: '/t/OutB', duration: 15 * SEC, serverKey: 'srv' }],
+            IN: [{ title: 'In', key: '/t/In', duration: 10 * SEC, serverKey: 'srv' }],
+        };
+        const stepPrograms = [
+            { title: 'A', key: '/p/A11', duration: 600 * SEC, serverKey: 'srv' },
+            { isOffline: true, duration: 60 * SEC },
+            { title: 'B', key: '/p/B11', duration: 600 * SEC, serverKey: 'srv' },
+        ];
+        const stepStart = now + 3600 * SEC;   // A ends at S; the clock is set by hand below
+        const S = stepStart + 600 * SEC, E = S + 60 * SEC;
+        const anyStep = (id, listId) => ({ id, kind: 'list', listId, match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null });
+        const stepped = {
+            number: 11, name: 'Steps', offlineMode: 'pic', fallback: [], fillerRepeatCooldown: 0,
+            fillerCollections: mix([['Fill', 100]]),
+            dayParts: [{ name: 'All week', fillerCollections: mix([['Fill', 100]]),
+                starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }],
+                transitions: { betweenShows: { out: [anyStep('o', 'OUT')], in: [anyStep('i', 'IN')] } } }],
+            programs: stepPrograms,
+            duration: stepPrograms.reduce((a, p) => a + p.duration, 0),
+            startTime: new Date(stepStart).toISOString(),
+            transcoding: {},
+        };
         const channelService = Object.assign(new EventEmitter(), {
-            getChannel: async (n) => (n === 9 ? channel : null),
+            getChannel: async (n) => (n === 9 ? channel : (n === 11 ? stepped : null)),
         });
-        const fillerService = { getFillersFromCollections: async () => [{ id: 'Fill', content: fill, weight: 100, cooldown: 0 }] };
+        const fillerService = { getFillersFromCollections: async (ch, cols) => cols.map((c) => ({
+            id: c.id, content: STEP_LISTS[c.id] || fill, weight: c.weight, cooldown: c.cooldown })) };
         const settings = {
             ffmpegPath: process.execPath, enableFFMPEGTranscoding: true, disablePreludes: true,
             normalizeVideoCodec: true, normalizeAudioCodec: true, normalizeResolution: true, normalizeAudio: true,
@@ -238,10 +291,70 @@ module.exports = async function run() {
         suite.check('saving the channel forgets every cursor on it',
             channelCache.getCursor('viewerA') === null && channelCache.getCursor('viewerB') === null);
 
+        // ------------------------------------------ a break with steps
+        global.Date = FakeDate;
+        // One /stream request at the fake clock's time; the clock then moves
+        // on by the item's length, as a viewer's concat would.
+        const ask = async (query) => {
+            const before = played.length;
+            await get(port, `/stream?channel=11&${query}`);
+            const item = played[before];
+            if (item && query.includes('stream=')) fakeNow += item.streamDuration;
+            return item;
+        };
+        const describe = (i) => (i ? `${i.type} ${i.title} ${i.start}+${i.streamDuration}` : 'nothing');
+        fakeNow = S - 30 * SEC;
+        played.length = 0;
+        const seen = [];
+        for (let k = 0; k < 5; k++) seen.push(await ask(`session=${200 + k}&stream=stepper`));
+        suite.check('a viewer through the break: the show\'s end, the out step, Flex, the in step, the next show',
+            seen.map((i) => i && `${i.type} ${i.title}`).join(', ')
+                === 'program A, transition Out A, commercial Fill#1, transition In, program B',
+            seen.map(describe).join(' | '));
+        suite.check('... each step whole and from its start, the next show from its start',
+            seen[1] && seen[1].start === 0 && seen[1].streamDuration === 15 * SEC
+                && seen[3] && seen[3].start === 0 && seen[3].streamDuration === 10 * SEC && seen[4] && seen[4].start === 0,
+            seen.map(describe).join(' | '));
+        suite.check('... the Flex ended where the in step begins: 35s of room, a 30s clip, then the in step',
+            seen[2] && seen[2].type === 'commercial' && seen[2].streamDuration === 30 * SEC, describe(seen[2]));
+
+        // A second viewer reaching the same break later plays the same plan,
+        // though "Out A" has played since and "Out B" is now the longer idle.
+        fakeNow = S + 2 * SEC;
+        channelCache.setCursor('second', { channel: 11, index: 0, end: S, inBreak: false, fingerprint: lineupCursor.fingerprint(stepPrograms[0]) });
+        const second = await ask('session=210&stream=second');
+        suite.check('a second viewer of the break plays the same out step: one plan per break',
+            second && second.type === 'transition' && second.title === 'Out A', describe(second));
+
+        // Tuning in from the clock, near the end of the break.
+        channelCache.clearPlayback(11);
+        fakeNow = E - 8 * SEC;
+        const tuned = await ask('session=220');
+        suite.check('tuning in 8s before the break ends: the in step, from its start',
+            tuned && tuned.type === 'transition' && tuned.title === 'In' && tuned.start === 0, describe(tuned));
+        channelCache.clearPlayback(11);
+        fakeNow = E - 10500;
+        const tuned2 = await ask('session=221');
+        suite.check('10.5s before it ends: still the in step - the short-break skip does not jump over a step',
+            tuned2 && tuned2.type === 'transition' && tuned2.title === 'In', describe(tuned2));
+
+        // A save drops the plans with the cursors: the next viewer's break
+        // gets a new plan, and with it the longer-idle clip.
+        channelCache.saveChannelConfig(11, stepped);
+        fakeNow = S + 3 * SEC;
+        channelCache.setCursor('third', { channel: 11, index: 0, end: S, inBreak: false, fingerprint: lineupCursor.fingerprint(stepPrograms[0]) });
+        const third = await ask('session=230&stream=third');
+        suite.check('after a save, the break\'s plan is built again: the out step is now the longer-idle "Out B"',
+            third && third.type === 'transition' && third.title === 'Out B', describe(third));
+        global.Date = RealDate;
+        fakeNow = null;
+
         process.env.PORT = savedPort;
     } catch (err) {
         suite.check('the wiring test ran', false, err && err.stack);
     } finally {
+        global.Date = RealDate;
+        fakeNow = null;
         console.log = realLog;
         global.setTimeout = realSetTimeout;
         if (server) server.close();

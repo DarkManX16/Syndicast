@@ -32,6 +32,41 @@ let resumeHints = {};
 let cursors = {};
 const CURSOR_IDLE_MS = 60 * 60 * 1000;
 
+/*
+ * Each break's transition plan (stage 5), per channel: the first stream to
+ * reach a break builds it, and every other viewer of that break - a second
+ * stream, a tune-in from the clock, every /m3u8 request - plays the same steps
+ * rather than building its own, which could pick another clip once the first
+ * viewer's playback had moved the rotation on. Keyed by where the break starts
+ * on the lineup, so the next time round the cycle is a new break. Dropped for
+ * a channel when it is saved, like its cursors, and kept until an hour after
+ * the break ends.
+ */
+let plans = {};
+const PLAN_KEEP_MS = 60 * 60 * 1000;
+
+function planKey(brk) {
+    return `${brk.startTime}|${brk.firstFlex}`;
+}
+
+function getPlan(channelId, brk) {
+    let held = (typeof(plans[channelId]) === 'undefined') ? undefined : plans[channelId][planKey(brk)];
+    return (typeof(held) === 'undefined') ? null : held.plan;
+}
+
+function setPlan(channelId, brk, plan, now) {
+    if (typeof(plans[channelId]) === 'undefined') {
+        plans[channelId] = {};
+    }
+    let held = plans[channelId];
+    for (let key of Object.keys(held)) {
+        if (held[key].until < now) {
+            delete held[key];
+        }
+    }
+    held[planKey(brk)] = { plan: plan, until: brk.endTime + PLAN_KEEP_MS };
+}
+
 let configCache = {};
 let numbers = null;
 
@@ -123,6 +158,7 @@ function saveChannelConfig(number, channel ) {
             delete cursors[id];
         }
     }
+    delete plans[number];
     numbers = null;
 }
 
@@ -345,6 +381,7 @@ function clear() {
     cache = {};
     resumeHints = {};
     cursors = {};
+    plans = {};
     numbers = null;
 }
 
@@ -363,4 +400,6 @@ module.exports = {
     getCursor: getCursor,
     setCursor: setCursor,
     dropCursor: dropCursor,
+    getPlan: getPlan,
+    setPlan: setPlan,
 }
