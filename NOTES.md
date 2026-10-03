@@ -356,6 +356,58 @@ for the full spec, stages and acceptance tests.
       that would be learned and let them be unticked before anything is
       saved; `learnAliases` only returns candidates.
 
+      **Follow-up, Oct 2, 2026: the Nick at Nite Up Next lists.** Ron moved
+      his Up Next bumpers and promos into their own lists (Nick at Nite Up
+      Next Bumpers 21 clips, Up Next (Back 2 Back) 10, Up Next Promos 3). The
+      dev data has no Nick at Nite lineup (its "NICK Picks" channel is one
+      placeholder program, and no backup has one either), so against the real
+      vocabulary all 34 came back unnamed. The check was therefore run with
+      `scripts/match-lists.js --shows`, which adds stand-in shows titled the
+      way Plex titles them, and is labelled in its output. Result before any
+      fix: 33 of 34 named. The "(Back 2 Back)", "(More)", "(back2back)" and
+      doubled-year ("(2004) (2024)") variants cost nothing, and shows titled
+      with or without "The" were found either way. Three real defects, all
+      fixed, each with a test and the 34 titles as a regression table:
+
+      - **"Up Next Bumper (Jeffersons) (2001)" named nothing.** The optional
+        "The" needed two words left, so a one-word show could never drop it.
+        A word of five letters or more now may, but only as its own segment
+        (between brackets, dashes, colons, slashes, or the whole title), and
+        the hit carries `standalone: true`. Across all lists that adds
+        "(Jetsons)", "Smurfs - Smurfette" and "(Transformers)", and two doubtful
+        ones, "Justice League promo (Batman)" also naming The Batman and
+        "Animaniacs promo (Jetsons)" also naming The Jetsons: proposals for the
+        review screen, which should mark `standalone` hits as less certain.
+      - **Plex titles with years** ("ThunderCats (2011)", "Teenage Mutant Ninja
+        Turtles (2003)", "G.I. Joe: A Real American Hero ('83)") could not be
+        named by a clip without the year. A trailing year is now optional; two
+        eras of one show share the plain title, the match reports `alsoKeys`,
+        and a year in the clip picks the era. Four Ninja Turtles clips gained
+        their show.
+      - **Clips in a lineup became shows.** Channel 1's four hand-inserted NEXT
+        promos are 10-15 second movie items, so `[As] NEXT - Home Movies
+        (2003)` was a show and, as the longest title, would have beaten Home
+        Movies on exactly the NEXT clips. A movie or episode under a minute no
+        longer makes a show (the shortest real episode in the lineup is 198
+        seconds); custom shows are exempt.
+
+      With the stand-ins, 34 of 34 are named, and all lists together go from
+      621 to 629 named on the real vocabulary. "Up Next Bumper (All in the
+      family-The Jeffersons)" proposes a pair, now then; whether a pair in an
+      Up Next list means that or "both are coming up" is for step 3 to decide.
+      `learnAliases` also treats "more", "back", "back2back" and "b2b" as
+      structural words.
+
+      **`bundle-freshness` was flaky, and was fixed in its own commit.** It
+      failed 16 runs in 40 alone. Two checks told states apart by file
+      timestamps, and two writes a few milliseconds apart sometimes get the same
+      timestamp on Windows: the "unreferenced new file" check compared the
+      manifest's mtime before and after a rebuild, and "fixing the input" wrote a
+      broken file and the fix back to back, so the checker correctly saw a state
+      it had already failed on and did not retry. Each now pins the earlier
+      state's mtime in the past, as `ageBundle` already did for the bundle: 0
+      failures in 60 runs. The checker is unchanged.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
