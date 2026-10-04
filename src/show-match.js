@@ -110,6 +110,64 @@ function keyKind(key) {
 }
 
 /*
+ * The initials of a title: "Teenage Mutant Ninja Turtles (2003)" is TMNT. The
+ * trailing year goes, a word with no letter or digit in it ("&") carries no
+ * initial, and a leading "The", "A" or "An" is dropped when `dropArticle`.
+ */
+function initialsOf(name, dropArticle) {
+    let words = name.replace(TRAILING_YEAR, '').trim().split(/\s+/);
+    if (dropArticle && (words.length > 1) && /^(the|a|an)$/i.test(words[0])) {
+        words = words.slice(1);
+    }
+    return words.filter( (w) => /[A-Za-z0-9]/.test(w) )
+        .map( (w) => /[A-Za-z0-9]/.exec(w)[0] ).join('').toUpperCase();
+}
+
+/*
+ * The abbreviations a clip title may use: initials of three or more letters that
+ * are the initials of exactly one show. Each title counts both with and without
+ * a leading article ("The Tex Avery Show" is TAS or TTAS), and the initials of a
+ * subtitle count too, only to make an abbreviation ambiguous and never to give it
+ * a meaning: "TAS" is also the initials of "The Animated Series", so it names no
+ * show. Initials that two shows share ("G.I. Joe" of two eras) name none; those
+ * are for the review screen. Returns a Map of the lower-case initials to the key.
+ */
+function abbreviationsOf(found) {
+    const owners = new Map();
+    const note = (initials, key) => {
+        if (/^[A-Z]{3,}$/.test(initials)) {
+            if (! owners.has(initials) ) {
+                owners.set(initials, { keys: new Set(), meanings: new Set() });
+            }
+            owners.get(initials).keys.add(key);
+            return owners.get(initials);
+        }
+        return null;
+    };
+    for (const [key, titles] of found) {
+        for (const name of titles) {
+            const colon = name.indexOf(':');
+            for (const drop of [true, false]) {
+                const whole = note(initialsOf(name, drop), key);
+                if (whole !== null) {
+                    whole.meanings.add(key);
+                }
+                if (colon > 0) {
+                    note(initialsOf(name.slice(colon + 1), drop), key);
+                }
+            }
+        }
+    }
+    const abbreviations = new Map();
+    for (const [initials, owner] of owners) {
+        if ( (owner.keys.size === 1) && (owner.meanings.size === 1) ) {
+            abbreviations.set(initials.toLowerCase(), Array.from(owner.keys)[0]);
+        }
+    }
+    return abbreviations;
+}
+
+/*
  * The shows a clip can name: every show key that any channel's programs or
  * slots carry, with the title it is known by. `channels` is an array of channel
  * objects (programs and scheduleBackup.slots are read, nothing else) and
@@ -287,7 +345,8 @@ function buildVocabulary(channels, customShowNames) {
         }
         squashed.get(together).push(entry);
     }
-    return { entries: entries, standalone: standalone, names: display, ambiguous: ambiguous, squashed: squashed };
+    return { entries: entries, standalone: standalone, names: display, ambiguous: ambiguous, squashed: squashed,
+        abbreviations: abbreviationsOf(found) };
 }
 
 /*
@@ -296,7 +355,7 @@ function buildVocabulary(channels, customShowNames) {
  * Z") is never read as a second show. Returns the hits and the text with the
  * matched words gone.
  */
-function consumeTitles(title, vocabulary) {
+function consumeTitles(title, vocabulary, known) {
     let text = ' ' + fold(title) + ' ';
     const hits = [];
     const take = (entry, at, needle, alone) => {
@@ -306,6 +365,9 @@ function consumeTitles(title, vocabulary) {
         }
         if (entry.shortened) {
             hit.shortened = true;       // found by a shortened form of the title ("from a shortened title"): less certain
+        }
+        if (entry.abbreviation) {
+            hit.abbreviation = true;    // found by the initials of the title ("from an abbreviation"): less certain
         }
         const others = vocabulary.ambiguous[entry.folded];
         if (typeof(others) !== 'undefined') {
@@ -357,6 +419,24 @@ function consumeTitles(title, vocabulary) {
             }
             used.push(f);
             take(f.entry, f.start - 1, ' ' + text.slice(f.start, f.end) + ' ');
+        }
+    }
+    // Initials, as written in capitals: "TMNT" is Teenage Mutant Ninja Turtles. A word
+    // the user has taught as an alias means what they taught, so it is left to that,
+    // and a show already found by its title is not found a second time.
+    if (vocabulary.abbreviations) {
+        const capitals = new Set((String(title == null ? '' : title).match(/\b[A-Z]{3,}\b/g) || []).map( (w) => w.toLowerCase() ));
+        for (const word of capitals) {
+            const key = vocabulary.abbreviations.get(word);
+            if ( (typeof(key) === 'undefined') || ( known && Object.prototype.hasOwnProperty.call(known, word) )
+                || hits.some( (h) => h.key === key ) ) {
+                continue;
+            }
+            const needle = ' ' + word + ' ';
+            const at = text.indexOf(needle);
+            if (at !== -1) {
+                take( { key: key, folded: word, abbreviation: true }, at, needle);
+            }
         }
     }
     // One-word titles that dropped their "The" count only as a segment of their
@@ -516,13 +596,14 @@ function halfRead(title, hits, vocabulary, known) {
  * third is reported as `extra` and not proposed. Nothing found proposes [].
  *
  * `found` says what matched and how, for a review screen to show. A hit found by
- * a shortened form of a title (the part before a colon) carries `shortened: true`.
+ * a shortened form of a title (the part before a colon) carries `shortened: true`,
+ * and one found by the initials of a title ("TMNT") carries `abbreviation: true`.
  * A title built as several shows ("A to B", "Now/Then (A / B)", "(A-B-C)") of
  * which not all were recognised proposes nothing and carries
  * `unresolved: { recognised, reason }`.
  */
 function findHits(title, vocabulary, known) {
-    const { hits, remaining } = consumeTitles(title, vocabulary);
+    const { hits, remaining } = consumeTitles(title, vocabulary, known);
     const wordPattern = /\S+/g;
     let match;
     while ( (match = wordPattern.exec(remaining)) !== null ) {
@@ -592,7 +673,7 @@ function learnAliases(title, showKey, vocabulary, aliases, corpus) {
     const known = aliases || {};
     const folded = fold(title);
     const explained = new Set();
-    const { remaining } = consumeTitles(title, vocabulary);
+    const { remaining } = consumeTitles(title, vocabulary, known);
     const left = new Set(remaining.split(' ').filter( (w) => w !== '' ));
     for (const word of folded.split(' ')) {
         if ( (word !== '') && ! left.has(word) ) {

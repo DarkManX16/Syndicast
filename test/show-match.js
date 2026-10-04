@@ -83,7 +83,9 @@ const FIX_CHANNELS = [channel(3, [
     ep('Sealab 2021'), ep('The Tex Avery Show'), ep('The Cosby Show'), ep('Cow and Chicken'), ep("Dexter's Laboratory"),
     ep('Tom & Jerry'), ep('Tom & Jerry Show'), ep('Gumball Show'), ep('The Big Late Show Live'), ep('Ben 10'), ep('Teen Titans'), ep('Static Shock'), ep('Teenage Mutant Ninja Turtles (2003)'),
     ep('Spider-Man'), ep('The Brady Bunch'), ep('Rocket Power'), ep('Droopy'), ep('Scooby-Doo, Where Are You!'),
-    ep('Yu-Gi-Oh! Duel Monsters'),
+    ep('Yu-Gi-Oh! Duel Monsters'), ep('Aqua Teen Hunger Force'), ep('The Amanda Show'), ep('Superman: The Animated Series'),
+    ep('The Powerpuff Girls'), ep('Codename: Kids Next Door'), ep('Kid Ninja Dojo'), ep('The Fairly OddParents'), ep('The Rugrats Movie Show'),
+    custom('g3', "My Gym Partner's a Monkey"),
     ...HYPHENATED_SHOWS.map(ep), custom('g2', 'Mobile Suit Gundam Series'),
 ])];
 const FIXK = {
@@ -376,7 +378,7 @@ module.exports = async function run() {
         suite.check('and "Adult Swim" still does not name anything',
             propose('Adult Swim Bumper - Empty Pool', after).names.length === 0
             && names(propose('Adult Swim Promo - Cowboy Bebop', after)) === KEYS.bebop);
-        suite.check('and "NEXT" on its own names nothing', propose('[AS] NEXT - ATHF', after).names.length === 0);
+        suite.check('and "NEXT" on its own names nothing', propose('[AS] NEXT - XYZZY', after).names.length === 0);
 
         const next = showMatch.learnAliases('[as] NEXT - SGC2C', KEYS.sgc, vocab, {}, []);
         suite.check('even with nothing to compare against, "next" is not learned: it is a structural word',
@@ -690,10 +692,9 @@ module.exports = async function run() {
         const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
         const p = (t, a) => showMatch.propose(t, vocabS, a || {});
         const recognised = (x) => (x.unresolved ? x.unresolved.recognised.join() : null);
-        // TMNT is not a title and, until abbreviations are read, not a show: only Teen Titans is recognised.
-        suite.check('"(TMNT-Teen Titans)" with only Teen Titans recognised names nothing and is flagged',
-            p('Miguzi - Next Bumper (TMNT-Teen Titans)').names.length === 0
-            && recognised(p('Miguzi - Next Bumper (TMNT-Teen Titans)')) === FIXK.teenTitans, JSON.stringify(p('Miguzi - Next Bumper (TMNT-Teen Titans)')));
+        suite.check('"(Static-Teen Titans)" with only Teen Titans recognised ("Static" is not Static Shock) names nothing and is flagged',
+            p('Miguzi - Next Bumper (Static-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (Static-Teen Titans)')) === FIXK.teenTitans, JSON.stringify(p('Miguzi - Next Bumper (Static-Teen Titans)')));
         suite.check('both shows recognised: a pair in the order written, not flagged',
             names(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`
             && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === null
@@ -702,9 +703,9 @@ module.exports = async function run() {
             names(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static Shock-Teen Titans)')) === `${FIXK.tmnt},${FIXK.static},${FIXK.teenTitans}`
             && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static Shock-Teen Titans)')) === null);
         suite.check('three shows with the first not recognised: flagged, with the two that were',
-            p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)').names.length === 0
-            && recognised(p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`,
-            JSON.stringify(p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)')));
+            p('Miguzi - Next Bumper (Static-Static Shock-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (Static-Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`,
+            JSON.stringify(p('Miguzi - Next Bumper (Static-Static Shock-Teen Titans)')));
         suite.check('three shows with the middle one not recognised ("Static" for Static Shock): flagged too',
             p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static-Teen Titans)').names.length === 0
             && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`);
@@ -753,7 +754,52 @@ module.exports = async function run() {
             && recognised(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')) === null,
             JSON.stringify(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')));
         suite.check('once the unknown name is taught, the pair stands',
-            names(p('Miguzi - Next Bumper (TMNT-Teen Titans)', { tmnt: FIXK.tmnt })) === `${FIXK.tmnt},${FIXK.teenTitans}`);
+            names(p('Miguzi - Next Bumper (Static-Teen Titans)', { static: FIXK.static })) === `${FIXK.static},${FIXK.teenTitans}`);
+    }
+
+    // ---- abbreviations: the initials of a show title ------------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series', g3: "My Gym Partner's a Monkey" });
+        const p = (t, a) => showMatch.propose(t, vocabS, a || {});
+        const recognised = (x) => (x.unresolved ? x.unresolved.recognised.join() : null);
+        suite.check('"TMNT" names Teenage Mutant Ninja Turtles (2003), marked as from an abbreviation',
+            names(p('TMNT 2003 Air Ninjas (2004)')) === FIXK.tmnt && p('TMNT 2003 Air Ninjas (2004)').found[0].abbreviation === true
+            && p('TMNT 2003 Air Ninjas (2004)').found[0].shortened !== true, JSON.stringify(p('TMNT 2003 Air Ninjas (2004)')));
+        suite.check('"ATHF", "DBZ" and "MGPAM" (a custom show) too; three letters is enough',
+            names(p('ATHF promo')) === 'tv.Aqua Teen Hunger Force' && names(p('Toonami - NEXT [DBZ]')) === FIXK.dbz
+            && names(p('CN City Bumper (MGPAM) (3)')) === 'custom.g3');
+        suite.check('the pair from the Miguzi title now reads as a pair: TMNT then Teen Titans, marked, and not flagged',
+            names(p('Miguzi - Next Bumper (TMNT-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`
+            && recognised(p('Miguzi - Next Bumper (TMNT-Teen Titans)')) === null
+            && p('Miguzi - Next Bumper (TMNT-Teen Titans)').found[0].abbreviation === true);
+        suite.check('and with the middle show written as "Static" (not Static Shock) it is flagged, with TMNT and Teen Titans recognised',
+            p('Miguzi - Next Bumper (TMNT-Static-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (TMNT-Static-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`);
+        suite.check('with "Static" taught, all three are named, in order',
+            names(p('Miguzi - Next Bumper (TMNT-Static-Teen Titans)', { static: FIXK.static })) === `${FIXK.tmnt},${FIXK.static},${FIXK.teenTitans}`);
+        suite.check('an abbreviation that is the initials of several shows is left alone: "TAS" (The Tex Avery Show, The Amanda Show, ...)',
+            p('Comm Batman TAS toys').names.length === 0 && p('TAS promo').names.length === 0);
+        suite.check('... and one that is the initials of a show\'s subtitle as well: "TAS" with Superman: The Animated Series',
+            names(p('TV Ad (Superman TAS)')) === 'tv.Superman: The Animated Series' && p('TV Ad (Superman TAS)').found.length === 1);
+        suite.check('two eras of a show share their initials, so the abbreviation is left to the review screen',
+            p('GJARAH promo').names.length === 0);
+        suite.check('a leading "The" may or may not be counted: "TPG" and "PG" are both the initials of The Powerpuff Girls, but "PG" is two letters',
+            names(p('TPG promo')) === 'tv.The Powerpuff Girls' && p('PG promo').names.length === 0);
+        suite.check('only capitals: "Tmnt" and "tmnt" are not an abbreviation',
+            p('Tmnt promo').names.length === 0 && p('tmnt promo').names.length === 0);
+        suite.check('only a whole word: "ATHFS" and "ATHF2" are not "ATHF"',
+            p('ATHFS promo').names.length === 0 && p('ATHF2 promo').names.length === 0);
+        suite.check('a title already read as written is not read again as an abbreviation',
+            p('Aqua Teen Hunger Force ATHF promo').found.length === 1 && p('Aqua Teen Hunger Force ATHF promo').found[0].abbreviation !== true);
+        suite.check('a word taught as an alias wins over the abbreviation',
+            names(p('TMNT promo', { tmnt: FIXK.static })) === FIXK.static);
+        suite.check('a subtitle\'s initials are not a meaning of their own, and make an abbreviation ambiguous: "KND" is the initials of Kid Ninja Dojo and of the subtitle of Codename: Kids Next Door, so it names neither',
+            p('KND promo').names.length === 0);
+        suite.check('the initials count with and without a leading article: "RMS" and "TRMS" for The Rugrats Movie Show, "TTAS" for The Tex Avery Show',
+            names(p('RMS promo')) === 'tv.The Rugrats Movie Show' && names(p('TRMS promo')) === 'tv.The Rugrats Movie Show'
+            && names(p('TTAS promo')) === FIXK.tex && names(p('TFO promo')) === 'tv.The Fairly OddParents');
+        suite.check('a subtitle\'s initials alone are no abbreviation: "SAC" (Stand Alone Complex) names nothing, while the part before the colon still does',
+            p('SAC promo').names.length === 0 && names(p('Ghost in the Shell promo')) === FIXK.sac);
     }
 
     return suite;
