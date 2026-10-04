@@ -103,12 +103,15 @@ const env = () => ({
 module.exports = async function run() {
     const suite = new Suite('transitions-editor');
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    // The same value however its keys happen to be ordered.
+    const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof(x) === 'object' && ! Array.isArray(x))
+        ? Object.keys(x).sort().reduce( (o, key) => { o[key] = x[key]; return o; }, {} ) : x);
 
     // ---- how a step chooses ---------------------------------------------------
     {
         const draft = editor.emptyDraft();
         const s = editor.newStep(draft);
-        suite.check('a new step asks for a clip about the show coming up, no list chosen',
+        suite.check('a new step asks for a clip for the show coming up, no list chosen',
             s.kind === 'list' && s.match === 'show' && s.keyedOn === 'next' && s.listId === ''
             && s.fallbackListId === null && s.onlyIfNoMatch === null && s.days === null && s.chance === null);
         suite.check('... and carries every field a stored step carries',
@@ -227,18 +230,18 @@ module.exports = async function run() {
         const sentence = (s, seq) => editor.describeStep(s, seq || [s], names);
         suite.check('the sentence the form opens with, word for word',
             sentence(step('s', { listId: 'upnext', match: 'show', keyedOn: 'next' }))
-                === 'Plays a clip from Up Next about the show coming up; if none matches, plays nothing.',
+                === 'Plays a clip from Up Next for the show coming up; if none matches, plays nothing.',
             sentence(step('s', { listId: 'upnext', match: 'show', keyedOn: 'next' })));
         suite.check('keyed on the show that just ended',
             sentence(step('s', { listId: 'upnext', match: 'show', keyedOn: 'now' }))
-                === 'Plays a clip from Up Next about the show that just ended; if none matches, plays nothing.');
+                === 'Plays a clip from Up Next for the show that just ended; if none matches, plays nothing.');
         suite.check('a pair step says it falls back to the one coming up',
-            sentence(step('s', { listId: 'upnext', match: 'pair' })).includes('the show that just ended and the one coming up (or, failing that, just the one coming up)'));
+            sentence(step('s', { listId: 'upnext', match: 'pair' })).includes('for the show that just ended, then the one coming up (or, failing that, just the one coming up)'));
         suite.check('"any" says any clip',
             sentence(step('s', { listId: 'wbrb', match: 'any' })) === 'Plays any clip from WBRB; if nothing in it fits, plays nothing.');
         suite.check('a fallback list is named',
             sentence(step('s', { listId: 'upnext', match: 'show', fallbackListId: 'generic' }))
-                === 'Plays a clip from Up Next about the show coming up; if none matches, plays a clip from Generic.');
+                === 'Plays a clip from Up Next for the show coming up; if none matches, plays a clip from Generic.');
         suite.check('days read as words',
             sentence(step('s', { days: [1, 3, 5] })).includes('only on Mon, Wed and Fri'));
         suite.check('two days read as "and"', sentence(step('s', { days: [0, 6] })).includes('only on Sun and Sat'));
@@ -260,13 +263,13 @@ module.exports = async function run() {
             ['upnext', 'wbrb'].every( (l) => { const t = sentence(step('s', { listId: l, days: [2], chance: 20 })); return t.endsWith('.') && ! t.includes('..') && ! t.includes(';;'); }));
 
         suite.check('the chip reads list, choice, then skip',
-            editor.chipLabel(step('s', { listId: 'upnext', match: 'show' }), [], names) === 'Up Next · names next show · skip');
+            editor.chipLabel(step('s', { listId: 'upnext', match: 'show' }), [], names) === 'Up Next · for the show coming up · skip');
         suite.check('... or the fallback list',
-            editor.chipLabel(step('s', { listId: 'upnext', match: 'show', fallbackListId: 'generic' }), [], names) === 'Up Next · names next show · else Generic');
+            editor.chipLabel(step('s', { listId: 'upnext', match: 'show', fallbackListId: 'generic' }), [], names) === 'Up Next · for the show coming up · else Generic');
         suite.check('"any" and the other choices have their own words',
             editor.chipLabel(step('s', { listId: 'wbrb', match: 'any' }), [], names).includes('any clip')
-            && editor.chipLabel(step('s', { match: 'show', keyedOn: 'now' }), [], names).includes('names last show')
-            && editor.chipLabel(step('s', { match: 'pair' }), [], names).includes('names last → next'));
+            && editor.chipLabel(step('s', { match: 'show', keyedOn: 'now' }), [], names).includes('for the show that just ended')
+            && editor.chipLabel(step('s', { match: 'pair' }), [], names).includes('for the show that just ended, then the one coming up'));
         suite.check('days and chance show on the chip, since they decide whether it plays',
             editor.chipLabel(step('s', { days: [1, 2], chance: 25 }), [], names).endsWith('Mon Tue · 25%'));
         suite.check('a mark shows on the chip',
@@ -362,7 +365,7 @@ module.exports = async function run() {
         suite.check('between episodes, one step each side: both are named, in play order',
             tag(1) !== null && tag(1).text === 'WBRB / BTTS', tag(1) && tag(1).text);
         suite.check('the tooltip spells out what is before and after the break',
-            tag(1).title === 'Before the break: WBRB\nAfter the break: BTTS', JSON.stringify(tag(1).title));
+            tag(1).title === 'Before the commercials: WBRB\nAfter the commercials: BTTS', JSON.stringify(tag(1).title));
         suite.check('a break of two Flex rows: the first carries the steps before the break',
             tag(3) !== null && tag(3).text === 'Sign Off / Intro', tag(3) && tag(3).text);
         suite.check('... and the last the steps after it, keyed on the show it names',
@@ -534,6 +537,166 @@ module.exports = async function run() {
         suite.check('a clip with no proposal stays unnamed', typeof(out[3].names) === 'undefined');
         suite.check('the clips given are not changed', JSON.stringify(clips) === before);
         suite.check('no match answer at all changes nothing', editor.overlayProposedNames(clips, null).every( (c, i) => c === clips[i] ));
+    }
+
+    // ---- closing a step that has no list -------------------------------------------
+    {
+        const draft = editor.emptyDraft();
+        const blank = step('blank', { listId: '' });
+        const watcher = step('watcher', { onlyIfNoMatch: 'blank' });
+        const real = step('real', { listId: 'wbrb' });
+        draft.betweenShows.out.push(blank, real);
+        draft.betweenShows.in.push(watcher);
+        const closed = editor.closeStep(draft, 'betweenShows', blank);
+        suite.check('closing a step with no list takes it out, and clears the marks that named it',
+            closed.removed && same(draft.betweenShows.out.map( (x) => x.id ), ['real']) && closed.cleared.length === 1 && watcher.onlyIfNoMatch === null);
+        suite.check('closing a step that has a list leaves it',
+            ! editor.closeStep(draft, 'betweenShows', real).removed && draft.betweenShows.out.length === 1);
+        const odd = step('odd', { kind: 'generated', listId: '' });
+        draft.leaving.out.push(odd);
+        suite.check('a step the editor does not build is never removed for having no list',
+            ! editor.closeStep(draft, 'leaving', odd).removed && draft.leaving.out.length === 1);
+        const none = step('none', { listId: null });
+        draft.leaving.in.push(none);
+        suite.check('a list that is null counts as none chosen', editor.closeStep(draft, 'leaving', none).removed);
+    }
+
+    // ---- quick setup -------------------------------------------------------------------
+    {
+        const draft = editor.emptyDraft();
+        const made = editor.quickSetup(draft, { promo: 'wbrb', upNext: 'upnext', fallback: 'generic' });
+        const out = draft.betweenShows.out;
+        const inn = draft.betweenShows.in;
+        suite.check('three lists build two steps in Between shows and report it', same(made, { built: 2, replaced: 0 }));
+        suite.check('the promo plays before the commercials, for the show coming up, and is skipped when there is none',
+            out.length === 1 && out[0].listId === 'wbrb' && editor.whichOf(out[0]) === 'next' && out[0].fallbackListId === null
+            && out[0].days === null && out[0].chance === null && out[0].onlyIfNoMatch === null);
+        suite.check('the Up Next plays right before the show, for the show coming up, falling back to the third list',
+            inn.length === 1 && inn[0].listId === 'upnext' && editor.whichOf(inn[0]) === 'next' && inn[0].fallbackListId === 'generic');
+        suite.check('the other three rows are untouched',
+            ['leaving', 'entering', 'betweenEpisodes'].every( (n) => draft[n].out.length === 0 && draft[n].in.length === 0 ));
+        suite.check('the two ids differ', out[0].id !== inn[0].id);
+
+        const promoOnly = editor.emptyDraft();
+        editor.quickSetup(promoOnly, { promo: 'wbrb', upNext: '', fallback: 'generic' });
+        suite.check('a promo alone builds just the promo step; a fallback belongs to an Up Next and is not used',
+            promoOnly.betweenShows.out.length === 1 && promoOnly.betweenShows.in.length === 0 && promoOnly.betweenShows.out[0].fallbackListId === null);
+        const upOnly = editor.emptyDraft();
+        editor.quickSetup(upOnly, { promo: null, upNext: 'upnext', fallback: null });
+        suite.check('an Up Next alone builds just that step, with no fallback',
+            upOnly.betweenShows.out.length === 0 && upOnly.betweenShows.in.length === 1 && upOnly.betweenShows.in[0].fallbackListId === null);
+        const nothing = editor.emptyDraft();
+        suite.check('with neither list there is nothing to build, and nothing is changed',
+            editor.quickSetup(nothing, { promo: '', upNext: '', fallback: 'generic' }) === null && editor.stepCount(nothing) === 0);
+
+        const again = editor.emptyDraft();
+        editor.addStep(again, 'betweenShows', 'out', Object.assign(editor.newStep(again), { listId: 'btts' }));
+        editor.addStep(again, 'betweenShows', 'in', Object.assign(editor.newStep(again), { listId: 'btts' }));
+        editor.addStep(again, 'leaving', 'out', Object.assign(editor.newStep(again), { listId: 'signoff' }));
+        const redo = editor.quickSetup(again, { promo: 'wbrb', upNext: 'upnext' });
+        suite.check('it replaces what Between shows held, says how many, and leaves other rows alone',
+            same(redo, { built: 2, replaced: 2 }) && again.betweenShows.out[0].listId === 'wbrb' && again.leaving.out.length === 1);
+        suite.check('every id in the draft is still different',
+            new Set(editor.allSteps(again).map( (x) => x.id )).size === editor.allSteps(again).length);
+
+        // What it builds is stored cleanly, and plays as described.
+        const channel = fixtureChannel();
+        const late = channel.blocks[0];
+        const d = editor.loadDraft(late);
+        editor.quickSetup(d, { promo: 'promo', upNext: 'upnext', fallback: 'generic' });
+        editor.commit(late, d, true);
+        const lines = [];
+        const real = console.error;
+        console.error = (...args) => lines.push(args.join(' '));
+        try { new ChannelDB('/nonexistent').validateChannelJson(7, channel); } finally { console.error = real; }
+        suite.check('and the save-time check has nothing to say about it', lines.length === 0, lines.join(' | '));
+
+        const lists = Object.assign({}, LISTS, { promo: [clip('Promo Gamma', 15, { names: ['tv.Gamma'] })] });
+        const starts = startsOf(channel);
+        const plans = transitions.breaksBetween(channel, starts[0], starts[0] + 163 * MIN)
+            .map( (brk) => transitions.buildPlan(channel, brk, { getList: (id) => lists[id] || null }) )
+            .filter( (plan) => plan.situation === 'betweenShows' && plan.from === late );
+        const titles = (side) => plans.map( (plan) => plan[side].map( (x) => x.clip.title ) );
+        suite.check('before Gamma: its promo, then (after the commercials) its Up Next',
+            same(titles('out')[0], ['Promo Gamma']) && same(titles('in')[0], ['Up Next Gamma']), JSON.stringify([titles('out')[0], titles('in')[0]]));
+        suite.check('before Delta, which has neither: no promo, and the fallback list stands in for the Up Next',
+            same(titles('out')[1], []) && same(titles('in')[1], ['Generic Bumper']), JSON.stringify([titles('out')[1], titles('in')[1]]));
+    }
+
+    // ---- copying rows to another card ----------------------------------------------------
+    {
+        const source = editor.emptyDraft();
+        const a = editor.addStep(source, 'betweenShows', 'out', Object.assign(editor.newStep(source), { listId: 'wbrb', chance: 40 }));
+        const b = editor.addStep(source, 'betweenShows', 'in', Object.assign(editor.newStep(source), { listId: 'btts' }));
+        editor.setMark(source, 'betweenShows', b, a.id);
+        editor.addStep(source, 'leaving', 'out', Object.assign(editor.newStep(source), { listId: 'signoff', days: [1] }));
+        const before = JSON.stringify(source);
+
+        const target = { name: 'Target', fillerCollections: [], starts: [] };
+        const done = editor.copySituations(source, target, ['betweenShows']);
+        suite.check('copying one row to a card with nothing says what it did', same(done, { copied: 2, replaced: 0, leftOut: 0 }));
+        suite.check('only the chosen row arrived', same(Object.keys(target.transitions), transitions.SITUATIONS)
+            && target.transitions.leaving.out.length === 0 && target.transitions.betweenShows.out.length === 1 && target.transitions.betweenShows.in.length === 1);
+        const [ca, cb] = [target.transitions.betweenShows.out[0], target.transitions.betweenShows.in[0]];
+        suite.check('the copies carry every setting', ca.listId === 'wbrb' && ca.chance === 40 && cb.listId === 'btts');
+        suite.check('they have new ids, and the "only when" now names the copy, not the original',
+            ca.id !== a.id && cb.id !== b.id && cb.onlyIfNoMatch === ca.id);
+        suite.check('the source is not changed', JSON.stringify(source) === before);
+        suite.check('the copies are not the same objects as the originals', ca !== a && cb !== b);
+
+        const occupied = { name: 'Occupied', fillerCollections: [], starts: [], transitions: {
+            betweenShows: { out: [step('old1')], in: [step('old2'), step('old3')] },
+            betweenEpisodes: { out: [step('keep', { listId: 'btts' })], in: [] },
+        } };
+        const over = editor.copySituations(source, occupied, ['betweenShows', 'leaving']);
+        suite.check('copying onto a card that has steps replaces those rows, counts what it replaced',
+            over.copied === 3 && over.replaced === 3, JSON.stringify(over));
+        suite.check('... and leaves its other rows exactly as they were',
+            canon(occupied.transitions.betweenEpisodes) === canon({ out: [step('keep', { listId: 'btts' })], in: [] }));
+        suite.check('... the old steps are gone from the replaced row',
+            ! JSON.stringify(occupied.transitions.betweenShows).includes('old1') && occupied.transitions.leaving.out[0].days[0] === 1);
+
+        const withBlank = editor.emptyDraft();
+        const x = editor.addStep(withBlank, 'betweenShows', 'out', Object.assign(editor.newStep(withBlank), { listId: '' }));
+        const y = editor.addStep(withBlank, 'betweenShows', 'in', Object.assign(editor.newStep(withBlank), { listId: 'btts' }));
+        y.onlyIfNoMatch = x.id;
+        const t2 = { name: 'T2', fillerCollections: [], starts: [] };
+        const r2 = editor.copySituations(withBlank, t2, ['betweenShows']);
+        suite.check('a step with no list is left out, and the mark that named it is cleared',
+            r2.copied === 1 && r2.leftOut === 1 && t2.transitions.betweenShows.in[0].onlyIfNoMatch === null && t2.transitions.betweenShows.out.length === 0);
+
+        const empty = editor.emptyDraft();
+        const t3 = { name: 'T3', fillerCollections: [], starts: [] };
+        editor.copySituations(empty, t3, ['betweenShows']);
+        suite.check('copying an empty row onto a card with no transitions adds no key', ! ('transitions' in t3));
+        let threw = false;
+        try { editor.copySituations(source, t3, ['betweenAds']); } catch (err) { threw = true; }
+        suite.check('a row that does not exist is an error', threw);
+
+        const lines = [];
+        const realError = console.error;
+        console.error = (...args) => lines.push(args.join(' '));
+        try {
+            new ChannelDB('/nonexistent').validateChannelJson(7, { dayParts: [Object.assign({ name: 'D', fillerCollections: [],
+                starts: [{ days: [1], time: 0 }] }, { transitions: target.transitions })], blocks: [] });
+        } finally { console.error = realError; }
+        suite.check('what was copied passes the save-time check', lines.length === 0, lines.join(' | '));
+
+        // Same plan from the copy as from the original: the Late block's row copied to Day.
+        const channel = fixtureChannel();
+        const late = channel.blocks[0];
+        const day = channel.dayParts[0];
+        editor.copySituations(editor.loadDraft(late), day, ['betweenShows']);
+        const starts = startsOf(channel);
+        const via = (context) => transitions.breaksBetween(channel, starts[0], starts[0] + 163 * MIN)
+            .map( (brk) => transitions.assemble(channel, brk) )
+            .filter( (as) => as.situation === 'betweenShows' && as.from === context )
+            .map( (as) => as.out.concat(as.in).map( (e) => [e.step.listId, e.step.match, e.step.keyedOn, e.step.fallbackListId, e.step.days, e.step.chance] ) );
+        suite.check('the copy on Day assembles the same steps as the original on Late, step for step',
+            late.transitions.betweenShows.in.length === day.transitions.betweenShows.in.length
+            && same(late.transitions.betweenShows.in.map( (z) => [z.listId, z.match, z.keyedOn, z.fallbackListId, z.days, z.chance] ),
+                day.transitions.betweenShows.in.map( (z) => [z.listId, z.match, z.keyedOn, z.fallbackListId, z.days, z.chance] )));
+        suite.check('and Day\'s own other rows were kept', day.transitions.betweenEpisodes.out.length === 1 && day.transitions.leaving.out.length === 1);
     }
 
     return suite;

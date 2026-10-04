@@ -488,7 +488,13 @@ list, not one per show.
   reads left to right as the break will play: `[+ step] … → Flex → … [+ step]`.
   A step is a chip — list name, then "any", "names next show", "names
   now → then", and "skip" or the fallback list — that opens inline to edit.
-  Empty rows read "commercials only".
+  Empty rows read "commercials only". In the editor the two sides read "Before the
+  commercials" and "After the commercials, right before the show", and a step keyed
+  on a show says "for the show coming up" or "for the show that just ended".
+  **Quick setup** builds the usual Between shows pair from three lists (a promo,
+  an Up Next, a fallback for shows with no Up Next); **Copy transitions to...**
+  copies chosen rows to other day-parts and blocks of the channel; a step closed
+  without a list is removed.
 - **"Preview on this week's lineup"** under the section walks the channel's
   saved programs (the editor already loads them) and lists the next few breaks
   of each situation with the plan they would get — "Fri 2:50pm, Ed, Edd n

@@ -1,23 +1,26 @@
 /*
- * The Transitions section of a day-part or block card: four rows (Leaving,
- * Entering, Between episodes, Between shows), each reading in the order the break
- * plays - steps before it, Flex, steps after - and a preview that walks the
- * lineup in the editor and shows what each break would play. See
- * docs/blocks-spec.md, Stage 5, "Editor".
+ * The Transitions section of a day-part or block card: four rows (Leaving, Entering,
+ * Between episodes, Between shows), each reading in the order a break plays - what
+ * goes before the commercials, the commercials, what goes right before the show -
+ * a Quick setup that builds the usual Between shows steps from three lists, "Copy
+ * transitions to..." other cards, and a preview that walks the lineup in the editor
+ * and shows what each break would play. See docs/blocks-spec.md, Stage 5, "Editor".
  *
- * Everything that is not drawing lives in src/transitions-editor.js and is
- * tested there; the preview calls the same buildPlan playback does. This file
- * holds the form's state and does the fetching.
+ * Everything that is not drawing lives in src/transitions-editor.js and is tested
+ * there; the preview calls the same buildPlan playback does. This file holds the
+ * form's state and does the fetching.
  *
  * The form edits a draft (every situation present, every step carrying every
  * field) and writes it to context.transitions only when something is changed, so
  * a card nobody touches is saved byte for byte as it was. Each change also tells
  * the channel editor ('transitionsChanged') so the tags on its Flex rows follow.
+ * Copying to another card writes to that card's context and broadcasts
+ * 'transitionsCopied', so the editor showing it reloads its draft.
  */
 const editor = require('../../src/transitions-editor');
 const transitions = require('../../src/transitions');
 
-module.exports = function ($timeout, dizquetv) {
+module.exports = function ($rootScope, $timeout, dizquetv) {
     return {
         restrict: 'E',
         templateUrl: 'templates/transitions-editor.html',
@@ -30,10 +33,11 @@ module.exports = function ($timeout, dizquetv) {
             kind: '@kind',
         },
         link: function (scope, element, attrs) {
-            const hadStored = (scope.context != null) && (typeof(scope.context.transitions) !== 'undefined');
+            let hadStored = (scope.context != null) && (typeof(scope.context.transitions) !== 'undefined');
             scope.draft = editor.loadDraft(scope.context);
             scope.open = false;
             scope.form = null;
+            scope.panel = null;       // null, 'quick' or 'copy': the small panels under the heading
             scope.notice = '';
             scope.which = editor.WHICH;
             scope.weekDays = editor.DAY_NAMES.map( (name, id) => ({ id: id, name: name }) );
@@ -74,10 +78,6 @@ module.exports = function ($timeout, dizquetv) {
                 }
                 return parts.join(', ');
             };
-            scope.toggleOpen = () => { scope.open = ! scope.open; };
-
-            scope.chip = (step, situation) => editor.chipLabel(step, sequence(situation), names);
-            scope.chipBad = (step, situation) => editor.problemsOf(step, sequence(situation), names).length > 0;
 
             const changed = () => {
                 editor.commit(scope.context, scope.draft, hadStored);
@@ -85,12 +85,16 @@ module.exports = function ($timeout, dizquetv) {
                 scope.$emit('transitionsChanged');
             };
 
+            scope.chip = (step, situation) => editor.chipLabel(step, sequence(situation), names);
+            scope.chipBad = (step, situation) => editor.problemsOf(step, sequence(situation), names).length > 0;
+
             // ---- the open step's form ---------------------------------------
             const rebuildChoices = () => {
+                const lists = (scope.fillerOptions || []).filter( (o) => o.id !== 'none' );
+                scope.allLists = lists;
                 if (scope.form === null) {
                     return;
                 }
-                const lists = (scope.fillerOptions || []).filter( (o) => o.id !== 'none' );
                 const choicesFor = (selected) => {
                     const out = lists.slice();
                     if ( (selected !== null) && ! lists.some( (o) => o.id === selected ) && (scope.listsLoaded === true) ) {
@@ -103,16 +107,34 @@ module.exports = function ($timeout, dizquetv) {
                 const draft = scope.draft;
                 const situation = scope.form.situation;
                 scope.markChoices = editor.markOptions(draft, situation, scope.form.step)
-                    .map( (s) => ({ id: s.id, name: `only when “${editor.stepListName(s, names)}” (${draft[situation].out.indexOf(s) !== -1 ? 'before' : 'after'} the break) found nothing` }) );
+                    .map( (s) => ({ id: s.id, name: `only when “${editor.stepListName(s, names)}” (${draft[situation].out.indexOf(s) !== -1 ? 'before the commercials' : 'after the commercials'}) found nothing` }) );
                 scope.form.watched = editor.isWatched(scope.draft, scope.form.situation, scope.form.step);
             };
+
+            // Leaving a step's form. A step that was added but never given a list
+            // is taken out rather than left half-made (and red).
+            const closeForm = () => {
+                if (scope.form === null) {
+                    return;
+                }
+                const f = scope.form;
+                scope.form = null;
+                const closed = editor.closeStep(scope.draft, f.situation, f.step);
+                if (closed.removed) {
+                    scope.notice = 'That step had no list chosen, so it was removed.';
+                    changed();
+                }
+            };
+            scope.done = closeForm;
 
             scope.edit = (step, situation) => {
                 scope.notice = '';
                 if ( (scope.form !== null) && (scope.form.step === step) ) {
-                    scope.form = null;
+                    closeForm();
                     return;
                 }
+                closeForm();
+                scope.panel = null;
                 scope.form = {
                     situation: situation,
                     step: step,
@@ -130,9 +152,18 @@ module.exports = function ($timeout, dizquetv) {
             };
 
             scope.add = (situation, side) => {
+                closeForm();
                 const step = editor.addStep(scope.draft, situation, side, editor.newStep(scope.draft));
                 changed();
                 scope.edit(step, situation);
+            };
+
+            scope.toggleOpen = () => {
+                if (scope.open) {
+                    closeForm();
+                    scope.panel = null;
+                }
+                scope.open = ! scope.open;
             };
 
             scope.formChanged = (field) => {
@@ -182,6 +213,99 @@ module.exports = function ($timeout, dizquetv) {
                 changed();
             };
 
+            // ---- Quick setup ------------------------------------------------------
+            scope.openQuick = () => {
+                closeForm();
+                scope.notice = '';
+                scope.open = true;
+                scope.panel = 'quick';
+                scope.quick = { promo: null, upNext: null, fallback: null };
+                rebuildChoices();
+            };
+            scope.quickExisting = () => sequence('betweenShows').length;
+            scope.quickReady = () => (scope.quick.promo !== null) || (scope.quick.upNext !== null);
+            scope.buildQuick = () => {
+                const made = editor.quickSetup(scope.draft, {
+                    promo: scope.quick.promo, upNext: scope.quick.upNext, fallback: scope.quick.fallback,
+                });
+                if (made === null) {
+                    return;
+                }
+                changed();
+                scope.panel = null;
+                scope.notice = `Built ${made.built} step${made.built === 1 ? '' : 's'} in Between shows`
+                    + (made.replaced > 0 ? `, replacing the ${made.replaced} that ${made.replaced === 1 ? 'was' : 'were'} there` : '')
+                    + '. Click a step to change anything about it.';
+            };
+
+            // ---- Copy transitions to other cards -----------------------------------
+            const otherContexts = () => {
+                const all = [];
+                (scope.channel.dayParts || []).forEach( (c) => all.push( { context: c, kind: 'day-part' } ) );
+                (scope.channel.blocks || []).forEach( (c) => all.push( { context: c, kind: 'block' } ) );
+                return all.filter( (t) => t.context !== scope.context );
+            };
+            scope.hasOthers = () => otherContexts().length > 0;
+            scope.openCopy = () => {
+                closeForm();
+                scope.notice = '';
+                scope.open = true;
+                scope.panel = 'copy';
+                scope.copy = {
+                    targets: otherContexts().map( (t) => ({
+                        context: t.context, kind: t.kind, picked: false,
+                        label: (t.context.name || '(unnamed)'),
+                    }) ),
+                    rows: { leaving: true, entering: true, betweenEpisodes: true, betweenShows: true },
+                };
+            };
+            scope.copyAll = (kind) => {
+                scope.copy.targets.forEach( (t) => { if (t.kind === kind) { t.picked = true; } } );
+            };
+            const chosenRows = () => scope.situations.map( (s) => s.id ).filter( (id) => scope.copy.rows[id] === true );
+            // What copying now would replace: the steps already in the chosen rows of the chosen cards.
+            scope.copyReplaces = () => {
+                const rows = chosenRows();
+                let n = 0;
+                scope.copy.targets.filter( (t) => t.picked ).forEach( (t) => {
+                    const draft = editor.loadDraft(t.context);
+                    rows.forEach( (r) => { n += editor.stepsOf(draft, r).length; } );
+                } );
+                return n;
+            };
+            scope.copyReady = () => scope.copy.targets.some( (t) => t.picked ) && (chosenRows().length > 0);
+            scope.doCopy = () => {
+                const rows = chosenRows();
+                const picked = scope.copy.targets.filter( (t) => t.picked );
+                const total = { copied: 0, replaced: 0, leftOut: 0 };
+                picked.forEach( (t) => {
+                    const done = editor.copySituations(scope.draft, t.context, rows);
+                    total.copied += done.copied;
+                    total.replaced += done.replaced;
+                    total.leftOut += done.leftOut;
+                } );
+                $rootScope.$broadcast('transitionsCopied', picked.map( (t) => t.context ));
+                scope.$emit('transitionsChanged');
+                scope.panel = null;
+                scope.notice = `Copied ${total.copied} step${total.copied === 1 ? '' : 's'} to ${picked.length} card${picked.length === 1 ? '' : 's'}`
+                    + (total.replaced > 0 ? ` (replacing ${total.replaced} that ${total.replaced === 1 ? 'was' : 'were'} there)` : '')
+                    + (total.leftOut > 0 ? `; ${total.leftOut} step${total.leftOut === 1 ? '' : 's'} with no list ${total.leftOut === 1 ? 'was' : 'were'} left out` : '')
+                    + '. Open the other cards to see or change them.';
+            };
+
+            // Another card's editor copied rows onto this card: take them up.
+            scope.$on('transitionsCopied', (event, contexts) => {
+                if (contexts.indexOf(scope.context) !== -1) {
+                    scope.form = null;
+                    hadStored = (typeof(scope.context.transitions) !== 'undefined');
+                    scope.draft = editor.loadDraft(scope.context);
+                    scope.preview.stale = (scope.preview.sections !== null);
+                }
+            });
+
+            // Leaving the tab with a form open: the same rule as closing it.
+            scope.$on('$destroy', closeForm);
+
             scope.$watch('fillerOptions', rebuildChoices);
             scope.$watch('listsLoaded', rebuildChoices);
 
@@ -210,6 +334,7 @@ module.exports = function ($timeout, dizquetv) {
 
             scope.runPreview = async () => {
                 const channel = scope.channel;
+                closeForm();
                 scope.preview = { busy: true, error: '', sections: null, header: '', stale: false };
                 try {
                     if ( (channel.onDemand != null) && (channel.onDemand.isOnDemand === true) ) {

@@ -1,36 +1,116 @@
 <div class="tr-editor">
-    <div>
+    <div class="tr-head">
         <button type="button" class="btn btn-sm btn-link tr-toggle" ng-click="toggleOpen()">
             <i class="fas" ng-class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
             <span ng-if="count() === 0">Commercials only</span>
             <span ng-if="count() > 0">{{count()}} step{{count() === 1 ? '' : 's'}}</span>
         </button>
-        <span class="small text-muted" ng-if="count() === 0">&mdash; click to add clips around the breaks</span>
+        <span class="small text-muted" ng-if="count() === 0">&mdash; click to add clips around the commercials</span>
         <span class="small text-muted" ng-if="count() > 0">&mdash; {{summaryLine()}}</span>
+        <span class="tr-head-buttons">
+            <button type="button" class="btn btn-sm btn-outline-primary" ng-click="openQuick()"
+                title="Answer three questions and the usual 'between shows' steps are built for you">Quick setup</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="openCopy()" ng-disabled="!hasOthers()"
+                title="Copy these transitions to other day-parts or blocks of this channel">Copy transitions to&hellip;</button>
+        </span>
+    </div>
+
+    <div class="small text-info tr-notice" ng-if="notice">{{notice}}</div>
+
+    <div class="tr-panel" ng-if="panel === 'quick'">
+        <div class="tr-sentence">Quick setup</div>
+        <p class="small text-muted">
+            Builds the <b>Between shows</b> steps: a promo before the commercials and an Up Next right before the show.
+            Each clip is chosen by the show it is about, so only a clip for the show coming up plays.
+            Everything it builds can be changed afterwards.
+        </p>
+        <div class="form-group">
+            <label class="small">1. A promo to play before the commercials <span class="text-muted">(optional)</span></label>
+            <select class="custom-select custom-select-sm form-control" ng-model="quick.promo"
+                ng-options="o.id as o.name for o in allLists">
+                <option value="">no promo</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="small">2. An Up Next to play right before the show</label>
+            <select class="custom-select custom-select-sm form-control" ng-model="quick.upNext"
+                ng-options="o.id as o.name for o in allLists">
+                <option value="">no Up Next</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="small">3. For a show with no Up Next, play one from <span class="text-muted">(optional)</span></label>
+            <select class="custom-select custom-select-sm form-control" ng-model="quick.fallback" ng-disabled="quick.upNext === null"
+                ng-options="o.id as o.name for o in allLists">
+                <option value="">nothing</option>
+            </select>
+        </div>
+        <div class="small text-warning" ng-if="quickExisting() > 0">
+            This replaces the {{quickExisting()}} step{{quickExisting() === 1 ? '' : 's'}} now in Between shows.
+        </div>
+        <div class="small text-muted" ng-if="!quickReady()">Choose a promo list, an Up Next list, or both.</div>
+        <div class="tr-form-buttons">
+            <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="panel = null">Cancel</button>
+            <button type="button" class="btn btn-sm btn-primary" ng-disabled="!quickReady()" ng-click="buildQuick()">{{quickExisting() > 0 ? 'Replace them and build' : 'Build steps'}}</button>
+        </div>
+    </div>
+
+    <div class="tr-panel" ng-if="panel === 'copy'">
+        <div class="tr-sentence">Copy these transitions to&hellip;</div>
+        <p class="small text-muted">
+            Tick the day-parts and blocks that should get the same steps. Each gets its own copy, which you can change afterwards.
+        </p>
+        <div class="small" ng-if="copy.targets.length === 0">There is no other day-part or block on this channel.</div>
+        <div ng-if="copy.targets.length > 0">
+            <div class="small">
+                <a href="" ng-click="copyAll('day-part')">all day-parts</a> &middot; <a href="" ng-click="copyAll('block')">all blocks</a>
+            </div>
+            <div class="form-check" ng-repeat="t in copy.targets">
+                <input class="form-check-input" type="checkbox" id="tr-copy-{{$id}}" ng-model="t.picked">
+                <label class="form-check-label small" for="tr-copy-{{$id}}">{{t.label}} <span class="text-muted">({{t.kind}})</span></label>
+            </div>
+            <label class="small d-block" style="margin-top: 6px;">Which rows to copy</label>
+            <div class="form-check form-check-inline" ng-repeat="s in situations">
+                <input class="form-check-input" type="checkbox" id="tr-copyrow-{{$id}}" ng-model="copy.rows[s.id]">
+                <label class="form-check-label small" for="tr-copyrow-{{$id}}">{{s.title}}</label>
+            </div>
+            <div class="small text-warning" ng-if="copyReplaces() > 0">
+                This replaces {{copyReplaces()}} step{{copyReplaces() === 1 ? '' : 's'}} already in those rows of the ticked cards.
+            </div>
+        </div>
+        <div class="tr-form-buttons">
+            <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="panel = null">Cancel</button>
+            <button type="button" class="btn btn-sm btn-primary" ng-disabled="!copyReady()" ng-click="doCopy()">Copy</button>
+        </div>
     </div>
 
     <div ng-if="open" class="tr-body">
         <p class="small text-muted tr-help">
-            Each row reads in the order a break plays: the steps on the left come before the commercials (Flex),
-            the steps on the right after them, and then the show. A step picks one clip from a filler list.
+            Each row reads in the order a break plays: what goes <b>before the commercials</b> on the left, the commercials in the middle,
+            and what plays <b>right before the show</b> on the right. A step picks one clip from a filler list.
         </p>
-        <div class="small text-info" ng-if="notice">{{notice}}</div>
 
         <div class="tr-situation" ng-repeat="s in situations">
             <div class="tr-situation-head"><b>{{s.title}}</b> <span class="small text-muted">&mdash; {{s.hint}}</span></div>
             <div class="tr-row">
-                <div class="tr-side tr-side-out">
-                    <span class="tr-chip" ng-repeat="step in draft[s.id].out"
-                        ng-class="{'tr-chip-open': form.step === step, 'tr-chip-bad': chipBad(step, s.id)}"
-                        ng-click="edit(step, s.id)" title="Click to edit this step">{{chip(step, s.id)}}</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary tr-add" ng-click="add(s.id, 'out')" title="Add a step before the commercials">+ step</button>
+                <div class="tr-col tr-col-out">
+                    <div class="tr-caption">Before the commercials</div>
+                    <div class="tr-side tr-side-out">
+                        <span class="tr-chip" ng-repeat="step in draft[s.id].out"
+                            ng-class="{'tr-chip-open': form.step === step, 'tr-chip-bad': chipBad(step, s.id)}"
+                            ng-click="edit(step, s.id)" title="Click to edit this step">{{chip(step, s.id)}}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary tr-add" ng-click="add(s.id, 'out')" title="Add a step before the commercials">+ add step</button>
+                    </div>
                 </div>
-                <div class="tr-flex"><span ng-if="draft[s.id].out.length + draft[s.id].in.length === 0">commercials only</span><span ng-if="draft[s.id].out.length + draft[s.id].in.length > 0">Flex</span></div>
-                <div class="tr-side tr-side-in">
-                    <span class="tr-chip" ng-repeat="step in draft[s.id].in"
-                        ng-class="{'tr-chip-open': form.step === step, 'tr-chip-bad': chipBad(step, s.id)}"
-                        ng-click="edit(step, s.id)" title="Click to edit this step">{{chip(step, s.id)}}</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary tr-add" ng-click="add(s.id, 'in')" title="Add a step after the commercials">+ step</button>
+                <div class="tr-flex"><span ng-if="draft[s.id].out.length + draft[s.id].in.length === 0">commercials only</span><span ng-if="draft[s.id].out.length + draft[s.id].in.length > 0">commercials</span></div>
+                <div class="tr-col tr-col-in">
+                    <div class="tr-caption">After the commercials, right before the show</div>
+                    <div class="tr-side tr-side-in">
+                        <span class="tr-chip" ng-repeat="step in draft[s.id].in"
+                            ng-class="{'tr-chip-open': form.step === step, 'tr-chip-bad': chipBad(step, s.id)}"
+                            ng-click="edit(step, s.id)" title="Click to edit this step">{{chip(step, s.id)}}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary tr-add" ng-click="add(s.id, 'in')" title="Add a step after the commercials, right before the show">+ add step</button>
+                    </div>
                 </div>
             </div>
 
@@ -59,7 +139,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="small d-block">Which clip?</label>
+                        <label class="small d-block">Which clip should play?</label>
                         <div class="form-check" ng-repeat="w in which">
                             <input class="form-check-input" type="radio" name="tr-which-{{$id}}" id="tr-which-{{$id}}-{{w.id}}"
                                 ng-model="form.which" ng-value="w.id" ng-change="formChanged('which')">
@@ -99,7 +179,7 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="move(sideOf(), -1)" title="Play this one earlier">&#9664; Earlier</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="move(sideOf(), 1)" title="Play this one later">Later &#9654;</button>
                     <button type="button" class="btn btn-sm btn-outline-danger" ng-click="remove()">Delete step</button>
-                    <button type="button" class="btn btn-sm btn-primary" ng-click="edit(form.step, form.situation)">Done</button>
+                    <button type="button" class="btn btn-sm btn-primary" ng-click="done()">Done</button>
                 </div>
             </div>
         </div>
@@ -124,9 +204,9 @@
                         <div class="tr-pv-head">{{it.head}} <span class="text-muted" ng-if="it.other">({{it.other}})</span></div>
                         <div class="tr-pv-plan">
                             <span class="tr-pv-clip" ng-repeat="c in it.out track by $index">{{c}}</span>
-                            <span class="tr-pv-flex">Flex {{it.flex}}</span>
+                            <span class="tr-pv-flex">commercials {{it.flex}}</span>
                             <span class="tr-pv-clip" ng-repeat="c in it.in track by $index">{{c}}</span>
-                            <span class="small text-warning" ng-if="it.overrun">the steps are longer than the break</span>
+                            <span class="small text-warning" ng-if="it.overrun">the steps are longer than the commercial break</span>
                         </div>
                         <div class="small text-muted tr-pv-left" ng-repeat="l in it.left" ng-class="{'text-danger': l.problem}">{{l.text}}</div>
                     </div>

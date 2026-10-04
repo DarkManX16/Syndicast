@@ -648,7 +648,7 @@ for the full spec, stages and acceptance tests.
 
       **Step 5 built Oct 4, 2026 (Sonnet 5.5), on branch `stage5-step5`: the card
       editor.** A Transitions section on every day-part and block card, a preview
-      that walks the lineup, and a one-line tag on each Flex row. 724 to 861 tests.
+      that walks the lineup, and a one-line tag on each Flex row. 724 to 893 tests.
       Nothing server-side changed except one new client call, `getFillerMatch`, for
       the read-only `GET /api/filler/:id/match`.
 
@@ -658,7 +658,7 @@ for the full spec, stages and acceptance tests.
         how it chooses, "skip" or the fallback list, then days, a percent, or "if X
         finds nothing") that opens a form. **The form's first line is one plain
         sentence that rebuilds as it changes**: "Plays a clip from Nick at Nite Up
-        Next about the show coming up; if none matches, plays nothing; only on Mon and
+        Next for the show coming up; if none matches, plays nothing; only on Mon and
         Wed; about 50% of the time." The four ways of choosing are one radio group
         (next show, last show, last then next, any clip), not the two stored fields.
       - **The form cannot store what the save-time warning would complain about.** No
@@ -717,14 +717,47 @@ for the full spec, stages and acceptance tests.
         `channel-config.js` and runs it with only a `scope`, so a call from inside it to
         a helper declared elsewhere in the directive broke that test (and would have
         broken the function there); it now only bumps `scope.flexTagVersion`.
+      - **A friendlier pass, after Ron tried it (Oct 4).** The logic was right but too
+        technical to set up comfortably, so four things changed and nothing was taken away.
+        (1) *Plain labels:* the left of each row is captioned "Before the commercials" and
+        the right "After the commercials, right before the show", the middle reads
+        "commercials", and a step is "for the show coming up" / "for the show that just
+        ended" on chips, in the form and in the sentence (not "names next show"); the Flex
+        tag's tooltip says "Before the commercials" / "After the commercials". (2) *Quick
+        setup* on each card asks three things (a promo to play before the commercials, an
+        Up Next to play right before the show, a fallback for shows with no Up Next) and
+        builds the Between shows steps: the promo as a `show` step keyed on next with
+        nothing as its fallback (it plays only before a show it names), the Up Next the same
+        with the third list as its fallback. At least one of the first two is needed, a
+        fallback belongs to an Up Next and is ignored without one, and it replaces what
+        Between shows holds, saying how many (the button reads "Replace them and build").
+        The steps are ordinary ones. (3) *Copy transitions to...* copies chosen rows
+        (all four ticked by default) of a card to the day-parts and blocks ticked on the
+        same channel, "all day-parts" and "all blocks" being one click each. Each copy has
+        new ids, an "only when" is carried to the copy of the step it named, a step with no
+        list is left out (and a mark on it cleared), other rows of the target are kept, a
+        target with nothing and an empty copy gains no key, and the panel says how many
+        steps it will replace before it does and how many it did after. The editor
+        showing a target card, if it is open, reloads its draft (`transitionsCopied`);
+        one on another tab reads it from the channel when it opens. (4) *A step closed with
+        no list is removed*, not left red: Done, clicking the chip, opening another step or
+        panel, collapsing the section, previewing, and leaving the tab all do it (the
+        refuse-to-save rule stays as a net). 32 new checks in `test/transitions-editor.js`
+        (`closeStep`, `quickSetup`, `copySituations`, including quick setup's steps played
+        through `buildPlan` for a show with and without an Up Next); each mutation tried
+        (14, including copying with the original ids, losing the mark, clearing every row,
+        sharing the step objects) fails a check. Checked in the browser on channel 1's copy:
+        quick setup built the two steps, an empty step vanished on Done and on a tab
+        switch, copying to a day-part and a block updated both (the open day-part live) and
+        left Miguzi alone, and a save wrote `transitions` to exactly those three contexts.
       - **Writers of a step, enumerated again** (the rule for this kind of change): the
         card editor (new; produces every field of the shape, unique ids), `normalizeTransitions`
         (defaults), `buildPlan` (reader), `warnAboutTransitions` and its two helper rules,
         the preview and the tag (readers, through `buildPlan`/`assemble`), `transitions-plan-day.js`
         and the spec. A stored step the editor does not know (`keyedOn: later`, kind `generated`)
         shows as "not built yet" and is kept as it is.
-      - **Tests.** `test/transitions-editor.js`, 128 checks (see Testing notes), mutation-checked
-        with 20 deliberate breaks, all caught. Not automated: the form and the directive's
+      - **Tests.** `test/transitions-editor.js`, 160 checks (see Testing notes), mutation-checked
+        with 34 deliberate breaks, all caught. Not automated: the form and the directive's
         fetching, checked by hand on a copy of `.dizquetv-dev` in a browser (channel 1 at full size).
 
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by

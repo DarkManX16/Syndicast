@@ -28,15 +28,15 @@ const showMatch = require('./show-match');
  * offered (it is not built), and a stored step using it reads as unsupported.
  */
 const WHICH = [
-    { id: 'next', match: 'show', keyedOn: 'next', short: 'names next show',
-      label: 'a clip about the show coming up next',
-      about: ' about the show coming up' },
-    { id: 'now', match: 'show', keyedOn: 'now', short: 'names last show',
-      label: 'a clip about the show that just ended',
-      about: ' about the show that just ended' },
-    { id: 'pair', match: 'pair', keyedOn: 'next', short: 'names last → next',
-      label: 'a clip about the show that just ended, then the one coming up',
-      about: ' about the show that just ended and the one coming up (or, failing that, just the one coming up)' },
+    { id: 'next', match: 'show', keyedOn: 'next', short: 'for the show coming up',
+      label: 'a clip for the show coming up next',
+      about: ' for the show coming up' },
+    { id: 'now', match: 'show', keyedOn: 'now', short: 'for the show that just ended',
+      label: 'a clip for the show that just ended',
+      about: ' for the show that just ended' },
+    { id: 'pair', match: 'pair', keyedOn: 'next', short: 'for the show that just ended, then the one coming up',
+      label: 'a clip for the show that just ended, then the one coming up',
+      about: ' for the show that just ended, then the one coming up (or, failing that, just the one coming up)' },
     { id: 'any', match: 'any', keyedOn: 'next', short: 'any clip',
       label: 'any clip from the list', about: '' },
 ];
@@ -147,6 +147,18 @@ function removeStep(draft, situation, step) {
         }
     }
     return cleared;
+}
+
+/*
+ * Leaving a step's form: a step with no list chosen is taken out rather than
+ * left half-made. Returns { removed, cleared }: whether it was removed, and the
+ * steps whose "only when" named it (cleared, as for any deletion).
+ */
+function closeStep(draft, situation, step) {
+    if ( (step.kind === 'list') && ( (step.listId == null) || (step.listId === '') ) ) {
+        return { removed: true, cleared: removeStep(draft, situation, step) };
+    }
+    return { removed: false, cleared: [] };
 }
 
 // The steps `step` could watch: the others in its own situation, out and in
@@ -266,7 +278,7 @@ function stepListName(step, names) {
 
 /*
  * The one sentence at the top of a step's form, rebuilt as it changes:
- * "Plays a clip from Nick at Nite Up Next about the show coming up; if none
+ * "Plays a clip from Nick at Nite Up Next for the show coming up; if none
  * matches, plays nothing." `sequence` is every step of the step's situation, so
  * a watched step can be named.
  */
@@ -348,7 +360,7 @@ function problemsOf(step, sequence, names) {
         return problems;
     }
     if (step.listId == null || step.listId === '') {
-        problems.push('Choose the list this step draws from.');
+        problems.push('Choose the list this step draws from. (A step with no list is removed when you close it.)');
     } else if (listText(step.listId, names) === null) {
         problems.push('The list this step draws from no longer exists.');
     }
@@ -405,6 +417,88 @@ function commit(context, draft, hadStored) {
     } else {
         context.transitions = serialize(draft);
     }
+}
+
+/*
+ * Quick setup: the Between shows sequence most channels want, built from up to
+ * three lists, replacing whatever Between shows holds now.
+ *
+ *   before the commercials   a clip from the promo list for the show coming up
+ *                            (nothing plays if the list has none for it)
+ *   right before the show    a clip from the Up Next list for the show coming up,
+ *                            else one from the fallback list, else nothing
+ *
+ * Both are ordinary steps afterwards, edited like any other. At least one of the
+ * promo and Up Next lists is needed; a fallback only belongs to an Up Next step.
+ * Returns { built, replaced } (steps made, steps they replaced), or null when
+ * there was nothing to build from.
+ */
+function quickSetup(draft, lists) {
+    const has = (id) => (typeof(id) === 'string') && (id !== '');
+    if (! has(lists.promo) && ! has(lists.upNext) ) {
+        return null;
+    }
+    const replaced = stepsOf(draft, 'betweenShows').length;
+    draft.betweenShows = { out: [], in: [] };
+    let built = 0;
+    if (has(lists.promo)) {
+        const step = addStep(draft, 'betweenShows', 'out', newStep(draft));
+        step.listId = lists.promo;
+        built++;
+    }
+    if (has(lists.upNext)) {
+        const step = addStep(draft, 'betweenShows', 'in', newStep(draft));
+        step.listId = lists.upNext;
+        step.fallbackListId = has(lists.fallback) ? lists.fallback : null;
+        built++;
+    }
+    return { built: built, replaced: replaced };
+}
+
+/*
+ * Copy some of a draft's rows to another day-part or block, replacing the same
+ * rows there and leaving its other rows alone. Every copied step gets a new id (ids
+ * are per draft) and an "only when" is carried across to the copy of the step it
+ * named. A step with no list chosen is left out, and an "only when" that named one
+ * is cleared. The source is not changed. Returns { copied, replaced, leftOut }.
+ */
+function copySituations(source, targetContext, situations) {
+    const target = loadDraft(targetContext);
+    const hadStored = (typeof(targetContext.transitions) !== 'undefined');
+    let copied = 0;
+    let replaced = 0;
+    let leftOut = 0;
+    for (const name of situations) {
+        if (transitions.SITUATIONS.indexOf(name) === -1) {
+            throw new Error(`transitionsEditor.copySituations: "${name}" is not a situation`);
+        }
+        replaced += stepsOf(target, name).length;
+        target[name] = { out: [], in: [] };
+        const fresh = new Map();
+        const made = [];
+        for (const side of ['out', 'in']) {
+            for (const step of source[name][side]) {
+                if ( (step.kind === 'list') && ( (step.listId == null) || (step.listId === '') ) ) {
+                    leftOut++;
+                    continue;
+                }
+                const copy = JSON.parse( JSON.stringify(cleanStep(step)) );
+                const old = copy.id;
+                copy.id = newStepId(target);
+                fresh.set(old, copy.id);
+                target[name][side].push(copy);
+                made.push(copy);
+                copied++;
+            }
+        }
+        for (const copy of made) {
+            if (isMarked(copy)) {
+                copy.onlyIfNoMatch = fresh.has(copy.onlyIfNoMatch) ? fresh.get(copy.onlyIfNoMatch) : null;
+            }
+        }
+    }
+    commit(targetContext, target, hadStored);
+    return { copied: copied, replaced: replaced, leftOut: leftOut };
 }
 
 /*
@@ -472,10 +566,10 @@ function flexTag(channel, index, entryStart, names) {
     }
     const lines = [];
     if (before.length > 0) {
-        lines.push('Before the break: ' + before.join(', '));
+        lines.push('Before the commercials: ' + before.join(', '));
     }
     if (after.length > 0) {
-        lines.push('After the break: ' + after.join(', '));
+        lines.push('After the commercials: ' + after.join(', '));
     }
     const all = before.concat(after);
     if (all.some( (l) => l.includes(' ?') )) {
@@ -624,6 +718,9 @@ module.exports = {
     addStep: addStep,
     moveStep: moveStep,
     removeStep: removeStep,
+    closeStep: closeStep,
+    quickSetup: quickSetup,
+    copySituations: copySituations,
     markOptions: markOptions,
     isMarked: isMarked,
     isWatched: isWatched,

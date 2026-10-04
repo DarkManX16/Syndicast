@@ -831,9 +831,40 @@ div.programming-programs div.list-group-item {
   gap: 8px;
   margin-top: 4px;
 }
-.tr-editor .tr-side {
+.tr-editor .tr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.tr-editor .tr-head-buttons {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.tr-editor .tr-notice {
+  margin: 4px 0;
+}
+.tr-editor .tr-panel {
+  margin: 6px 0 8px 0;
+  padding: 8px 10px;
+  border: 1px solid #9fcfd6;
+  border-radius: 4px;
+  background: #f4fafb;
+}
+.tr-editor .tr-col {
   flex: 1 1 0;
   min-width: 0;
+}
+.tr-editor .tr-caption {
+  font-size: 70%;
+  color: #777;
+  margin-bottom: 2px;
+}
+.tr-editor .tr-col-out .tr-caption {
+  text-align: right;
+}
+.tr-editor .tr-side {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
