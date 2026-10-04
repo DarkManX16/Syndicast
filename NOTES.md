@@ -648,7 +648,7 @@ for the full spec, stages and acceptance tests.
 
       **Step 5 built Oct 4, 2026 (Sonnet 5.5), on branch `stage5-step5`: the card
       editor.** A Transitions section on every day-part and block card, a preview
-      that walks the lineup, and a one-line tag on each Flex row. 724 to 893 tests.
+      that walks the lineup, and a one-line tag on each Flex row. 724 to 1,014 tests.
       Nothing server-side changed except one new client call, `getFillerMatch`, for
       the read-only `GET /api/filler/:id/match`.
 
@@ -799,6 +799,38 @@ for the full spec, stages and acceptance tests.
       - **The preview change.** `buildPlan` returns `fits` on each step that plays, the
         titles of every clip that fitted the tier it chose from, the chosen one first (a clip
         already used in the plan is not in it). The preview lists them under the step.
+      - **Hyphens, several shows and abbreviations (Oct 4, after Ron's Miguzi look).** Three
+        more changes, each its own commit, then rows from the real titles. (1) *Hyphens:*
+        "Miguzi - Next Bumper (TMNT-Teen Titans)" is two shows; a hyphen inside one pair of
+        brackets cuts it into pieces and the never-half-read rule now runs over any number
+        of pieces, for "A to B" and "Now/Then (A / B)" too. Against all 56 lists it changed
+        6 clips, 3 right (the two Miguzi titles, "(Grim Advs Billy & Mandy-Ed Edd n Eddy)") and
+        3 wrong, left unnamed and never named wrongly: "(Foster's Home For Imaginary Friends -
+        Traffic)" twice and "(Fairly Oddparents - Cosmo)", where the piece after the hyphen is
+        an episode or a character. The 13 hyphenated show titles on the channels (Scooby-Doo,
+        X-Men: Evolution, He-Man and others) are tested as one title each, in brackets and as
+        one of a joined pair. A first try added a protection for hyphenated words in show
+        titles that changed nothing (the title's own hit straddles the hyphen), and was
+        removed. (2) *Several shows:* names holds one to four keys, and a clip naming several
+        fits a step keyed on next only when those shows air one after another in that order,
+        starting with the show coming up (`showSequence`; `showAfter` is its second); a step
+        keyed on now, and a pair step, still read what they always did. (3) *Abbreviations:*
+        an all-capitals word of three or more letters that is the initials of exactly one
+        show names it, `abbreviation: true` on the hit. Before committing it, what it does on
+        all 56 lists was measured: 96 clips change, 93 gain a name, none loses one (TMNT 13,
+        DBZ 33, MGPAM 26, ATHF 24). It found a trap: "TAS" would have named The Tex Avery Show
+        for three clips that mean The Animated Series ("Batman TAS", "Superman TAS"), so
+        initials are counted with and without a leading "The" and a subtitle's initials make
+        an abbreviation ambiguous (never a meaning of their own): TAS names nothing, and neither
+        does KND (80 clips, Codename: Kids Next Door), left to the review screen.
+      - **Ron's Miguzi bumpers, as the data has them.** The three-show bumper is titled
+        "(TMNT-Static-Teen Titans)", with "Static", not "Static Shock". "Static" alone is not
+        Static Shock, so the clip is unresolved until "static" is taught as an alias, which is
+        step 6's job; in the preview copy the alias was added by hand to show Sunday. The
+        schedule is as described: Sat Oct 10 5:51pm Totally Spies! → TMNT, then Teen Titans;
+        Sun Oct 11 5:21pm Totally Spies! → TMNT, then Static Shock, then Teen Titans, both in the
+        Miguzi block. Plan rows run the real titles through the real matcher (see the spec's
+        acceptance rows).
       - **Writers of a step, enumerated again** (the rule for this kind of change): the
         card editor (new; produces every field of the shape, unique ids), `normalizeTransitions`
         (defaults), `buildPlan` (reader), `warnAboutTransitions` and its two helper rules,

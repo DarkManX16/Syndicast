@@ -366,13 +366,30 @@ first). It is proposed automatically and fixed on a review screen:
   title is left to that title, and two shows sharing one are reported as ambiguous.
   A clip may space a title differently ("DragonBall GT", "Inu Yasha"): a title of
   six or more letters is also read with its spaces taken out, among side-by-side
-  words not already taken. **A title built as two shows is never half-read.** When
-  it is written "A to B" or "Now/Then (A / B)" (a slash with a space either side,
-  or "to" before a capital) and only one show is recognised, the clip proposes
-  nothing and carries `unresolved: { recognised, reason }` for the review screen;
-  naming the one show would play "Foster's, then Camp Lazlo" before Camp Lazlo
+  words not already taken. **A title built as several shows is never half-read.**
+  A title is built as several shows when it is written "A to B" or "Now/Then (A / B)"
+  (a slash with a space either side, or "to" before a capital) or, inside one pair of
+  brackets, "(A-B)" or "(A-B-C)" with hyphens; it is cut into one piece per show. If
+  some piece holds a show and another holds a word that is none (of three letters or
+  more, not a year or a word that describes a clip), the clip proposes nothing and
+  carries `unresolved: { recognised, reason }` for the review screen; naming only
+  the shows that were found would play "Foster's, then Camp Lazlo" before Camp Lazlo
   whatever had just ended, and would make "Foster's" look like another show's word
-  when taught. Titles like "[As] NEXT - SGC2C [2003]" match nothing on the first
+  when taught. A hyphen inside a show's own title ("Scooby-Doo", "X-Men: Evolution")
+  is not a separator, because the show's title straddles it. A piece that holds two
+  shows, or a show and words that are not part of it ("The Brady Bunch Kitty"), is not
+  one show of a list, and the clip is left as it was read. Brackets are looked at one
+  at a time.
+  **An abbreviation** names a show when an all-capitals word of three or more letters
+  in the clip's title is the initials of exactly one show title: TMNT for Teenage
+  Mutant Ninja Turtles (2003), ATHF, DBZ, MGPAM. Initials are counted with and without
+  a leading "The", and the initials of a subtitle count only to make an abbreviation
+  ambiguous: "TAS" is The Tex Avery Show, The Amanda Show and the subtitle of
+  Superman: The Animated Series, so it names none, and "KND" (a subtitle) names
+  nothing. A hit by abbreviation is marked `abbreviation`, for the review screen to
+  show as "from an abbreviation"; initials two shows share are left to the review
+  screen; a word taught as an alias wins; a show already found by its title is not
+  found again. Titles like "[As] NEXT - SGC2C [2003]" match nothing on the first
   pass.
 - **Review** is a table: clip, proposed show(s), a dropdown to fix it, and
   "none" for a clip that names no show. A one-time pass per list, redone only
@@ -724,6 +741,16 @@ one naming TMNT, Static Shock, then Teen Titans):
 - **Sun, Totally Spies! → TMNT, with Static Shock then Teen Titans after it:** Flex → the TMNT-Static Shock-Teen Titans bumper; the two-show bumper does not play
 - **Static Shock → Teen Titans:** Flex only; neither bumper plays before Teen Titans, whose name is not the first
 - **TMNT, Static Shock, then Foster's (Teen Titans does not follow):** Flex only; the shows named do not air one after another
+
+Added with the abbreviation rule, the same Miguzi lists named from their real titles
+by the matcher (so "TMNT" is read as an abbreviation and "Static" is not Static Shock
+until it is taught as an alias):
+
+- **From the real titles, Sat, Totally Spies! → TMNT, Teen Titans after it:** Flex → "Miguzi - Next Bumper (TMNT-Teen Titans)"
+- **Sun, TMNT, Static Shock, Teen Titans, with "Static" taught:** Flex → "Miguzi - Next Bumper (TMNT-Static-Teen Titans)"
+- **The same Sunday before "Static" is taught:** Flex only; the three-show clip is unresolved and never plays
+- **Sat, only the three-show clip in the list, "Static" not taught:** Flex only; it is not read as TMNT then Teen Titans
+- **Static Shock → Teen Titans:** Flex only, with or without the alias
 
 ## Open questions
 
