@@ -185,6 +185,9 @@ const SEQ_LISTS = {
     'NN Next Promos': [named('Next Promo (Cheers)', 10, ['tv.Cheers']), named('Next Promo (Wings)', 10, ['tv.Wings'])],
     'NN Up Next': [named('Up Next (Cheers)', 10, ['tv.Cheers']), named('Up Next (Taxi)', 10, ['tv.Taxi'])],
     'NN Up Next generic': [named('Up Next (generic)', 10)],
+    // Miguzi's Up Next bumpers name the shows they announce, in order: the one coming up, then those after it.
+    'Miguzi Up Next': [named('Miguzi - Next Bumper (TMNT-Teen Titans)', 15, ['tv.Teenage Mutant Ninja Turtles (2003)', 'tv.Teen Titans']),
+        named('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)', 10, ['tv.Teenage Mutant Ninja Turtles (2003)', 'tv.Static Shock', 'tv.Teen Titans'])],
     'NN WBRB': [named('WBRB', 10)],
     'NN BTTS': [named('BTTS', 10)],
 
@@ -288,6 +291,15 @@ nickReal.blocks = [
       airings: [{ days: [0, 1, 2, 3, 4, 5, 6], start: 20 * HOUR, end: 2 * HOUR }] },
 ];
 const nickWith = (byName) => withTransitions(nickReal, byName);
+// Miguzi on Saturday and Sunday afternoons: a between-shows step before the show, for the show coming up.
+const miguziReal = channelOf(12, 'Miguzi test', [
+    { name: 'Weekend', fillerCollections: mix([['90s Nick', 100]]), starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 6 * HOUR }] },
+]);
+miguziReal.blocks = [
+    { name: 'Miguzi', fillerCollections: mix([['90s Nick', 100]]),
+      airings: [{ days: [0, 6], start: 15 * HOUR, end: 19 * HOUR }] },
+];
+const miguziWith = withTransitions(miguziReal, { 'Miguzi': { betweenShows: { out: [], in: [nextStep('mg-up', 'Miguzi Up Next')] } } });
 // CN City Day (Saturday from 6am) with the given situations on it.
 const cnWith = (situations) => withTransitions(ccn, { 'CN City Day': situations });
 // Up Next for the show coming, else whatever the CN City list holds; the list's setting decides what that is.
@@ -800,6 +812,29 @@ const ROWS = [
             out: [nextStep('up-out', 'NN Up Next', { chance: 50 })],
             in: [nextStep('up-in', 'NN Up Next', { onlyIfNoMatch: 'up-out' })] } } }),
             [episode('Frasier', 1, 25), flex(5), episode('Cheers', 1, 25)], '2026-01-05T13:00:00', 1, loseRoll))),
+
+    // Several shows in one bumper: it fits only when those shows air one after another, in that
+    // order, starting with the show coming up. Saturday: Totally Spies!, then TMNT, Teen Titans.
+    // Sunday: TMNT, Static Shock, Teen Titans. Jan 17 2026 is a Saturday, Jan 18 a Sunday.
+    planRow(5, 'Sat 5:50pm, Totally Spies! -> TMNT, Teen Titans after it | the TMNT-Teen Titans bumper plays; the three-show bumper does not',
+        'Flex -> Miguzi - Next Bumper (TMNT-Teen Titans)',
+        () => render(planOf(miguziWith, [episode('Totally Spies!', 1, 30), flex(5), episode('Teenage Mutant Ninja Turtles (2003)', 1, 30),
+            episode('Teen Titans', 1, 30), episode('Cartoon Theatre Movies', 1, 30)], '2026-01-17T17:20:00', 1))),
+
+    planRow(5, 'Sun 5:20pm, Totally Spies! -> TMNT, Static Shock, Teen Titans | the TMNT-Static Shock-Teen Titans bumper plays; the two-show bumper does not',
+        'Flex -> Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)',
+        () => render(planOf(miguziWith, [episode('Totally Spies!', 1, 30), flex(5), episode('Teenage Mutant Ninja Turtles (2003)', 1, 30),
+            episode('Static Shock', 1, 30), episode('Teen Titans', 1, 30), episode('Foster\'s', 1, 30)], '2026-01-18T16:50:00', 1))),
+
+    planRow(5, 'Static Shock -> Teen Titans | neither bumper plays before Teen Titans: its first name is not the show coming up',
+        'Flex',
+        () => render(planOf(miguziWith, [episode('Static Shock', 1, 30), flex(5), episode('Teen Titans', 1, 30), episode('Foster\'s', 1, 30)],
+            '2026-01-18T16:50:00', 1))),
+
+    planRow(5, 'TMNT then Static Shock then Foster\'s | neither plays: Teen Titans does not follow, so the shows named do not air one after another',
+        'Flex',
+        () => render(planOf(miguziWith, [episode('Totally Spies!', 1, 30), flex(5), episode('Teenage Mutant Ninja Turtles (2003)', 1, 30),
+            episode('Static Shock', 1, 30), episode('Foster\'s', 1, 30), episode('Teen Titans', 1, 30)], '2026-01-18T16:50:00', 1))),
 
     // CN City Bumpers [DAY]: character bumpers that feature a show without
     // announcing it. A show with no Up Next falls back to them.

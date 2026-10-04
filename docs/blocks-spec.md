@@ -213,18 +213,27 @@ step 3b reads, and plays, exactly as it did.
 - **`match: 'pair'`** is the Now/Then step. It wants a clip naming both P and
   N in that order. If none exists it tries a clip naming only N (a plain Up
   Next for the same show), then the fallback list, then skips.
-- **A clip naming two shows, in a step keyed on `next`,** means "coming up:
-  these two, in this order". It plays only when the next show is the first
-  name and the show after it is the second: "Up Next Bumper (All in the
-  family-The Jeffersons)" plays before All in the Family when The Jeffersons
-  follows it, and never when something else does. "The show after" is the first
-  program after the next show's own run that is neither Flex nor another
-  episode of that show. A **`pair`** step is the only place two names read as
-  now → then, and a step keyed on `now` never plays a two-name clip. (Settled
-  at step 3, and it is what this spec's own "Now/Then (Grim / Foster's)"
-  acceptance row needs: that clip plays before Grim, so it cannot be a clip
-  naming the show that ended and the one starting.) Two-name clips and
-  one-name clips share one pool; the longest-idle plays.
+- **A clip naming several shows, in a step keyed on `next`,** means "coming up:
+  these, one after another, in this order". It fits only when those shows air one
+  after another in that order, starting with the show coming up: the next show is
+  the first name, the show after it the second, the one after that the third, and
+  so on, up to four. "Up Next Bumper (All in the family-The Jeffersons)" plays
+  before All in the Family when The Jeffersons follows it, and never when something
+  else does; "Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)" plays before
+  TMNT when Static Shock follows it and Teen Titans follows that, and before
+  nothing else: not before Teen Titans, whose name is third, and not before TMNT
+  when Teen Titans follows it directly. "The show after" is the first program
+  after the next show's own run that is neither Flex nor another episode of that
+  show, and "the one after that" is found the same way from the second show's run
+  (the shows from the next one on are `showSequence` in `src/transitions.js`; the
+  lineup is a cycle, so it wraps). A **`pair`** step is the only place two names
+  read as now → then (and takes no clip of three), and a step keyed on `now` never
+  plays a clip naming several. (Settled at step 3, and it is what this spec's own
+  "Now/Then (Grim / Foster's)" acceptance row needs: that clip plays before Grim,
+  so it cannot be a clip naming the show that ended and the one starting. Widened
+  from two shows to several at step 5, with nothing else about it changed.)
+  Clips naming one, two or three shows share one pool; the longest-idle that fits
+  plays.
 - **`onlyIfNoMatch: <step id>`** marks a step to play only when the step it
   names found no clip. The Nick at Nite sequence: an Up Next step, then a WBRB
   step out and a BTTS step in, both marked with the Up Next step's id, so they
@@ -328,19 +337,21 @@ to enter that per pair: channel 1 has 281 distinct adjacent pairs in a week,
 the schedule, and the set is the size of the lineup, not of the examples.
 
 So the mapping lives on the clip, not the step. Each clip in a filler list
-may carry `names: [showKey]` or `names: [showKey, showKey]` (now, then). It is
-proposed automatically and fixed on a review screen:
+may carry `names: [showKey]` or, for a bumper that announces several shows, up to
+four keys in the order they air (`[showKey, showKey, showKey]`, the one coming up
+first). It is proposed automatically and fixed on a review screen:
 
 - **Proposal** matches the clip's title against the show keys of every
   channel's slots and programs: longest title first, case and punctuation
   folded, so "Adult Swim Promo - Cowboy Bebop [2003]" names Cowboy Bebop and
   "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
-  make a pair - which is how the pair is *read* is up to the step: now → then
-  in a `pair` step, "coming up, in this order" in one keyed on `next` (see
-  Steps). Ron's two styles of two-show title, "A to B" (CN Powerhouse: "CN Next
-  (Dexter's Lab to Ed, Edd n Eddy)") and "Now/Then (A / B)" (CN City), both read the
-  same way under the rule in Steps: **A is the show coming up next and B airs after
-  it.** That is the current two-show rule, so nothing changes for them. A leading "The" is optional when the rest of the title is
+  make a pair, and three or four make a list: which is how they are *read* is up
+  to the step: now → then (two only) in a `pair` step, "coming up, in this order"
+  in one keyed on `next` (see Steps). Ron's styles of multi-show title, "A to B" (CN Powerhouse: "CN Next
+  (Dexter's Lab to Ed, Edd n Eddy)"), "Now/Then (A / B)" (CN City) and "(A-B)" or
+  "(A-B-C)" inside brackets (Miguzi: "Miguzi - Next Bumper (TMNT-Teen Titans)"), all
+  read the same way under the rule in Steps: **A is the show coming up next, B airs
+  after it, and C after B.** That is the current two-show rule, so nothing changes for them. A leading "The" is optional when the rest of the title is
   still two words or more, so "Powerpuff Girls Promo" names The Powerpuff
   Girls; a single word left (five letters or more) counts only when it stands
   alone as its own segment, so "Up Next Bumper (Jeffersons)" names The
@@ -703,6 +714,16 @@ the two options):
 - **A step limited to Mondays, on a Tuesday:** found nothing, so the step marked `onlyIfNoMatch` on it plays; **on a Monday:** it plays and the marked step stays out
 - **A 50% Up Next out with the same Up Next marked in, roll under 50:** Up Next → Flex; **roll over:** Flex → Up Next
 - **CN City, a show with no Up Next:** Flex → a bumper for a different show from "CN City Bumpers [DAY]"; **when the show has its own bumper there:** that one, though another has been idle longer; **a show with an Up Next:** the Up Next; **the same clips in a list without the setting:** Flex only; **between two episodes of a show with no bumper:** two different bumpers, out then in
+
+Added with the several-shows rule, each a plan row on a fixture of its own (a Miguzi
+block, Saturday and Sunday afternoons, with a between-shows step before the show,
+for the show coming up, from a list of two bumpers: one naming TMNT then Teen Titans,
+one naming TMNT, Static Shock, then Teen Titans):
+
+- **Sat, Totally Spies! → TMNT, with Teen Titans after it:** Flex → the TMNT-Teen Titans bumper; the three-show bumper does not play
+- **Sun, Totally Spies! → TMNT, with Static Shock then Teen Titans after it:** Flex → the TMNT-Static Shock-Teen Titans bumper; the two-show bumper does not play
+- **Static Shock → Teen Titans:** Flex only; neither bumper plays before Teen Titans, whose name is not the first
+- **TMNT, Static Shock, then Foster's (Teen Titans does not follow):** Flex only; the shows named do not air one after another
 
 ## Open questions
 

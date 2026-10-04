@@ -311,8 +311,12 @@ module.exports = async function run() {
             names(propose('Sealab 2021 then Cowboy Bebop')) === `${KEYS.sealab21},${KEYS.bebop}`);
         suite.check('the same show twice is one show', names(propose('Cowboy Bebop vs Cowboy Bebop')) === KEYS.bebop);
         const three = propose('Cowboy Bebop, Sealab 2021 and Naruto');
-        suite.check('three shows propose the first two and say there was more',
-            names(three) === `${KEYS.bebop},${KEYS.sealab21}` && three.extra === 1, `${names(three)} extra ${three.extra}`);
+        suite.check('three shows are all proposed, in the order written',
+            names(three) === `${KEYS.bebop},${KEYS.sealab21},${KEYS.naruto}` && three.extra === 0, `${names(three)} extra ${three.extra}`);
+        const five = propose('Cowboy Bebop, Sealab 2021, Naruto, Home Movies and Dragon Ball Z');
+        suite.check('up to four are proposed, and the rest are counted',
+            names(five) === `${KEYS.bebop},${KEYS.sealab21},${KEYS.naruto},${KEYS.homeMovies}` && five.extra === 1, `${names(five)} extra ${five.extra}`);
+        suite.check('the most shows a clip names is exported, and is four', showMatch.MAX_NAMES === 4);
         suite.check('each hit says what it matched and how',
             p.found.length === 2 && p.found[0].text === 'cowboy bebop' && p.found[0].via === 'title');
     }
@@ -394,13 +398,17 @@ module.exports = async function run() {
         suite.check('one show', n({ names: ['tv.A'] }).join() === 'tv.A');
         suite.check('two shows, now then', n({ names: ['tv.A', 'tv.B'] }).join() === 'tv.A,tv.B');
         suite.check('an empty array is unnamed', n({ names: [] }).length === 0);
-        suite.check('a string, three entries or a non-string entry read as unnamed',
-            n({ names: 'tv.A' }).length === 0 && n({ names: ['a', 'b', 'c'] }).length === 0 && n({ names: [4] }).length === 0);
+        suite.check('three and four shows, in order', n({ names: ['tv.A', 'tv.B', 'tv.C'] }).join() === 'tv.A,tv.B,tv.C'
+            && n({ names: ['tv.A', 'tv.B', 'tv.C', 'tv.D'] }).join() === 'tv.A,tv.B,tv.C,tv.D');
+        suite.check('a string, five entries or a non-string entry read as unnamed',
+            n({ names: 'tv.A' }).length === 0 && n({ names: ['a', 'b', 'c', 'd', 'e'] }).length === 0 && n({ names: [4] }).length === 0);
         suite.check('reading hands back a copy', (() => { const c = { names: ['tv.A'] }; n(c).push('x'); return c.names.length === 1; })());
         suite.check('a good shape has no problem', showMatch.namesProblem({ names: ['tv.A'] }) === null
             && showMatch.namesProblem({ title: 'x' }) === null);
         suite.check('a bad shape says what is wrong',
-            /array/.test(showMatch.namesProblem({ names: 'tv.A' })) && /one or two/.test(showMatch.namesProblem({ names: [] })));
+            /array/.test(showMatch.namesProblem({ names: 'tv.A' })) && /one to four/.test(showMatch.namesProblem({ names: [] }))
+            && /one to four/.test(showMatch.namesProblem({ names: ['a', 'b', 'c', 'd', 'e'] }))
+            && showMatch.namesProblem({ names: ['tv.A', 'tv.B', 'tv.C', 'tv.D'] }) === null);
     }
 
     // ---- the alias store: reader and writer, on throwaway folders ------------
@@ -690,6 +698,9 @@ module.exports = async function run() {
             names(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`
             && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === null
             && names(p('Miguzi - Next Bumper (Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`);
+        suite.check('three shows written with hyphens are all proposed, in order',
+            names(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static Shock-Teen Titans)')) === `${FIXK.tmnt},${FIXK.static},${FIXK.teenTitans}`
+            && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static Shock-Teen Titans)')) === null);
         suite.check('three shows with the first not recognised: flagged, with the two that were',
             p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)').names.length === 0
             && recognised(p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`,

@@ -331,30 +331,43 @@ function assemble(channel, brk) {
 }
 
 /*
- * The show that follows the next one: the first program after N's own run that
- * is neither Flex nor another episode of N's show, walking the cyclic lineup.
- * A clip naming two shows in a step keyed on next means "coming up: these two,
- * in this order", and this is the second of the two. null when N has no
- * successor (the whole lineup is one show, or there is no N).
+ * The shows that follow the break, the next one first: the key of the next
+ * show, then of the first program after its run that is neither Flex nor
+ * another episode of it, and so on, walking the cyclic lineup, up to `count`
+ * keys. A clip naming several shows in a step keyed on next means "coming up:
+ * these, one after another, in this order", and this is the order they are
+ * compared with. Shorter than `count` when the lineup has no more shows; [] when
+ * there is no next program.
  */
-function showAfter(channel, brk) {
+function showSequence(channel, brk, count) {
     if ( (brk == null) || (brk.next == null) ) {
-        return null;
+        return [];
     }
     const programs = channel.programs;
     const n = programs.length;
-    const nextKey = showKey(brk.next.program);
-    for (let i = 1; i < n; i++) {
+    const keys = [ showKey(brk.next.program) ];
+    let last = keys[0];
+    for (let i = 1; (i < n) && (keys.length < count); i++) {
         const program = programs[(brk.next.index + i) % n];
         if (program.isOffline === true) {
             continue;
         }
         const key = showKey(program);
-        if (key !== nextKey) {
-            return key;
+        if (key !== last) {
+            keys.push(key);
+            last = key;
         }
     }
-    return null;
+    return keys;
+}
+
+/*
+ * The show that follows the next one: the second of showSequence. null when N
+ * has no successor (the whole lineup is one show, or there is no N).
+ */
+function showAfter(channel, brk) {
+    const sequence = showSequence(channel, brk, 2);
+    return (sequence.length > 1) ? sequence[1] : null;
 }
 
 /*
@@ -513,9 +526,11 @@ function namesState(clip) {
  * one the step is keyed on, so a general clip stands in for a specific one but
  * a clip for another show never does:
  *
- *   show, keyed on next   a clip naming N; or naming two shows, N then the show
- *                         after N. Keyed on now: a clip naming P. A two-name
- *                         clip is never read as "now, then" outside a pair step.
+ *   show, keyed on next   a clip naming N; or naming several shows (up to four),
+ *                         N, then the show after N, and so on, one after another
+ *                         in that order. Keyed on now: a clip naming P. A clip of
+ *                         several names is never read as "now, then" outside a
+ *                         pair step.
  *   pair                  a clip naming P then N, else one naming only N
  *   any                   no name needed; a named clip must fit as above
  *   fallback list         an unnamed clip, or a named one that fits
@@ -559,20 +574,22 @@ function buildPlan(channel, brk, env) {
 
     const prevKey = (brk.prev != null) ? showKey(brk.prev.program) : null;
     const nextKey = (brk.next != null) ? showKey(brk.next.program) : null;
-    let afterKey;
-    const showAfterLazily = () => {
-        if (typeof(afterKey) === 'undefined') {
-            afterKey = showAfter(channel, brk);
+    // `order` is the shows a clip naming several must follow, in order: from the next
+    // show on for a step keyed on next, now then next for a pair step, and none
+    // for a step keyed on now.
+    let sequence;
+    const sequenceLazily = () => {
+        if (typeof(sequence) === 'undefined') {
+            sequence = showSequence(channel, brk, showMatch.MAX_NAMES);
         }
-        return afterKey;
+        return sequence;
     };
     const keyedShows = (keyedOn) => {
         if (keyedOn === 'next') {
-            const then = showAfterLazily();
-            return { singles: [nextKey], pair: (then != null) ? [nextKey, then] : null };
+            return { singles: [nextKey], order: sequenceLazily() };
         }
         if (keyedOn === 'now') {
-            return { singles: [prevKey], pair: null };
+            return { singles: [prevKey], order: null };
         }
         return null;
     };
@@ -583,7 +600,7 @@ function buildPlan(channel, brk, env) {
         if (names.length === 1) {
             return (names[0] === keyed.singles[0]) || ( (keyed.singles.length > 1) && (names[0] === keyed.singles[1]) );
         }
-        return (keyed.pair != null) && (names[0] === keyed.pair[0]) && (names[1] === keyed.pair[1]);
+        return (keyed.order != null) && names.every( (key, i) => key === keyed.order[i] );
     };
 
     const lists = new Map();
@@ -616,7 +633,7 @@ function buildPlan(channel, brk, env) {
         let general;
         let ownFeatured;
         if (step.match === 'pair') {
-            general = { singles: [prevKey, nextKey], pair: [prevKey, nextKey] };
+            general = { singles: [prevKey, nextKey], order: [prevKey, nextKey] };
             own = [
                 { via: 'pair', accept: (names) => (names.length === 2) && (names[0] === prevKey) && (names[1] === nextKey) },
                 { via: 'next', accept: (names) => (names.length === 1) && (names[0] === nextKey) },
@@ -788,6 +805,7 @@ module.exports = {
     breaksBetween: breaksBetween,
     assemble: assemble,
     showAfter: showAfter,
+    showSequence: showSequence,
     watchProblem: watchProblem,
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,

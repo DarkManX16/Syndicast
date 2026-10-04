@@ -5,8 +5,9 @@
  * A transition step that wants "the Up Next for the show that follows" needs to
  * know which show each clip names, and nobody is going to type that per pair:
  * channel 1 has 281 distinct adjacent show pairs in a week. So the mapping
- * lives on the clip, as `names: [showKey]` or `names: [showKey, showKey]`
- * (now, then), and is proposed here from the clip's title. This module only
+ * lives on the clip, as `names: [showKey]` or, for a clip that announces several
+ * shows, `names: [showKey, showKey, ...]` in the order they air (the one coming up
+ * first; four at most), and is proposed here from the clip's title. This module only
  * proposes. It reads titles, a vocabulary and aliases and returns answers; it
  * writes nothing, and the review screen (a later step) is what fixes a proposal
  * and saves it.
@@ -17,6 +18,13 @@
  */
 
 const KIND_ORDER = { custom: 0, tv: 1, audio: 2, movie: 3 };
+
+/*
+ * The most shows one clip names. "Miguzi - Next Bumper (TMNT-Static Shock-Teen
+ * Titans)" names three; more than a few in one bumper is a list that happens to
+ * mention shows, and the ones past the limit are counted, not named.
+ */
+const MAX_NAMES = 4;
 
 /*
  * A show title shorter than this is not matched. "Up" is a real show, and "Up
@@ -369,7 +377,7 @@ function consumeTitles(title, vocabulary) {
 }
 
 /*
- * What stands between the two shows of a title that names two: a slash with a
+ * What stands between the shows of a title that names several: a slash with a
  * space either side ("Now/Then (A / B)", written with the fraction slash U+2044,
  * U+2215 or a plain slash) or the word "to" before something that starts like a
  * title ("CN Next (A to B)"; the quotes allowed are plain and curly). "Now/Then"
@@ -550,9 +558,9 @@ function propose(title, vocabulary, aliases) {
         };
     }
     return {
-        names: keys.slice(0, 2),
+        names: keys.slice(0, MAX_NAMES),
         found: found,
-        extra: Math.max(0, keys.length - 2),
+        extra: Math.max(0, keys.length - MAX_NAMES),
     };
 }
 
@@ -637,7 +645,7 @@ function learnAliases(title, showKey, vocabulary, aliases, corpus) {
 }
 
 /*
- * The names a clip carries, as the rest of the code should see them: one or two
+ * The names a clip carries, as the rest of the code should see them: one to four
  * show keys, or [] for a clip that names nothing (no field, or one that is not
  * a valid shape - namesProblem is what says so). Hands back a copy.
  */
@@ -645,7 +653,7 @@ function namesOf(clip) {
     if ( (clip == null) || ! Array.isArray(clip.names) ) {
         return [];
     }
-    if ( (clip.names.length < 1) || (clip.names.length > 2) ) {
+    if ( (clip.names.length < 1) || (clip.names.length > MAX_NAMES) ) {
         return [];
     }
     if (! clip.names.every( (k) => (typeof(k) === 'string') && (k !== '') ) ) {
@@ -664,10 +672,10 @@ function namesProblem(clip) {
         return null;
     }
     if (! Array.isArray(clip.names) ) {
-        return `names is ${typeof(clip.names)} rather than an array of one or two show keys`;
+        return `names is ${typeof(clip.names)} rather than an array of one to four show keys`;
     }
-    if ( (clip.names.length < 1) || (clip.names.length > 2) ) {
-        return `names holds ${clip.names.length} entries, and should hold one or two show keys`;
+    if ( (clip.names.length < 1) || (clip.names.length > MAX_NAMES) ) {
+        return `names holds ${clip.names.length} entries, and should hold one to four show keys`;
     }
     if (! clip.names.every( (k) => (typeof(k) === 'string') && (k !== '') ) ) {
         return 'names holds something that is not a show key (a non-empty string such as "tv.Futurama")';
@@ -676,6 +684,7 @@ function namesProblem(clip) {
 }
 
 module.exports = {
+    MAX_NAMES: MAX_NAMES,
     fold: fold,
     buildVocabulary: buildVocabulary,
     propose: propose,
