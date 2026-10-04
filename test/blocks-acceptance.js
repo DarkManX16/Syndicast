@@ -8,6 +8,7 @@
  */
 const { helperFuncs, dayParts, MIN, HOUR, at, freshStore, clip, show, flex, mix, Suite } = require('./support');
 const transitions = require('../src/transitions');
+const showMatch = require('../src/show-match');
 const lineupCursor = require('../src/lineup-cursor');
 
 // ---------------------------------------------------------------- fixtures
@@ -299,6 +300,19 @@ miguziReal.blocks = [
     { name: 'Miguzi', fillerCollections: mix([['90s Nick', 100]]),
       airings: [{ days: [0, 6], start: 15 * HOUR, end: 19 * HOUR }] },
 ];
+// The same bumpers from their real titles, named by the real matcher: nothing in the clips says
+// which shows they announce but their titles (and, where taught, an alias).
+const miguziShows = ['Totally Spies!', 'Teenage Mutant Ninja Turtles (2003)', 'Teen Titans', 'Static Shock',
+    'Foster\'s Home for Imaginary Friends', 'Cartoon Theatre Movies'];
+const miguziVocabulary = showMatch.buildVocabulary([{ number: 12, programs: miguziShows.map((t) => ({ title: t + ' 1', type: 'episode',
+    showTitle: t, duration: 22 * MIN })) }], {});
+const MIGUZI_TITLES = [['Miguzi - Next Bumper (TMNT-Teen Titans)', 15], ['Miguzi - Next Bumper (TMNT-Static-Teen Titans)', 10]];
+const miguziEnv = (aliases) => Object.assign({}, seqEnv, {
+    getList: (id) => (id === 'Miguzi Up Next') ? MIGUZI_TITLES.map(([title, secs]) => {
+        const names = showMatch.propose(title, miguziVocabulary, aliases).names;
+        return named(title, secs, (names.length > 0) ? names : undefined);
+    }) : seqEnv.getList(id),
+});
 const miguziWith = withTransitions(miguziReal, { 'Miguzi': { betweenShows: { out: [], in: [nextStep('mg-up', 'Miguzi Up Next')] } } });
 // CN City Day (Saturday from 6am) with the given situations on it.
 const cnWith = (situations) => withTransitions(ccn, { 'CN City Day': situations });
@@ -835,6 +849,44 @@ const ROWS = [
         'Flex',
         () => render(planOf(miguziWith, [episode('Totally Spies!', 1, 30), flex(5), episode('Teenage Mutant Ninja Turtles (2003)', 1, 30),
             episode('Static Shock', 1, 30), episode('Foster\'s', 1, 30), episode('Teen Titans', 1, 30)], '2026-01-18T16:50:00', 1))),
+
+    // The same Miguzi lists, but with the clips named from their real titles by the matcher. "TMNT" is read as
+    // an abbreviation. "Static" is not Static Shock until it is taught as an alias, so until then the
+    // three-show clip is left unnamed and never plays (it is flagged for the review screen).
+    ...(() => {
+        const alias = { static: 'tv.Static Shock' };
+        const sat = () => [episode('Totally Spies!', 1, 30), flex(5), episode('Teenage Mutant Ninja Turtles (2003)', 1, 30),
+            episode('Teen Titans', 1, 30), episode('Cartoon Theatre Movies', 1, 30)];
+        const sun = () => [episode('Totally Spies!', 1, 30), flex(5), episode('Teenage Mutant Ninja Turtles (2003)', 1, 30),
+            episode('Static Shock', 1, 30), episode('Teen Titans', 1, 30), episode('Foster\'s Home for Imaginary Friends', 1, 30)];
+        return [
+            planRow(5, 'From the real titles | Sat 5:50pm, Totally Spies! -> TMNT, Teen Titans after it: "(TMNT-Teen Titans)" plays',
+                'Flex -> Miguzi - Next Bumper (TMNT-Teen Titans)',
+                () => render(planOf(miguziWith, sat(), '2026-01-17T17:20:00', 1, miguziEnv(alias)))),
+            planRow(5, 'From the real titles | Sun 5:20pm, TMNT, Static Shock, Teen Titans, with "Static" taught: "(TMNT-Static-Teen Titans)" plays',
+                'Flex -> Miguzi - Next Bumper (TMNT-Static-Teen Titans)',
+                () => render(planOf(miguziWith, sun(), '2026-01-18T16:50:00', 1, miguziEnv(alias)))),
+            planRow(5, 'From the real titles | the same Sunday before "Static" is taught: the clip is unresolved and nothing plays',
+                'Flex',
+                () => render(planOf(miguziWith, sun(), '2026-01-18T16:50:00', 1, miguziEnv({})))),
+            // Without the hyphen rule the clip would be named TMNT and Teen Titans and, as the only clip, play
+            // before TMNT on a Saturday when Static Shock does not follow: announcing a show that is not on.
+            planRow(5, 'From the real titles | Sat, only the three-show clip in the list and "Static" not taught: it is never read as TMNT-then-Teen Titans, so nothing plays',
+                'Flex',
+                () => render(planOf(miguziWith, sat(), '2026-01-17T17:20:00', 1, Object.assign({}, miguziEnv({}), {
+                    getList: (id) => (id === 'Miguzi Up Next') ? [named(MIGUZI_TITLES[1][0], 10, (() => {
+                        const names = showMatch.propose(MIGUZI_TITLES[1][0], miguziVocabulary, {}).names;
+                        return (names.length > 0) ? names : undefined;
+                    })())] : seqEnv.getList(id),
+                })))),
+            planRow(5, 'From the real titles | before Teen Titans, after TMNT-less shows: neither plays, with or without the alias',
+                'Flex / Flex',
+                () => [render(planOf(miguziWith, [episode('Static Shock', 1, 30), flex(5), episode('Teen Titans', 1, 30), episode('Cartoon Theatre Movies', 1, 30)],
+                    '2026-01-18T16:50:00', 1, miguziEnv(alias))),
+                    render(planOf(miguziWith, [episode('Static Shock', 1, 30), flex(5), episode('Teen Titans', 1, 30), episode('Cartoon Theatre Movies', 1, 30)],
+                        '2026-01-18T16:50:00', 1, miguziEnv({})))].join(' / ')),
+        ];
+    })(),
 
     // CN City Bumpers [DAY]: character bumpers that feature a show without
     // announcing it. A show with no Up Next falls back to them.
