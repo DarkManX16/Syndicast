@@ -426,6 +426,35 @@ module.exports = async function run() {
                 missing.out.length === 0 && missing.notes.length === 1 && /fallback list "NOPE"/.test(missing.notes[0]), missing.notes.join());
         }
 
+        // -- every clip that fits a step
+        {
+            const lists = { U: [clipOf('Up Beta A', 10, ['tv.Beta']), clipOf('Up Beta B', 10, ['tv.Beta']), clipOf('Up Beta C', 10, ['tv.Beta']),
+                clipOf('Up Gamma', 10, ['tv.Gamma']), clipOf('Generic', 10)] };
+            const played = { 'Up Beta A': 50, 'Up Beta B': 5 };
+            const fitsOf = (side, i) => side[i].fits.join(' | ');
+            const p = planFor([S('up', 'U', { match: 'show' })], [], lists, played);
+            suite.check('a step reports every clip that fits it, the one that plays first, then in the order they would take their turns',
+                titles(p.out) === 'Up Beta C' && fitsOf(p.out, 0) === 'Up Beta C | Up Beta B | Up Beta A', fitsOf(p.out, 0));
+            suite.check('a clip for another show and a clip naming no show do not fit a show step',
+                ! p.out[0].fits.includes('Up Gamma') && ! p.out[0].fits.includes('Generic'));
+            const twice = planFor([S('a', 'U', { match: 'show' })], [S('b', 'U', { match: 'show' })], lists, played);
+            suite.check('a clip that has played in the plan cannot fit the next step: the in step lists what is left',
+                titles(twice.out) === 'Up Beta C' && titles(twice.in) === 'Up Beta B' && fitsOf(twice.in, 0) === 'Up Beta B | Up Beta A', fitsOf(twice.in, 0));
+            const fb = planFor([S('up', 'U', { match: 'show', fallbackListId: 'G' })], [], { U: [clipOf('Up Gamma', 10, ['tv.Gamma'])],
+                G: [clipOf('Gen 1', 10), clipOf('Gen 2', 10), clipOf('Up Gamma too', 10, ['tv.Gamma'])] });
+            suite.check('a fallback step lists the fallback list\'s clips that fit, not the main list\'s',
+                fb.out[0].via === 'fallback' && fitsOf(fb.out, 0) === 'Gen 1 | Gen 2', fitsOf(fb.out, 0));
+            const any = planFor([S('i', 'U', { match: 'any' })], [], lists, played);
+            suite.check('an "any" step lists the general clips and the ones naming the next show, longest idle first and ties in list order',
+                fitsOf(any.out, 0) === 'Up Beta C | Generic | Up Beta B | Up Beta A', fitsOf(any.out, 0));
+            const pair = planFor([S('pr', 'P', { match: 'pair' })], [], { P: [clipOf('Alpha then Beta', 10, ['tv.Alpha', 'tv.Beta']),
+                clipOf('Just Beta 1', 10, ['tv.Beta']), clipOf('Just Beta 2', 10, ['tv.Beta'])] });
+            suite.check('only the clips of the tier that was used rotate: a pair clip is not mixed with the single-show clips behind it',
+                titles(pair.out) === 'Alpha then Beta' && fitsOf(pair.out, 0) === 'Alpha then Beta', fitsOf(pair.out, 0));
+            const none = planFor([S('up', 'U', { match: 'show' })], [], { U: [clipOf('Up Gamma', 10, ['tv.Gamma'])] });
+            suite.check('a step that plays nothing has no clip and so no list of what fits', none.out.length === 0);
+        }
+
         // -- any steps
         {
             const lists = { I: [clipOf('Ident', 5), clipOf('For Gamma', 5, ['tv.Gamma']), clipOf('For Beta', 5, ['tv.Beta'])] };

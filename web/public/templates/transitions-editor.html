@@ -203,10 +203,15 @@
                     <div class="tr-pv-item" ng-repeat="it in visible(sec)">
                         <div class="tr-pv-head">{{it.head}} <span class="text-muted" ng-if="it.other">({{it.other}})</span></div>
                         <div class="tr-pv-plan">
-                            <span class="tr-pv-clip" ng-repeat="c in it.out track by $index">{{c}}</span>
+                            <span class="tr-pv-clip" ng-repeat="c in it.out track by $index">{{c.text}}</span>
                             <span class="tr-pv-flex">commercials {{it.flex}}</span>
-                            <span class="tr-pv-clip" ng-repeat="c in it.in track by $index">{{c}}</span>
+                            <span class="tr-pv-clip" ng-repeat="c in it.in track by $index">{{c.text}}</span>
                             <span class="small text-warning" ng-if="it.overrun">the steps are longer than the commercial break</span>
+                        </div>
+                        <div class="small text-muted tr-pv-fits" ng-repeat="c in it.several track by $index">
+                            {{c.titles.length}} clips fit this step and take turns on air, the longest idle first:
+                            {{c.titles.slice(0, c.open ? c.titles.length : 6).join(' | ')}}
+                            <a href="" ng-if="c.titles.length > 6" ng-click="c.open = !c.open">{{c.open ? 'show fewer' : 'and ' + (c.titles.length - 6) + ' more'}}</a>
                         </div>
                         <div class="small text-muted tr-pv-left" ng-repeat="l in it.left" ng-class="{'text-danger': l.problem}">{{l.text}}</div>
                     </div>

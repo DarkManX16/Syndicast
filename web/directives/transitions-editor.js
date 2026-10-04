@@ -364,16 +364,24 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                             total: bucket.total,
                             withSteps: bucket.withSteps,
                             shown: 5,
-                            items: bucket.items.map( (i) => ({
-                                head: `${editor.clockLabel(i.startTime)}  ${i.prev || '(nothing)'} → ${i.next || '(nothing)'}`,
-                                other: (s.id === 'leaving') ? `into ${i.other}` : ((s.id === 'entering') ? `from ${i.other}` : ''),
-                                out: i.out.map( (c) => `${c.clip} (${c.seconds}s)` ),
-                                in: i.in.map( (c) => `${c.clip} (${c.seconds}s)` ),
-                                flex: editor.mmss(i.flexMs),
-                                overrun: i.overrun,
-                                hasSteps: (i.out.length + i.in.length) > 0,
-                                left: i.left.map( (l) => ({ text: `${l.step}: ${l.why}`, problem: l.problem }) ),
-                            }) ),
+                            items: bucket.items.map( (i) => {
+                                // A clip as shown, and the titles of every clip that fitted its step.
+                                const clipView = (c) => ({ text: `${c.clip} (${c.seconds}s)`, titles: c.fits, open: false });
+                                const outs = i.out.map(clipView);
+                                const ins = i.in.map(clipView);
+                                return {
+                                    head: `${editor.clockLabel(i.startTime)}  ${i.prev || '(nothing)'} → ${i.next || '(nothing)'}`,
+                                    other: (s.id === 'leaving') ? `into ${i.other}` : ((s.id === 'entering') ? `from ${i.other}` : ''),
+                                    out: outs,
+                                    in: ins,
+                                    // The steps that had more than one clip to choose from.
+                                    several: outs.concat(ins).filter( (c) => c.titles.length > 1 ),
+                                    flex: editor.mmss(i.flexMs),
+                                    overrun: i.overrun,
+                                    hasSteps: (i.out.length + i.in.length) > 0,
+                                    left: i.left.map( (l) => ({ text: `${l.step}: ${l.why}`, problem: l.problem }) ),
+                                };
+                            } ),
                         } );
                     }
                     const missing = Object.keys(got.lists).filter( (id) => got.lists[id] === null );
@@ -381,7 +389,7 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                     scope.preview.header = 'Walking the lineup as it is in this editor, from now for 7 days. '
                         + (useNames ? 'Clips are named the way “Match shows” would suggest (nothing is saved). '
                             : 'Using the clip names saved on the lists. ')
-                        + 'Where several clips fit, the first in the list is shown; on air the pick rotates.'
+                        + 'Where several clips fit a step, all of them are listed under it: on air they take turns, the longest idle first.'
                         + (missing.length > 0 ? ` ${missing.length} list${missing.length === 1 ? ' was' : 's were'} not found.` : '');
                 } catch (err) {
                     console.error(err);

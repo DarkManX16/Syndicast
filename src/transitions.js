@@ -497,8 +497,10 @@ function namesState(clip) {
  * Returns the assembled break plus what each step chose:
  *   out, in      the steps that will play, in order, each
  *                { kind: 'list', stepId, situation, side, listId, via, names,
- *                  clip, durationMs }; clip is a copy carrying fillerId, like a
- *                filler pick, so playback is credited to the list it came from
+ *                  clip, durationMs, fits }; clip is a copy carrying fillerId, like a
+ *                filler pick, so playback is credited to the list it came from, and
+ *                fits the titles of every clip that fitted the step's winning tier,
+ *                the chosen one first: the clips that take turns on air
  *   outMs, inMs  their total durations
  *   skipped      every step that does not play, { stepId, side, situation,
  *                reason, problem }
@@ -638,6 +640,8 @@ function buildPlan(channel, brk, env) {
         };
     };
 
+    // Every clip of the list that fits the tier, in the order they would take their
+    // turns (longest idle first, ties in list order): the first is the one chosen.
     const choose = (tier, clips) => {
         const eligible = [];
         for (let i = 0; i < clips.length; i++) {
@@ -652,7 +656,7 @@ function buildPlan(channel, brk, env) {
             }
         }
         eligible.sort( (a, b) => (a.played - b.played) || (a.order - b.order) );
-        return (eligible.length > 0) ? eligible[0].clip : null;
+        return eligible.map( (e) => e.clip );
     };
 
     // Whether this step is left out before it looks for a clip: a day or chance
@@ -716,8 +720,9 @@ function buildPlan(channel, brk, env) {
             }
         }
         for (const attempt of attempts) {
-            const clip = choose(attempt.tier, attempt.clips);
-            if (clip !== null) {
+            const fitting = choose(attempt.tier, attempt.clips);
+            if (fitting.length > 0) {
+                const clip = fitting[0];
                 used.add(clip);
                 const copy = JSON.parse( JSON.stringify(clip) );
                 copy.fillerId = attempt.listId;
@@ -725,6 +730,7 @@ function buildPlan(channel, brk, env) {
                     kind: 'list', stepId: step.id, situation: entry.situation, side: entry.side,
                     listId: attempt.listId, via: attempt.tier.via, names: namesState(clip),
                     clip: copy, durationMs: clip.duration,
+                    fits: fitting.map( (c) => c.title ),
                 };
                 return;
             }

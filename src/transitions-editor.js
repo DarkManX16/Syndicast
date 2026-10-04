@@ -615,8 +615,9 @@ function overlayProposedNames(clips, matchResponse) {
  *
  * Returns { situations: { betweenEpisodes: { total, withSteps, items }, ... } }
  * where items are { startTime, lengthMs, prev, next, other, out, in, flexMs,
- * overrun, left }; out and in are { clip, seconds, step } for the clips that play
- * and `left` the steps that did not play, with why.
+ * overrun, left }; out and in are { clip, seconds, via, fits } for the clips that
+ * play (fits: every clip that fitted the step, the one shown first, which on air
+ * take turns) and `left` the steps that did not play, with why.
  */
 function previewBreaks(channel, context, from, to, env) {
     const result = { situations: {} };
@@ -669,8 +670,8 @@ function previewBreaks(channel, context, from, to, env) {
             prev: (brk.prev != null) ? programLabel(brk.prev.program) : '',
             next: (brk.next != null) ? programLabel(brk.next.program) : '',
             other: (other != null) ? (other.name || 'an unnamed one') : 'the channel Flex',
-            out: plan.out.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via } ) ),
-            in: plan.in.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via } ) ),
+            out: plan.out.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via, fits: s.fits } ) ),
+            in: plan.in.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via, fits: s.fits } ) ),
             flexMs: Math.max(0, lengthMs - stepsMs),
             overrun: stepsMs > lengthMs,
             left: plan.skipped.map( (s) => {

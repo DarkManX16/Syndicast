@@ -466,6 +466,17 @@ module.exports = async function run() {
             JSON.stringify([d.in, d.left]));
         suite.check('breaks with steps are counted', ofLate.betweenShows.withSteps === 2 && ofLate.entering.withSteps === 1);
 
+        // Several clips fit Up Next for Gamma: the preview shows the one that comes first and all that fit.
+        const manyLists = Object.assign({}, LISTS, { upnext: LISTS.upnext.concat([clip('Up Next Gamma 2', 12, { names: ['tv.Gamma'] }),
+            clip('Up Next Gamma 3', 13, { names: ['tv.Gamma'] })]) });
+        const many = editor.previewBreaks(channel, late, from, to, Object.assign(env(), { getList: (id) => manyLists[id] || null }));
+        const gammaBreak = many.situations.betweenShows.items[0];
+        suite.check('the preview lists every clip that fits the step, the one shown first',
+            same(gammaBreak.in[0].fits, ['Up Next Gamma', 'Up Next Gamma 2', 'Up Next Gamma 3']) && gammaBreak.in[0].clip === 'Up Next Gamma',
+            JSON.stringify(gammaBreak.in[0]));
+        suite.check('a step with one clip that fits lists just that one',
+            same(c.in[0].fits, ['Up Next Gamma']) && same(entering.out[0].fits, ['Sign Off']), JSON.stringify([c.in[0], entering.out[0]]));
+
         const ofDay = editor.previewBreaks(channel, day, from, to, env()).situations;
         suite.check('Day sees break A as Between episodes and break B as Leaving',
             ofDay.betweenEpisodes.total === 1 && ofDay.leaving.total === 1 && ofDay.entering.total === 0 && ofDay.betweenShows.total === 0);

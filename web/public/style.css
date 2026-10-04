@@ -951,6 +951,10 @@ div.programming-programs div.list-group-item {
   padding: 0 6px;
   margin-right: 4px;
 }
+.tr-editor .tr-pv-fits {
+  margin: 1px 0 0 6px;
+  line-height: 1.3;
+}
 .tr-editor .tr-pv-flex {
   display: inline-block;
   background: #eeeeee;
