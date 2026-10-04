@@ -687,9 +687,10 @@ for the full spec, stages and acceptance tests.
         box, **ticked by default**, overlays `GET .../match` proposals in memory,
         because no list carries saved `names` until step 6 and a step keyed on a show
         would otherwise find nothing in the preview and on air; the header says which
-        names are in use. The pick is the first fitting clip in list order, since the
-        browser has no play history (the roll for a "Sometimes" step is the real one: it
-        is derived from the channel, break and step, so the preview and the stream agree).
+        names are in use. The browser has no play history, so the first fitting clip in list
+        order is shown and every clip that fits is listed under it (see the Oct 4 entry
+        below; the roll for a "Sometimes" step is the real one: it is derived from the
+        channel, break and step, so the preview and the stream agree).
       - **The Flex tag.** `flexTag` in `src/transitions-editor.js`: the steps the break
         is set to play, in play order, joined with " / ", the list name plus the show
         for a show-keyed step ("Up Next · Full House"); a step that plays only sometimes
@@ -750,6 +751,54 @@ for the full spec, stages and acceptance tests.
         quick setup built the two steps, an empty step vanished on Done and on a tab
         switch, copying to a day-part and a block updated both (the open day-part live) and
         left Miguzi alone, and a save wrote `transitions` to exactly those three contexts.
+      - **Up Next lists that were not found in the preview (Oct 4), and the fixes.** Ron
+        saw clips he knew were in his lists missing from the preview. Investigated before
+        anything was changed, on a copy, against the three lists he named (42 clips),
+        then fixed. The causes, with clips affected: 18 were named correctly (only 9 of
+        them showed, see the last cause); 2 gave a short title of a subtitled show
+        ("Ghost In The Shell NEXT promo"); 1 spaced a title differently ("DragonBall GT");
+        2 left "Series" off a custom show's name ("Mobile Suit Gundam NEXT"); 5 used
+        nicknames for series inside a custom show ("Gundam 0083"); 10 used the nicknames
+        Foster's and Grim Advs; 1 names no show ("AcTN Next Promo"); 3 are for shows no
+        channel airs (Outlaw Star, Trigun). Two causes nobody had guessed: **(a) a
+        two-show title with one show recognised was named for that one show** (6 clips:
+        "Now/Then (Foster's / Camp Lazlo)" became a Camp Lazlo clip), which played a
+        Foster's bumper before Camp Lazlo after Chowder and after Camp Lazlo itself, and
+        made "foster" and "advs" look like another show's words so they could not be
+        taught (taught on the data as it was, `learnAliases` refused them as "used
+        elsewhere"; with those clips out of the comparison it learns "foster"); **(b) the
+        preview showed only the first fitting clip in list order**, so 9 correctly named
+        clips never showed, among them Camp Lazlo's solo "YES! Era NEXT" bumpers, 7th and
+        8th of 9 clips that fit. Nothing was saved on any card of the copy, so Ron's own
+        steps were not visible; the check put one "for the show coming up" step on every
+        context.
+      - **Built as five commits.** The four matcher fixes, each its own commit:
+        the part of a title before a colon, spacing, a generic last word dropped, and a
+        two-show title never half-read; then the preview. Across all 56 lists (9,195
+        clips): named 1,541 to 1,658 (181 gained, 5 changed, 64 lost, which are the
+        half-read ones, 65 flagged); in the three lists 5 clips gained a name (Ghost in
+        the Shell twice, DragonBall GT, Mobile Suit Gundam NEXT twice) and 6 went from
+        wrongly named to unnamed and flagged. 125 clips' hits come from a shortened title.
+        Mutation-checked: each rule was broken in turn (the shortened form allowed to equal
+        another show's whole title, spacing across a taken title, the generic word allowed
+        mid-title or with one word left, both sides flagged, the straddling title read as a
+        pair, `fits` unsorted or missing a clip) and a check failed each time.
+      - **What the half-read rule does and does not do.** It flags a title built "A to B"
+        or with a spaced slash when exactly one show is recognised and the hits are on one
+        side of the separator; a hit that straddles it is one title ("Space Ghost Coast to
+        Coast"). Known limits: 3 of the 65 flagged are false (a capital after "to" that is a
+        verb: "7 Ways to Say 'All That'", "How to Perform CPR", "Like to Move"), and they are
+        left unnamed for review, never named wrongly; pairs joined by a hyphen,
+        "(TMNT-Teen Titans)" and "(Grim Advs Billy & Mandy-Ed Edd n Eddy)", are not detected
+        and are still read as the one show.
+      - **Still for step 6, recorded in the spec as requirements:** aliases that are phrases
+        ("grim advs", "gundam 0083"), the review screen listing `unresolved` clips, and
+        teaching "Foster's". Not matcher work: the 3 clips for shows no channel airs, the one
+        clip naming no show (a fallback list's job), and a custom show being one show
+        (a "Gundam 0083" bumper plays before whichever series starts).
+      - **The preview change.** `buildPlan` returns `fits` on each step that plays, the
+        titles of every clip that fitted the tier it chose from, the chosen one first (a clip
+        already used in the plan is not in it). The preview lists them under the step.
       - **Writers of a step, enumerated again** (the rule for this kind of change): the
         card editor (new; produces every field of the shape, unique ids), `normalizeTransitions`
         (defaults), `buildPlan` (reader), `warnAboutTransitions` and its two helper rules,

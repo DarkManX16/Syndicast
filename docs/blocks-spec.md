@@ -337,14 +337,32 @@ proposed automatically and fixed on a review screen:
   "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
   make a pair - which is how the pair is *read* is up to the step: now → then
   in a `pair` step, "coming up, in this order" in one keyed on `next` (see
-  Steps). A leading "The" is optional when the rest of the title is
+  Steps). Ron's two styles of two-show title, "A to B" (CN Powerhouse: "CN Next
+  (Dexter's Lab to Ed, Edd n Eddy)") and "Now/Then (A / B)" (CN City), both read the
+  same way under the rule in Steps: **A is the show coming up next and B airs after
+  it.** That is the current two-show rule, so nothing changes for them. A leading "The" is optional when the rest of the title is
   still two words or more, so "Powerpuff Girls Promo" names The Powerpuff
   Girls; a single word left (five letters or more) counts only when it stands
   alone as its own segment, so "Up Next Bumper (Jeffersons)" names The
   Jeffersons and "Jeffersons promo" does not. A trailing year in a Plex title
   ("ThunderCats (2011)") is optional too, and a program under a minute in a
-  lineup is a clip, not a show. Titles like "[As] NEXT - SGC2C [2003]" match
-  nothing on the first pass.
+  lineup is a clip, not a show. A clip may also give a **shortened** title: the
+  part before the colon ("Ghost In The Shell NEXT promo" for "Ghost in the Shell:
+  Stand Alone Complex"), or a title without a generic last word, "Series" or "Show"
+  ("Mobile Suit Gundam NEXT" for the custom show "Mobile Suit Gundam Series"; two
+  words must be left). Such a hit is marked `shortened`, for the review screen to
+  show as "from a shortened title"; a shortened form that is another show's whole
+  title is left to that title, and two shows sharing one are reported as ambiguous.
+  A clip may space a title differently ("DragonBall GT", "Inu Yasha"): a title of
+  six or more letters is also read with its spaces taken out, among side-by-side
+  words not already taken. **A title built as two shows is never half-read.** When
+  it is written "A to B" or "Now/Then (A / B)" (a slash with a space either side,
+  or "to" before a capital) and only one show is recognised, the clip proposes
+  nothing and carries `unresolved: { recognised, reason }` for the review screen;
+  naming the one show would play "Foster's, then Camp Lazlo" before Camp Lazlo
+  whatever had just ended, and would make "Foster's" look like another show's word
+  when taught. Titles like "[As] NEXT - SGC2C [2003]" match nothing on the first
+  pass.
 - **Review** is a table: clip, proposed show(s), a dropdown to fix it, and
   "none" for a clip that names no show. A one-time pass per list, redone only
   for new clips.
@@ -356,6 +374,16 @@ proposed automatically and fixed on a review screen:
   a word that clips naming a different show also use ("Adult", "Swim") are
   never learned, and a word that already means another show is left alone and
   reported. The review screen shows what would be learned before saving it.
+  **Requirement for the review screen (step 6): an alias may be a phrase, not just a
+  word** ("grim advs" for The Grim Adventures of Billy & Mandy, "gundam 0083" and
+  "gundam 0080" for the custom show Mobile Suit Gundam Series). Single words cannot
+  do this job: "grim" is also the start of Grim & Evil, "advs" is also in "The New
+  Batman Advs" and "The advs of Crimson Chin", and teaching the one word "gundam"
+  would name every Gundam Wing, SEED and G Gundam clip as Mobile Suit Gundam Series
+  (and a number such as "0083" is never learned on its own). So the alias store and
+  `propose` must carry phrases, matched as whole words and longest first like titles,
+  and the review screen must offer a phrase as what is learned. Clips flagged
+  `unresolved` are listed on it with the show that was recognised.
   Aliases are stored once, in
   `<data>/show-aliases.json`, shared by every list and channel. There is no
   alias editor; the review screen is the alias editor.
@@ -500,8 +528,9 @@ list, not one per show.
   of each situation with the plan they would get — "Fri 2:50pm, Ed, Edd n
   Eddy → Dragon Ball Z: Toonami bumper → Flex 4:12 → DBZ intro" — so a
   sequence is checked against what will actually air, not against an example.
-  The browser has no play history, so the preview shows the first fitting clip in
-  list order, not the longest-idle one; the live pick rotates. A "use suggested
+  The browser has no play history, so the preview cannot say which fitting clip
+  is the longest idle; it shows the first in list order and lists every clip that
+  fits the step under it ("4 clips fit this step and take turns on air"). A "use suggested
   clip names" box overlays the matcher's proposals in memory (nothing is saved), so
   a sequence can be tried before the review screen has named any clip.
 - **In the filler list editor**, a **Names** column per clip and a
@@ -582,8 +611,9 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    carries saved names yet; and the Flex tag is worked out for the rows on screen,
    since the whole lineup at once measured about a second.
 6. **The review screen** — the Names column and "Match shows" in the filler
-   editor, writing `names` and aliases. Verified on Ron's lists: the SGC2C
-   case above learns from one fix.
+   editor, writing `names` and aliases (which may be phrases, see Learning), with the
+   clips the matcher left `unresolved` and the hits marked `shortened` shown as such.
+   Verified on Ron's lists: the SGC2C case above learns from one fix.
 7. **End to end on channel 1** — the Adult Swim NEXT sequence and one Toonami
    boundary configured on the copy, a day walked by script, then a
    **TiviMate preview** of two real breaks. Then the roadmap: tick the
