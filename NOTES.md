@@ -617,10 +617,11 @@ for the full spec, stages and acceptance tests.
       the flag, and `video.js` passes it to `buildPlan` as `env.featuresShows`.
       `FillerDB` warns if it is not true or false.
 
-      **What there is no UI for yet.** The card editor is step 5, which now has
+      **What there was no UI for yet.** The card editor was step 5, which had
       to offer days (seven toggles) and chance (a percent box) on a step's chip
-      (the spec says so). Until then a step's `days` and `chance` are set in the
-      channel file; the list checkbox is the one visible change.
+      (the spec says so); built Oct 4, see the Step 5 entry below. Until then a
+      step's `days` and `chance` were set in the channel file; the list checkbox
+      was the one visible change.
 
       **Tests.** `test/transitions.js` (days and chance each way and at the edges,
       the local day across midnight, the roll, every featured tier, the save-time
@@ -644,6 +645,87 @@ for the full spec, stages and acceptance tests.
       ticking and Done wrote `clipsFeatureShows: true` to that one list and
       nothing else, reopening showed it ticked, and unticking made the file
       identical to the original.
+
+      **Step 5 built Oct 4, 2026 (Sonnet 5.5), on branch `stage5-step5`: the card
+      editor.** A Transitions section on every day-part and block card, a preview
+      that walks the lineup, and a one-line tag on each Flex row. 724 to 861 tests.
+      Nothing server-side changed except one new client call, `getFillerMatch`, for
+      the read-only `GET /api/filler/:id/match`.
+
+      - **The section**, under Mix, collapsed to "Commercials only" or "3 steps" and
+        opened by a click. Four rows in the spec's order (Leaving, Entering, Between
+        episodes, Between shows), each `[steps] Flex [steps]`. A step is a chip (list,
+        how it chooses, "skip" or the fallback list, then days, a percent, or "if X
+        finds nothing") that opens a form. **The form's first line is one plain
+        sentence that rebuilds as it changes**: "Plays a clip from Nick at Nite Up
+        Next about the show coming up; if none matches, plays nothing; only on Mon and
+        Wed; about 50% of the time." The four ways of choosing are one radio group
+        (next show, last show, last then next, any clip), not the two stored fields.
+      - **The form cannot store what the save-time warning would complain about.** No
+        days picked and all seven picked both store `null` (every day), never the empty
+        list that plays on no day; "Sometimes" takes 1 to 99 (100 or empty is always,
+        and anything else is refused with a reason and not stored); "Only when" offers
+        only the other unconditional steps of the same situation, out and in together,
+        and is disabled on a step something else watches; deleting a step clears the
+        marks that named it and says so. A step with no list chosen is the one thing it
+        can hold, so **Update Channel refuses it**, flags the tab and outlines the chip
+        (read from what was written to the channel, so it holds for a tab not open).
+      - **A card nobody touches saves as it was.** The form edits a draft and writes
+        `context.transitions` only when something changes, and adding a step then
+        deleting it again removes the key it added. Checked on channel 1's copy: opened
+        every Transitions section on every day-part and block and saved; the only
+        difference from the original in `dayParts`/`blocks` was `cooldown: null -> 0` on
+        one mix, which the mix editor does on any save (pre-existing). Then two cards
+        edited: exactly those two gained `transitions`, no program carried a `$` field,
+        and the server logged no warning.
+      - **The preview** is `buildPlan` itself over `breaksBetween` for 7 days from now,
+        on the lineup as it is in the editor (unsaved edits included), grouped as the
+        card sees its four situations (Entering and Leaving show the whole plan, the
+        other context's steps too). Per break: the clips with lengths, the Flex that is
+        left, and each step that did not play with why ("lost its 50% chance", "found no
+        clip", "stays out because Up Next found a clip"). A "use suggested clip names"
+        box, **ticked by default**, overlays `GET .../match` proposals in memory,
+        because no list carries saved `names` until step 6 and a step keyed on a show
+        would otherwise find nothing in the preview and on air; the header says which
+        names are in use. The pick is the first fitting clip in list order, since the
+        browser has no play history (the roll for a "Sometimes" step is the real one: it
+        is derived from the channel, break and step, so the preview and the stream agree).
+      - **The Flex tag.** `flexTag` in `src/transitions-editor.js`: the steps the break
+        is set to play, in play order, joined with " / ", the list name plus the show
+        for a show-keyed step ("Up Next · Full House"); a step that plays only sometimes
+        ends in "?", one that plays only if another found nothing is in brackets, and a
+        step limited to other weekdays than the break's is left out. Out steps go on the
+        break's first Flex row and in steps on its last, as `transitions.js` attaches
+        them. The title attribute spells it out and explains the marks. **`.psr-flex-tag`
+        is one line with an ellipsis and `flex-shrink`, so the row stays 26px**:
+        `test/program-row-heights.js` has Flex rows with a short tag and a tag longer than
+        the row, checks all 26px, that the tag is cut with an ellipsis, and that the
+        duration and buttons stay inside the row. Mutation-checked: removing the tag's
+        shrink, its max-width or its ellipsis each fails. (Its own `white-space: nowrap`
+        is redundant with the row's, so removing only that is not caught, and cannot matter.)
+      - **The tag is worked out for the rows on screen, not for the whole lineup.** Timed
+        first as one pass inside `updateChannelDuration`, in the browser on channel 1's
+        copy (19,978 Flex rows, steps on one day-part): **0.7 to 1.7 s per lineup change,
+        against 0.08 to 0.23 s with no steps.** That is past the one second this was told
+        to stay under, so `rowFlexTag(x)` computes a row's tag when the row is drawn and keeps it
+        as `x.$$flexTag` (the `$$` keeps it out of `angular.toJson`); `scope.flexTagVersion`
+        says which edit it belongs to and moves on every lineup change, step edit and
+        list-name load. After the change `updateChannelDuration` takes 7 to 14 ms with
+        steps, and finding the first tagged row by scanning 111 Flex rows took 1 ms. A
+        channel with no steps never reaches `flexTag`. **A trap on the way:**
+        `test/startTime-rotation.js` lifts `updateChannelDuration` out of
+        `channel-config.js` and runs it with only a `scope`, so a call from inside it to
+        a helper declared elsewhere in the directive broke that test (and would have
+        broken the function there); it now only bumps `scope.flexTagVersion`.
+      - **Writers of a step, enumerated again** (the rule for this kind of change): the
+        card editor (new; produces every field of the shape, unique ids), `normalizeTransitions`
+        (defaults), `buildPlan` (reader), `warnAboutTransitions` and its two helper rules,
+        the preview and the tag (readers, through `buildPlan`/`assemble`), `transitions-plan-day.js`
+        and the spec. A stored step the editor does not know (`keyedOn: later`, kind `generated`)
+        shows as "not built yet" and is kept as it is.
+      - **Tests.** `test/transitions-editor.js`, 128 checks (see Testing notes), mutation-checked
+        with 20 deliberate breaks, all caught. Not automated: the form and the directive's
+        fetching, checked by hand on a copy of `.dizquetv-dev` in a browser (channel 1 at full size).
 
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
@@ -3235,6 +3317,18 @@ checks as of the fall-back fixes). Nine files:
   back for everything under `src/` it loaded - `aspect-mark.js` failed when
   the real `ffmpeg.js` was left cached with the real `spawn` - and unrefs
   the timers `video.js` arms per item, so `npm test` doesn't wait on them.
+
+- `transitions-editor.js` - stage 5 step 5, the logic behind the card editor
+  (`src/transitions-editor.js`): the four ways a step chooses and the stored fields
+  each is, the days / chance / "only when" rules the form keeps, deleting a watched
+  step, the one-sentence summary and the chip word for word, what is wrong with a
+  step, the draft-to-stored round trip (an untouched context unchanged, no key added
+  for no step, form-only fields stripped, what is stored passes the save-time
+  warning), the Flex tag (first row out, last row in, days, "?" and brackets, nothing
+  for a channel without steps, every assembled step named once across a break's rows),
+  the preview (grouped as the card sees its situations, equal to `buildPlan` for every
+  break, flex arithmetic, left-out steps and why, chance rolled as playback rolls it),
+  and the suggested-names overlay. Fixtures only.
 
 `lineup-cursor.js`, `stream-cursor.js`, `transitions.js` and the stage 5 rows
 of `blocks-acceptance.js` also cover step 4: phases, tune-in placement, one

@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-4 built (situations, names, plans, playing them through the cursor)
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-5 built (situations, names, plans, playing them through the cursor, the card editor)
 
 ## Summary
 
@@ -494,8 +494,10 @@ list, not one per show.
   of each situation with the plan they would get — "Fri 2:50pm, Ed, Edd n
   Eddy → Dragon Ball Z: Toonami bumper → Flex 4:12 → DBZ intro" — so a
   sequence is checked against what will actually air, not against an example.
-  The clip picks in the preview are the longest-idle ones at preview time;
-  the live pick may differ.
+  The browser has no play history, so the preview shows the first fitting clip in
+  list order, not the longest-idle one; the live pick rotates. A "use suggested
+  clip names" box overlays the matcher's proposals in memory (nothing is saved), so
+  a sequence can be tried before the review screen has named any clip.
 - **In the filler list editor**, a **Names** column per clip and a
   "Match shows" button that opens the review screen above, and the **These
   clips feature shows** checkbox (built at step 3b).
@@ -568,7 +570,11 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    programming list, each Flex row shows a one-line tag naming its planned
    sequence (for example "Up Next · Full House" or "WBRB / BTTS"), without
    changing the row's height. Verified by hand on the dev fixture and a copy
-   of channel 1, with screenshots.
+   of channel 1, with screenshots. **Built Oct 4, 2026**; see NOTES.md. A step's
+   form opens with one plain sentence that rebuilds as it changes; the preview
+   offers "use suggested clip names" (on by default until step 6) because no list
+   carries saved names yet; and the Flex tag is worked out for the rows on screen,
+   since the whole lineup at once measured about a second.
 6. **The review screen** — the Names column and "Match shows" in the filler
    editor, writing `names` and aliases. Verified on Ron's lists: the SGC2C
    case above learns from one fix.
