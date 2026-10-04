@@ -66,6 +66,27 @@ function captureErrors(fn) {
 }
 const names = (p) => p.names.join();
 
+// Shows for the shortened-title, spacing and two-show-title checks, titled as Plex
+// titles them (a subtitle after a colon, a trailing "Show"), and a custom show.
+const FIX_CHANNELS = [channel(3, [
+    ep('Ghost in the Shell: Stand Alone Complex'), ep('Transformers'), ep('Transformers: Robots In Disguise'),
+    ep("G.I. Joe: A Real American Hero ('83)"), ep("G.I. Joe: A Real American Hero ('89)"), ep('Be: Something Long'),
+    ep('Avatar: The Last Airbender'), ep('The Adventures of Jimmy Neutron: Boy Genius'),
+    ep('Space Ghost Coast to Coast'), ep('Camp Lazlo'), ep("Foster's Home for Imaginary Friends"),
+    ep('Ed, Edd n Eddy'), ep('Dragon Ball GT'), ep('Dragon Ball Z'), ep('Dragon Ball'), ep('InuYasha'), ep('Up'),
+    ep('Sealab 2021'), ep('The Tex Avery Show'), ep('The Cosby Show'), ep('Cow and Chicken'), ep("Dexter's Laboratory"),
+    ep('Tom & Jerry'), custom('g2', 'Mobile Suit Gundam Series'),
+])];
+const FIXK = {
+    sac: 'tv.Ghost in the Shell: Stand Alone Complex', transformers: 'tv.Transformers', tfRid: 'tv.Transformers: Robots In Disguise',
+    joe83: "tv.G.I. Joe: A Real American Hero ('83)", joe89: "tv.G.I. Joe: A Real American Hero ('89)",
+    avatar: 'tv.Avatar: The Last Airbender', jimmy: 'tv.The Adventures of Jimmy Neutron: Boy Genius',
+    sgc: 'tv.Space Ghost Coast to Coast', lazlo: 'tv.Camp Lazlo', fosters: "tv.Foster's Home for Imaginary Friends",
+    ed: 'tv.Ed, Edd n Eddy', gt: 'tv.Dragon Ball GT', dbz: 'tv.Dragon Ball Z', db: 'tv.Dragon Ball', inuyasha: 'tv.InuYasha',
+    sealab: 'tv.Sealab 2021', tex: 'tv.The Tex Avery Show', cosby: 'tv.The Cosby Show', cow: 'tv.Cow and Chicken',
+    dexter: "tv.Dexter's Laboratory", tj: 'tv.Tom & Jerry', gundam: 'custom.g2',
+};
+
 module.exports = async function run() {
     const suite = new Suite('show match');
     const vocab = showMatch.buildVocabulary(CHANNELS, { c1: 'Looney Tunes', c9: 'Never Aired' });
@@ -507,6 +528,36 @@ module.exports = async function run() {
             }
         })();
         suite.check('there is no save route yet: POST /api/filler/:id/match is not one', posts === 404, `${posts}`);
+    }
+
+    // ---- shortened titles: the part before a colon ---------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t) => showMatch.propose(t, vocabS, {});
+        suite.check('"Ghost In The Shell NEXT promo" names Ghost in the Shell: Stand Alone Complex',
+            names(p('Adult Swim AcTN - Ghost In The Shell NEXT promo')) === FIXK.sac, names(p('Adult Swim AcTN - Ghost In The Shell NEXT promo')));
+        suite.check('... and says it came from a shortened title',
+            p('Ghost In The Shell NEXT promo').found.length === 1 && p('Ghost In The Shell NEXT promo').found[0].shortened === true);
+        suite.check('the whole title still names it, and is not marked',
+            names(p('Ghost in the Shell: Stand Alone Complex promo')) === FIXK.sac
+            && p('Ghost in the Shell: Stand Alone Complex promo').found[0].shortened !== true);
+        suite.check('a part before the colon that is another show\'s whole title is not offered: "Transformers" is the plain show',
+            names(p('Transformers promo')) === FIXK.transformers && p('Transformers promo').found[0].shortened !== true
+            && typeof(p('Transformers promo').found[0].alsoKeys) === 'undefined');
+        suite.check('... and the longer title still names its own show',
+            names(p('Transformers: Robots In Disguise promo')) === FIXK.tfRid);
+        const joe = p('G.I. Joe promo');
+        suite.check('two shows sharing the part before the colon: one is proposed and the other reported, marked shortened',
+            joe.names.length === 1 && joe.found[0].alsoKeys && joe.found[0].alsoKeys.length === 1 && joe.found[0].shortened === true
+            && [FIXK.joe83, FIXK.joe89].includes(joe.names[0]) && [FIXK.joe83, FIXK.joe89].includes(joe.found[0].alsoKeys[0]), JSON.stringify(joe));
+        suite.check('a part before the colon under three letters is not offered ("Be: Something Long")',
+            p('be happy now').names.length === 0);
+        suite.check('a leading "The" is optional on a shortened title too',
+            names(p('Adventures of Jimmy Neutron promo')) === FIXK.jimmy && names(p('The Adventures of Jimmy Neutron promo')) === FIXK.jimmy);
+        suite.check('one word before the colon is enough: "Avatar" names Avatar: The Last Airbender, marked shortened',
+            names(p('Nick.com promo (Avatar)')) === FIXK.avatar && p('Nick.com promo (Avatar)').found[0].shortened === true);
+        suite.check('a title with no colon gets no shortened form: "Sealab" alone names nothing',
+            p('Sealab promo').names.length === 0);
     }
 
     return suite;

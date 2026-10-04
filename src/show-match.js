@@ -165,17 +165,32 @@ function buildVocabulary(channels, customShowNames) {
     const byLength = (a, b) => (b.folded.length - a.folded.length)
         || (KIND_ORDER[keyKind(a.key)] - KIND_ORDER[keyKind(b.key)])
         || (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0));
+    const shortenedForms = [];     // { key, name, folded }: a title's shortened forms, offered once every whole title is known
+    const wholeTitles = new Set(); // the folded text of every whole title, of every show
     for (const [key, titles] of found) {
         const seen = new Set();
-        const offer = (name, folded, alone) => {
+        const offer = (name, folded, alone, shortened) => {
             if ( (folded.length < MIN_TITLE_LENGTH) || seen.has(folded) ) {
                 return;
             }
             seen.add(folded);
-            (alone ? standalone : entries).push( { key: key, name: name, folded: folded } );
+            const entry = { key: key, name: name, folded: folded };
+            if (shortened) {
+                entry.shortened = true;
+            } else {
+                wholeTitles.add(folded);
+            }
+            (alone ? standalone : entries).push(entry);
             (owners[folded] = owners[folded] || new Set()).add(key);
         };
         for (const name of titles) {
+            // The part of a title before its colon, "Ghost in the Shell" for
+            // "Ghost in the Shell: Stand Alone Complex": what a clip says when it
+            // is short for the show. Offered after the loop, below.
+            const colon = name.indexOf(':');
+            if (colon > 0) {
+                shortenedForms.push( { key: key, name: name, folded: fold(name.slice(0, colon)) } );
+            }
             // The title as Plex has it, then without a trailing year ("ThunderCats
             // (2011)"), and each of those without a leading article.
             const forms = [ fold(name) ];
@@ -195,6 +210,27 @@ function buildVocabulary(channels, customShowNames) {
                     offer(name, bare, true);
                 }
             }
+        }
+    }
+    // Shortened forms last, so that one equal to any show's whole title (the plain
+    // "Transformers" beside "Transformers: Robots In Disguise") is left to that
+    // title, which is the more certain answer. Two shows sharing a shortened form
+    // ("G.I. Joe" for two eras) are both offered and reported as ambiguous.
+    const shortSeen = new Set();
+    const offerShortened = (key, name, folded) => {
+        const once = key + '|' + folded;
+        if ( (folded.length < MIN_TITLE_LENGTH) || wholeTitles.has(folded) || shortSeen.has(once) ) {
+            return;
+        }
+        shortSeen.add(once);
+        entries.push( { key: key, name: name, folded: folded, shortened: true } );
+        (owners[folded] = owners[folded] || new Set()).add(key);
+    };
+    for (const form of shortenedForms) {
+        offerShortened(form.key, form.name, form.folded);
+        const bare = form.folded.replace(/^(the|a|an) /, '');
+        if ( (bare !== form.folded) && (bare.indexOf(' ') !== -1) ) {
+            offerShortened(form.key, form.name, bare);
         }
     }
     entries.sort(byLength);
@@ -221,6 +257,9 @@ function consumeTitles(title, vocabulary) {
         const hit = { pos: at + 1, key: entry.key, text: entry.folded, via: 'title' };
         if (alone) {
             hit.standalone = true;      // a one-word title, found only because it stood alone: less certain
+        }
+        if (entry.shortened) {
+            hit.shortened = true;       // found by a shortened form of the title ("from a shortened title"): less certain
         }
         const others = vocabulary.ambiguous[entry.folded];
         if (typeof(others) !== 'undefined') {
@@ -260,7 +299,8 @@ function consumeTitles(title, vocabulary) {
  * in order propose [now, then] - the same show found twice is one show - and a
  * third is reported as `extra` and not proposed. Nothing found proposes [].
  *
- * `found` says what matched and how, for a review screen to show.
+ * `found` says what matched and how, for a review screen to show. A hit found by
+ * a shortened form of a title (the part before a colon) carries `shortened: true`.
  */
 function propose(title, vocabulary, aliases) {
     const known = aliases || {};
