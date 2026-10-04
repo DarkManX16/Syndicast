@@ -66,6 +66,12 @@ function captureErrors(fn) {
 }
 const names = (p) => p.names.join();
 
+// The show titles on Ron's channels that have a hyphen inside a word (checked against the
+// dev data folder): a hyphen in one of these is never the hyphen between two shows.
+const HYPHENATED_SHOWS = ['A Pup Named Scooby-Doo', 'Butt-Ugly Martians', 'He-Man and the Masters of the Universe (2002)',
+    'Scooby-Doo and Scrappy-Doo', 'Scooby-Doo! Mystery Incorporated', 'Sym-Bionic Titan', 'The 13 Ghosts of Scooby-Doo',
+    'The Fresh Prince of Bel-Air', 'The New Scooby-Doo Movies', "What's New Scooby-Doo?", 'X-Men: Evolution'];
+
 // Shows for the shortened-title, spacing and two-show-title checks, titled as Plex
 // titles them (a subtitle after a colon, a trailing "Show"), and a custom show.
 const FIX_CHANNELS = [channel(3, [
@@ -75,7 +81,10 @@ const FIX_CHANNELS = [channel(3, [
     ep('Space Ghost Coast to Coast'), ep('Camp Lazlo'), ep("Foster's Home for Imaginary Friends"),
     ep('Ed, Edd n Eddy'), ep('Dragon Ball GT'), ep('Dragon Ball Z'), ep('Dragon Ball'), ep('InuYasha'), ep('Up'),
     ep('Sealab 2021'), ep('The Tex Avery Show'), ep('The Cosby Show'), ep('Cow and Chicken'), ep("Dexter's Laboratory"),
-    ep('Tom & Jerry'), ep('Tom & Jerry Show'), ep('Gumball Show'), ep('The Big Late Show Live'), ep('Ben 10'), custom('g2', 'Mobile Suit Gundam Series'),
+    ep('Tom & Jerry'), ep('Tom & Jerry Show'), ep('Gumball Show'), ep('The Big Late Show Live'), ep('Ben 10'), ep('Teen Titans'), ep('Static Shock'), ep('Teenage Mutant Ninja Turtles (2003)'),
+    ep('Spider-Man'), ep('The Brady Bunch'), ep('Rocket Power'), ep('Droopy'), ep('Scooby-Doo, Where Are You!'),
+    ep('Yu-Gi-Oh! Duel Monsters'),
+    ...HYPHENATED_SHOWS.map(ep), custom('g2', 'Mobile Suit Gundam Series'),
 ])];
 const FIXK = {
     sac: 'tv.Ghost in the Shell: Stand Alone Complex', transformers: 'tv.Transformers', tfRid: 'tv.Transformers: Robots In Disguise',
@@ -85,6 +94,8 @@ const FIXK = {
     ed: 'tv.Ed, Edd n Eddy', gt: 'tv.Dragon Ball GT', dbz: 'tv.Dragon Ball Z', db: 'tv.Dragon Ball', inuyasha: 'tv.InuYasha',
     sealab: 'tv.Sealab 2021', tex: 'tv.The Tex Avery Show', cosby: 'tv.The Cosby Show', cow: 'tv.Cow and Chicken',
     dexter: "tv.Dexter's Laboratory", tj: 'tv.Tom & Jerry', gundam: 'custom.g2',
+    teenTitans: 'tv.Teen Titans', static: 'tv.Static Shock', tmnt: 'tv.Teenage Mutant Ninja Turtles (2003)',
+    spider: 'tv.Spider-Man', brady: 'tv.The Brady Bunch', rocket: 'tv.Rocket Power', droopy: 'tv.Droopy',
 };
 
 module.exports = async function run() {
@@ -664,6 +675,74 @@ module.exports = async function run() {
         const learned = showMatch.learnAliases('CN City YES! Era NEXT; Foster\u2019s (2006)', FIXK.fosters, vocabS, {}, corpus);
         suite.check('so with the half-read clips unnamed, "foster" can be learned as the nickname for Foster\'s',
             learned.added.foster === FIXK.fosters, JSON.stringify(learned));
+    }
+
+    // ---- a title that joins shows with hyphens inside its brackets ---------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t, a) => showMatch.propose(t, vocabS, a || {});
+        const recognised = (x) => (x.unresolved ? x.unresolved.recognised.join() : null);
+        // TMNT is not a title and, until abbreviations are read, not a show: only Teen Titans is recognised.
+        suite.check('"(TMNT-Teen Titans)" with only Teen Titans recognised names nothing and is flagged',
+            p('Miguzi - Next Bumper (TMNT-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (TMNT-Teen Titans)')) === FIXK.teenTitans, JSON.stringify(p('Miguzi - Next Bumper (TMNT-Teen Titans)')));
+        suite.check('both shows recognised: a pair in the order written, not flagged',
+            names(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`
+            && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === null
+            && names(p('Miguzi - Next Bumper (Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`);
+        suite.check('three shows with the first not recognised: flagged, with the two that were',
+            p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`,
+            JSON.stringify(p('Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)')));
+        suite.check('three shows with the middle one not recognised ("Static" for Static Shock): flagged too',
+            p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`);
+        suite.check('a hyphen with spaces round it counts, and so do square brackets',
+            recognised(p('Promo (Camp Lazlo - Foster\u2019s)')) === FIXK.lazlo
+            && names(p('Promo [Camp Lazlo-Foster\'s Home for Imaginary Friends]')) === `${FIXK.lazlo},${FIXK.fosters}`);
+        suite.check('a hyphen outside any bracket is not a separator: "Toonami - NEXT - Camp Lazlo" is Camp Lazlo',
+            names(p('Toonami - NEXT - Camp Lazlo')) === FIXK.lazlo && recognised(p('Toonami - NEXT - Camp Lazlo')) === null);
+        suite.check('"A to B" with three shows, one unrecognised, is flagged too',
+            p('CN Next (Camp Lazlo to Ed, Edd n Eddy to Dexter\u2019s Lab)').names.length === 0
+            && recognised(p('CN Next (Camp Lazlo to Ed, Edd n Eddy to Dexter\u2019s Lab)')) === `${FIXK.lazlo},${FIXK.ed}`);
+
+        // Hyphens that are part of one name.
+        suite.check('a hyphen inside a show\'s own title is not a separator: "(Spider-Man)" is Spider-Man',
+            names(p('Chef Boyardee (Spider-Man) (1995)')) === FIXK.spider && recognised(p('Chef Boyardee (Spider-Man) (1995)')) === null);
+        suite.check('... and a show with a hyphen can be one of the shows joined: "(Spider-Man-Teen Titans)" is a pair',
+            names(p('Promo (Spider-Man-Teen Titans)')) === `${FIXK.spider},${FIXK.teenTitans}`);
+        suite.check('a hyphenated word from a show title that is not itself recognised is one word: "(Scooby-Doo-Teen Titans)" flags Scooby-Doo as the unknown',
+            p('Next (Scooby-Doo-Teen Titans)').names.length === 0 && recognised(p('Next (Scooby-Doo-Teen Titans)')) === FIXK.teenTitans);
+        suite.check('a hyphenated word that names no show leaves the rest alone: "(N-Files) (Sam Rocket Power)" is Rocket Power',
+            names(p('Nick Promo (N-Files) (Sam Rocket Power)')) === FIXK.rocket && recognised(p('Nick Promo (N-Files) (Sam Rocket Power)')) === null);
+        suite.check('a show with extra words beside a hyphen in its segment is not a list of shows: "(The Brady Bunch Kitty-Karry)"',
+            names(p('Nick at Nite Rewind promo (The Brady Bunch Kitty-Karry)')) === FIXK.brady
+            && recognised(p('Nick at Nite Rewind promo (The Brady Bunch Kitty-Karry)')) === null);
+        suite.check('a one-letter piece is not a missing show: "(Droopy-D)" is Droopy',
+            names(p('Know Your Toons (Droopy-D) (Oct 92)')) === FIXK.droopy && recognised(p('Know Your Toons (Droopy-D) (Oct 92)')) === null);
+        suite.check('a year range is not a pair of shows: "(2004-05)"',
+            names(p('Camp Lazlo promo (2004-05)')) === FIXK.lazlo && recognised(p('Camp Lazlo promo (2004-05)')) === null);
+        suite.check('the brackets are looked at one at a time: a hyphen in one does not turn another into half of a pair',
+            names(p('Promo (Camp Lazlo) (N-Files)')) === FIXK.lazlo && recognised(p('Promo (Camp Lazlo) (N-Files)')) === null);
+        suite.check('a bracket whose pieces name no show proposes nothing, and is not flagged',
+            p('Nick Stars Promo (Jeff - Painting)').names.length === 0 && recognised(p('Nick Stars Promo (Jeff - Painting)')) === null);
+        suite.check('every hyphenated show title on the channels, in brackets, names its show and is not flagged',
+            [...HYPHENATED_SHOWS, 'Scooby-Doo, Where Are You!', 'Yu-Gi-Oh! Duel Monsters'].every( (title) => {
+                const x = p(`Miguzi - Next Bumper (${title.replace(/ \(\d{4}\)$/, '')})`);
+                return x.names.length === 1 && x.names[0] === 'tv.' + title && ! x.unresolved;
+            } ));
+        suite.check('... and each can be one of the shows joined: "(Teen Titans-Sym-Bionic Titan)" is a pair',
+            names(p('Miguzi - Next Bumper (Teen Titans-Sym-Bionic Titan)')) === `${FIXK.teenTitans},tv.Sym-Bionic Titan`
+            && names(p('Next (Butt-Ugly Martians-Static Shock)')) === `tv.Butt-Ugly Martians,${FIXK.static}`);
+        suite.check('a year or a word that describes the clip beside a show is not a missing show',
+            names(p('Promo (Camp Lazlo-2006)')) === FIXK.lazlo && recognised(p('Promo (Camp Lazlo-2006)')) === null
+            && names(p('Promo (Camp Lazlo-promo)')) === FIXK.lazlo && recognised(p('Promo (Camp Lazlo-promo)')) === null);
+        suite.check('a piece that already holds two shows is not one show of a list: a stray "to" before a capital leaves them named',
+            names(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')) === `${FIXK.lazlo},${FIXK.ed}`
+            && recognised(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')) === null,
+            JSON.stringify(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')));
+        suite.check('once the unknown name is taught, the pair stands',
+            names(p('Miguzi - Next Bumper (TMNT-Teen Titans)', { tmnt: FIXK.tmnt })) === `${FIXK.tmnt},${FIXK.teenTitans}`);
     }
 
     return suite;

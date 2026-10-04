@@ -381,39 +381,120 @@ const PAIR_SEPARATORS = [
 ];
 
 /*
- * Whether a title is built as two shows but only one was found, with the hits
- * all on one side of the separator: "Now/Then (Foster's / Camp Lazlo)" with
- * Foster's not recognised. A hit that straddles the separator is one title that
- * happens to contain it ("Space Ghost Coast to Coast"), which is not a pair.
+ * Words that do not make a piece of a title a show of its own: the words that
+ * describe a clip, numbers, and small joining words.
  */
-function halfRead(title, hits) {
-    const whole = fold(title);
+const FILLER_WORDS = new Set(['a', 'an', 'of', 'to', 'in', 'on', 'at']);
+
+function contentWords(text, minLength) {
+    return text.split(' ').filter( (w) => (w !== '') && (w.length >= minLength)
+        && ! /^\d+$/.test(w) && ! STRUCTURAL.has(w) && ! FILLER_WORDS.has(w) );
+}
+
+/*
+ * One stretch of a title cut by separators into pieces, each piece meant to be a
+ * show. `separators` are { index, length } in `text`, in order; `hits` are what
+ * was found in `text`. Returns whether the title is half-read: some piece holds a
+ * show that was found and another piece, with a word of at least `minLength`
+ * letters that is not a filler, holds none.
+ *
+ * A hit that straddles a separator is one title that happens to contain it
+ * ("Space Ghost Coast to Coast", "Spider-Man"), so that separator is not one and
+ * the pieces either side of it are one piece. A piece that holds two different
+ * shows is not one show of a list, so the stretch is not a list and is not
+ * half-read. With `guarded`, a piece that holds a show and also words that are not
+ * part of it ("The Brady Bunch Kitty") is not a show by itself either.
+ */
+function scopeHalfRead(text, hits, separators, guarded, minLength) {
+    const whole = fold(text);
+    const boundsOf = (sep) => ({
+        leftEnd: fold(text.slice(0, sep.index)).length,
+        rightFrom: whole.length - fold(text.slice(sep.index + sep.length)).length,
+    });
+    let seps = separators.filter( (sep) => (fold(text.slice(0, sep.index)) !== '') && (fold(text.slice(sep.index + sep.length)) !== '') );
+    for (;;) {
+        const straddled = seps.findIndex( (sep) => {
+            const b = boundsOf(sep);
+            return hits.some( (h) => ! ((h.end - 1 <= b.leftEnd) || (h.pos - 1 >= b.rightFrom)) );
+        } );
+        if (straddled === -1) {
+            break;
+        }
+        seps.splice(straddled, 1);
+    }
+    if (seps.length === 0) {
+        return false;
+    }
+    const pieces = [];
+    let from = 0;
+    for (const sep of seps) {
+        const b = boundsOf(sep);
+        pieces.push( { from: from, to: b.leftEnd } );
+        from = b.rightFrom;
+    }
+    pieces.push( { from: from, to: whole.length } );
+    let seen = false;
+    let blank = false;
+    for (const piece of pieces) {
+        const inside = hits.filter( (h) => (h.pos - 1 >= piece.from) && (h.end - 1 <= piece.to) );
+        const letters = whole.slice(piece.from, piece.to).split('');
+        for (const h of inside) {
+            for (let i = h.pos - 1; i < h.end - 1; i++) {
+                letters[i - piece.from] = ' ';
+            }
+        }
+        if (inside.length > 0) {
+            seen = true;
+            if (new Set(inside.map( (h) => h.key )).size > 1) {
+                return false;
+            }
+            if (guarded && (contentWords(letters.join(''), 1).length > 0) ) {
+                return false;
+            }
+        } else if (contentWords(letters.join(''), minLength).length > 0) {
+            blank = true;
+        }
+    }
+    return seen && blank;
+}
+
+/*
+ * Whether a title is built as several shows but not all of them were found: the
+ * pieces of a title cut at a spaced slash or "to" (the whole title), or at the
+ * hyphens inside one pair of brackets ("(TMNT-Static-Teen Titans)", one bracket
+ * at a time so a hyphen in one does not make another half of a pair). A hyphen
+ * inside a show's own title ("Scooby-Doo", "X-Men") is not one: the hit for the
+ * title straddles it, which scopeHalfRead takes as that. See scopeHalfRead.
+ */
+function halfRead(title, hits, vocabulary, known) {
+    if (hits.length === 0) {
+        return false;
+    }
     const text = String(title == null ? '' : title);
+    const separators = [];
     for (const pattern of PAIR_SEPARATORS) {
         pattern.lastIndex = 0;
         let found;
         while ( (found = pattern.exec(text)) !== null ) {
-            const left = fold(text.slice(0, found.index));
-            const right = fold(text.slice(found.index + found[0].length));
-            if ( (left === '') || (right === '') ) {
-                continue;
+            separators.push( { index: found.index, length: found[0].length } );
+        }
+    }
+    separators.sort( (a, b) => a.index - b.index );
+    if (scopeHalfRead(text, hits, separators, false, 1)) {
+        return true;
+    }
+    const groups = /[(\[]([^()\[\]]*)[)\]]/g;
+    let group;
+    while ( (group = groups.exec(text)) !== null ) {
+        const content = group[1];
+        const hyphens = [];
+        for (let i = 0; i < content.length; i++) {
+            if (content[i] === '-') {
+                hyphens.push( { index: i, length: 1 } );
             }
-            const rightFrom = whole.length - right.length;
-            let onLeft = 0;
-            let onRight = 0;
-            let across = false;
-            for (const hit of hits) {
-                if (hit.end - 1 <= left.length) {
-                    onLeft++;
-                } else if (hit.pos - 1 >= rightFrom) {
-                    onRight++;
-                } else {
-                    across = true;
-                }
-            }
-            if ( ! across && ((onLeft > 0) !== (onRight > 0)) ) {
-                return true;
-            }
+        }
+        if ( (hyphens.length > 0) && scopeHalfRead(content, findHits(content, vocabulary, known), hyphens, true, 3) ) {
+            return true;
         }
     }
     return false;
@@ -428,11 +509,11 @@ function halfRead(title, hits) {
  *
  * `found` says what matched and how, for a review screen to show. A hit found by
  * a shortened form of a title (the part before a colon) carries `shortened: true`.
- * A title built as two shows ("A to B", "Now/Then (A / B)") of which only one was
- * recognised proposes nothing and carries `unresolved: { recognised, reason }`.
+ * A title built as several shows ("A to B", "Now/Then (A / B)", "(A-B-C)") of
+ * which not all were recognised proposes nothing and carries
+ * `unresolved: { recognised, reason }`.
  */
-function propose(title, vocabulary, aliases) {
-    const known = aliases || {};
+function findHits(title, vocabulary, known) {
     const { hits, remaining } = consumeTitles(title, vocabulary);
     const wordPattern = /\S+/g;
     let match;
@@ -443,6 +524,12 @@ function propose(title, vocabulary, aliases) {
         }
     }
     hits.sort( (a, b) => a.pos - b.pos );
+    return hits;
+}
+
+function propose(title, vocabulary, aliases) {
+    const known = aliases || {};
+    const hits = findHits(title, vocabulary, known);
     const keys = [];
     for (const hit of hits) {
         if (keys.indexOf(hit.key) === -1) {
@@ -450,15 +537,16 @@ function propose(title, vocabulary, aliases) {
         }
     }
     const found = hits.map( (h) => { const { pos, end, ...rest } = h; return rest; } );
-    if ( (keys.length === 1) && halfRead(title, hits) ) {
-        // Naming the one show would make a clip that says "A, then B" play as a clip
-        // for B alone, and would make A's nickname look like a word of another show
-        // when it is taught. Left unnamed, and flagged, for the review screen.
+    if (halfRead(title, hits, vocabulary, known)) {
+        // Naming only the shows that were found would make a clip that says "A, then
+        // B" play as a clip for B alone, and would make A's nickname look like a word
+        // of another show when it is taught. Left unnamed, and flagged, for the
+        // review screen.
         return {
             names: [],
             found: found,
             extra: 0,
-            unresolved: { recognised: keys.slice(), reason: 'The title seems to name two shows, but only one was recognised.' },
+            unresolved: { recognised: keys.slice(), reason: 'The title seems to name several shows, but not all of them were recognised.' },
         };
     }
     return {
