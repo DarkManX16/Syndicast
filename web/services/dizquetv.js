@@ -228,6 +228,13 @@ module.exports = function ($http, $q) {
             return f.data;
         },
 
+        // What each clip of a list is proposed to be about, from its title
+        // (read-only; nothing is saved). The transitions preview uses it.
+        getFillerMatch: async (id) => {
+            let f = await $http.get(`/api/filler/${id}/match`);
+            return f.data;
+        },
+
         updateFiller: async(id, filler) => {
             return (await $http({
                 method: "POST",

@@ -447,6 +447,15 @@ module.exports = function (getShowData) {
         }
         return (x.type === 'redirect') ? ('Redirect to channel: ' + x.channel) : 'Flex';
     }
+    // The planned transitions of the break a Flex row belongs to, as one line
+    // (channel-config.js's refreshFlexTags works out x.$$flexTag; $$ keeps it
+    // out of what is saved) - blank for a row with nothing planned.
+    let rowFlexTag = (x) => {
+        return (x && x.isOffline && x.$$flexTag) ? x.$$flexTag.text : '';
+    }
+    let rowFlexTagTitle = (x) => {
+        return (x && x.isOffline && x.$$flexTag) ? x.$$flexTag.title : '';
+    }
     // The real break the Flex/redirect run right after this program adds up
     // to (channel-config.js's updateChannelDuration computes $breakAfterMs)
     // - blank when the next item is another program, or for an offline row
@@ -505,6 +514,8 @@ module.exports = function (getShowData) {
         rowTag: rowTag,
         rowTitle: rowTitle,
         rowOfflineLabel: rowOfflineLabel,
+        rowFlexTag: rowFlexTag,
+        rowFlexTagTitle: rowFlexTagTitle,
         rowBreakAfter: rowBreakAfter,
         rowSlotLabel: rowSlotLabel,
         rowSlotFillPercent: rowSlotFillPercent,

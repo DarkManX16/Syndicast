@@ -1,0 +1,140 @@
+<div class="tr-editor">
+    <div>
+        <button type="button" class="btn btn-sm btn-link tr-toggle" ng-click="toggleOpen()">
+            <i class="fas" ng-class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+            <span ng-if="count() === 0">Commercials only</span>
+            <span ng-if="count() > 0">{{count()}} step{{count() === 1 ? '' : 's'}}</span>
+        </button>
+        <span class="small text-muted" ng-if="count() === 0">&mdash; click to add clips around the breaks</span>
+        <span class="small text-muted" ng-if="count() > 0">&mdash; {{summaryLine()}}</span>
+    </div>
+
+    <div ng-if="open" class="tr-body">
+        <p class="small text-muted tr-help">
+            Each row reads in the order a break plays: the steps on the left come before the commercials (Flex),
+            the steps on the right after them, and then the show. A step picks one clip from a filler list.
+        </p>
+        <div class="small text-info" ng-if="notice">{{notice}}</div>
+
+        <div class="tr-situation" ng-repeat="s in situations">
+            <div class="tr-situation-head"><b>{{s.title}}</b> <span class="small text-muted">&mdash; {{s.hint}}</span></div>
+            <div class="tr-row">
+                <div class="tr-side tr-side-out">
+                    <span class="tr-chip" ng-repeat="step in draft[s.id].out"
+                        ng-class="{'tr-chip-open': form.step === step, 'tr-chip-bad': chipBad(step, s.id)}"
+                        ng-click="edit(step, s.id)" title="Click to edit this step">{{chip(step, s.id)}}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary tr-add" ng-click="add(s.id, 'out')" title="Add a step before the commercials">+ step</button>
+                </div>
+                <div class="tr-flex"><span ng-if="draft[s.id].out.length + draft[s.id].in.length === 0">commercials only</span><span ng-if="draft[s.id].out.length + draft[s.id].in.length > 0">Flex</span></div>
+                <div class="tr-side tr-side-in">
+                    <span class="tr-chip" ng-repeat="step in draft[s.id].in"
+                        ng-class="{'tr-chip-open': form.step === step, 'tr-chip-bad': chipBad(step, s.id)}"
+                        ng-click="edit(step, s.id)" title="Click to edit this step">{{chip(step, s.id)}}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary tr-add" ng-click="add(s.id, 'in')" title="Add a step after the commercials">+ step</button>
+                </div>
+            </div>
+
+            <div class="tr-form" ng-if="form !== null && form.situation === s.id">
+                <div class="tr-sentence">{{describe()}}</div>
+                <div class="small text-danger" ng-repeat="p in problems()">{{p}}</div>
+
+                <div ng-if="supported()">
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label class="small">Play a clip from</label>
+                            <select class="custom-select custom-select-sm form-control"
+                                ng-model="form.listId" ng-change="formChanged('list')"
+                                ng-options="o.id as o.name for o in listChoices">
+                                <option value="">&mdash; choose a list &mdash;</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label class="small">If no clip matches</label>
+                            <select class="custom-select custom-select-sm form-control"
+                                ng-model="form.fallback" ng-change="formChanged('fallback')"
+                                ng-options="o.id as ('play one from ' + o.name) for o in fallbackChoices">
+                                <option value="">skip this step (play nothing)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="small d-block">Which clip?</label>
+                        <div class="form-check" ng-repeat="w in which">
+                            <input class="form-check-input" type="radio" name="tr-which-{{$id}}" id="tr-which-{{$id}}-{{w.id}}"
+                                ng-model="form.which" ng-value="w.id" ng-change="formChanged('which')">
+                            <label class="form-check-label small" for="tr-which-{{$id}}-{{w.id}}">{{w.label}}</label>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-8">
+                            <label class="small">Only when</label>
+                            <select class="custom-select custom-select-sm form-control"
+                                ng-model="form.mark" ng-change="formChanged('mark')" ng-disabled="form.watched"
+                                ng-options="o.id as o.name for o in markChoices">
+                                <option value="">always (whether or not another step found a clip)</option>
+                            </select>
+                            <small class="text-muted" ng-if="form.watched">Another step is set to play only when this one finds nothing, so this one cannot be conditional too.</small>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label class="small">Sometimes: plays on about</label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control" ng-model="form.chance" ng-change="formChanged('chance')" placeholder="always" maxlength="3">
+                                <div class="input-group-append"><span class="input-group-text">% of breaks</span></div>
+                            </div>
+                            <small class="text-danger" ng-if="form.chanceError">{{form.chanceError}}</small>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="small d-block">Only on these days <span class="text-muted">(none picked = every day; the day is the one the break starts on)</span></label>
+                        <button type="button" class="btn btn-sm" ng-repeat="d in weekDays"
+                            ng-class="{'btn-info': isDay(d.id), 'btn-outline-secondary': !isDay(d.id)}"
+                            style="margin-right: 2px;" ng-click="toggleDay(d.id)">{{d.name}}</button>
+                    </div>
+                </div>
+
+                <div class="tr-form-buttons">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="move(sideOf(), -1)" title="Play this one earlier">&#9664; Earlier</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="move(sideOf(), 1)" title="Play this one later">Later &#9654;</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" ng-click="remove()">Delete step</button>
+                    <button type="button" class="btn btn-sm btn-primary" ng-click="edit(form.step, form.situation)">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tr-preview">
+            <button type="button" class="btn btn-sm btn-outline-primary" ng-click="runPreview()" ng-disabled="preview.busy">Preview on this week's lineup</button>
+            <label class="small tr-preview-names">
+                <input type="checkbox" ng-model="usePreviewNames"></input>
+                &nbsp;use suggested clip names
+            </label>
+            <span class="small text-muted" ng-if="preview.busy">working&hellip;</span>
+            <div class="small text-danger" ng-if="preview.error">{{preview.error}}</div>
+            <div ng-if="preview.sections !== null">
+                <div class="small text-muted tr-preview-header">{{preview.header}}</div>
+                <div class="small text-warning" ng-if="preview.stale">The steps changed after this preview was made. Preview again to see the new ones.</div>
+                <div class="tr-pv-section" ng-repeat="sec in preview.sections">
+                    <div><b>{{sec.title}}</b>
+                        <span class="small text-muted" ng-if="sec.total === 0">&mdash; no such break this week</span>
+                        <span class="small text-muted" ng-if="sec.total > 0">&mdash; {{sec.total}} break{{sec.total === 1 ? '' : 's'}} this week: {{sec.withSteps}} get steps, {{sec.total - sec.withSteps}} commercials only</span>
+                    </div>
+                    <div class="tr-pv-item" ng-repeat="it in visible(sec)">
+                        <div class="tr-pv-head">{{it.head}} <span class="text-muted" ng-if="it.other">({{it.other}})</span></div>
+                        <div class="tr-pv-plan">
+                            <span class="tr-pv-clip" ng-repeat="c in it.out track by $index">{{c}}</span>
+                            <span class="tr-pv-flex">Flex {{it.flex}}</span>
+                            <span class="tr-pv-clip" ng-repeat="c in it.in track by $index">{{c}}</span>
+                            <span class="small text-warning" ng-if="it.overrun">the steps are longer than the break</span>
+                        </div>
+                        <div class="small text-muted tr-pv-left" ng-repeat="l in it.left" ng-class="{'text-danger': l.problem}">{{l.text}}</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-link p-0" ng-if="sec.items.length > 5" ng-click="showMore(sec)">
+                        {{sec.shown === 5 ? 'show all ' + sec.items.length : 'show fewer'}}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
