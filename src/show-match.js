@@ -292,7 +292,7 @@ function consumeTitles(title, vocabulary) {
     let text = ' ' + fold(title) + ' ';
     const hits = [];
     const take = (entry, at, needle, alone) => {
-        const hit = { pos: at + 1, key: entry.key, text: entry.folded, via: 'title' };
+        const hit = { pos: at + 1, end: at + needle.length - 1, key: entry.key, text: entry.folded, via: 'title' };
         if (alone) {
             hit.standalone = true;      // a one-word title, found only because it stood alone: less certain
         }
@@ -369,6 +369,57 @@ function consumeTitles(title, vocabulary) {
 }
 
 /*
+ * What stands between the two shows of a title that names two: a slash with a
+ * space either side ("Now/Then (A / B)", written with the fraction slash U+2044,
+ * U+2215 or a plain slash) or the word "to" before something that starts like a
+ * title ("CN Next (A to B)"; the quotes allowed are plain and curly). "Now/Then"
+ * itself, a slash with no spaces, is not one.
+ */
+const PAIR_SEPARATORS = [
+    /\s[⁄∕\/]\s/g,
+    /\sto\s(?=[A-Z0-9"'‘“(\[])/g,
+];
+
+/*
+ * Whether a title is built as two shows but only one was found, with the hits
+ * all on one side of the separator: "Now/Then (Foster's / Camp Lazlo)" with
+ * Foster's not recognised. A hit that straddles the separator is one title that
+ * happens to contain it ("Space Ghost Coast to Coast"), which is not a pair.
+ */
+function halfRead(title, hits) {
+    const whole = fold(title);
+    const text = String(title == null ? '' : title);
+    for (const pattern of PAIR_SEPARATORS) {
+        pattern.lastIndex = 0;
+        let found;
+        while ( (found = pattern.exec(text)) !== null ) {
+            const left = fold(text.slice(0, found.index));
+            const right = fold(text.slice(found.index + found[0].length));
+            if ( (left === '') || (right === '') ) {
+                continue;
+            }
+            const rightFrom = whole.length - right.length;
+            let onLeft = 0;
+            let onRight = 0;
+            let across = false;
+            for (const hit of hits) {
+                if (hit.end - 1 <= left.length) {
+                    onLeft++;
+                } else if (hit.pos - 1 >= rightFrom) {
+                    onRight++;
+                } else {
+                    across = true;
+                }
+            }
+            if ( ! across && ((onLeft > 0) !== (onRight > 0)) ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/*
  * What a clip's title says it is about. Show titles are looked for first,
  * longest first; the words left over are then looked up as aliases. Whatever is
  * found is ordered by where it sits in the title: one show proposes [show], two
@@ -377,6 +428,8 @@ function consumeTitles(title, vocabulary) {
  *
  * `found` says what matched and how, for a review screen to show. A hit found by
  * a shortened form of a title (the part before a colon) carries `shortened: true`.
+ * A title built as two shows ("A to B", "Now/Then (A / B)") of which only one was
+ * recognised proposes nothing and carries `unresolved: { recognised, reason }`.
  */
 function propose(title, vocabulary, aliases) {
     const known = aliases || {};
@@ -386,7 +439,7 @@ function propose(title, vocabulary, aliases) {
     while ( (match = wordPattern.exec(remaining)) !== null ) {
         const key = known[match[0]];
         if ( (typeof(key) === 'string') && Object.prototype.hasOwnProperty.call(known, match[0]) ) {
-            hits.push( { pos: match.index, key: key, text: match[0], via: 'alias' } );
+            hits.push( { pos: match.index, end: match.index + match[0].length, key: key, text: match[0], via: 'alias' } );
         }
     }
     hits.sort( (a, b) => a.pos - b.pos );
@@ -396,9 +449,21 @@ function propose(title, vocabulary, aliases) {
             keys.push(hit.key);
         }
     }
+    const found = hits.map( (h) => { const { pos, end, ...rest } = h; return rest; } );
+    if ( (keys.length === 1) && halfRead(title, hits) ) {
+        // Naming the one show would make a clip that says "A, then B" play as a clip
+        // for B alone, and would make A's nickname look like a word of another show
+        // when it is taught. Left unnamed, and flagged, for the review screen.
+        return {
+            names: [],
+            found: found,
+            extra: 0,
+            unresolved: { recognised: keys.slice(), reason: 'The title seems to name two shows, but only one was recognised.' },
+        };
+    }
     return {
         names: keys.slice(0, 2),
-        found: hits.map( (h) => { const { pos, ...rest } = h; return rest; } ),
+        found: found,
         extra: Math.max(0, keys.length - 2),
     };
 }

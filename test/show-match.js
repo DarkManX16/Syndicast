@@ -611,6 +611,61 @@ module.exports = async function run() {
             p('Ben 10 promo').found[0].shortened !== true);
     }
 
+    // ---- a two-show title is never half-read ------------------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t, a) => showMatch.propose(t, vocabS, a || {});
+        const nowThen = 'CN City Now\u2044Then (Foster\u2019s \u2044 Camp Lazlo) (2006)';
+        suite.check('"Now/Then (Foster\'s / Camp Lazlo)" with only Camp Lazlo recognised names nothing',
+            p(nowThen).names.length === 0, JSON.stringify(p(nowThen)));
+        suite.check('... and is flagged, with the one show that was recognised',
+            p(nowThen).unresolved && p(nowThen).unresolved.recognised.join() === FIXK.lazlo
+            && typeof(p(nowThen).unresolved.reason) === 'string' && p(nowThen).unresolved.reason.length > 0);
+        suite.check('... and still reports what it did find, for the review screen',
+            p(nowThen).found.length === 1 && p(nowThen).found[0].key === FIXK.lazlo);
+        const aToB = 'CN Next (Dexter\u2019s Lab to Ed, Edd n Eddy) [Hypno]';
+        suite.check('"A to B" with only B recognised is the same: unnamed and flagged',
+            p(aToB).names.length === 0 && p(aToB).unresolved && p(aToB).unresolved.recognised.join() === FIXK.ed, JSON.stringify(p(aToB)));
+        suite.check('"A to B" with only A recognised too, and without brackets',
+            p('Ed, Edd n Eddy to Dexter\u2019s Lab [Slingshot]').names.length === 0
+            && p('Ed, Edd n Eddy to Dexter\u2019s Lab [Slingshot]').unresolved.recognised.join() === FIXK.ed
+            && p('Acme Hour to Cow & Chicken [Balloon]').names.length === 0
+            && p('Acme Hour to Cow & Chicken [Balloon]').unresolved.recognised.join() === FIXK.cow);
+        suite.check('both shows recognised: a pair, not flagged',
+            names(p('CN City Now\u2044Then (Camp Lazlo \u2044 Foster\'s Home for Imaginary Friends)')) === `${FIXK.lazlo},${FIXK.fosters}`
+            && typeof(p('CN City Now\u2044Then (Camp Lazlo \u2044 Foster\'s Home for Imaginary Friends)').unresolved) === 'undefined');
+        suite.check('"A to B" with both recognised is a pair too',
+            names(p('CN Next (Ed, Edd n Eddy to Cow and Chicken) [Hypno]')) === `${FIXK.ed},${FIXK.cow}`);
+        suite.check('one show under "Now/Then" with no second show is simply that show',
+            names(p('CN CITY Now\u2044Then (Camp Lazlo) (2006)')) === FIXK.lazlo
+            && typeof(p('CN CITY Now\u2044Then (Camp Lazlo) (2006)').unresolved) === 'undefined');
+        suite.check('the same show on both sides is one show named twice, not a half-read pair',
+            names(p('CN Bumper (Camp Lazlo ⁄ Camp Lazlo)')) === FIXK.lazlo
+            && typeof(p('CN Bumper (Camp Lazlo ⁄ Camp Lazlo)').unresolved) === 'undefined');
+        suite.check('a show whose own title has " to " in it is one show, not a pair',
+            names(p('Space Ghost Coast to Coast promo')) === FIXK.sgc && typeof(p('Space Ghost Coast to Coast promo').unresolved) === 'undefined');
+        suite.check('a lower-case word after "to" is ordinary English, not a second show',
+            names(p('Camp Lazlo back to the beginning')) === FIXK.lazlo && typeof(p('Camp Lazlo back to the beginning').unresolved) === 'undefined');
+        suite.check('a pair with neither side recognised is just unnamed, and not flagged',
+            p('CN City Now\u2044Then (Grim Advs \u2044 Foster\u2019s)').names.length === 0
+            && typeof(p('CN City Now\u2044Then (Grim Advs \u2044 Foster\u2019s)').unresolved) === 'undefined');
+        suite.check('both shown on the same side is not a half-read pair: two shows named is a pair as before',
+            names(p('Ed, Edd n Eddy and Camp Lazlo \u2044 promo')) === `${FIXK.ed},${FIXK.lazlo}`);
+        suite.check('once the nickname is taught the same title is a pair and is not flagged',
+            names(p(nowThen, { foster: FIXK.fosters })) === `${FIXK.fosters},${FIXK.lazlo}`
+            && typeof(p(nowThen, { foster: FIXK.fosters }).unresolved) === 'undefined');
+        suite.check('a respaced title is placed correctly: "DragonBall GT to Camp Lazlo" is a pair',
+            names(p('Next (DragonBall GT to Camp Lazlo)')) === `${FIXK.gt},${FIXK.lazlo}`);
+
+        // The reason this matters for the review screen: a half-read clip used to count as a clip naming
+        // Camp Lazlo, which made "foster" look like another show's word and so impossible to teach.
+        const titles = [nowThen, 'CN City Now\u2044Then (Grim Advs \u2044 Camp Lazlo) (2006)', 'CN City YES! Era NEXT; Camp Lazlo (2006)'];
+        const corpus = titles.map( (t) => ({ title: t, names: p(t).names }) );
+        const learned = showMatch.learnAliases('CN City YES! Era NEXT; Foster\u2019s (2006)', FIXK.fosters, vocabS, {}, corpus);
+        suite.check('so with the half-read clips unnamed, "foster" can be learned as the nickname for Foster\'s',
+            learned.added.foster === FIXK.fosters, JSON.stringify(learned));
+    }
+
     return suite;
 };
 
