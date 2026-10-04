@@ -25,6 +25,16 @@ const KIND_ORDER = { custom: 0, tv: 1, audio: 2, movie: 3 };
 const MIN_TITLE_LENGTH = 3;
 
 /*
+ * A title is read through different spacing only when it is at least this many
+ * letters with its spaces taken out: "dragonballgt" yes, a handful of short
+ * words run together no.
+ */
+const MIN_RESPACED_LENGTH = 6;
+
+// The most clip words that are joined to be compared with a title's squashed form.
+const MAX_RESPACED_WORDS = 8;
+
+/*
  * A program shorter than this is a clip someone put in a lineup (a NEXT promo
  * inserted by hand, an ident), not an episode, so it does not make a show. On
  * channel 1 the four such clips are movie items of 10-15 seconds, and the
@@ -241,7 +251,22 @@ function buildVocabulary(channels, customShowNames) {
             ambiguous[folded] = Array.from(owners[folded]).sort();
         }
     }
-    return { entries: entries, standalone: standalone, names: display, ambiguous: ambiguous };
+    // Every title with its spaces taken out, so a clip that spaces a title
+    // differently ("DragonBall GT" for "Dragon Ball GT", "Inu Yasha" for "InuYasha")
+    // can still be read. A title under MIN_RESPACED_LENGTH letters is left out: run
+    // together from a few short words it would be found in too many places.
+    const squashed = new Map();
+    for (const entry of entries) {
+        const together = entry.folded.replace(/ /g, '');
+        if (together.length < MIN_RESPACED_LENGTH) {
+            continue;
+        }
+        if (! squashed.has(together) ) {
+            squashed.set(together, []);
+        }
+        squashed.get(together).push(entry);
+    }
+    return { entries: entries, standalone: standalone, names: display, ambiguous: ambiguous, squashed: squashed };
 }
 
 /*
@@ -273,6 +298,44 @@ function consumeTitles(title, vocabulary) {
         const at = text.indexOf(needle);
         if (at !== -1) {
             take(entry, at, needle);
+        }
+    }
+    // Titles the clip spaces differently, found among the words still left and only
+    // where they sit side by side (a title taken out between two words breaks the
+    // join). The longest comes first, as above.
+    const squashed = vocabulary.squashed;
+    if (squashed) {
+        const words = [];
+        const wordPattern = /\S+/g;
+        let word;
+        while ( (word = wordPattern.exec(text)) !== null ) {
+            words.push( { text: word[0], at: word.index } );
+        }
+        const found = [];
+        for (let i = 0; i < words.length; i++) {
+            let joined = '';
+            for (let k = 0; (k < MAX_RESPACED_WORDS) && (i + k < words.length); k++) {
+                if ( (k > 0) && (words[i + k].at !== words[i + k - 1].at + words[i + k - 1].text.length + 1) ) {
+                    break;
+                }
+                joined += words[i + k].text;
+                const owners = squashed.get(joined);
+                if (typeof(owners) === 'undefined') {
+                    continue;
+                }
+                for (const entry of owners) {
+                    found.push( { entry: entry, length: joined.length, start: words[i].at, end: words[i + k].at + words[i + k].text.length } );
+                }
+            }
+        }
+        found.sort( (a, b) => (b.length - a.length) || (a.start - b.start) );
+        const used = [];
+        for (const f of found) {
+            if (used.some( (u) => (f.start < u.end) && (u.start < f.end) )) {
+                continue;
+            }
+            used.push(f);
+            take(f.entry, f.start - 1, ' ' + text.slice(f.start, f.end) + ' ');
         }
     }
     // One-word titles that dropped their "The" count only as a segment of their

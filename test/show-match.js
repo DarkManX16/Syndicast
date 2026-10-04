@@ -75,7 +75,7 @@ const FIX_CHANNELS = [channel(3, [
     ep('Space Ghost Coast to Coast'), ep('Camp Lazlo'), ep("Foster's Home for Imaginary Friends"),
     ep('Ed, Edd n Eddy'), ep('Dragon Ball GT'), ep('Dragon Ball Z'), ep('Dragon Ball'), ep('InuYasha'), ep('Up'),
     ep('Sealab 2021'), ep('The Tex Avery Show'), ep('The Cosby Show'), ep('Cow and Chicken'), ep("Dexter's Laboratory"),
-    ep('Tom & Jerry'), custom('g2', 'Mobile Suit Gundam Series'),
+    ep('Tom & Jerry'), ep('Ben 10'), custom('g2', 'Mobile Suit Gundam Series'),
 ])];
 const FIXK = {
     sac: 'tv.Ghost in the Shell: Stand Alone Complex', transformers: 'tv.Transformers', tfRid: 'tv.Transformers: Robots In Disguise',
@@ -558,6 +558,29 @@ module.exports = async function run() {
             names(p('Nick.com promo (Avatar)')) === FIXK.avatar && p('Nick.com promo (Avatar)').found[0].shortened === true);
         suite.check('a title with no colon gets no shortened form: "Sealab" alone names nothing',
             p('Sealab promo').names.length === 0);
+    }
+
+    // ---- spacing: "DragonBall GT" is "Dragon Ball GT" -------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t) => showMatch.propose(t, vocabS, {});
+        suite.check('"DragonBall GT NEXT Promo" names Dragon Ball GT, not the shorter Dragon Ball',
+            names(p('DragonBall GT NEXT Promo')) === FIXK.gt, names(p('DragonBall GT NEXT Promo')));
+        suite.check('"DragonBall Z" names Dragon Ball Z and "Dragonball" names Dragon Ball',
+            names(p('Toonami - NEXT [DragonBall Z]')) === FIXK.dbz && names(p('Dragonball promo')) === FIXK.db);
+        suite.check('it works the other way: "Inu Yasha" names InuYasha',
+            names(p('Inu Yasha NEXT promo')) === FIXK.inuyasha);
+        suite.check('respacing is not a shortened title, and is not marked as one',
+            p('DragonBall GT NEXT Promo').found.length === 1 && p('DragonBall GT NEXT Promo').found[0].shortened !== true);
+        suite.check('a title already matched as written is found once, not again by its respaced twin',
+            p('Dragon Ball Z promo').found.length === 1 && names(p('Dragon Ball Z promo')) === FIXK.dbz);
+        suite.check('words are only joined when they sit side by side: a title taken out between them breaks the join',
+            names(p('Seal Dragon Ball Z ab 2021')) === FIXK.dbz, names(p('Seal Dragon Ball Z ab 2021')));
+        suite.check('a one-word show is found when the clip splits it, and not inside a longer word',
+            names(p('Inu Yasha')) === FIXK.inuyasha && p('Inu Yashas promo').names.length === 0);
+        suite.check('a short title is not respaced: "Ben 10" is found as written, but "Be N 10" is not "Ben 10"',
+            names(p('Ben 10 promo')) === 'tv.Ben 10' && p('Be N 10 promo').names.length === 0);
+        suite.check('a clip that names no show still proposes nothing', p('Adult Swim Bumper 5').names.length === 0);
     }
 
     return suite;
