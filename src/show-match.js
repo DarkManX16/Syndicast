@@ -31,6 +31,12 @@ const MIN_TITLE_LENGTH = 3;
  */
 const MIN_RESPACED_LENGTH = 6;
 
+/*
+ * Last words that describe the kind of thing a title is and a clip leaves off:
+ * "Mobile Suit Gundam Series", "The Tex Avery Show".
+ */
+const GENERIC_TAIL = /^(.*\S) (?:series|show)$/;
+
 // The most clip words that are joined to be compared with a title's squashed form.
 const MAX_RESPACED_WORDS = 8;
 
@@ -200,6 +206,13 @@ function buildVocabulary(channels, customShowNames) {
             const colon = name.indexOf(':');
             if (colon > 0) {
                 shortenedForms.push( { key: key, name: name, folded: fold(name.slice(0, colon)) } );
+            }
+            // A generic last word dropped, "Mobile Suit Gundam" for "Mobile Suit
+            // Gundam Series" and "Tex Avery" for "The Tex Avery Show", where at
+            // least two words are left.
+            const tail = GENERIC_TAIL.exec(fold(name.replace(TRAILING_YEAR, '')));
+            if ( (tail !== null) && (tail[1].indexOf(' ') !== -1) ) {
+                shortenedForms.push( { key: key, name: name, folded: tail[1] } );
             }
             // The title as Plex has it, then without a trailing year ("ThunderCats
             // (2011)"), and each of those without a leading article.

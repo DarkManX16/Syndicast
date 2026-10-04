@@ -75,7 +75,7 @@ const FIX_CHANNELS = [channel(3, [
     ep('Space Ghost Coast to Coast'), ep('Camp Lazlo'), ep("Foster's Home for Imaginary Friends"),
     ep('Ed, Edd n Eddy'), ep('Dragon Ball GT'), ep('Dragon Ball Z'), ep('Dragon Ball'), ep('InuYasha'), ep('Up'),
     ep('Sealab 2021'), ep('The Tex Avery Show'), ep('The Cosby Show'), ep('Cow and Chicken'), ep("Dexter's Laboratory"),
-    ep('Tom & Jerry'), ep('Ben 10'), custom('g2', 'Mobile Suit Gundam Series'),
+    ep('Tom & Jerry'), ep('Tom & Jerry Show'), ep('Gumball Show'), ep('The Big Late Show Live'), ep('Ben 10'), custom('g2', 'Mobile Suit Gundam Series'),
 ])];
 const FIXK = {
     sac: 'tv.Ghost in the Shell: Stand Alone Complex', transformers: 'tv.Transformers', tfRid: 'tv.Transformers: Robots In Disguise',
@@ -581,6 +581,34 @@ module.exports = async function run() {
         suite.check('a short title is not respaced: "Ben 10" is found as written, but "Be N 10" is not "Ben 10"',
             names(p('Ben 10 promo')) === 'tv.Ben 10' && p('Be N 10 promo').names.length === 0);
         suite.check('a clip that names no show still proposes nothing', p('Adult Swim Bumper 5').names.length === 0);
+    }
+
+    // ---- shortened titles: a generic last word dropped -----------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t) => showMatch.propose(t, vocabS, {});
+        suite.check('"Mobile Suit Gundam NEXT [1]" names the custom show "Mobile Suit Gundam Series"',
+            names(p('Mobile Suit Gundam NEXT [1]')) === FIXK.gundam, names(p('Mobile Suit Gundam NEXT [1]')));
+        suite.check('... marked as from a shortened title',
+            p('Mobile Suit Gundam NEXT [1]').found.length === 1 && p('Mobile Suit Gundam NEXT [1]').found[0].shortened === true);
+        suite.check('the whole title still names it, unmarked',
+            names(p('Mobile Suit Gundam Series promo')) === FIXK.gundam && p('Mobile Suit Gundam Series promo').found[0].shortened !== true);
+        suite.check('"Show" goes too, and a leading "The" is optional: "Tex Avery" names The Tex Avery Show',
+            names(p('The Tex Avery promo')) === FIXK.tex && names(p('Tex Avery promo')) === FIXK.tex
+            && p('Tex Avery promo').found[0].shortened === true);
+        suite.check('two words are needed: "The Cosby" names The Cosby Show, "Cosby" alone does not',
+            names(p('Up Next (The Cosby)')) === FIXK.cosby && p('Up Next (Cosby)').names.length === 0);
+        suite.check('a shortened form that is another show\'s whole title is left to that show: "Tom & Jerry" is the plain one',
+            names(p('Tom & Jerry promo')) === FIXK.tj && p('Tom & Jerry promo').found[0].shortened !== true
+            && typeof(p('Tom & Jerry promo').found[0].alsoKeys) === 'undefined');
+        suite.check('only the last word is dropped: "Series" in the middle of a title is kept',
+            p('Gundam Series Mobile Suit promo').names.length === 0);
+        suite.check('a word in the middle is not a last word: "The Big Late Show Live" is not "Big Late"',
+            p('Big Late promo').names.length === 0 && names(p('The Big Late Show Live promo')) === 'tv.The Big Late Show Live');
+        suite.check('a title of one word and "Show" is not shortened to that one word: "Gumball" names nothing',
+            p('Gumball promo').names.length === 0 && names(p('Gumball Show promo')) === 'tv.Gumball Show');
+        suite.check('a title that is only the generic word and one more is not shortened to a single word',
+            p('Ben 10 promo').found[0].shortened !== true);
     }
 
     return suite;
