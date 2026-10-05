@@ -584,14 +584,16 @@ function flexTag(channel, index, entryStart, names) {
 /*
  * Clips with the names a review would suggest, for the preview: a clip with no
  * names of its own takes the title proposal from GET /api/filler/:id/match
- * (matched by position); a clip that has any keeps them, and one whose stored
- * names are unusable is left exactly as it is, so it stays ineligible as on air.
+ * (matched by position); a clip that has any keeps them, one saved as naming no
+ * show stays that way, and one whose stored names are unusable is left exactly
+ * as it is, so it stays ineligible as on air.
  * Returns new clips and changes nothing.
  */
 function overlayProposedNames(clips, matchResponse) {
     const proposals = (matchResponse != null && Array.isArray(matchResponse.clips)) ? matchResponse.clips : [];
     return clips.map( (clip, i) => {
-        if ( (clip == null) || (showMatch.namesProblem(clip) !== null) || (showMatch.namesOf(clip).length > 0) ) {
+        if ( (clip == null) || (showMatch.namesProblem(clip) !== null) || (showMatch.namesOf(clip).length > 0)
+            || showMatch.isReviewedNone(clip) ) {
             return clip;
         }
         const p = proposals[i];
@@ -670,8 +672,8 @@ function previewBreaks(channel, context, from, to, env) {
             prev: (brk.prev != null) ? programLabel(brk.prev.program) : '',
             next: (brk.next != null) ? programLabel(brk.next.program) : '',
             other: (other != null) ? (other.name || 'an unnamed one') : 'the channel Flex',
-            out: plan.out.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via, fits: s.fits } ) ),
-            in: plan.in.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via, fits: s.fits } ) ),
+            out: plan.out.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via, fits: s.fits, stepId: s.stepId, listId: s.listId } ) ),
+            in: plan.in.map( (s) => ({ clip: s.clip.title, seconds: Math.round(s.durationMs / 1000), via: s.via, fits: s.fits, stepId: s.stepId, listId: s.listId } ) ),
             flexMs: Math.max(0, lengthMs - stepsMs),
             overrun: stepsMs > lengthMs,
             left: plan.skipped.map( (s) => {
@@ -683,6 +685,45 @@ function previewBreaks(channel, context, from, to, env) {
                     problem: s.problem === true,
                 };
             } ),
+        } );
+    }
+    return result;
+}
+
+/*
+ * Where the preview, run on the names saved on the lists, found nothing for a step
+ * only because the clips that would fit are not named yet. `saved` and `suggested`
+ * are two previewBreaks results over the same breaks, the second with the names the
+ * matcher suggests overlaid (overlayProposedNames). A step that plays a clip in the
+ * second and not in the first is a hint:
+ *
+ *   { listId, count, side, stepId }   "count clips would fit once their suggested
+ *                                     names are accepted"
+ *
+ * Returns { [situation]: [ hints for item 0, hints for item 1, ... ] }, each item's
+ * hints in the order of its steps. A step that played something in the first
+ * (a fallback, say) is no hint.
+ */
+function wouldFitHints(saved, suggested) {
+    const result = {};
+    for (const name of Object.keys(saved.situations) ) {
+        const savedItems = saved.situations[name].items;
+        const suggestedItems = (suggested.situations[name] || { items: [] }).items;
+        result[name] = savedItems.map( (item, i) => {
+            const other = suggestedItems[i];
+            const hints = [];
+            if ( (other == null) || (other.startTime !== item.startTime) ) {
+                return hints;
+            }
+            for (const side of ['out', 'in']) {
+                for (const step of other[side]) {
+                    const played = item[side].some( (s) => s.stepId === step.stepId );
+                    if ( (! played) && (step.fits.length > 0) ) {
+                        hints.push( { listId: step.listId, count: step.fits.length, side: side, stepId: step.stepId } );
+                    }
+                }
+            }
+            return hints;
         } );
     }
     return result;
@@ -742,6 +783,7 @@ module.exports = {
     flexTag: flexTag,
     overlayProposedNames: overlayProposedNames,
     previewBreaks: previewBreaks,
+    wouldFitHints: wouldFitHints,
     clockLabel: clockLabel,
     mmss: mmss,
 };

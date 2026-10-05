@@ -72,6 +72,13 @@
                                 <span class="small">&middot; <b>Runtime:</b> {{longDurationString(totalDurationMs)}}</span>
                             </div>
                             <div class='flex-pull-right' ></div>
+                            <div ng-show="canMatchShows()" style="margin-right: 6px;">
+                                <button class="btn btn-sm btn-outline-primary" ng-click="matchShows()" ng-disabled="clipsChanged"
+                                    title="Say which show each clip is about, so a transition step can pick the right one">
+                                    Match shows
+                                </button>
+                                <span class="small text-muted" ng-show="clipsChanged">Press Done to save your changes to the clips, then open this list again to match shows.</span>
+                            </div>
                             <div>
                                 <button class="btn btn-sm btn-secondary btn-programming-tools"
                                 ng-click="showTools = !showTools"
@@ -154,6 +161,7 @@
                     >
                         <span class="lr-square" ng-style="rowSquareStyle(x)"></span>
                         <span class="lr-name">{{ rowFillerName(x) }}</span>
+                        <span class="lr-names" ng-class="rowNamesClass(x)" ng-if="rowNames(x)" title="{{ rowNamesTitle(x) }}">{{ rowNames(x) }}</span>
                         <span class="lr-duration">{{ rowDuration(x) }}</span>
                         <button class="btn btn-sm btn-link" ng-click="showProgramInfo(x); $event.stopPropagation()">
                             <i class="fas fa-info-circle"></i>

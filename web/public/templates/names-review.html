@@ -1,0 +1,194 @@
+<div class="names-review">
+  <div ng-if="visible" class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
+    <div class="modal-dialog modal-dialog-scrollable modal-xl" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Match shows<span ng-if="list"> &mdash; {{list.name}}</span></h5>
+        </div>
+
+        <div class="modal-body nr-body">
+          <div ng-if="loading" class="loader"></div>
+          <div class="text-danger small nr-error" ng-if="error">{{error}}</div>
+          <div class="text-success small nr-notice" ng-if="notice">{{notice}}</div>
+
+          <div ng-if="list &amp;&amp; !loading">
+            <p class="small text-muted">
+              A clip has to be <b>saved</b> as naming a show before a &ldquo;for the show coming up&rdquo; step can use it.
+              A suggestion is only a guess from the clip&rsquo;s title: nothing changes until you accept or pick a show,
+              and press <b>Save</b>.
+            </p>
+
+            <div class="nr-summary">
+              <span>{{counts.total}} clips:</span>
+              <button type="button" class="btn btn-sm nr-chip" ng-repeat="g in groups"
+                  ng-class="{'btn-dark': only === g.id, 'btn-outline-secondary': only !== g.id}"
+                  ng-if="counts[g.id] > 0" ng-click="setOnly(g.id)"
+                  title="Show only this group; click again to show everything">
+                {{counts[g.id]}}
+                {{ chipLabel(g.id) }}
+              </button>
+            </div>
+
+            <div class="nr-toolbar">
+              <button type="button" class="btn btn-sm btn-primary" ng-click="askAcceptAll()" ng-disabled="plan.accept.length === 0">
+                Accept all confident suggestions ({{plan.accept.length}})
+              </button>
+              <input type="text" class="form-control form-control-sm nr-search" placeholder="Search clips..."
+                  ng-model="search" ng-change="rebuild()"></input>
+            </div>
+
+            <div class="alert alert-info nr-confirm" ng-if="confirmAll">
+              Accept {{plan.accept.length}} confident suggestion{{plan.accept.length === 1 ? '' : 's'}}?
+              This skips {{plan.skippedUncertain}} less certain and {{plan.skippedFlagged}} flagged clip{{plan.skippedFlagged === 1 ? '' : 's'}},
+              and leaves every saved clip and every clip you already decided alone.
+              Nothing is saved until you press Save.
+              <div>
+                <button type="button" class="btn btn-sm btn-primary" ng-click="doAcceptAll()">Yes, accept {{plan.accept.length}}</button>
+                <button type="button" class="btn btn-sm btn-link" ng-click="cancelAcceptAll()">Cancel</button>
+              </div>
+            </div>
+
+            <div ng-if="sections.length === 0" class="text-muted small">No clips match.</div>
+
+            <div class="nr-section" ng-repeat="sec in sections">
+              <h6 class="nr-heading nr-heading-{{sec.id}}">{{sec.title}} <span class="text-muted">({{sec.rows.length}})</span></h6>
+
+              <div class="nr-row" ng-repeat="r in sec.rows.slice(0, sec.shown)" ng-class="'nr-state-' + view(r).state">
+                <div class="nr-title">{{r.title}} <span class="small text-muted">#{{r.index + 1}}</span></div>
+
+                <div class="nr-names">
+                  <span class="badge nr-badge-{{view(r).state}}">{{view(r).label}}</span>
+                  <span class="nr-names-text" ng-if="view(r).text">{{view(r).text}}</span>
+                  <span class="small text-muted" ng-if="view(r).state === 'suggested' &amp;&amp; r.proposal.names.length > 1">(in airing order: the one coming up first)</span>
+                  <span class="small text-muted" ng-if="view(r).state === 'pending' &amp;&amp; r.proposal.names.length > 0 &amp;&amp; (view(r).text !== r.proposal.names.map(showName).join('  →  '))">(your pick; the title suggested {{r.proposal.names.map(showName).join(', ')}})</span>
+                </div>
+
+                <div class="nr-marks" ng-if="marksOf(r).length > 0">
+                  <span class="badge badge-warning" ng-repeat="m in marksOf(r)">{{m.label}}</span>
+                </div>
+                <div class="small text-muted" ng-if="isFlagged(r)">
+                  {{r.proposal.unresolved.reason}}
+                  <span ng-if="recognised(r).length > 0">Recognised: {{recognised(r).join(', ')}}.</span>
+                  <span ng-if="recognised(r).length === 0">Nothing was recognised.</span>
+                  Pick the shows, or teach a nickname for the one that was missed.
+                </div>
+
+                <div class="nr-actions">
+                  <button type="button" class="btn btn-sm btn-success" ng-if="canAccept(r)" ng-click="accept(r)">Accept suggestion</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary" ng-click="openPicker(r)">Pick shows&hellip;</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="noShow(r)">Names no show</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="openTeach(r)">Teach a nickname&hellip;</button>
+                  <button type="button" class="btn btn-sm btn-link" ng-if="isPending(r)" ng-click="undo(r)">Undo</button>
+                </div>
+
+                <div class="nr-panel" ng-if="picker.index === r.index">
+                  <div class="small text-muted">Pick the show{{picker.slots.length > 1 ? 's, in the order they air' : ''}}. A clip that names several shows plays only when they air one after another, starting with the one coming up.</div>
+                  <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="picker.filter"></input>
+                  <div class="nr-slot" ng-repeat="slot in picker.slots track by $index">
+                    <span class="nr-slot-label small">{{slotLabel($index, picker.slots.length)}}</span>
+                    <select class="custom-select custom-select-sm"
+                        ng-model="picker.slots[$index]"
+                        ng-options="s.key as showLabel(s) for s in optionsFor(picker.slots[$index])">
+                      <option value="">Pick a show...</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-link text-danger" ng-if="picker.slots.length > 1" ng-click="removeSlot($index)" title="Remove this one">&times;</button>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-link" ng-if="canAddSlot()" ng-click="addSlot()">+ another show after it</button>
+                  <div class="text-danger small" ng-if="picker.error">{{picker.error}}</div>
+                  <div>
+                    <button type="button" class="btn btn-sm btn-primary" ng-click="applyPicker()">Use these</button>
+                    <button type="button" class="btn btn-sm btn-link" ng-click="closePicker()">Cancel</button>
+                  </div>
+                </div>
+
+                <div class="nr-panel" ng-if="teach.index === r.index">
+                  <div class="small text-muted">
+                    A nickname is a word or a phrase in a clip&rsquo;s title that means one show, like &ldquo;static&rdquo; for Static Shock or
+                    &ldquo;grim advs&rdquo; for The Grim Adventures of Billy &amp; Mandy. Everyday words like &ldquo;next&rdquo; or &ldquo;adult&rdquo; are refused.
+                  </div>
+                  <div class="nr-slot">
+                    <span class="nr-slot-label small">It means</span>
+                    <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="teach.filter"></input>
+                  </div>
+                  <div class="nr-slot">
+                    <span class="nr-slot-label small"></span>
+                    <select class="custom-select custom-select-sm" ng-model="teach.showKey" ng-change="teachShowChanged()"
+                        ng-options="s.key as showLabel(s) for s in teachShows()">
+                      <option value="">Pick the show...</option>
+                    </select>
+                  </div>
+                  <div class="nr-slot" ng-if="teach.suggestions.length > 0">
+                    <span class="nr-slot-label small">From this title</span>
+                    <span>
+                      <button type="button" class="btn btn-sm btn-outline-info nr-suggest" ng-repeat="s in teach.suggestions"
+                          ng-click="useSuggestion(s)">{{s.text}}</button>
+                    </span>
+                  </div>
+                  <div class="nr-slot">
+                    <span class="nr-slot-label small">Nickname</span>
+                    <input type="text" class="form-control form-control-sm" placeholder="a word or a phrase, as it appears in the titles"
+                        ng-model="teach.text" ng-change="teachTextChanged()"></input>
+                  </div>
+                  <div class="small text-muted" ng-if="teach.busy">checking&hellip;</div>
+                  <div class="text-danger small" ng-if="teach.error">{{teach.error}}</div>
+                  <div ng-if="teach.check">
+                    <div class="text-danger small" ng-repeat="p in teach.check.problems">{{p}}</div>
+                    <div ng-if="teach.check.ok" class="small">
+                      <div>
+                        &ldquo;{{teach.check.alias}}&rdquo; would mean <b>{{teach.check.showName}}</b>.
+                        <span ng-if="teach.check.sourceShows.length > 0">This clip would then name {{teach.check.sourceShows.join(' → ')}}.</span>
+                        <span ng-if="teach.check.sourceUnresolved" class="text-warning">This clip still has a show that is not recognised, so it is not named yet: teach a nickname for that one too, or pick its shows.</span>
+                      </div>
+                      <div ng-if="teach.check.newly.length === 0" class="text-muted">It would not suggest a show for any other clip.</div>
+                      <div ng-if="teach.check.newly.length > 0">
+                        It would also suggest a show for <b>{{teach.check.thisList + teach.check.otherLists}}</b> more clip{{(teach.check.thisList + teach.check.otherLists) === 1 ? '' : 's'}}
+                        ({{teach.check.thisList}} in this list, {{teach.check.otherLists}} in other lists), after you save. Nothing is named until you accept them:
+                        <ul class="nr-would">
+                          <li ng-repeat="c in teach.check.newly.slice(0, 12)">
+                            {{c.title}} <span class="text-muted" ng-if="c.list !== list.id">&mdash; in {{c.listName}}</span>
+                            <span class="text-muted">&rarr; {{c.names.join(' → ')}}</span>
+                          </li>
+                        </ul>
+                        <div class="text-muted" ng-if="teach.check.newly.length > 12">and {{teach.check.newly.length - 12}} more.</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <button type="button" class="btn btn-sm btn-primary" ng-disabled="!canAddNickname()" ng-click="addNickname()">Add this nickname{{teach.check.sourceShows.length > 0 ? ' and name this clip' : ''}}</button>
+                    <button type="button" class="btn btn-sm btn-link" ng-click="closeTeach()">Cancel</button>
+                  </div>
+                </div>
+              </div>
+
+              <button type="button" class="btn btn-sm btn-link" ng-if="moreCount(sec) > 0" ng-click="showMore(sec)">
+                show {{moreCount(sec) > 40 ? 40 : moreCount(sec)}} more ({{moreCount(sec)}} not shown)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer nr-footer" ng-if="list">
+          <div class="nr-pending small">
+            <span ng-if="!hasPending()" class="text-muted">Nothing to save yet.</span>
+            <span ng-if="pendingCount().clips > 0">{{pendingCount().clips}} clip{{pendingCount().clips === 1 ? '' : 's'}} to save.</span>
+            <span ng-repeat="n in nicknames">
+              <span class="badge badge-info nr-nickname">&ldquo;{{n.text}}&rdquo; &rarr; {{n.showName}}
+                <a href="" ng-click="removeNickname($index)" title="Do not teach this nickname">&times;</a></span>
+            </span>
+          </div>
+          <div class="text-warning small" ng-if="confirmClose">
+            You have unsaved decisions.
+            <button type="button" class="btn btn-sm btn-link" ng-click="keepWorking()">Keep working</button>
+          </div>
+          <button type="button" class="btn btn-sm btn-link" ng-click="close()">{{confirmClose ? 'Close and discard them' : 'Close'}}</button>
+          <button type="button" class="btn btn-sm btn-primary" ng-click="save()" ng-disabled="saving || !hasPending()">
+            Save{{hasPending() ? ' (' + pendingCount().clips + ' clips' + (nicknames.length > 0 ? ', ' + nicknames.length + ' nickname' + (nicknames.length === 1 ? '' : 's') : '') + ')' : ''}}
+          </button>
+        </div>
+        <div class="modal-footer" ng-if="!list &amp;&amp; !loading">
+          <button type="button" class="btn btn-sm btn-link" ng-click="close()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

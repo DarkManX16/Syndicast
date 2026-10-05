@@ -102,6 +102,8 @@ function evalCondition(expr, x) {
         case 'rowBreakAfter(x)': return !!commonProgramTools.rowBreakAfter(x);
         case 'rowFlexTag(x)': return !!commonProgramTools.rowFlexTag(x);
         case 'rowSlotLabel(x)': return !!commonProgramTools.rowSlotLabel(x);
+        // The filler editor's Names tag comes from its directive, which has the show names; a fixture supplies it.
+        case 'rowNames(x)': return !!x.$$names;
         default:
             throw new Error(`program-row-heights.js doesn't know how to evaluate ng-if="${expr}" - update evalCondition`);
     }
@@ -119,6 +121,8 @@ function evalInterpolation(expr, x) {
         case 'rowFlexTagTitle(x)': return commonProgramTools.rowFlexTagTitle(x);
         case 'rowSlotLabel(x)': return commonProgramTools.rowSlotLabel(x);
         case 'rowFillerName(x)': return commonProgramTools.rowFillerName(x);
+        case 'rowNames(x)': return x.$$names;
+        case 'rowNamesTitle(x)': return x.$$namesTitle;
         default:
             throw new Error(`program-row-heights.js doesn't know how to interpolate "{{ ${expr} }}" - update evalInterpolation`);
     }
@@ -228,7 +232,7 @@ async function measureRows(puppeteer, executablePath, list, rows, containerHeigh
                     text,
                     // How far the row's last button sticks out past its right edge (<= 0: inside).
                     lastButtonOverhang: lastButton ? lastButton.getBoundingClientRect().right - rowRect.right : null,
-                    durationOverhang: el.querySelector('.psr-duration') ? el.querySelector('.psr-duration').getBoundingClientRect().right - rowRect.right : null,
+                    durationOverhang: (el.querySelector('.psr-duration') || el.querySelector('.lr-duration')) ? (el.querySelector('.psr-duration') || el.querySelector('.lr-duration')).getBoundingClientRect().right - rowRect.right : null,
                     // The gauge's distance above the row's bottom edge, and
                     // how much of the row's width its fill covers.
                     gaugeBottomGap: track ? rowRect.bottom - track.getBoundingClientRect().bottom : null,
@@ -247,6 +251,7 @@ const MIN = 60 * 1000;
 const LONG_SHOW = 'A Fairly Long Show Name That Might Wrap Without Truncation Because It Just Keeps Going';
 const LONG_TITLE = 'An Episode Title Long Enough To Need The Ellipsis Truncation Rule, And Then Some More Words After That';
 
+const LONG_NAMES = 'Teenage Mutant Ninja Turtles (2003) → Static Shock → Teen Titans → The Fairly Long Show Name That Keeps Going';
 const LONG_TAG = 'Nick at Nite Up Next Bumpers · The Fairly Long Show Name → Another Quite Long Show Name / (Nick at Nite WBRB Clips) / Nick Bumpers ? / Sign On';
 
 const LISTS = [
@@ -336,8 +341,9 @@ const LISTS = [
         heightVar: 'contentRowHeight',
         heightPx: commonProgramTools.contentListRowHeight,
         containerClass: 'filler-list',
-        textSelectors: ['.lr-name'],
-        longTextRows: ['clip with a long title', 'episode in a filler list'],
+        textSelectors: ['.lr-name', '.lr-names'],
+        longTextRows: ['clip with a long title', 'episode in a filler list', 'clip with saved names too long for the row'],
+        noPushOut: ['clip with saved names', 'clip with a suggestion', 'clip with saved names too long for the row'],
         fixtures: [
             ['clip with a long title', {
                 type: 'movie', title: LONG_SHOW + ' ' + LONG_TITLE,
@@ -346,6 +352,21 @@ const LISTS = [
             ['short clip', {
                 type: 'movie', title: 'Bump',
                 duration: 4 * 1000,
+            }],
+            ['clip with saved names', {
+                type: 'movie', title: 'Up Next Bumper (Doug)',
+                duration: 10 * 1000,
+                $$names: 'Doug', $$namesTitle: 'Saved: the show or shows this clip names.',
+            }],
+            ['clip with a suggestion', {
+                type: 'movie', title: 'Ghost In The Shell NEXT promo',
+                duration: 10 * 1000,
+                $$names: 'suggested: Ghost in the Shell: Stand Alone Complex', $$namesTitle: 'Only suggested "quoted" & <odd>',
+            }],
+            ['clip with saved names too long for the row', {
+                type: 'movie', title: LONG_TITLE + ' (TMNT-Static-Teen Titans)',
+                duration: 12 * 1000,
+                $$names: LONG_NAMES, $$namesTitle: 'Saved: the shows, in order.',
             }],
             ['episode in a filler list', {
                 type: 'episode', showTitle: LONG_SHOW, season: 3, episode: 9, title: LONG_TITLE,

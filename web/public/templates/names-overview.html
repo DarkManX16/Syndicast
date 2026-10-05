@@ -1,0 +1,59 @@
+<div class="names-overview">
+  <button type="button" class="btn btn-sm btn-outline-primary" ng-click="toggle()"
+      title="Which clips name a show, list by list">
+    <span class="fa" ng-class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></span>&nbsp;Which clips name a show?
+  </button>
+
+  <div ng-if="open" class="no-drag nr-overview">
+    <div class="loader" ng-if="loading"></div>
+    <div class="text-danger small" ng-if="error">{{error}}</div>
+
+    <div ng-if="lists !== null">
+      <p class="small text-muted">
+        A clip has to be <b>saved</b> as naming a show before a &ldquo;for the show coming up&rdquo; step can use it.
+        <b>Flagged</b> and <b>less certain</b> are the clips that need a look; <b>confident</b> ones are suggestions you can accept all at once.
+        Click a list to open it.
+      </p>
+
+      <h6 ng-if="used().length > 0">Lists your transition steps use
+        <span class="small text-muted">&mdash; {{usedNeedLook()}} clip{{usedNeedLook() === 1 ? '' : 's'}} in them need{{usedNeedLook() === 1 ? 's' : ''}} a look</span></h6>
+      <p ng-if="used().length === 0" class="small text-muted">No channel has a transition step that draws from a list yet, so no list is waiting on names.</p>
+
+      <table class="table table-sm nr-overview-table" ng-if="used().length > 0">
+        <thead>
+          <tr><th>List</th><th>Used by</th><th class="nr-num">Flagged</th><th class="nr-num">Less certain</th><th class="nr-num">Confident</th><th class="nr-num">Saved</th><th class="nr-num">No suggestion</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr ng-repeat="l in used()" ng-click="review(l)" style="cursor: pointer;">
+            <td>{{l.name}} <span class="small text-muted">({{l.total}})</span></td>
+            <td class="small">{{usedBy(l)}}</td>
+            <td class="nr-num" ng-class="{'text-danger font-weight-bold': l.flagged > 0, 'text-muted': l.flagged === 0}">{{l.flagged}}</td>
+            <td class="nr-num" ng-class="{'text-warning font-weight-bold': l.uncertain > 0, 'text-muted': l.uncertain === 0}">{{l.uncertain}}</td>
+            <td class="nr-num">{{l.confident}}</td>
+            <td class="nr-num" ng-class="{'text-success': l.saved > 0, 'text-muted': l.saved === 0}">{{l.saved}}</td>
+            <td class="nr-num text-muted">{{l.none}}</td>
+            <td><button type="button" class="btn btn-sm btn-primary" ng-click="review(l); $event.stopPropagation()">Match shows</button></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h6 ng-if="others().length > 0">Other lists <span class="small text-muted">&mdash; not used by any transition step</span></h6>
+      <table class="table table-sm nr-overview-table" ng-if="others().length > 0">
+        <thead>
+          <tr><th>List</th><th class="nr-num">Flagged</th><th class="nr-num">Less certain</th><th class="nr-num">Confident</th><th class="nr-num">Saved</th><th class="nr-num">No suggestion</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr ng-repeat="l in others()" ng-click="review(l)" style="cursor: pointer;">
+            <td>{{l.name}} <span class="small text-muted">({{l.total}})</span></td>
+            <td class="nr-num" ng-class="{'text-danger': l.flagged > 0, 'text-muted': l.flagged === 0}">{{l.flagged}}</td>
+            <td class="nr-num" ng-class="{'text-warning': l.uncertain > 0, 'text-muted': l.uncertain === 0}">{{l.uncertain}}</td>
+            <td class="nr-num">{{l.confident}}</td>
+            <td class="nr-num" ng-class="{'text-success': l.saved > 0, 'text-muted': l.saved === 0}">{{l.saved}}</td>
+            <td class="nr-num text-muted">{{l.none}}</td>
+            <td><button type="button" class="btn btn-sm btn-outline-primary" ng-click="review(l); $event.stopPropagation()">Match shows</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

@@ -841,6 +841,76 @@ for the full spec, stages and acceptance tests.
         with 34 deliberate breaks, all caught. Not automated: the form and the directive's
         fetching, checked by hand on a copy of `.dizquetv-dev` in a browser (channel 1 at full size).
 
+      **Step 6 built Oct 4, 2026 (Sonnet 5.5): the names review screen.** Nothing saved
+      before it changes: a list with no `names` reads, saves and plays as before.
+      - **The screen** (`web/directives/names-review.js`, one for the whole page, opened with
+        `namesReview.open(listId)`): every clip of a saved list, grouped flagged / less certain /
+        confident / no suggestion / saved, with how each suggestion was reached and whether its
+        names are saved, only suggested or none. Per clip: accept, pick shows (up to four, in
+        airing order, from the shows and custom shows on the channels), "Names no show", or teach a
+        nickname. "Accept all confident suggestions" shows its count first and skips less-certain
+        and flagged clips, and clips already saved or decided. Decisions are pending until Save.
+        The logic that is not drawing is `src/names-review.js` (pure; grouping, accept-all, the save
+        payload, names carried through a Plex refresh), tested in `test/names-review.js`.
+      - **Where it opens from:** a "Match shows" button in the filler list editor (disabled with
+        a line saying why when the clips were changed there and not saved, because the screen
+        works on the saved list; the editor takes the new names up when the screen saves, so
+        pressing Done does not write the old ones back), the **overview** on the Filler Lists page
+        (every list with its counts, lists used by a transition step first, then by how many clips
+        need a look), and a link in the transitions preview. Each filler row has a Names tag.
+      - **Saving:** `POST /api/filler/:id/names` ({ clips: [{ index, title, names }], aliases }).
+        It checks everything first (each clip still has that title at that index, the show keys
+        are on a channel, picks are one to four with no show twice in a row, each nickname passes
+        `checkNickname`) and a refusal writes nothing; then it sets `names` on exactly the clips
+        listed and merges the nicknames. Also `POST .../nickname-check`, `POST
+        .../nickname-suggestions` and `GET /api/names-overview`, none of which saves anything.
+      - **"Names no show" is `names: []`.** An empty list used to be a malformed shape that
+        warned at save; it now means "reviewed, names nothing". It plays like an unnamed clip,
+        the preview's suggested-names overlay leaves it alone, and the screen shows it as saved.
+      - **Nicknames may be phrases.** The matcher reads them folded and longest first, in what
+        the show titles left over. `checkNickname` is the rule that stops "NEXT" and "Adult":
+        refused when made only of everyday words, a number or under three letters, when already a
+        title or a nickname, when it would not be used for the clip it was taught from, and when it
+        would change the suggestion of (or sits in a clip saved under) a different show. On the
+        real lists (preview copy): "Foster's" would name 120 clips ("Foster's / Camp Lazlo" becomes
+        both shows), "grim advs" 64 and is accepted, "grim" alone is refused (it is in "Grim & Evil
+        promo"), "KND" would name 74 more clips and is accepted for "Dexter to KND" with a note
+        that Dexter still needs its own, "Adult" is refused because 19 clips for other shows use
+        it, "NEXT" because it is an everyday word. Suggested phrases are at most three words and
+        are not offered when another show's clip contains them ("Adult Swim").
+      - **Preview.** "Use suggested clip names" is **unticked by default**. With it unticked, a
+        step that found nothing only because the clips that would fit are not saved gets a line
+        under its break: "2 clips would fit once their suggested names are accepted", with a link
+        to that list's screen (the preview runs twice over the same breaks, the second on the
+        overlaid names, and compares). Saving names marks an open preview as out of date.
+      - **A trap found on the way:** a list imported from Plex has its clips replaced by Plex's
+        every 30 minutes and on every save, which would have wiped saved names. `FillerService`
+        now carries them over by rating key (file when there is none). All 58 lists on the data
+        copy are custom lists, so nothing there depended on it.
+      - **Proof on a copy of `.dizquetv-dev`, saved names only, "use suggested names" unticked:**
+        with a "for the show coming up" step on the Miguzi block from "Miguzi Up Next", before the
+        review no Miguzi break got a step; after accepting the TMNT-Teen Titans clip and teaching
+        "static" for the TMNT-Static-Teen Titans one (and saving), Sat Oct 10 5:51pm Totally
+        Spies! -> TMNT plays the TMNT-Teen Titans clip, Sun Oct 11 5:21pm Totally Spies! -> TMNT
+        plays the TMNT-Static-Teen Titans clip, and every other break in the block gets nothing,
+        read by a script that loads the saved lists and applies no overlay.
+      - **Tests.** `test/names-review.js` (new) and a few changed in the others; every suite
+        passes. Mutation-checked with 28 deliberate breaks (a phrase rule, each nickname rule,
+        the group order, accept-all taking uncertain or overriding a decision, a save that carries
+        every row, each save check, the Plex carry-over, the hints), 27 caught; the one that is not
+        is a defensive deep copy that nothing can observe, and one more pattern did not apply. Not
+        automated: the screens' fetching and clicking, checked by hand on the preview copy (the
+        row-height test now has Names tags of three lengths). A first design refused a nickname
+        unless it completed its clip, which refused "KND" on a title that also names Dexter; it
+        now only needs to be what the clip is read by.
+      - **Writers of `names`, enumerated** (the rule for this kind of change): the review save (new,
+        the only one that creates names), the filler editor (carries them through, and takes the new
+        ones up when the screen saves), `FillerService` (carries them through an import refresh),
+        `fillerDB.saveFiller` (warns only), and readers `namesOf`/`namesProblem`/`isReviewedNone`,
+        `buildPlan`, the preview overlay and the screen.
+      - **Not done, step 7's:** channel 1's own lists have no saved names yet, so a sequence on the
+        live channel plays nothing until the lists named in the overview are reviewed.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
@@ -3349,6 +3419,14 @@ checks as of the fall-back fixes). Nine files:
   proposals only, nothing saved, and no POST route. Mutation-checked: a
   reversed sort, a learning rule with its guards removed and an overwriting
   merge each fail it.
+
+- `names-review.js` - stage 5 step 6: phrase nicknames in the matcher, `checkNickname`
+  and `nicknameSuggestions`, the screen's grouping, marks, accept-all and save payload, the
+  save against real files under the OS temp directory (only the clips named are written, a
+  refused save writes nothing, the alias file and other lists are untouched, an empty
+  `names` is "reviewed, names no show"), the routes, the overview's order and counts, the
+  Plex refresh carrying names, and the preview's "would fit once accepted" hints.
+  `test/program-row-heights.js` also checks the filler rows' Names tag (three lengths).
 
 - `blocks-schedule-view.js` - `dayParts.weeklySegments`, the function the
   Schedule tab and the Day-Parts strip both draw from: a hand-derived Saturday

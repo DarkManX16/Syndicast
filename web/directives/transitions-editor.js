@@ -20,7 +20,7 @@
 const editor = require('../../src/transitions-editor');
 const transitions = require('../../src/transitions');
 
-module.exports = function ($rootScope, $timeout, dizquetv) {
+module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
     return {
         restrict: 'E',
         templateUrl: 'templates/transitions-editor.html',
@@ -41,7 +41,9 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
             scope.notice = '';
             scope.which = editor.WHICH;
             scope.weekDays = editor.DAY_NAMES.map( (name, id) => ({ id: id, name: name }) );
-            scope.usePreviewNames = true;
+            // Off by default: the preview shows what will air, from the names saved on the lists.
+            // Ticked, it overlays the matcher's suggestions in memory (nothing is saved).
+            scope.usePreviewNames = false;
             scope.preview = { busy: false, error: '', sections: null, header: '', stale: false };
 
             const words = (scope.kind === 'block') ? 'block' : 'day-part';
@@ -81,7 +83,7 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
 
             const changed = () => {
                 editor.commit(scope.context, scope.draft, hadStored);
-                scope.preview.stale = (scope.preview.sections !== null);
+                scope.preview.stale = (scope.preview.sections !== null); scope.preview.staleNames = false;
                 scope.$emit('transitionsChanged');
             };
 
@@ -299,7 +301,7 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                     scope.form = null;
                     hadStored = (typeof(scope.context.transitions) !== 'undefined');
                     scope.draft = editor.loadDraft(scope.context);
-                    scope.preview.stale = (scope.preview.sections !== null);
+                    scope.preview.stale = (scope.preview.sections !== null); scope.preview.staleNames = false;
                 }
             });
 
@@ -312,30 +314,42 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
             // ---- the preview ----------------------------------------------------
             const WEEK = 7 * 24 * 60 * 60 * 1000;
 
+            // `lists` are the clips as they will play (with the suggested names overlaid when
+            // useNames); `suggested` always has them overlaid, so a preview on the saved names
+            // can say where a step found nothing only because the names are not saved yet.
             const fetchLists = async (ids, useNames) => {
                 const lists = {};
+                const suggested = {};
                 const featuring = {};
                 for (const id of ids) {
                     let clips = null;
+                    let overlaid = null;
                     try {
                         const filler = await dizquetv.getFiller(id);
                         clips = Array.isArray(filler.content) ? filler.content : [];
                         featuring[id] = (filler.clipsFeatureShows === true);
-                        if (useNames) {
-                            clips = editor.overlayProposedNames(clips, await dizquetv.getFillerMatch(id));
-                        }
+                        overlaid = editor.overlayProposedNames(clips, await dizquetv.getFillerMatch(id));
                     } catch (err) {
                         console.error('Unable to read filler list ' + id, err);
+                        overlaid = clips;
                     }
-                    lists[id] = clips;
+                    suggested[id] = overlaid;
+                    lists[id] = useNames ? overlaid : clips;
                 }
-                return { lists: lists, featuring: featuring };
+                return { lists: lists, suggested: suggested, featuring: featuring };
             };
+
+            // "4 clips would fit once their suggested names are accepted", for the steps that
+            // found nothing on the saved names, with a way to open that list's review screen.
+            const hintText = (h) => (h.count === 1)
+                ? '1 clip would fit once its suggested name is accepted'
+                : `${h.count} clips would fit once their suggested names are accepted`;
+            scope.openNames = (listId) => namesReview.open(listId);
 
             scope.runPreview = async () => {
                 const channel = scope.channel;
                 closeForm();
-                scope.preview = { busy: true, error: '', sections: null, header: '', stale: false };
+                scope.preview = { busy: true, error: '', sections: null, header: '', stale: false, staleNames: false };
                 try {
                     if ( (channel.onDemand != null) && (channel.onDemand.isOnDemand === true) ) {
                         scope.preview.error = 'This channel is on-demand, so it has no breaks to preview.';
@@ -355,6 +369,11 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                     };
                     const from = Date.now();
                     const view = editor.previewBreaks(channel, scope.context, from, from + WEEK, env);
+                    let hints = {};
+                    if (! useNames) {
+                        const ifAccepted = Object.assign({}, env, { getList: (id) => got.suggested[id] || null });
+                        hints = editor.wouldFitHints(view, editor.previewBreaks(channel, scope.context, from, from + WEEK, ifAccepted));
+                    }
                     const sections = [];
                     for (const s of scope.situations) {
                         const bucket = view.situations[s.id];
@@ -364,7 +383,7 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                             total: bucket.total,
                             withSteps: bucket.withSteps,
                             shown: 5,
-                            items: bucket.items.map( (i) => {
+                            items: bucket.items.map( (i, itemIndex) => {
                                 // A clip as shown, and the titles of every clip that fitted its step.
                                 const clipView = (c) => ({ text: `${c.clip} (${c.seconds}s)`, titles: c.fits, open: false });
                                 const outs = i.out.map(clipView);
@@ -380,6 +399,7 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                                     overrun: i.overrun,
                                     hasSteps: (i.out.length + i.in.length) > 0,
                                     left: i.left.map( (l) => ({ text: `${l.step}: ${l.why}`, problem: l.problem }) ),
+                                    hints: ((hints[s.id] || [])[itemIndex] || []).map( (h) => ({ text: hintText(h), listId: h.listId, listName: names.listName(h.listId) }) ),
                                 };
                             } ),
                         } );
@@ -388,7 +408,7 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                     scope.preview.sections = sections;
                     scope.preview.header = 'Walking the lineup as it is in this editor, from now for 7 days. '
                         + (useNames ? 'Clips are named the way “Match shows” would suggest (nothing is saved). '
-                            : 'Using the clip names saved on the lists. ')
+                            : 'Using the clip names saved on the lists, which is what will air. A clip that is only suggested does not count: where that is why a step found nothing, it says so. ')
                         + 'Where several clips fit a step, all of them are listed under it: on air they take turns, the longest idle first.'
                         + (missing.length > 0 ? ` ${missing.length} list${missing.length === 1 ? ' was' : 's were'} not found.` : '');
                 } catch (err) {
@@ -399,6 +419,15 @@ module.exports = function ($rootScope, $timeout, dizquetv) {
                     $timeout();
                 }
             };
+
+            // Names saved on the review screen change what the preview would say.
+            const stopListening = $rootScope.$on('namesSaved', () => {
+                if (scope.preview.sections !== null) {
+                    scope.preview.stale = true;
+                    scope.preview.staleNames = true;
+                }
+            });
+            scope.$on('$destroy', stopListening);
 
             scope.visible = (section) => section.items.slice(0, section.shown);
             scope.showMore = (section) => { section.shown = (section.shown === 5) ? section.items.length : 5; };

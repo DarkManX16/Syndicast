@@ -194,7 +194,8 @@
             <div class="small text-danger" ng-if="preview.error">{{preview.error}}</div>
             <div ng-if="preview.sections !== null">
                 <div class="small text-muted tr-preview-header">{{preview.header}}</div>
-                <div class="small text-warning" ng-if="preview.stale">The steps changed after this preview was made. Preview again to see the new ones.</div>
+                <div class="small text-warning" ng-if="preview.stale &amp;&amp; !preview.staleNames">The steps changed after this preview was made. Preview again to see the new ones.</div>
+                <div class="small text-warning" ng-if="preview.stale &amp;&amp; preview.staleNames">Clip names were saved after this preview was made. Preview again to see what they change.</div>
                 <div class="tr-pv-section" ng-repeat="sec in preview.sections">
                     <div><b>{{sec.title}}</b>
                         <span class="small text-muted" ng-if="sec.total === 0">&mdash; no such break this week</span>
@@ -212,6 +213,9 @@
                             {{c.titles.length}} clips fit this step and take turns on air, the longest idle first:
                             {{c.titles.slice(0, c.open ? c.titles.length : 6).join(' | ')}}
                             <a href="" ng-if="c.titles.length > 6" ng-click="c.open = !c.open">{{c.open ? 'show fewer' : 'and ' + (c.titles.length - 6) + ' more'}}</a>
+                        </div>
+                        <div class="small tr-pv-hint" ng-repeat="h in it.hints track by $index">
+                            {{h.text}} &mdash; <a href="" ng-click="openNames(h.listId)">Match shows for &ldquo;{{h.listName}}&rdquo;</a>
                         </div>
                         <div class="small text-muted tr-pv-left" ng-repeat="l in it.left" ng-class="{'text-danger': l.problem}">{{l.text}}</div>
                     </div>
