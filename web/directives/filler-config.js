@@ -1,4 +1,4 @@
-module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) {
+module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, namesReview) {
     return {
         restrict: 'E',
         templateUrl: 'templates/filler-config.html',
@@ -9,6 +9,8 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
         },
         link: function (scope, element, attrs) {
             scope.showTools = false;
+            // Whether the clips were changed in this editor and not saved yet (see matchShows).
+            scope.clipsChanged = false;
             scope.showPlexLibrary = false;
             scope.content = [];
             scope.visible = false;
@@ -92,6 +94,7 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                 scope._infoProgram = program;
             }
             scope.contentSplice = (a,b) => {
+                scope.clipsChanged = true;
                 scope.content.splice(a,b)
                 refreshContentIndexes();
             }
@@ -100,6 +103,7 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
             }
 
             scope.dropFunction = (dropIndex, program) => {
+                scope.clipsChanged = true;
                 let y = program.$index;
                 let z = dropIndex + scope.currentStartIndex - 1;
                 scope.content.splice(y, 1);
@@ -256,6 +260,89 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
 
 
 
+            // ---- names (stage 5, step 6) ----------------------------------------
+            // A clip saved as naming shows carries `names`, which rides along when the
+            // list is saved here. What the titles suggest is read from the saved list,
+            // so it is shown only while the clips are as they were saved.
+            scope.suggested = {};
+            scope.nameKeys = {};
+
+            const showNameOf = (key) => scope.nameKeys[key] || key.replace(/^[a-z]+./, '');
+
+            const loadNameInfo = async () => {
+                scope.suggested = {};
+                scope.nameKeys = {};
+                if ( (scope.id === undefined) || (scope.mode === 'import') ) {
+                    return;
+                }
+                const id = scope.id;
+                try {
+                    const match = await dizquetv.getFillerMatch(id);
+                    if (scope.id !== id) {
+                        return;
+                    }
+                    scope.nameKeys = match.showNames;
+                    for (const row of match.clips) {
+                        if ( (row.names.length === 0) && ! row.reviewed && (row.proposal.names.length > 0) && (row.proposal.unresolved == null) ) {
+                            scope.suggested[row.index] = row.proposal.names;
+                        }
+                    }
+                } catch (err) {
+                    console.error(err);
+                } finally {
+                    $timeout();
+                }
+            };
+
+            // The Names tag of a row: what is saved, else what the title suggests.
+            scope.rowNames = (x) => {
+                if (Array.isArray(x.names) ) {
+                    return (x.names.length === 0) ? 'names no show' : x.names.map(showNameOf).join(' → ');
+                }
+                if ( ! scope.clipsChanged && (typeof(scope.suggested[x.$index]) !== 'undefined') ) {
+                    return 'suggested: ' + scope.suggested[x.$index].map(showNameOf).join(' → ');
+                }
+                return '';
+            };
+            scope.rowNamesTitle = (x) => {
+                return Array.isArray(x.names)
+                    ? 'Saved: the show or shows this clip names, in the order they air. Change it with Match shows.'
+                    : 'Only suggested from the clip title, not saved. Open Match shows to accept it.';
+            };
+            scope.rowNamesClass = (x) => Array.isArray(x.names) ? 'lr-names-saved' : 'lr-names-suggested';
+
+            scope.canMatchShows = () => (scope.id !== undefined) && (scope.mode === 'custom');
+            scope.matchShows = () => {
+                if (scope.canMatchShows() && ! scope.clipsChanged) {
+                    namesReview.open(scope.id);
+                }
+            };
+
+            // Names saved on the review screen go onto this editor's copy of the clips,
+            // so pressing Done here does not write the old ones back.
+            const stopListening = scope.$root.$on('namesSaved', async (event, id) => {
+                if ( ! scope.visible || (id !== scope.id) ) {
+                    return;
+                }
+                try {
+                    const saved = await dizquetv.getFiller(id);
+                    if ( ! scope.clipsChanged && (saved.content.length === scope.content.length) ) {
+                        for (let i = 0; i < scope.content.length; i++) {
+                            if (typeof(saved.content[i].names) === 'undefined') {
+                                delete scope.content[i].names;
+                            } else {
+                                scope.content[i].names = saved.content[i].names;
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+                loadNameInfo();
+                $timeout();
+            });
+            scope.$on('$destroy', stopListening);
+
             scope.linker( async (filler) => {
 
                 if ( typeof(filler) === 'undefined') {
@@ -288,7 +375,11 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                         scope.sourceKey = "";
                     }
                 }
+                scope.clipsChanged = false;
+                scope.suggested = {};
+                scope.nameKeys = {};
                 await reloadServers();
+                loadNameInfo();
                 scope.source = "";
                 scope.searchText = "";
                 refreshContentIndexes();
@@ -365,19 +456,23 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                 return ! scope.showPlexLibrary;
             }
             scope.sortFillersByLength = () => {
+                scope.clipsChanged = true;
                 scope.content.sort( (a,b) => { return a.duration - b.duration } );
                 refreshContentIndexes();
             }
             scope.sortFillersCorrectly = () => {
+                scope.clipsChanged = true;
                 scope.content = commonProgramTools.sortShows(scope.content);
                 refreshContentIndexes();
             }
 
             scope.fillerRemoveAllFiller = () => {
+                scope.clipsChanged = true;
                 scope.content = [];
                 refreshContentIndexes();
             }
             scope.fillerRemoveDuplicates = () => {
+                scope.clipsChanged = true;
                 function getKey(p) {
                     return p.serverKey + "|" + p.plexFile;
                 }
@@ -395,6 +490,7 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData) 
                 refreshContentIndexes();
             }
             scope.importPrograms = (selectedPrograms) => {
+                scope.clipsChanged = true;
                 for (let i = 0, l = selectedPrograms.length; i < l; i++) {
                     selectedPrograms[i].commercials = []
                 }

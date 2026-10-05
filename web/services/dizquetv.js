@@ -235,6 +235,26 @@ module.exports = function ($http, $q) {
             return f.data;
         },
 
+        // The names review screen (stage 5, step 6). Saving names answers with the
+        // list as it now reads; a refused save rejects with { data: { error } }.
+        saveFillerNames: async (id, body) => {
+            return (await $http.post(`/api/filler/${id}/names`, body)).data;
+        },
+
+        // Whether a nickname may be taught and which clips it would name (saves nothing).
+        checkNickname: async (id, body) => {
+            return (await $http.post(`/api/filler/${id}/nickname-check`, body)).data;
+        },
+
+        getNicknameSuggestions: async (id, body) => {
+            return (await $http.post(`/api/filler/${id}/nickname-suggestions`, body)).data.suggestions;
+        },
+
+        // Every list with its counts of clips by group and the channels that use it.
+        getNamesOverview: async () => {
+            return (await $http.get('/api/names-overview')).data;
+        },
+
         updateFiller: async(id, filler) => {
             return (await $http({
                 method: "POST",

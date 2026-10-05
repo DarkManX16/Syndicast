@@ -513,6 +513,31 @@ div.programming-programs div.list-group-item {
 .lr-row .btn {
   flex: 0 0 auto;
 }
+/* The Names tag of a filler list row: the show or shows the clip names (saved) or
+   is suggested to name. One line, shrinking with an ellipsis before the duration
+   and the buttons are pushed out, like .lr-slot, so it cannot change the row's
+   height (test/program-row-heights.js checks it). */
+.lr-row .lr-names {
+  flex: 0 1 auto;
+  min-width: 3em;
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 75%;
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-right: 8px;
+}
+.lr-row .lr-names-saved {
+  color: #155724;
+  background: #d4edda;
+}
+.lr-row .lr-names-suggested {
+  color: #856404;
+  background: #fff3cd;
+  font-style: italic;
+}
 .lr-row .lr-gauge-track, .lr-row .lr-gauge-fill {
   position: absolute;
   left: 0;
@@ -963,3 +988,44 @@ div.programming-programs div.list-group-item {
   padding: 0 6px;
   margin-right: 4px;
 }
+
+/* The names review screen (stage 5, step 6) and the overview on the Filler Lists page. */
+.names-review .nr-body { min-height: 12rem; }
+.names-review .nr-summary { margin-bottom: 8px; }
+.names-review .nr-chip { margin: 0 4px 4px 0; }
+.names-review .nr-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.names-review .nr-search { max-width: 18rem; }
+.names-review .nr-confirm { margin: 8px 0; }
+.names-review .nr-section { margin-bottom: 14px; }
+.names-review .nr-heading { margin: 14px 0 6px; padding-bottom: 3px; border-bottom: 2px solid #ddd; }
+.names-review .nr-heading-flagged { border-color: #dc3545; }
+.names-review .nr-heading-uncertain { border-color: #ffc107; }
+.names-review .nr-heading-confident { border-color: #17a2b8; }
+.names-review .nr-heading-saved { border-color: #28a745; }
+.names-review .nr-row { padding: 6px 8px; border-bottom: 1px solid #eee; border-left: 4px solid transparent; }
+.names-review .nr-row.nr-state-pending { border-left-color: #007bff; background: #f1f7ff; }
+.names-review .nr-row.nr-state-saved { border-left-color: #28a745; }
+.names-review .nr-row.nr-state-suggested { border-left-color: #ffc107; }
+.names-review .nr-title { font-weight: 500; word-break: break-word; }
+.names-review .nr-names { margin: 2px 0; }
+.names-review .nr-names-text { font-weight: 500; margin-left: 4px; }
+.names-review .nr-badge-saved { background: #28a745; color: #fff; }
+.names-review .nr-badge-pending { background: #007bff; color: #fff; }
+.names-review .nr-badge-suggested { background: #ffc107; color: #212529; }
+.names-review .nr-badge-none { background: #adb5bd; color: #fff; }
+.names-review .nr-marks .badge { margin-right: 4px; font-weight: 400; }
+.names-review .nr-actions { margin-top: 4px; }
+.names-review .nr-actions .btn { margin-right: 4px; }
+.names-review .nr-panel { margin: 6px 0 4px 12px; padding: 8px 10px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; }
+.names-review .nr-slot { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.names-review .nr-slot-label { flex: 0 0 8rem; color: #555; }
+.names-review .nr-narrow { max-width: 16rem; margin: 4px 0; }
+.names-review .nr-suggest { margin: 0 4px 2px 0; }
+.names-review .nr-would { margin: 4px 0; padding-left: 1.2rem; }
+.names-review .nr-footer { align-items: center; }
+.names-review .nr-pending { flex: 1 1 auto; }
+.names-review .nr-nickname { font-size: 85%; margin-left: 6px; }
+.names-overview { margin: 6px 0 10px; }
+.names-overview .nr-overview { margin-top: 8px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; }
+.names-overview .nr-num { text-align: right; width: 5.5rem; }
+.tr-editor .tr-pv-hint { margin: 1px 0 0 6px; color: #856404; }
