@@ -391,9 +391,22 @@ first). It is proposed automatically and fixed on a review screen:
   screen; a word taught as an alias wins; a show already found by its title is not
   found again. Titles like "[As] NEXT - SGC2C [2003]" match nothing on the first
   pass.
-- **Review** is a table: clip, proposed show(s), a dropdown to fix it, and
-  "none" for a clip that names no show. A one-time pass per list, redone only
-  for new clips.
+- **Review** (built at step 6) is a screen per filler list, opened with "Match shows" from
+  the list editor, from the overview on the Filler Lists page and from the transitions preview. It
+  lists every clip with its saved names, its suggestion and how the suggestion was reached
+  ("from a shortened title", "from an abbreviation", "less certain" for a one-word title found on
+  its own or a title two shows share, "flagged" for a multi-show title with a show not
+  recognised), and whether its names are **saved**, **only suggested** or there are **none**. Flagged and
+  less-certain clips come first, then confident suggestions, clips with no suggestion, and saved
+  ones. Per clip: accept the suggestion, pick the shows from the shows and custom shows on the
+  channels (up to four, in airing order), or mark the clip **"names no show"**, which is saved as
+  `names: []` (a clip that was reviewed and names nothing: it plays as any unnamed clip does, but
+  it is no longer suggested and "accept all" leaves it alone). "Accept all confident
+  suggestions" shows its count first and skips less-certain and flagged clips. Decisions are
+  pending until **Save**; the save writes `names` onto exactly the clips decided and
+  nicknames to `show-aliases.json`, and refuses (writing nothing) a clip that is no longer where the
+  screen saw it, an unknown show, or a nickname the rules below refuse. A one-time pass per
+  list, redone only for new clips; nothing the person did not review or accept changes.
 - **Learning**: when the user maps a clip, every word of its title that is
   not a show title becomes an alias for that show (`SGC2C` → Space Ghost
   Coast to Coast, `DBZ` → Dragon Ball Z, `Grim` → The Grim Adventures of
@@ -411,7 +424,19 @@ first). It is proposed automatically and fixed on a review screen:
   (and a number such as "0083" is never learned on its own). So the alias store and
   `propose` must carry phrases, matched as whole words and longest first like titles,
   and the review screen must offer a phrase as what is learned. Clips flagged
-  `unresolved` are listed on it with the show that was recognised.
+  `unresolved` are listed on it with the show that was recognised. **Built at step 6:** a
+  nickname is a word or a phrase of up to six words, folded the way titles are ("Foster's" is the
+  phrase "foster s"), matched as whole words and longest first, **in what the show titles left
+  over** (a phrase never reaches into a title that was found first, as a single word never did).
+  Before one is saved the screen asks the server (`checkNickname`) what it would do and lists the
+  unsaved clips it would give a name to, in this list and in the others. It is refused when it is
+  only everyday words ("next", "promo", a number, under three letters), when it is already a
+  title or already means a show, when it would not be used for the clip it is taught from, and
+  when other shows' clips use it: it would change the suggestion of a clip that suggests a
+  different show, or appears in a clip saved under a different one ("Adult", "grim" for "Grim &
+  Evil promo"). The same check runs again at save. A clip with saved names is never changed by a
+  nickname. A nickname that is used for its clip but leaves the clip's title with another show
+  nobody has named yet is accepted, and the clip stays flagged until that one is taught too.
   Aliases are stored once, in
   `<data>/show-aliases.json`, shared by every list and channel. There is no
   alias editor; the review screen is the alias editor.
@@ -560,10 +585,18 @@ list, not one per show.
   is the longest idle; it shows the first in list order and lists every clip that
   fits the step under it ("4 clips fit this step and take turns on air"). A "use suggested
   clip names" box overlays the matcher's proposals in memory (nothing is saved), so
-  a sequence can be tried before the review screen has named any clip.
-- **In the filler list editor**, a **Names** column per clip and a
-  "Match shows" button that opens the review screen above, and the **These
-  clips feature shows** checkbox (built at step 3b).
+  a sequence can be tried before the review screen has named any clip; since step 6 it is
+  **unticked by default**, so the preview shows what will air from the names saved on the lists.
+  With it unticked, a step that found nothing *only because* clips that would fit are not
+  saved yet says so ("4 clips would fit once their suggested names are accepted") with a link
+  that opens that list's review screen.
+- **In the filler list editor**, a **Names** tag per clip (saved names in green, only a
+  suggestion in italic) and a
+  "Match shows" button that opens the review screen above (disabled, with a line saying why,
+  while the clips have been changed in the editor and not saved: the screen works on the saved
+  list), and the **These clips feature shows** checkbox (built at step 3b). The Filler Lists
+  page has an **overview** of every list with its counts (flagged, less certain, confident,
+  saved, no suggestion), the lists the channels' transition steps use first.
 - The on-demand warning the Blocks tab shows applies unchanged.
 
 **How the lists are laid out.** One Up Next list per block or era, holding
@@ -635,13 +668,15 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    changing the row's height. Verified by hand on the dev fixture and a copy
    of channel 1, with screenshots. **Built Oct 4, 2026**; see NOTES.md. A step's
    form opens with one plain sentence that rebuilds as it changes; the preview
-   offers "use suggested clip names" (on by default until step 6) because no list
-   carries saved names yet; and the Flex tag is worked out for the rows on screen,
+   offers "use suggested clip names" (on by default until step 6, off since) because no list
+   carried saved names yet; and the Flex tag is worked out for the rows on screen,
    since the whole lineup at once measured about a second.
-6. **The review screen** — the Names column and "Match shows" in the filler
+6. **The review screen** — the Names tag and "Match shows" in the filler
    editor, writing `names` and aliases (which may be phrases, see Learning), with the
    clips the matcher left `unresolved` and the hits marked `shortened` shown as such.
-   Verified on Ron's lists: the SGC2C case above learns from one fix.
+   Verified on Ron's lists: the SGC2C case above learns from one fix. **Built Oct 4, 2026**; see NOTES.md.
+   With it: the overview on the Filler Lists page, the preview's "would fit once their names are
+   accepted" lines, and the matcher's phrase nicknames.
 7. **End to end on channel 1** — the Adult Swim NEXT sequence and one Toonami
    boundary configured on the copy, a day walked by script, then a
    **TiviMate preview** of two real breaks. Then the roadmap: tick the
