@@ -100,6 +100,7 @@ function evalCondition(expr, x) {
         case 'x.isOffline': return !!x.isOffline;
         case 'rowTag(x)': return !!commonProgramTools.rowTag(x);
         case 'rowBreakAfter(x)': return !!commonProgramTools.rowBreakAfter(x);
+        case 'rowFlexTag(x)': return !!commonProgramTools.rowFlexTag(x);
         case 'rowSlotLabel(x)': return !!commonProgramTools.rowSlotLabel(x);
         default:
             throw new Error(`program-row-heights.js doesn't know how to evaluate ng-if="${expr}" - update evalCondition`);
@@ -114,6 +115,8 @@ function evalInterpolation(expr, x) {
         case 'rowOfflineLabel(x)': return commonProgramTools.rowOfflineLabel(x);
         case 'rowDuration(x)': return commonProgramTools.rowDuration(x);
         case 'rowBreakAfter(x)': return commonProgramTools.rowBreakAfter(x);
+        case 'rowFlexTag(x)': return commonProgramTools.rowFlexTag(x);
+        case 'rowFlexTagTitle(x)': return commonProgramTools.rowFlexTagTitle(x);
         case 'rowSlotLabel(x)': return commonProgramTools.rowSlotLabel(x);
         case 'rowFillerName(x)': return commonProgramTools.rowFillerName(x);
         default:
@@ -157,7 +160,10 @@ function resolveRow(rowTemplate, x, heightVar, rowHeightPx) {
             continue;
         }
         const resolvedInner = inner.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, expr) => evalInterpolation(expr, x));
-        resolvedBody += `<${tag}${resolveNgStyle(attrs, x)}>${resolvedInner}</${tag}>`;
+        // {{ }} inside an attribute (the Flex tag's tooltip): the same lookup, escaped for an attribute.
+        const resolvedAttrs = resolveNgStyle(attrs, x).replace(/\{\{\s*([^}]+?)\s*\}\}/g,
+            (_, expr) => String(evalInterpolation(expr, x)).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'));
+        resolvedBody += `<${tag}${resolvedAttrs}>${resolvedInner}</${tag}>`;
     }
     return openTag + resolvedBody + closeTag;
 }
@@ -213,11 +219,16 @@ async function measureRows(puppeteer, executablePath, list, rows, containerHeigh
                         };
                     }
                 });
+                const buttons = el.querySelectorAll('button');
+                const lastButton = buttons.length > 0 ? buttons[buttons.length - 1] : null;
                 const track = el.querySelector('.lr-gauge-track');
                 const fill = el.querySelector('.lr-gauge-fill');
                 return {
                     height: rowRect.height,
                     text,
+                    // How far the row's last button sticks out past its right edge (<= 0: inside).
+                    lastButtonOverhang: lastButton ? lastButton.getBoundingClientRect().right - rowRect.right : null,
+                    durationOverhang: el.querySelector('.psr-duration') ? el.querySelector('.psr-duration').getBoundingClientRect().right - rowRect.right : null,
                     // The gauge's distance above the row's bottom edge, and
                     // how much of the row's width its fill covers.
                     gaugeBottomGap: track ? rowRect.bottom - track.getBoundingClientRect().bottom : null,
@@ -236,6 +247,8 @@ const MIN = 60 * 1000;
 const LONG_SHOW = 'A Fairly Long Show Name That Might Wrap Without Truncation Because It Just Keeps Going';
 const LONG_TITLE = 'An Episode Title Long Enough To Need The Ellipsis Truncation Rule, And Then Some More Words After That';
 
+const LONG_TAG = 'Nick at Nite Up Next Bumpers · The Fairly Long Show Name → Another Quite Long Show Name / (Nick at Nite WBRB Clips) / Nick Bumpers ? / Sign On';
+
 const LISTS = [
     {
         name: 'channel programming list',
@@ -244,8 +257,9 @@ const LISTS = [
         heightVar: 'programRowHeight',
         heightPx: commonProgramTools.programScheduleRowHeight,
         containerClass: 'programming-programs',
-        textSelectors: ['.psr-title', '.psr-show'],
-        longTextRows: ['program row'],
+        textSelectors: ['.psr-title', '.psr-show', '.psr-flex-tag'],
+        longTextRows: ['program row', 'Flex row, a tag longer than the row'],
+        noPushOut: ['Flex row, a tag longer than the row', 'Flex row with a short tag', 'Flex row', 'program row', 'redirect row'],
         fixtures: [
             ['program row', {
                 isOffline: false, type: 'episode',
@@ -258,6 +272,18 @@ const LISTS = [
                 isOffline: true, type: 'flex',
                 start: new Date(2026, 8, 28, 14, 24, 0),
                 duration: 6 * MIN,
+            }],
+            ['Flex row with a short tag', {
+                isOffline: true, type: 'flex',
+                start: new Date(2026, 8, 28, 14, 24, 0),
+                duration: 4 * MIN + 12 * 1000,
+                $$flexTag: { text: 'WBRB / BTTS', title: 'Before the break: WBRB\nAfter the break: BTTS' },
+            }],
+            ['Flex row, a tag longer than the row', {
+                isOffline: true, type: 'flex',
+                start: new Date(2026, 8, 28, 14, 24, 0),
+                duration: 4 * MIN + 12 * 1000,
+                $$flexTag: { text: LONG_TAG, title: 'Before the break: ' + LONG_TAG + '\n"quoted" & <odd>' },
             }],
             ['redirect row', {
                 isOffline: true, type: 'redirect', channel: 42,
@@ -392,6 +418,18 @@ module.exports = async function run() {
                 suite.check(`${list.name}: ${label}: ${sel} is cut off with an ellipsis`,
                     t.overflowing && t.textOverflow === 'ellipsis', JSON.stringify(t));
             });
+        });
+
+        // A tag may take the room it needs but never pushes the duration or the
+        // buttons out of the row: it gives way (ellipsis) first.
+        list.fixtures.forEach(([label], i) => {
+            if (!(list.noPushOut || []).includes(label)) {
+                return;
+            }
+            const m = measured[i];
+            suite.check(`${list.name}: ${label}: the duration and the buttons stay inside the row`,
+                (m.durationOverhang === null || m.durationOverhang <= 0.5) && (m.lastButtonOverhang === null || m.lastButtonOverhang <= 0.5),
+                `duration ${m.durationOverhang}, button ${m.lastButtonOverhang}`);
         });
 
         // The slot-fit gauge: a thin bar flush with the row's bottom edge,

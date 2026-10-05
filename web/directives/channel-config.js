@@ -1,5 +1,7 @@
 const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
+const transitions = require('../../src/transitions');
+const transitionsEditor = require('../../src/transitions-editor');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
     return {
@@ -1084,8 +1086,83 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     }
                     program.$breakAfterMs = breakMs;
                 }
+                // Every stored Flex-row tag is now out of date (see flexTagVersion below).
+                scope.flexTagVersion = (scope.flexTagVersion || 0) + 1;
             }
+
+            // The one-line tag on each Flex row naming the transitions its break
+            // is set to play (transitionsEditor.flexTag). It is worked out for a row
+            // only when the row is drawn, and kept on the row as $$flexTag - the $$
+            // prefix is what keeps it out of angular.toJson, so it is never saved.
+            // Doing every row in one pass was measured: on channel 1's copy (19,978
+            // Flex rows) it added about a second to every lineup change (0.7 to 1.7s
+            // against 0.08 to 0.23s without it), and the list draws about twenty
+            // rows. scope.flexTagVersion says which edit a stored tag belongs to: it
+            // moves whenever the lineup changes (updateChannelDuration, which must
+            // not call anything outside itself: test/startTime-rotation.js lifts it
+            // out on its own), a step is edited
+            // ('transitionsChanged') or the list names arrive, and a row whose tag
+            // is from an older version is worked out again the next time it is
+            // drawn. A channel with no steps never gets as far as flexTag.
+            let flexTagNames = {
+                listName: (id) => {
+                    let found = (scope.fillerOptions || []).find( (o) => o.id === id );
+                    if (typeof(found) !== 'undefined') {
+                        return found.name;
+                    }
+                    return (scope.fillerOptionsLoaded === true) ? null : '…';
+                },
+            };
+            let flexTagsOn = { version: -1, on: false };
+            function refreshFlexTags() {
+                scope.flexTagVersion = (scope.flexTagVersion || 0) + 1;
+            }
+            function ensureFlexTag(x) {
+                if ( (x == null) || (! x.isOffline) ) {
+                    return;
+                }
+                let version = scope.flexTagVersion || 0;
+                if (flexTagsOn.version !== version) {
+                    flexTagsOn = { version: version, on: transitions.hasSteps(scope.channel) };
+                }
+                if (! flexTagsOn.on) {
+                    if (x.$$flexTag) {
+                        x.$$flexTag = null;
+                    }
+                    return;
+                }
+                if ( (x.$$flexTagVersion !== version) && (typeof(x.start) !== 'undefined') && (typeof(x.$index) === 'number') ) {
+                    x.$$flexTag = transitionsEditor.flexTag(scope.channel, x.$index, x.start.valueOf(), flexTagNames);
+                    x.$$flexTagVersion = version;
+                }
+            }
+            scope.rowFlexTag = (x) => {
+                ensureFlexTag(x);
+                return commonProgramTools.rowFlexTag(x);
+            };
+            scope.rowFlexTagTitle = (x) => {
+                ensureFlexTag(x);
+                return commonProgramTools.rowFlexTagTitle(x);
+            };
+            scope.$on('transitionsChanged', () => {
+                refreshFlexTags();
+            });
             scope.error = {}
+
+            // The tab holding a transition step that was added but never given a
+            // list, or null when there is none: saving it would store a step that
+            // can only be skipped. Read from what the editor has written to the
+            // channel, so it holds for a card whose tab is not open right now.
+            function unfinishedTransitions() {
+                let unfinished = (context) => transitionsEditor.hasUnfinishedStep( transitionsEditor.loadDraft(context) );
+                if ( (scope.channel.dayParts || []).some(unfinished) ) {
+                    return "dayparts";
+                }
+                if ( (scope.channel.blocks || []).some(unfinished) ) {
+                    return "blocks";
+                }
+                return null;
+            }
             scope._onDone = async (channel) => {
                 if (typeof channel === 'undefined') {
                     await scope.onDone()
@@ -1150,6 +1227,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     } else if ( scope.hasBlockOverlaps() ) {
                         scope.error.blocks = "Two blocks have airings that overlap. Fix them on the Blocks tab before saving.";
                         scope.error.tab = "blocks";
+                    } else if ( unfinishedTransitions() !== null ) {
+                        scope.error.transitions = "A transition step has no list chosen. Choose one, or delete the step, before saving.";
+                        scope.error.tab = unfinishedTransitions();
                     } else {
                         scope.error.any = false;
                         for (let i = 0; i < scope.channel.programs.length; i++) {
@@ -1526,6 +1606,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             name: f.name,
                         };
                     } );
+                    scope.fillerOptionsLoaded = true;
+                    refreshFlexTags();
                     scope.$apply();
                 } catch(err) {
                     console.error("Unable to get filler info", err);

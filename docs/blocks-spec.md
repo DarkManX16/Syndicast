@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-4 built (situations, names, plans, playing them through the cursor)
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-5 built (situations, names, plans, playing them through the cursor, the card editor)
 
 ## Summary
 
@@ -213,18 +213,27 @@ step 3b reads, and plays, exactly as it did.
 - **`match: 'pair'`** is the Now/Then step. It wants a clip naming both P and
   N in that order. If none exists it tries a clip naming only N (a plain Up
   Next for the same show), then the fallback list, then skips.
-- **A clip naming two shows, in a step keyed on `next`,** means "coming up:
-  these two, in this order". It plays only when the next show is the first
-  name and the show after it is the second: "Up Next Bumper (All in the
-  family-The Jeffersons)" plays before All in the Family when The Jeffersons
-  follows it, and never when something else does. "The show after" is the first
-  program after the next show's own run that is neither Flex nor another
-  episode of that show. A **`pair`** step is the only place two names read as
-  now → then, and a step keyed on `now` never plays a two-name clip. (Settled
-  at step 3, and it is what this spec's own "Now/Then (Grim / Foster's)"
-  acceptance row needs: that clip plays before Grim, so it cannot be a clip
-  naming the show that ended and the one starting.) Two-name clips and
-  one-name clips share one pool; the longest-idle plays.
+- **A clip naming several shows, in a step keyed on `next`,** means "coming up:
+  these, one after another, in this order". It fits only when those shows air one
+  after another in that order, starting with the show coming up: the next show is
+  the first name, the show after it the second, the one after that the third, and
+  so on, up to four. "Up Next Bumper (All in the family-The Jeffersons)" plays
+  before All in the Family when The Jeffersons follows it, and never when something
+  else does; "Miguzi - Next Bumper (TMNT-Static Shock-Teen Titans)" plays before
+  TMNT when Static Shock follows it and Teen Titans follows that, and before
+  nothing else: not before Teen Titans, whose name is third, and not before TMNT
+  when Teen Titans follows it directly. "The show after" is the first program
+  after the next show's own run that is neither Flex nor another episode of that
+  show, and "the one after that" is found the same way from the second show's run
+  (the shows from the next one on are `showSequence` in `src/transitions.js`; the
+  lineup is a cycle, so it wraps). A **`pair`** step is the only place two names
+  read as now → then (and takes no clip of three), and a step keyed on `now` never
+  plays a clip naming several. (Settled at step 3, and it is what this spec's own
+  "Now/Then (Grim / Foster's)" acceptance row needs: that clip plays before Grim,
+  so it cannot be a clip naming the show that ended and the one starting. Widened
+  from two shows to several at step 5, with nothing else about it changed.)
+  Clips naming one, two or three shows share one pool; the longest-idle that fits
+  plays.
 - **`onlyIfNoMatch: <step id>`** marks a step to play only when the step it
   names found no clip. The Nick at Nite sequence: an Up Next step, then a WBRB
   step out and a BTTS step in, both marked with the Up Next step's id, so they
@@ -328,23 +337,60 @@ to enter that per pair: channel 1 has 281 distinct adjacent pairs in a week,
 the schedule, and the set is the size of the lineup, not of the examples.
 
 So the mapping lives on the clip, not the step. Each clip in a filler list
-may carry `names: [showKey]` or `names: [showKey, showKey]` (now, then). It is
-proposed automatically and fixed on a review screen:
+may carry `names: [showKey]` or, for a bumper that announces several shows, up to
+four keys in the order they air (`[showKey, showKey, showKey]`, the one coming up
+first). It is proposed automatically and fixed on a review screen:
 
 - **Proposal** matches the clip's title against the show keys of every
   channel's slots and programs: longest title first, case and punctuation
   folded, so "Adult Swim Promo - Cowboy Bebop [2003]" names Cowboy Bebop and
   "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
-  make a pair - which is how the pair is *read* is up to the step: now → then
-  in a `pair` step, "coming up, in this order" in one keyed on `next` (see
-  Steps). A leading "The" is optional when the rest of the title is
+  make a pair, and three or four make a list: which is how they are *read* is up
+  to the step: now → then (two only) in a `pair` step, "coming up, in this order"
+  in one keyed on `next` (see Steps). Ron's styles of multi-show title, "A to B" (CN Powerhouse: "CN Next
+  (Dexter's Lab to Ed, Edd n Eddy)"), "Now/Then (A / B)" (CN City) and "(A-B)" or
+  "(A-B-C)" inside brackets (Miguzi: "Miguzi - Next Bumper (TMNT-Teen Titans)"), all
+  read the same way under the rule in Steps: **A is the show coming up next, B airs
+  after it, and C after B.** That is the current two-show rule, so nothing changes for them. A leading "The" is optional when the rest of the title is
   still two words or more, so "Powerpuff Girls Promo" names The Powerpuff
   Girls; a single word left (five letters or more) counts only when it stands
   alone as its own segment, so "Up Next Bumper (Jeffersons)" names The
   Jeffersons and "Jeffersons promo" does not. A trailing year in a Plex title
   ("ThunderCats (2011)") is optional too, and a program under a minute in a
-  lineup is a clip, not a show. Titles like "[As] NEXT - SGC2C [2003]" match
-  nothing on the first pass.
+  lineup is a clip, not a show. A clip may also give a **shortened** title: the
+  part before the colon ("Ghost In The Shell NEXT promo" for "Ghost in the Shell:
+  Stand Alone Complex"), or a title without a generic last word, "Series" or "Show"
+  ("Mobile Suit Gundam NEXT" for the custom show "Mobile Suit Gundam Series"; two
+  words must be left). Such a hit is marked `shortened`, for the review screen to
+  show as "from a shortened title"; a shortened form that is another show's whole
+  title is left to that title, and two shows sharing one are reported as ambiguous.
+  A clip may space a title differently ("DragonBall GT", "Inu Yasha"): a title of
+  six or more letters is also read with its spaces taken out, among side-by-side
+  words not already taken. **A title built as several shows is never half-read.**
+  A title is built as several shows when it is written "A to B" or "Now/Then (A / B)"
+  (a slash with a space either side, or "to" before a capital) or, inside one pair of
+  brackets, "(A-B)" or "(A-B-C)" with hyphens; it is cut into one piece per show. If
+  some piece holds a show and another holds a word that is none (of three letters or
+  more, not a year or a word that describes a clip), the clip proposes nothing and
+  carries `unresolved: { recognised, reason }` for the review screen; naming only
+  the shows that were found would play "Foster's, then Camp Lazlo" before Camp Lazlo
+  whatever had just ended, and would make "Foster's" look like another show's word
+  when taught. A hyphen inside a show's own title ("Scooby-Doo", "X-Men: Evolution")
+  is not a separator, because the show's title straddles it. A piece that holds two
+  shows, or a show and words that are not part of it ("The Brady Bunch Kitty"), is not
+  one show of a list, and the clip is left as it was read. Brackets are looked at one
+  at a time.
+  **An abbreviation** names a show when an all-capitals word of three or more letters
+  in the clip's title is the initials of exactly one show title: TMNT for Teenage
+  Mutant Ninja Turtles (2003), ATHF, DBZ, MGPAM. Initials are counted with and without
+  a leading "The", and the initials of a subtitle count only to make an abbreviation
+  ambiguous: "TAS" is The Tex Avery Show, The Amanda Show and the subtitle of
+  Superman: The Animated Series, so it names none, and "KND" (a subtitle) names
+  nothing. A hit by abbreviation is marked `abbreviation`, for the review screen to
+  show as "from an abbreviation"; initials two shows share are left to the review
+  screen; a word taught as an alias wins; a show already found by its title is not
+  found again. Titles like "[As] NEXT - SGC2C [2003]" match nothing on the first
+  pass.
 - **Review** is a table: clip, proposed show(s), a dropdown to fix it, and
   "none" for a clip that names no show. A one-time pass per list, redone only
   for new clips.
@@ -356,6 +402,16 @@ proposed automatically and fixed on a review screen:
   a word that clips naming a different show also use ("Adult", "Swim") are
   never learned, and a word that already means another show is left alone and
   reported. The review screen shows what would be learned before saving it.
+  **Requirement for the review screen (step 6): an alias may be a phrase, not just a
+  word** ("grim advs" for The Grim Adventures of Billy & Mandy, "gundam 0083" and
+  "gundam 0080" for the custom show Mobile Suit Gundam Series). Single words cannot
+  do this job: "grim" is also the start of Grim & Evil, "advs" is also in "The New
+  Batman Advs" and "The advs of Crimson Chin", and teaching the one word "gundam"
+  would name every Gundam Wing, SEED and G Gundam clip as Mobile Suit Gundam Series
+  (and a number such as "0083" is never learned on its own). So the alias store and
+  `propose` must carry phrases, matched as whole words and longest first like titles,
+  and the review screen must offer a phrase as what is learned. Clips flagged
+  `unresolved` are listed on it with the show that was recognised.
   Aliases are stored once, in
   `<data>/show-aliases.json`, shared by every list and channel. There is no
   alias editor; the review screen is the alias editor.
@@ -488,14 +544,23 @@ list, not one per show.
   reads left to right as the break will play: `[+ step] … → Flex → … [+ step]`.
   A step is a chip — list name, then "any", "names next show", "names
   now → then", and "skip" or the fallback list — that opens inline to edit.
-  Empty rows read "commercials only".
+  Empty rows read "commercials only". In the editor the two sides read "Before the
+  commercials" and "After the commercials, right before the show", and a step keyed
+  on a show says "for the show coming up" or "for the show that just ended".
+  **Quick setup** builds the usual Between shows pair from three lists (a promo,
+  an Up Next, a fallback for shows with no Up Next); **Copy transitions to...**
+  copies chosen rows to other day-parts and blocks of the channel; a step closed
+  without a list is removed.
 - **"Preview on this week's lineup"** under the section walks the channel's
   saved programs (the editor already loads them) and lists the next few breaks
   of each situation with the plan they would get — "Fri 2:50pm, Ed, Edd n
   Eddy → Dragon Ball Z: Toonami bumper → Flex 4:12 → DBZ intro" — so a
   sequence is checked against what will actually air, not against an example.
-  The clip picks in the preview are the longest-idle ones at preview time;
-  the live pick may differ.
+  The browser has no play history, so the preview cannot say which fitting clip
+  is the longest idle; it shows the first in list order and lists every clip that
+  fits the step under it ("4 clips fit this step and take turns on air"). A "use suggested
+  clip names" box overlays the matcher's proposals in memory (nothing is saved), so
+  a sequence can be tried before the review screen has named any clip.
 - **In the filler list editor**, a **Names** column per clip and a
   "Match shows" button that opens the review screen above, and the **These
   clips feature shows** checkbox (built at step 3b).
@@ -568,10 +633,15 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    programming list, each Flex row shows a one-line tag naming its planned
    sequence (for example "Up Next · Full House" or "WBRB / BTTS"), without
    changing the row's height. Verified by hand on the dev fixture and a copy
-   of channel 1, with screenshots.
+   of channel 1, with screenshots. **Built Oct 4, 2026**; see NOTES.md. A step's
+   form opens with one plain sentence that rebuilds as it changes; the preview
+   offers "use suggested clip names" (on by default until step 6) because no list
+   carries saved names yet; and the Flex tag is worked out for the rows on screen,
+   since the whole lineup at once measured about a second.
 6. **The review screen** — the Names column and "Match shows" in the filler
-   editor, writing `names` and aliases. Verified on Ron's lists: the SGC2C
-   case above learns from one fix.
+   editor, writing `names` and aliases (which may be phrases, see Learning), with the
+   clips the matcher left `unresolved` and the hits marked `shortened` shown as such.
+   Verified on Ron's lists: the SGC2C case above learns from one fix.
 7. **End to end on channel 1** — the Adult Swim NEXT sequence and one Toonami
    boundary configured on the copy, a day walked by script, then a
    **TiviMate preview** of two real breaks. Then the roadmap: tick the
@@ -661,6 +731,26 @@ the two options):
 - **A step limited to Mondays, on a Tuesday:** found nothing, so the step marked `onlyIfNoMatch` on it plays; **on a Monday:** it plays and the marked step stays out
 - **A 50% Up Next out with the same Up Next marked in, roll under 50:** Up Next → Flex; **roll over:** Flex → Up Next
 - **CN City, a show with no Up Next:** Flex → a bumper for a different show from "CN City Bumpers [DAY]"; **when the show has its own bumper there:** that one, though another has been idle longer; **a show with an Up Next:** the Up Next; **the same clips in a list without the setting:** Flex only; **between two episodes of a show with no bumper:** two different bumpers, out then in
+
+Added with the several-shows rule, each a plan row on a fixture of its own (a Miguzi
+block, Saturday and Sunday afternoons, with a between-shows step before the show,
+for the show coming up, from a list of two bumpers: one naming TMNT then Teen Titans,
+one naming TMNT, Static Shock, then Teen Titans):
+
+- **Sat, Totally Spies! → TMNT, with Teen Titans after it:** Flex → the TMNT-Teen Titans bumper; the three-show bumper does not play
+- **Sun, Totally Spies! → TMNT, with Static Shock then Teen Titans after it:** Flex → the TMNT-Static Shock-Teen Titans bumper; the two-show bumper does not play
+- **Static Shock → Teen Titans:** Flex only; neither bumper plays before Teen Titans, whose name is not the first
+- **TMNT, Static Shock, then Foster's (Teen Titans does not follow):** Flex only; the shows named do not air one after another
+
+Added with the abbreviation rule, the same Miguzi lists named from their real titles
+by the matcher (so "TMNT" is read as an abbreviation and "Static" is not Static Shock
+until it is taught as an alias):
+
+- **From the real titles, Sat, Totally Spies! → TMNT, Teen Titans after it:** Flex → "Miguzi - Next Bumper (TMNT-Teen Titans)"
+- **Sun, TMNT, Static Shock, Teen Titans, with "Static" taught:** Flex → "Miguzi - Next Bumper (TMNT-Static-Teen Titans)"
+- **The same Sunday before "Static" is taught:** Flex only; the three-show clip is unresolved and never plays
+- **Sat, only the three-show clip in the list, "Static" not taught:** Flex only; it is not read as TMNT then Teen Titans
+- **Static Shock → Teen Titans:** Flex only, with or without the alias
 
 ## Open questions
 

@@ -426,6 +426,100 @@ module.exports = async function run() {
                 missing.out.length === 0 && missing.notes.length === 1 && /fallback list "NOPE"/.test(missing.notes[0]), missing.notes.join());
         }
 
+        // -- clips naming several shows: the shows must air one after another, in that order
+        {
+            const long = [episode('Alpha', 1, 30), flex(5), episode('Beta', 1, 30), episode('Gamma', 1, 30), episode('Delta', 1, 30),
+                episode('Epsilon', 1, 30), flex(5)];
+            const channelOver = (progs, out, inn) => ({
+                number: 16, name: 'Several', offlineMode: 'pic', fallback: [], fillerRepeatCooldown: 0, fillerCollections: [],
+                dayParts: [{ id: 'd', name: 'D', fillerCollections: mix([['A', 100]]),
+                    starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }],
+                    transitions: { betweenShows: { out: out, in: inn } } }],
+                programs: progs, duration: progs.reduce((a, p) => a + p.duration, 0), startTime: new Date(start).toISOString(),
+            });
+            const run = (progs, out, lists, played, inn) => {
+                const channel = channelOver(progs, out, inn || []);
+                const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+                return transitions.buildPlan(channel, brk, env(lists, played));
+            };
+            const up = (names) => ({ U: [clipOf('Bumper ' + names.join('-'), 10, names)] });
+            const plays = (names, progs, extra) => run(progs || long, [S('up', 'U', Object.assign({ match: 'show' }, extra || {}))], up(names)).out.length === 1;
+
+            suite.check('the shows from the one coming up, in order, each once: Beta, Gamma, Delta, Epsilon',
+                JSON.stringify(transitions.showSequence(channelOver(long, [], []),
+                    transitions.findBreak(channelOver(long, [], []), 1, start + 30 * MIN), 4)) === JSON.stringify(['tv.Beta', 'tv.Gamma', 'tv.Delta', 'tv.Epsilon']));
+            suite.check('a clip naming the next three shows, in order, fits',
+                plays(['tv.Beta', 'tv.Gamma', 'tv.Delta']));
+            suite.check('... and so does one naming four', plays(['tv.Beta', 'tv.Gamma', 'tv.Delta', 'tv.Epsilon']));
+            suite.check('two in order is the rule it always was', plays(['tv.Beta', 'tv.Gamma']));
+            suite.check('the same shows in another order do not fit', ! plays(['tv.Beta', 'tv.Delta', 'tv.Gamma']) && ! plays(['tv.Gamma', 'tv.Beta']));
+            suite.check('shows that are not one after another do not fit: a show between them is in the way',
+                ! plays(['tv.Beta', 'tv.Gamma', 'tv.Epsilon']) && ! plays(['tv.Beta', 'tv.Delta']));
+            suite.check('the first show named must be the one coming up',
+                ! plays(['tv.Gamma', 'tv.Delta', 'tv.Epsilon']) && ! plays(['tv.Alpha', 'tv.Beta', 'tv.Gamma']));
+            suite.check('a show that is not in the lineup after it does not fit', ! plays(['tv.Beta', 'tv.Gamma', 'tv.Zeta']));
+            suite.check('several episodes of one show in a row are one show',
+                plays(['tv.Beta', 'tv.Gamma', 'tv.Delta'], [episode('Alpha', 1, 30), flex(5), episode('Beta', 1, 30), episode('Beta', 2, 30),
+                    episode('Gamma', 1, 30), episode('Gamma', 2, 30), episode('Delta', 1, 30), flex(5)]));
+            suite.check('Flex between the shows is not a show',
+                plays(['tv.Beta', 'tv.Gamma', 'tv.Delta'], [episode('Alpha', 1, 30), flex(5), episode('Beta', 1, 30), flex(5),
+                    episode('Gamma', 1, 30), flex(5), episode('Delta', 1, 30), flex(5)]));
+            suite.check('the lineup is a cycle: after the last show the first comes round',
+                plays(['tv.Beta', 'tv.Gamma', 'tv.Alpha'], [episode('Alpha', 1, 30), flex(5), episode('Beta', 1, 30), episode('Gamma', 1, 30)]));
+            suite.check('a step keyed on the show that just ended never plays a clip naming several',
+                run(long, [S('up', 'U', { match: 'show', keyedOn: 'now' })], up(['tv.Alpha', 'tv.Beta', 'tv.Gamma'])).out.length === 0
+                && run(long, [S('up', 'U', { match: 'show', keyedOn: 'now' })], up(['tv.Alpha', 'tv.Beta'])).out.length === 0);
+            suite.check('a pair step reads two names as now then, and takes no clip of three',
+                run(long, [S('pr', 'U', { match: 'pair' })], up(['tv.Alpha', 'tv.Beta'])).out.length === 1
+                && run(long, [S('pr', 'U', { match: 'pair' })], up(['tv.Alpha', 'tv.Beta', 'tv.Gamma'])).out.length === 0);
+            const viaFallback = (names) => run(long, [S('pr', 'U', { match: 'pair', fallbackListId: 'F' })],
+                { U: [clipOf('Other', 10, ['tv.Zeta'])], F: [clipOf('Fallback ' + names.join('-'), 10, names)] }).out.length;
+            suite.check('the fallback of a pair step takes a clip naming now then next, and not one that goes on past the next show',
+                viaFallback(['tv.Alpha', 'tv.Beta']) === 1 && viaFallback(['tv.Alpha', 'tv.Beta', 'tv.Gamma']) === 0);
+            suite.check('an "any" step takes a clip of several shows only when they fit, like every other step',
+                plays(['tv.Beta', 'tv.Gamma', 'tv.Delta'], long, { match: 'any' }) && ! plays(['tv.Gamma', 'tv.Delta', 'tv.Epsilon'], long, { match: 'any' }));
+
+            // One, two and three shows are one pool: whichever fit, the longest idle plays first.
+            const pool = { U: [clipOf('One', 10, ['tv.Beta']), clipOf('Two', 10, ['tv.Beta', 'tv.Gamma']),
+                clipOf('Three', 10, ['tv.Beta', 'tv.Gamma', 'tv.Delta']), clipOf('Wrong order', 10, ['tv.Beta', 'tv.Delta', 'tv.Gamma'])] };
+            const mixed = run(long, [S('up', 'U', { match: 'show' })], pool, { One: 100, Two: 50 });
+            suite.check('single, double and triple clips share one pool, the longest idle first, and the one out of order is not in it',
+                titles(mixed.out) === 'Three' && mixed.out[0].fits.join(' | ') === 'Three | Two | One', mixed.out[0] && mixed.out[0].fits.join(' | '));
+            const noThree = run([episode('Alpha', 1, 30), flex(5), episode('Beta', 1, 30), episode('Gamma', 1, 30), episode('Zeta', 1, 30)],
+                [S('up', 'U', { match: 'show' })], pool, { One: 100, Two: 50 });
+            suite.check('when the third show is another one, the triple is out and the pair is next',
+                titles(noThree.out) === 'Two' && noThree.out[0].fits.join(' | ') === 'Two | One', noThree.out[0] && noThree.out[0].fits.join(' | '));
+        }
+
+        // -- every clip that fits a step
+        {
+            const lists = { U: [clipOf('Up Beta A', 10, ['tv.Beta']), clipOf('Up Beta B', 10, ['tv.Beta']), clipOf('Up Beta C', 10, ['tv.Beta']),
+                clipOf('Up Gamma', 10, ['tv.Gamma']), clipOf('Generic', 10)] };
+            const played = { 'Up Beta A': 50, 'Up Beta B': 5 };
+            const fitsOf = (side, i) => side[i].fits.join(' | ');
+            const p = planFor([S('up', 'U', { match: 'show' })], [], lists, played);
+            suite.check('a step reports every clip that fits it, the one that plays first, then in the order they would take their turns',
+                titles(p.out) === 'Up Beta C' && fitsOf(p.out, 0) === 'Up Beta C | Up Beta B | Up Beta A', fitsOf(p.out, 0));
+            suite.check('a clip for another show and a clip naming no show do not fit a show step',
+                ! p.out[0].fits.includes('Up Gamma') && ! p.out[0].fits.includes('Generic'));
+            const twice = planFor([S('a', 'U', { match: 'show' })], [S('b', 'U', { match: 'show' })], lists, played);
+            suite.check('a clip that has played in the plan cannot fit the next step: the in step lists what is left',
+                titles(twice.out) === 'Up Beta C' && titles(twice.in) === 'Up Beta B' && fitsOf(twice.in, 0) === 'Up Beta B | Up Beta A', fitsOf(twice.in, 0));
+            const fb = planFor([S('up', 'U', { match: 'show', fallbackListId: 'G' })], [], { U: [clipOf('Up Gamma', 10, ['tv.Gamma'])],
+                G: [clipOf('Gen 1', 10), clipOf('Gen 2', 10), clipOf('Up Gamma too', 10, ['tv.Gamma'])] });
+            suite.check('a fallback step lists the fallback list\'s clips that fit, not the main list\'s',
+                fb.out[0].via === 'fallback' && fitsOf(fb.out, 0) === 'Gen 1 | Gen 2', fitsOf(fb.out, 0));
+            const any = planFor([S('i', 'U', { match: 'any' })], [], lists, played);
+            suite.check('an "any" step lists the general clips and the ones naming the next show, longest idle first and ties in list order',
+                fitsOf(any.out, 0) === 'Up Beta C | Generic | Up Beta B | Up Beta A', fitsOf(any.out, 0));
+            const pair = planFor([S('pr', 'P', { match: 'pair' })], [], { P: [clipOf('Alpha then Beta', 10, ['tv.Alpha', 'tv.Beta']),
+                clipOf('Just Beta 1', 10, ['tv.Beta']), clipOf('Just Beta 2', 10, ['tv.Beta'])] });
+            suite.check('only the clips of the tier that was used rotate: a pair clip is not mixed with the single-show clips behind it',
+                titles(pair.out) === 'Alpha then Beta' && fitsOf(pair.out, 0) === 'Alpha then Beta', fitsOf(pair.out, 0));
+            const none = planFor([S('up', 'U', { match: 'show' })], [], { U: [clipOf('Up Gamma', 10, ['tv.Gamma'])] });
+            suite.check('a step that plays nothing has no clip and so no list of what fits', none.out.length === 0);
+        }
+
         // -- any steps
         {
             const lists = { I: [clipOf('Ident', 5), clipOf('For Gamma', 5, ['tv.Gamma']), clipOf('For Beta', 5, ['tv.Beta'])] };
@@ -519,7 +613,7 @@ module.exports = async function run() {
             suite.check('keyedOn later, the generated kind and an unknown match are skipped as problems, not played',
                 later.out.length === 0 && later.notes.length === 3, later.notes.join(' | '));
             const bad = planFor([S('u', 'U', { match: 'show' })], [], { U: [
-                clipOf('Bad 1', 10, 'tv.Beta'), clipOf('Bad 2', 10, []), clipOf('Bad 3', 10, ['tv.Beta', 'tv.Gamma', 'tv.Alpha']),
+                clipOf('Bad 1', 10, 'tv.Beta'), clipOf('Bad 2', 10, []), clipOf('Bad 3', 10, ['tv.Beta', 'tv.Gamma', 'tv.Alpha', 'tv.Delta', 'tv.Epsilon']),
                 clipOf('Bad 4', 0, ['tv.Beta']), clipOf('Good', 10, ['tv.Beta'])] });
             suite.check('a clip whose names are unusable, or that has no length, is never chosen',
                 titles(bad.out) === 'Good', titles(bad.out));

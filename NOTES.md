@@ -617,10 +617,11 @@ for the full spec, stages and acceptance tests.
       the flag, and `video.js` passes it to `buildPlan` as `env.featuresShows`.
       `FillerDB` warns if it is not true or false.
 
-      **What there is no UI for yet.** The card editor is step 5, which now has
+      **What there was no UI for yet.** The card editor was step 5, which had
       to offer days (seven toggles) and chance (a percent box) on a step's chip
-      (the spec says so). Until then a step's `days` and `chance` are set in the
-      channel file; the list checkbox is the one visible change.
+      (the spec says so); built Oct 4, see the Step 5 entry below. Until then a
+      step's `days` and `chance` were set in the channel file; the list checkbox
+      was the one visible change.
 
       **Tests.** `test/transitions.js` (days and chance each way and at the edges,
       the local day across midnight, the roll, every featured tier, the save-time
@@ -644,6 +645,201 @@ for the full spec, stages and acceptance tests.
       ticking and Done wrote `clipsFeatureShows: true` to that one list and
       nothing else, reopening showed it ticked, and unticking made the file
       identical to the original.
+
+      **Step 5 built Oct 4, 2026 (Sonnet 5.5), on branch `stage5-step5`: the card
+      editor.** A Transitions section on every day-part and block card, a preview
+      that walks the lineup, and a one-line tag on each Flex row. 724 to 1,014 tests.
+      Nothing server-side changed except one new client call, `getFillerMatch`, for
+      the read-only `GET /api/filler/:id/match`.
+
+      - **The section**, under Mix, collapsed to "Commercials only" or "3 steps" and
+        opened by a click. Four rows in the spec's order (Leaving, Entering, Between
+        episodes, Between shows), each `[steps] Flex [steps]`. A step is a chip (list,
+        how it chooses, "skip" or the fallback list, then days, a percent, or "if X
+        finds nothing") that opens a form. **The form's first line is one plain
+        sentence that rebuilds as it changes**: "Plays a clip from Nick at Nite Up
+        Next for the show coming up; if none matches, plays nothing; only on Mon and
+        Wed; about 50% of the time." The four ways of choosing are one radio group
+        (next show, last show, last then next, any clip), not the two stored fields.
+      - **The form cannot store what the save-time warning would complain about.** No
+        days picked and all seven picked both store `null` (every day), never the empty
+        list that plays on no day; "Sometimes" takes 1 to 99 (100 or empty is always,
+        and anything else is refused with a reason and not stored); "Only when" offers
+        only the other unconditional steps of the same situation, out and in together,
+        and is disabled on a step something else watches; deleting a step clears the
+        marks that named it and says so. A step with no list chosen is the one thing it
+        can hold, so **Update Channel refuses it**, flags the tab and outlines the chip
+        (read from what was written to the channel, so it holds for a tab not open).
+      - **A card nobody touches saves as it was.** The form edits a draft and writes
+        `context.transitions` only when something changes, and adding a step then
+        deleting it again removes the key it added. Checked on channel 1's copy: opened
+        every Transitions section on every day-part and block and saved; the only
+        difference from the original in `dayParts`/`blocks` was `cooldown: null -> 0` on
+        one mix, which the mix editor does on any save (pre-existing). Then two cards
+        edited: exactly those two gained `transitions`, no program carried a `$` field,
+        and the server logged no warning.
+      - **The preview** is `buildPlan` itself over `breaksBetween` for 7 days from now,
+        on the lineup as it is in the editor (unsaved edits included), grouped as the
+        card sees its four situations (Entering and Leaving show the whole plan, the
+        other context's steps too). Per break: the clips with lengths, the Flex that is
+        left, and each step that did not play with why ("lost its 50% chance", "found no
+        clip", "stays out because Up Next found a clip"). A "use suggested clip names"
+        box, **ticked by default**, overlays `GET .../match` proposals in memory,
+        because no list carries saved `names` until step 6 and a step keyed on a show
+        would otherwise find nothing in the preview and on air; the header says which
+        names are in use. The browser has no play history, so the first fitting clip in list
+        order is shown and every clip that fits is listed under it (see the Oct 4 entry
+        below; the roll for a "Sometimes" step is the real one: it is derived from the
+        channel, break and step, so the preview and the stream agree).
+      - **The Flex tag.** `flexTag` in `src/transitions-editor.js`: the steps the break
+        is set to play, in play order, joined with " / ", the list name plus the show
+        for a show-keyed step ("Up Next · Full House"); a step that plays only sometimes
+        ends in "?", one that plays only if another found nothing is in brackets, and a
+        step limited to other weekdays than the break's is left out. Out steps go on the
+        break's first Flex row and in steps on its last, as `transitions.js` attaches
+        them. The title attribute spells it out and explains the marks. **`.psr-flex-tag`
+        is one line with an ellipsis and `flex-shrink`, so the row stays 26px**:
+        `test/program-row-heights.js` has Flex rows with a short tag and a tag longer than
+        the row, checks all 26px, that the tag is cut with an ellipsis, and that the
+        duration and buttons stay inside the row. Mutation-checked: removing the tag's
+        shrink, its max-width or its ellipsis each fails. (Its own `white-space: nowrap`
+        is redundant with the row's, so removing only that is not caught, and cannot matter.)
+      - **The tag is worked out for the rows on screen, not for the whole lineup.** Timed
+        first as one pass inside `updateChannelDuration`, in the browser on channel 1's
+        copy (19,978 Flex rows, steps on one day-part): **0.7 to 1.7 s per lineup change,
+        against 0.08 to 0.23 s with no steps.** That is past the one second this was told
+        to stay under, so `rowFlexTag(x)` computes a row's tag when the row is drawn and keeps it
+        as `x.$$flexTag` (the `$$` keeps it out of `angular.toJson`); `scope.flexTagVersion`
+        says which edit it belongs to and moves on every lineup change, step edit and
+        list-name load. After the change `updateChannelDuration` takes 7 to 14 ms with
+        steps, and finding the first tagged row by scanning 111 Flex rows took 1 ms. A
+        channel with no steps never reaches `flexTag`. **A trap on the way:**
+        `test/startTime-rotation.js` lifts `updateChannelDuration` out of
+        `channel-config.js` and runs it with only a `scope`, so a call from inside it to
+        a helper declared elsewhere in the directive broke that test (and would have
+        broken the function there); it now only bumps `scope.flexTagVersion`.
+      - **A friendlier pass, after Ron tried it (Oct 4).** The logic was right but too
+        technical to set up comfortably, so four things changed and nothing was taken away.
+        (1) *Plain labels:* the left of each row is captioned "Before the commercials" and
+        the right "After the commercials, right before the show", the middle reads
+        "commercials", and a step is "for the show coming up" / "for the show that just
+        ended" on chips, in the form and in the sentence (not "names next show"); the Flex
+        tag's tooltip says "Before the commercials" / "After the commercials". (2) *Quick
+        setup* on each card asks three things (a promo to play before the commercials, an
+        Up Next to play right before the show, a fallback for shows with no Up Next) and
+        builds the Between shows steps: the promo as a `show` step keyed on next with
+        nothing as its fallback (it plays only before a show it names), the Up Next the same
+        with the third list as its fallback. At least one of the first two is needed, a
+        fallback belongs to an Up Next and is ignored without one, and it replaces what
+        Between shows holds, saying how many (the button reads "Replace them and build").
+        The steps are ordinary ones. (3) *Copy transitions to...* copies chosen rows
+        (all four ticked by default) of a card to the day-parts and blocks ticked on the
+        same channel, "all day-parts" and "all blocks" being one click each. Each copy has
+        new ids, an "only when" is carried to the copy of the step it named, a step with no
+        list is left out (and a mark on it cleared), other rows of the target are kept, a
+        target with nothing and an empty copy gains no key, and the panel says how many
+        steps it will replace before it does and how many it did after. The editor
+        showing a target card, if it is open, reloads its draft (`transitionsCopied`);
+        one on another tab reads it from the channel when it opens. (4) *A step closed with
+        no list is removed*, not left red: Done, clicking the chip, opening another step or
+        panel, collapsing the section, previewing, and leaving the tab all do it (the
+        refuse-to-save rule stays as a net). 32 new checks in `test/transitions-editor.js`
+        (`closeStep`, `quickSetup`, `copySituations`, including quick setup's steps played
+        through `buildPlan` for a show with and without an Up Next); each mutation tried
+        (14, including copying with the original ids, losing the mark, clearing every row,
+        sharing the step objects) fails a check. Checked in the browser on channel 1's copy:
+        quick setup built the two steps, an empty step vanished on Done and on a tab
+        switch, copying to a day-part and a block updated both (the open day-part live) and
+        left Miguzi alone, and a save wrote `transitions` to exactly those three contexts.
+      - **Up Next lists that were not found in the preview (Oct 4), and the fixes.** Ron
+        saw clips he knew were in his lists missing from the preview. Investigated before
+        anything was changed, on a copy, against the three lists he named (42 clips),
+        then fixed. The causes, with clips affected: 18 were named correctly (only 9 of
+        them showed, see the last cause); 2 gave a short title of a subtitled show
+        ("Ghost In The Shell NEXT promo"); 1 spaced a title differently ("DragonBall GT");
+        2 left "Series" off a custom show's name ("Mobile Suit Gundam NEXT"); 5 used
+        nicknames for series inside a custom show ("Gundam 0083"); 10 used the nicknames
+        Foster's and Grim Advs; 1 names no show ("AcTN Next Promo"); 3 are for shows no
+        channel airs (Outlaw Star, Trigun). Two causes nobody had guessed: **(a) a
+        two-show title with one show recognised was named for that one show** (6 clips:
+        "Now/Then (Foster's / Camp Lazlo)" became a Camp Lazlo clip), which played a
+        Foster's bumper before Camp Lazlo after Chowder and after Camp Lazlo itself, and
+        made "foster" and "advs" look like another show's words so they could not be
+        taught (taught on the data as it was, `learnAliases` refused them as "used
+        elsewhere"; with those clips out of the comparison it learns "foster"); **(b) the
+        preview showed only the first fitting clip in list order**, so 9 correctly named
+        clips never showed, among them Camp Lazlo's solo "YES! Era NEXT" bumpers, 7th and
+        8th of 9 clips that fit. Nothing was saved on any card of the copy, so Ron's own
+        steps were not visible; the check put one "for the show coming up" step on every
+        context.
+      - **Built as five commits.** The four matcher fixes, each its own commit:
+        the part of a title before a colon, spacing, a generic last word dropped, and a
+        two-show title never half-read; then the preview. Across all 56 lists (9,195
+        clips): named 1,541 to 1,658 (181 gained, 5 changed, 64 lost, which are the
+        half-read ones, 65 flagged); in the three lists 5 clips gained a name (Ghost in
+        the Shell twice, DragonBall GT, Mobile Suit Gundam NEXT twice) and 6 went from
+        wrongly named to unnamed and flagged. 125 clips' hits come from a shortened title.
+        Mutation-checked: each rule was broken in turn (the shortened form allowed to equal
+        another show's whole title, spacing across a taken title, the generic word allowed
+        mid-title or with one word left, both sides flagged, the straddling title read as a
+        pair, `fits` unsorted or missing a clip) and a check failed each time.
+      - **What the half-read rule does and does not do.** It flags a title built "A to B"
+        or with a spaced slash when exactly one show is recognised and the hits are on one
+        side of the separator; a hit that straddles it is one title ("Space Ghost Coast to
+        Coast"). Known limits: 3 of the 65 flagged are false (a capital after "to" that is a
+        verb: "7 Ways to Say 'All That'", "How to Perform CPR", "Like to Move"), and they are
+        left unnamed for review, never named wrongly; pairs joined by a hyphen,
+        "(TMNT-Teen Titans)" and "(Grim Advs Billy & Mandy-Ed Edd n Eddy)", are not detected
+        and are still read as the one show.
+      - **Still for step 6, recorded in the spec as requirements:** aliases that are phrases
+        ("grim advs", "gundam 0083"), the review screen listing `unresolved` clips, and
+        teaching "Foster's". Not matcher work: the 3 clips for shows no channel airs, the one
+        clip naming no show (a fallback list's job), and a custom show being one show
+        (a "Gundam 0083" bumper plays before whichever series starts).
+      - **The preview change.** `buildPlan` returns `fits` on each step that plays, the
+        titles of every clip that fitted the tier it chose from, the chosen one first (a clip
+        already used in the plan is not in it). The preview lists them under the step.
+      - **Hyphens, several shows and abbreviations (Oct 4, after Ron's Miguzi look).** Three
+        more changes, each its own commit, then rows from the real titles. (1) *Hyphens:*
+        "Miguzi - Next Bumper (TMNT-Teen Titans)" is two shows; a hyphen inside one pair of
+        brackets cuts it into pieces and the never-half-read rule now runs over any number
+        of pieces, for "A to B" and "Now/Then (A / B)" too. Against all 56 lists it changed
+        6 clips, 3 right (the two Miguzi titles, "(Grim Advs Billy & Mandy-Ed Edd n Eddy)") and
+        3 wrong, left unnamed and never named wrongly: "(Foster's Home For Imaginary Friends -
+        Traffic)" twice and "(Fairly Oddparents - Cosmo)", where the piece after the hyphen is
+        an episode or a character. The 13 hyphenated show titles on the channels (Scooby-Doo,
+        X-Men: Evolution, He-Man and others) are tested as one title each, in brackets and as
+        one of a joined pair. A first try added a protection for hyphenated words in show
+        titles that changed nothing (the title's own hit straddles the hyphen), and was
+        removed. (2) *Several shows:* names holds one to four keys, and a clip naming several
+        fits a step keyed on next only when those shows air one after another in that order,
+        starting with the show coming up (`showSequence`; `showAfter` is its second); a step
+        keyed on now, and a pair step, still read what they always did. (3) *Abbreviations:*
+        an all-capitals word of three or more letters that is the initials of exactly one
+        show names it, `abbreviation: true` on the hit. Before committing it, what it does on
+        all 56 lists was measured: 96 clips change, 93 gain a name, none loses one (TMNT 13,
+        DBZ 33, MGPAM 26, ATHF 24). It found a trap: "TAS" would have named The Tex Avery Show
+        for three clips that mean The Animated Series ("Batman TAS", "Superman TAS"), so
+        initials are counted with and without a leading "The" and a subtitle's initials make
+        an abbreviation ambiguous (never a meaning of their own): TAS names nothing, and neither
+        does KND (80 clips, Codename: Kids Next Door), left to the review screen.
+      - **Ron's Miguzi bumpers, as the data has them.** The three-show bumper is titled
+        "(TMNT-Static-Teen Titans)", with "Static", not "Static Shock". "Static" alone is not
+        Static Shock, so the clip is unresolved until "static" is taught as an alias, which is
+        step 6's job; in the preview copy the alias was added by hand to show Sunday. The
+        schedule is as described: Sat Oct 10 5:51pm Totally Spies! → TMNT, then Teen Titans;
+        Sun Oct 11 5:21pm Totally Spies! → TMNT, then Static Shock, then Teen Titans, both in the
+        Miguzi block. Plan rows run the real titles through the real matcher (see the spec's
+        acceptance rows).
+      - **Writers of a step, enumerated again** (the rule for this kind of change): the
+        card editor (new; produces every field of the shape, unique ids), `normalizeTransitions`
+        (defaults), `buildPlan` (reader), `warnAboutTransitions` and its two helper rules,
+        the preview and the tag (readers, through `buildPlan`/`assemble`), `transitions-plan-day.js`
+        and the spec. A stored step the editor does not know (`keyedOn: later`, kind `generated`)
+        shows as "not built yet" and is kept as it is.
+      - **Tests.** `test/transitions-editor.js`, 160 checks (see Testing notes), mutation-checked
+        with 34 deliberate breaks, all caught. Not automated: the form and the directive's
+        fetching, checked by hand on a copy of `.dizquetv-dev` in a browser (channel 1 at full size).
 
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
@@ -3235,6 +3431,18 @@ checks as of the fall-back fixes). Nine files:
   back for everything under `src/` it loaded - `aspect-mark.js` failed when
   the real `ffmpeg.js` was left cached with the real `spawn` - and unrefs
   the timers `video.js` arms per item, so `npm test` doesn't wait on them.
+
+- `transitions-editor.js` - stage 5 step 5, the logic behind the card editor
+  (`src/transitions-editor.js`): the four ways a step chooses and the stored fields
+  each is, the days / chance / "only when" rules the form keeps, deleting a watched
+  step, the one-sentence summary and the chip word for word, what is wrong with a
+  step, the draft-to-stored round trip (an untouched context unchanged, no key added
+  for no step, form-only fields stripped, what is stored passes the save-time
+  warning), the Flex tag (first row out, last row in, days, "?" and brackets, nothing
+  for a channel without steps, every assembled step named once across a break's rows),
+  the preview (grouped as the card sees its situations, equal to `buildPlan` for every
+  break, flex arithmetic, left-out steps and why, chance rolled as playback rolls it),
+  and the suggested-names overlay. Fixtures only.
 
 `lineup-cursor.js`, `stream-cursor.js`, `transitions.js` and the stage 5 rows
 of `blocks-acceptance.js` also cover step 4: phases, tune-in placement, one

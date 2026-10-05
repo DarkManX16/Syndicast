@@ -10,6 +10,7 @@ const suites = [
     './blocks-guide',
     './blocks-schedule-view',
     './transitions',
+    './transitions-editor',
     './show-match',
     './startTime-rotation',
     './save-resume',

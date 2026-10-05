@@ -66,6 +66,40 @@ function captureErrors(fn) {
 }
 const names = (p) => p.names.join();
 
+// The show titles on Ron's channels that have a hyphen inside a word (checked against the
+// dev data folder): a hyphen in one of these is never the hyphen between two shows.
+const HYPHENATED_SHOWS = ['A Pup Named Scooby-Doo', 'Butt-Ugly Martians', 'He-Man and the Masters of the Universe (2002)',
+    'Scooby-Doo and Scrappy-Doo', 'Scooby-Doo! Mystery Incorporated', 'Sym-Bionic Titan', 'The 13 Ghosts of Scooby-Doo',
+    'The Fresh Prince of Bel-Air', 'The New Scooby-Doo Movies', "What's New Scooby-Doo?", 'X-Men: Evolution'];
+
+// Shows for the shortened-title, spacing and two-show-title checks, titled as Plex
+// titles them (a subtitle after a colon, a trailing "Show"), and a custom show.
+const FIX_CHANNELS = [channel(3, [
+    ep('Ghost in the Shell: Stand Alone Complex'), ep('Transformers'), ep('Transformers: Robots In Disguise'),
+    ep("G.I. Joe: A Real American Hero ('83)"), ep("G.I. Joe: A Real American Hero ('89)"), ep('Be: Something Long'),
+    ep('Avatar: The Last Airbender'), ep('The Adventures of Jimmy Neutron: Boy Genius'),
+    ep('Space Ghost Coast to Coast'), ep('Camp Lazlo'), ep("Foster's Home for Imaginary Friends"),
+    ep('Ed, Edd n Eddy'), ep('Dragon Ball GT'), ep('Dragon Ball Z'), ep('Dragon Ball'), ep('InuYasha'), ep('Up'),
+    ep('Sealab 2021'), ep('The Tex Avery Show'), ep('The Cosby Show'), ep('Cow and Chicken'), ep("Dexter's Laboratory"),
+    ep('Tom & Jerry'), ep('Tom & Jerry Show'), ep('Gumball Show'), ep('The Big Late Show Live'), ep('Ben 10'), ep('Teen Titans'), ep('Static Shock'), ep('Teenage Mutant Ninja Turtles (2003)'),
+    ep('Spider-Man'), ep('The Brady Bunch'), ep('Rocket Power'), ep('Droopy'), ep('Scooby-Doo, Where Are You!'),
+    ep('Yu-Gi-Oh! Duel Monsters'), ep('Aqua Teen Hunger Force'), ep('The Amanda Show'), ep('Superman: The Animated Series'),
+    ep('The Powerpuff Girls'), ep('Codename: Kids Next Door'), ep('Kid Ninja Dojo'), ep('The Fairly OddParents'), ep('The Rugrats Movie Show'),
+    custom('g3', "My Gym Partner's a Monkey"),
+    ...HYPHENATED_SHOWS.map(ep), custom('g2', 'Mobile Suit Gundam Series'),
+])];
+const FIXK = {
+    sac: 'tv.Ghost in the Shell: Stand Alone Complex', transformers: 'tv.Transformers', tfRid: 'tv.Transformers: Robots In Disguise',
+    joe83: "tv.G.I. Joe: A Real American Hero ('83)", joe89: "tv.G.I. Joe: A Real American Hero ('89)",
+    avatar: 'tv.Avatar: The Last Airbender', jimmy: 'tv.The Adventures of Jimmy Neutron: Boy Genius',
+    sgc: 'tv.Space Ghost Coast to Coast', lazlo: 'tv.Camp Lazlo', fosters: "tv.Foster's Home for Imaginary Friends",
+    ed: 'tv.Ed, Edd n Eddy', gt: 'tv.Dragon Ball GT', dbz: 'tv.Dragon Ball Z', db: 'tv.Dragon Ball', inuyasha: 'tv.InuYasha',
+    sealab: 'tv.Sealab 2021', tex: 'tv.The Tex Avery Show', cosby: 'tv.The Cosby Show', cow: 'tv.Cow and Chicken',
+    dexter: "tv.Dexter's Laboratory", tj: 'tv.Tom & Jerry', gundam: 'custom.g2',
+    teenTitans: 'tv.Teen Titans', static: 'tv.Static Shock', tmnt: 'tv.Teenage Mutant Ninja Turtles (2003)',
+    spider: 'tv.Spider-Man', brady: 'tv.The Brady Bunch', rocket: 'tv.Rocket Power', droopy: 'tv.Droopy',
+};
+
 module.exports = async function run() {
     const suite = new Suite('show match');
     const vocab = showMatch.buildVocabulary(CHANNELS, { c1: 'Looney Tunes', c9: 'Never Aired' });
@@ -279,8 +313,12 @@ module.exports = async function run() {
             names(propose('Sealab 2021 then Cowboy Bebop')) === `${KEYS.sealab21},${KEYS.bebop}`);
         suite.check('the same show twice is one show', names(propose('Cowboy Bebop vs Cowboy Bebop')) === KEYS.bebop);
         const three = propose('Cowboy Bebop, Sealab 2021 and Naruto');
-        suite.check('three shows propose the first two and say there was more',
-            names(three) === `${KEYS.bebop},${KEYS.sealab21}` && three.extra === 1, `${names(three)} extra ${three.extra}`);
+        suite.check('three shows are all proposed, in the order written',
+            names(three) === `${KEYS.bebop},${KEYS.sealab21},${KEYS.naruto}` && three.extra === 0, `${names(three)} extra ${three.extra}`);
+        const five = propose('Cowboy Bebop, Sealab 2021, Naruto, Home Movies and Dragon Ball Z');
+        suite.check('up to four are proposed, and the rest are counted',
+            names(five) === `${KEYS.bebop},${KEYS.sealab21},${KEYS.naruto},${KEYS.homeMovies}` && five.extra === 1, `${names(five)} extra ${five.extra}`);
+        suite.check('the most shows a clip names is exported, and is four', showMatch.MAX_NAMES === 4);
         suite.check('each hit says what it matched and how',
             p.found.length === 2 && p.found[0].text === 'cowboy bebop' && p.found[0].via === 'title');
     }
@@ -340,7 +378,7 @@ module.exports = async function run() {
         suite.check('and "Adult Swim" still does not name anything',
             propose('Adult Swim Bumper - Empty Pool', after).names.length === 0
             && names(propose('Adult Swim Promo - Cowboy Bebop', after)) === KEYS.bebop);
-        suite.check('and "NEXT" on its own names nothing', propose('[AS] NEXT - ATHF', after).names.length === 0);
+        suite.check('and "NEXT" on its own names nothing', propose('[AS] NEXT - XYZZY', after).names.length === 0);
 
         const next = showMatch.learnAliases('[as] NEXT - SGC2C', KEYS.sgc, vocab, {}, []);
         suite.check('even with nothing to compare against, "next" is not learned: it is a structural word',
@@ -362,13 +400,17 @@ module.exports = async function run() {
         suite.check('one show', n({ names: ['tv.A'] }).join() === 'tv.A');
         suite.check('two shows, now then', n({ names: ['tv.A', 'tv.B'] }).join() === 'tv.A,tv.B');
         suite.check('an empty array is unnamed', n({ names: [] }).length === 0);
-        suite.check('a string, three entries or a non-string entry read as unnamed',
-            n({ names: 'tv.A' }).length === 0 && n({ names: ['a', 'b', 'c'] }).length === 0 && n({ names: [4] }).length === 0);
+        suite.check('three and four shows, in order', n({ names: ['tv.A', 'tv.B', 'tv.C'] }).join() === 'tv.A,tv.B,tv.C'
+            && n({ names: ['tv.A', 'tv.B', 'tv.C', 'tv.D'] }).join() === 'tv.A,tv.B,tv.C,tv.D');
+        suite.check('a string, five entries or a non-string entry read as unnamed',
+            n({ names: 'tv.A' }).length === 0 && n({ names: ['a', 'b', 'c', 'd', 'e'] }).length === 0 && n({ names: [4] }).length === 0);
         suite.check('reading hands back a copy', (() => { const c = { names: ['tv.A'] }; n(c).push('x'); return c.names.length === 1; })());
         suite.check('a good shape has no problem', showMatch.namesProblem({ names: ['tv.A'] }) === null
             && showMatch.namesProblem({ title: 'x' }) === null);
         suite.check('a bad shape says what is wrong',
-            /array/.test(showMatch.namesProblem({ names: 'tv.A' })) && /one or two/.test(showMatch.namesProblem({ names: [] })));
+            /array/.test(showMatch.namesProblem({ names: 'tv.A' })) && /one to four/.test(showMatch.namesProblem({ names: [] }))
+            && /one to four/.test(showMatch.namesProblem({ names: ['a', 'b', 'c', 'd', 'e'] }))
+            && showMatch.namesProblem({ names: ['tv.A', 'tv.B', 'tv.C', 'tv.D'] }) === null);
     }
 
     // ---- the alias store: reader and writer, on throwaway folders ------------
@@ -507,6 +549,257 @@ module.exports = async function run() {
             }
         })();
         suite.check('there is no save route yet: POST /api/filler/:id/match is not one', posts === 404, `${posts}`);
+    }
+
+    // ---- shortened titles: the part before a colon ---------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t) => showMatch.propose(t, vocabS, {});
+        suite.check('"Ghost In The Shell NEXT promo" names Ghost in the Shell: Stand Alone Complex',
+            names(p('Adult Swim AcTN - Ghost In The Shell NEXT promo')) === FIXK.sac, names(p('Adult Swim AcTN - Ghost In The Shell NEXT promo')));
+        suite.check('... and says it came from a shortened title',
+            p('Ghost In The Shell NEXT promo').found.length === 1 && p('Ghost In The Shell NEXT promo').found[0].shortened === true);
+        suite.check('the whole title still names it, and is not marked',
+            names(p('Ghost in the Shell: Stand Alone Complex promo')) === FIXK.sac
+            && p('Ghost in the Shell: Stand Alone Complex promo').found[0].shortened !== true);
+        suite.check('a part before the colon that is another show\'s whole title is not offered: "Transformers" is the plain show',
+            names(p('Transformers promo')) === FIXK.transformers && p('Transformers promo').found[0].shortened !== true
+            && typeof(p('Transformers promo').found[0].alsoKeys) === 'undefined');
+        suite.check('... and the longer title still names its own show',
+            names(p('Transformers: Robots In Disguise promo')) === FIXK.tfRid);
+        const joe = p('G.I. Joe promo');
+        suite.check('two shows sharing the part before the colon: one is proposed and the other reported, marked shortened',
+            joe.names.length === 1 && joe.found[0].alsoKeys && joe.found[0].alsoKeys.length === 1 && joe.found[0].shortened === true
+            && [FIXK.joe83, FIXK.joe89].includes(joe.names[0]) && [FIXK.joe83, FIXK.joe89].includes(joe.found[0].alsoKeys[0]), JSON.stringify(joe));
+        suite.check('a part before the colon under three letters is not offered ("Be: Something Long")',
+            p('be happy now').names.length === 0);
+        suite.check('a leading "The" is optional on a shortened title too',
+            names(p('Adventures of Jimmy Neutron promo')) === FIXK.jimmy && names(p('The Adventures of Jimmy Neutron promo')) === FIXK.jimmy);
+        suite.check('one word before the colon is enough: "Avatar" names Avatar: The Last Airbender, marked shortened',
+            names(p('Nick.com promo (Avatar)')) === FIXK.avatar && p('Nick.com promo (Avatar)').found[0].shortened === true);
+        suite.check('a title with no colon gets no shortened form: "Sealab" alone names nothing',
+            p('Sealab promo').names.length === 0);
+    }
+
+    // ---- spacing: "DragonBall GT" is "Dragon Ball GT" -------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t) => showMatch.propose(t, vocabS, {});
+        suite.check('"DragonBall GT NEXT Promo" names Dragon Ball GT, not the shorter Dragon Ball',
+            names(p('DragonBall GT NEXT Promo')) === FIXK.gt, names(p('DragonBall GT NEXT Promo')));
+        suite.check('"DragonBall Z" names Dragon Ball Z and "Dragonball" names Dragon Ball',
+            names(p('Toonami - NEXT [DragonBall Z]')) === FIXK.dbz && names(p('Dragonball promo')) === FIXK.db);
+        suite.check('it works the other way: "Inu Yasha" names InuYasha',
+            names(p('Inu Yasha NEXT promo')) === FIXK.inuyasha);
+        suite.check('respacing is not a shortened title, and is not marked as one',
+            p('DragonBall GT NEXT Promo').found.length === 1 && p('DragonBall GT NEXT Promo').found[0].shortened !== true);
+        suite.check('a title already matched as written is found once, not again by its respaced twin',
+            p('Dragon Ball Z promo').found.length === 1 && names(p('Dragon Ball Z promo')) === FIXK.dbz);
+        suite.check('words are only joined when they sit side by side: a title taken out between them breaks the join',
+            names(p('Seal Dragon Ball Z ab 2021')) === FIXK.dbz, names(p('Seal Dragon Ball Z ab 2021')));
+        suite.check('a one-word show is found when the clip splits it, and not inside a longer word',
+            names(p('Inu Yasha')) === FIXK.inuyasha && p('Inu Yashas promo').names.length === 0);
+        suite.check('a short title is not respaced: "Ben 10" is found as written, but "Be N 10" is not "Ben 10"',
+            names(p('Ben 10 promo')) === 'tv.Ben 10' && p('Be N 10 promo').names.length === 0);
+        suite.check('a clip that names no show still proposes nothing', p('Adult Swim Bumper 5').names.length === 0);
+    }
+
+    // ---- shortened titles: a generic last word dropped -----------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t) => showMatch.propose(t, vocabS, {});
+        suite.check('"Mobile Suit Gundam NEXT [1]" names the custom show "Mobile Suit Gundam Series"',
+            names(p('Mobile Suit Gundam NEXT [1]')) === FIXK.gundam, names(p('Mobile Suit Gundam NEXT [1]')));
+        suite.check('... marked as from a shortened title',
+            p('Mobile Suit Gundam NEXT [1]').found.length === 1 && p('Mobile Suit Gundam NEXT [1]').found[0].shortened === true);
+        suite.check('the whole title still names it, unmarked',
+            names(p('Mobile Suit Gundam Series promo')) === FIXK.gundam && p('Mobile Suit Gundam Series promo').found[0].shortened !== true);
+        suite.check('"Show" goes too, and a leading "The" is optional: "Tex Avery" names The Tex Avery Show',
+            names(p('The Tex Avery promo')) === FIXK.tex && names(p('Tex Avery promo')) === FIXK.tex
+            && p('Tex Avery promo').found[0].shortened === true);
+        suite.check('two words are needed: "The Cosby" names The Cosby Show, "Cosby" alone does not',
+            names(p('Up Next (The Cosby)')) === FIXK.cosby && p('Up Next (Cosby)').names.length === 0);
+        suite.check('a shortened form that is another show\'s whole title is left to that show: "Tom & Jerry" is the plain one',
+            names(p('Tom & Jerry promo')) === FIXK.tj && p('Tom & Jerry promo').found[0].shortened !== true
+            && typeof(p('Tom & Jerry promo').found[0].alsoKeys) === 'undefined');
+        suite.check('only the last word is dropped: "Series" in the middle of a title is kept',
+            p('Gundam Series Mobile Suit promo').names.length === 0);
+        suite.check('a word in the middle is not a last word: "The Big Late Show Live" is not "Big Late"',
+            p('Big Late promo').names.length === 0 && names(p('The Big Late Show Live promo')) === 'tv.The Big Late Show Live');
+        suite.check('a title of one word and "Show" is not shortened to that one word: "Gumball" names nothing',
+            p('Gumball promo').names.length === 0 && names(p('Gumball Show promo')) === 'tv.Gumball Show');
+        suite.check('a title that is only the generic word and one more is not shortened to a single word',
+            p('Ben 10 promo').found[0].shortened !== true);
+    }
+
+    // ---- a two-show title is never half-read ------------------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t, a) => showMatch.propose(t, vocabS, a || {});
+        const nowThen = 'CN City Now\u2044Then (Foster\u2019s \u2044 Camp Lazlo) (2006)';
+        suite.check('"Now/Then (Foster\'s / Camp Lazlo)" with only Camp Lazlo recognised names nothing',
+            p(nowThen).names.length === 0, JSON.stringify(p(nowThen)));
+        suite.check('... and is flagged, with the one show that was recognised',
+            p(nowThen).unresolved && p(nowThen).unresolved.recognised.join() === FIXK.lazlo
+            && typeof(p(nowThen).unresolved.reason) === 'string' && p(nowThen).unresolved.reason.length > 0);
+        suite.check('... and still reports what it did find, for the review screen',
+            p(nowThen).found.length === 1 && p(nowThen).found[0].key === FIXK.lazlo);
+        const aToB = 'CN Next (Dexter\u2019s Lab to Ed, Edd n Eddy) [Hypno]';
+        suite.check('"A to B" with only B recognised is the same: unnamed and flagged',
+            p(aToB).names.length === 0 && p(aToB).unresolved && p(aToB).unresolved.recognised.join() === FIXK.ed, JSON.stringify(p(aToB)));
+        suite.check('"A to B" with only A recognised too, and without brackets',
+            p('Ed, Edd n Eddy to Dexter\u2019s Lab [Slingshot]').names.length === 0
+            && p('Ed, Edd n Eddy to Dexter\u2019s Lab [Slingshot]').unresolved.recognised.join() === FIXK.ed
+            && p('Acme Hour to Cow & Chicken [Balloon]').names.length === 0
+            && p('Acme Hour to Cow & Chicken [Balloon]').unresolved.recognised.join() === FIXK.cow);
+        suite.check('both shows recognised: a pair, not flagged',
+            names(p('CN City Now\u2044Then (Camp Lazlo \u2044 Foster\'s Home for Imaginary Friends)')) === `${FIXK.lazlo},${FIXK.fosters}`
+            && typeof(p('CN City Now\u2044Then (Camp Lazlo \u2044 Foster\'s Home for Imaginary Friends)').unresolved) === 'undefined');
+        suite.check('"A to B" with both recognised is a pair too',
+            names(p('CN Next (Ed, Edd n Eddy to Cow and Chicken) [Hypno]')) === `${FIXK.ed},${FIXK.cow}`);
+        suite.check('one show under "Now/Then" with no second show is simply that show',
+            names(p('CN CITY Now\u2044Then (Camp Lazlo) (2006)')) === FIXK.lazlo
+            && typeof(p('CN CITY Now\u2044Then (Camp Lazlo) (2006)').unresolved) === 'undefined');
+        suite.check('the same show on both sides is one show named twice, not a half-read pair',
+            names(p('CN Bumper (Camp Lazlo ⁄ Camp Lazlo)')) === FIXK.lazlo
+            && typeof(p('CN Bumper (Camp Lazlo ⁄ Camp Lazlo)').unresolved) === 'undefined');
+        suite.check('a show whose own title has " to " in it is one show, not a pair',
+            names(p('Space Ghost Coast to Coast promo')) === FIXK.sgc && typeof(p('Space Ghost Coast to Coast promo').unresolved) === 'undefined');
+        suite.check('a lower-case word after "to" is ordinary English, not a second show',
+            names(p('Camp Lazlo back to the beginning')) === FIXK.lazlo && typeof(p('Camp Lazlo back to the beginning').unresolved) === 'undefined');
+        suite.check('a pair with neither side recognised is just unnamed, and not flagged',
+            p('CN City Now\u2044Then (Grim Advs \u2044 Foster\u2019s)').names.length === 0
+            && typeof(p('CN City Now\u2044Then (Grim Advs \u2044 Foster\u2019s)').unresolved) === 'undefined');
+        suite.check('both shown on the same side is not a half-read pair: two shows named is a pair as before',
+            names(p('Ed, Edd n Eddy and Camp Lazlo \u2044 promo')) === `${FIXK.ed},${FIXK.lazlo}`);
+        suite.check('once the nickname is taught the same title is a pair and is not flagged',
+            names(p(nowThen, { foster: FIXK.fosters })) === `${FIXK.fosters},${FIXK.lazlo}`
+            && typeof(p(nowThen, { foster: FIXK.fosters }).unresolved) === 'undefined');
+        suite.check('a respaced title is placed correctly: "DragonBall GT to Camp Lazlo" is a pair',
+            names(p('Next (DragonBall GT to Camp Lazlo)')) === `${FIXK.gt},${FIXK.lazlo}`);
+
+        // The reason this matters for the review screen: a half-read clip used to count as a clip naming
+        // Camp Lazlo, which made "foster" look like another show's word and so impossible to teach.
+        const titles = [nowThen, 'CN City Now\u2044Then (Grim Advs \u2044 Camp Lazlo) (2006)', 'CN City YES! Era NEXT; Camp Lazlo (2006)'];
+        const corpus = titles.map( (t) => ({ title: t, names: p(t).names }) );
+        const learned = showMatch.learnAliases('CN City YES! Era NEXT; Foster\u2019s (2006)', FIXK.fosters, vocabS, {}, corpus);
+        suite.check('so with the half-read clips unnamed, "foster" can be learned as the nickname for Foster\'s',
+            learned.added.foster === FIXK.fosters, JSON.stringify(learned));
+    }
+
+    // ---- a title that joins shows with hyphens inside its brackets ---------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series' });
+        const p = (t, a) => showMatch.propose(t, vocabS, a || {});
+        const recognised = (x) => (x.unresolved ? x.unresolved.recognised.join() : null);
+        suite.check('"(Static-Teen Titans)" with only Teen Titans recognised ("Static" is not Static Shock) names nothing and is flagged',
+            p('Miguzi - Next Bumper (Static-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (Static-Teen Titans)')) === FIXK.teenTitans, JSON.stringify(p('Miguzi - Next Bumper (Static-Teen Titans)')));
+        suite.check('both shows recognised: a pair in the order written, not flagged',
+            names(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`
+            && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Teen Titans)')) === null
+            && names(p('Miguzi - Next Bumper (Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`);
+        suite.check('three shows written with hyphens are all proposed, in order',
+            names(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static Shock-Teen Titans)')) === `${FIXK.tmnt},${FIXK.static},${FIXK.teenTitans}`
+            && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static Shock-Teen Titans)')) === null);
+        suite.check('three shows with the first not recognised: flagged, with the two that were',
+            p('Miguzi - Next Bumper (Static-Static Shock-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (Static-Static Shock-Teen Titans)')) === `${FIXK.static},${FIXK.teenTitans}`,
+            JSON.stringify(p('Miguzi - Next Bumper (Static-Static Shock-Teen Titans)')));
+        suite.check('three shows with the middle one not recognised ("Static" for Static Shock): flagged too',
+            p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (Teenage Mutant Ninja Turtles-Static-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`);
+        suite.check('a hyphen with spaces round it counts, and so do square brackets',
+            recognised(p('Promo (Camp Lazlo - Foster\u2019s)')) === FIXK.lazlo
+            && names(p('Promo [Camp Lazlo-Foster\'s Home for Imaginary Friends]')) === `${FIXK.lazlo},${FIXK.fosters}`);
+        suite.check('a hyphen outside any bracket is not a separator: "Toonami - NEXT - Camp Lazlo" is Camp Lazlo',
+            names(p('Toonami - NEXT - Camp Lazlo')) === FIXK.lazlo && recognised(p('Toonami - NEXT - Camp Lazlo')) === null);
+        suite.check('"A to B" with three shows, one unrecognised, is flagged too',
+            p('CN Next (Camp Lazlo to Ed, Edd n Eddy to Dexter\u2019s Lab)').names.length === 0
+            && recognised(p('CN Next (Camp Lazlo to Ed, Edd n Eddy to Dexter\u2019s Lab)')) === `${FIXK.lazlo},${FIXK.ed}`);
+
+        // Hyphens that are part of one name.
+        suite.check('a hyphen inside a show\'s own title is not a separator: "(Spider-Man)" is Spider-Man',
+            names(p('Chef Boyardee (Spider-Man) (1995)')) === FIXK.spider && recognised(p('Chef Boyardee (Spider-Man) (1995)')) === null);
+        suite.check('... and a show with a hyphen can be one of the shows joined: "(Spider-Man-Teen Titans)" is a pair',
+            names(p('Promo (Spider-Man-Teen Titans)')) === `${FIXK.spider},${FIXK.teenTitans}`);
+        suite.check('a hyphenated word from a show title that is not itself recognised is one word: "(Scooby-Doo-Teen Titans)" flags Scooby-Doo as the unknown',
+            p('Next (Scooby-Doo-Teen Titans)').names.length === 0 && recognised(p('Next (Scooby-Doo-Teen Titans)')) === FIXK.teenTitans);
+        suite.check('a hyphenated word that names no show leaves the rest alone: "(N-Files) (Sam Rocket Power)" is Rocket Power',
+            names(p('Nick Promo (N-Files) (Sam Rocket Power)')) === FIXK.rocket && recognised(p('Nick Promo (N-Files) (Sam Rocket Power)')) === null);
+        suite.check('a show with extra words beside a hyphen in its segment is not a list of shows: "(The Brady Bunch Kitty-Karry)"',
+            names(p('Nick at Nite Rewind promo (The Brady Bunch Kitty-Karry)')) === FIXK.brady
+            && recognised(p('Nick at Nite Rewind promo (The Brady Bunch Kitty-Karry)')) === null);
+        suite.check('a one-letter piece is not a missing show: "(Droopy-D)" is Droopy',
+            names(p('Know Your Toons (Droopy-D) (Oct 92)')) === FIXK.droopy && recognised(p('Know Your Toons (Droopy-D) (Oct 92)')) === null);
+        suite.check('a year range is not a pair of shows: "(2004-05)"',
+            names(p('Camp Lazlo promo (2004-05)')) === FIXK.lazlo && recognised(p('Camp Lazlo promo (2004-05)')) === null);
+        suite.check('the brackets are looked at one at a time: a hyphen in one does not turn another into half of a pair',
+            names(p('Promo (Camp Lazlo) (N-Files)')) === FIXK.lazlo && recognised(p('Promo (Camp Lazlo) (N-Files)')) === null);
+        suite.check('a bracket whose pieces name no show proposes nothing, and is not flagged',
+            p('Nick Stars Promo (Jeff - Painting)').names.length === 0 && recognised(p('Nick Stars Promo (Jeff - Painting)')) === null);
+        suite.check('every hyphenated show title on the channels, in brackets, names its show and is not flagged',
+            [...HYPHENATED_SHOWS, 'Scooby-Doo, Where Are You!', 'Yu-Gi-Oh! Duel Monsters'].every( (title) => {
+                const x = p(`Miguzi - Next Bumper (${title.replace(/ \(\d{4}\)$/, '')})`);
+                return x.names.length === 1 && x.names[0] === 'tv.' + title && ! x.unresolved;
+            } ));
+        suite.check('... and each can be one of the shows joined: "(Teen Titans-Sym-Bionic Titan)" is a pair',
+            names(p('Miguzi - Next Bumper (Teen Titans-Sym-Bionic Titan)')) === `${FIXK.teenTitans},tv.Sym-Bionic Titan`
+            && names(p('Next (Butt-Ugly Martians-Static Shock)')) === `tv.Butt-Ugly Martians,${FIXK.static}`);
+        suite.check('a year or a word that describes the clip beside a show is not a missing show',
+            names(p('Promo (Camp Lazlo-2006)')) === FIXK.lazlo && recognised(p('Promo (Camp Lazlo-2006)')) === null
+            && names(p('Promo (Camp Lazlo-promo)')) === FIXK.lazlo && recognised(p('Promo (Camp Lazlo-promo)')) === null);
+        suite.check('a piece that already holds two shows is not one show of a list: a stray "to" before a capital leaves them named',
+            names(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')) === `${FIXK.lazlo},${FIXK.ed}`
+            && recognised(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')) === null,
+            JSON.stringify(p('Camp Lazlo - Ed, Edd n Eddy Wants to Dance on Broadway')));
+        suite.check('once the unknown name is taught, the pair stands',
+            names(p('Miguzi - Next Bumper (Static-Teen Titans)', { static: FIXK.static })) === `${FIXK.static},${FIXK.teenTitans}`);
+    }
+
+    // ---- abbreviations: the initials of a show title ------------------------------------
+    {
+        const vocabS = showMatch.buildVocabulary(FIX_CHANNELS, { g2: 'Mobile Suit Gundam Series', g3: "My Gym Partner's a Monkey" });
+        const p = (t, a) => showMatch.propose(t, vocabS, a || {});
+        const recognised = (x) => (x.unresolved ? x.unresolved.recognised.join() : null);
+        suite.check('"TMNT" names Teenage Mutant Ninja Turtles (2003), marked as from an abbreviation',
+            names(p('TMNT 2003 Air Ninjas (2004)')) === FIXK.tmnt && p('TMNT 2003 Air Ninjas (2004)').found[0].abbreviation === true
+            && p('TMNT 2003 Air Ninjas (2004)').found[0].shortened !== true, JSON.stringify(p('TMNT 2003 Air Ninjas (2004)')));
+        suite.check('"ATHF", "DBZ" and "MGPAM" (a custom show) too; three letters is enough',
+            names(p('ATHF promo')) === 'tv.Aqua Teen Hunger Force' && names(p('Toonami - NEXT [DBZ]')) === FIXK.dbz
+            && names(p('CN City Bumper (MGPAM) (3)')) === 'custom.g3');
+        suite.check('the pair from the Miguzi title now reads as a pair: TMNT then Teen Titans, marked, and not flagged',
+            names(p('Miguzi - Next Bumper (TMNT-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`
+            && recognised(p('Miguzi - Next Bumper (TMNT-Teen Titans)')) === null
+            && p('Miguzi - Next Bumper (TMNT-Teen Titans)').found[0].abbreviation === true);
+        suite.check('and with the middle show written as "Static" (not Static Shock) it is flagged, with TMNT and Teen Titans recognised',
+            p('Miguzi - Next Bumper (TMNT-Static-Teen Titans)').names.length === 0
+            && recognised(p('Miguzi - Next Bumper (TMNT-Static-Teen Titans)')) === `${FIXK.tmnt},${FIXK.teenTitans}`);
+        suite.check('with "Static" taught, all three are named, in order',
+            names(p('Miguzi - Next Bumper (TMNT-Static-Teen Titans)', { static: FIXK.static })) === `${FIXK.tmnt},${FIXK.static},${FIXK.teenTitans}`);
+        suite.check('an abbreviation that is the initials of several shows is left alone: "TAS" (The Tex Avery Show, The Amanda Show, ...)',
+            p('Comm Batman TAS toys').names.length === 0 && p('TAS promo').names.length === 0);
+        suite.check('... and one that is the initials of a show\'s subtitle as well: "TAS" with Superman: The Animated Series',
+            names(p('TV Ad (Superman TAS)')) === 'tv.Superman: The Animated Series' && p('TV Ad (Superman TAS)').found.length === 1);
+        suite.check('two eras of a show share their initials, so the abbreviation is left to the review screen',
+            p('GJARAH promo').names.length === 0);
+        suite.check('a leading "The" may or may not be counted: "TPG" and "PG" are both the initials of The Powerpuff Girls, but "PG" is two letters',
+            names(p('TPG promo')) === 'tv.The Powerpuff Girls' && p('PG promo').names.length === 0);
+        suite.check('only capitals: "Tmnt" and "tmnt" are not an abbreviation',
+            p('Tmnt promo').names.length === 0 && p('tmnt promo').names.length === 0);
+        suite.check('only a whole word: "ATHFS" and "ATHF2" are not "ATHF"',
+            p('ATHFS promo').names.length === 0 && p('ATHF2 promo').names.length === 0);
+        suite.check('a title already read as written is not read again as an abbreviation',
+            p('Aqua Teen Hunger Force ATHF promo').found.length === 1 && p('Aqua Teen Hunger Force ATHF promo').found[0].abbreviation !== true);
+        suite.check('a word taught as an alias wins over the abbreviation',
+            names(p('TMNT promo', { tmnt: FIXK.static })) === FIXK.static);
+        suite.check('a subtitle\'s initials are not a meaning of their own, and make an abbreviation ambiguous: "KND" is the initials of Kid Ninja Dojo and of the subtitle of Codename: Kids Next Door, so it names neither',
+            p('KND promo').names.length === 0);
+        suite.check('the initials count with and without a leading article: "RMS" and "TRMS" for The Rugrats Movie Show, "TTAS" for The Tex Avery Show',
+            names(p('RMS promo')) === 'tv.The Rugrats Movie Show' && names(p('TRMS promo')) === 'tv.The Rugrats Movie Show'
+            && names(p('TTAS promo')) === FIXK.tex && names(p('TFO promo')) === 'tv.The Fairly OddParents');
+        suite.check('a subtitle\'s initials alone are no abbreviation: "SAC" (Stand Alone Complex) names nothing, while the part before the colon still does',
+            p('SAC promo').names.length === 0 && names(p('Ghost in the Shell promo')) === FIXK.sac);
     }
 
     return suite;

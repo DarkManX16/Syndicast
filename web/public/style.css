@@ -385,6 +385,24 @@ div.programming-programs div.list-group-item {
   padding: 1px 6px;
   white-space: nowrap;
 }
+/* The one-line tag on a Flex row naming its planned transitions. One line and
+   never wrapping, like every other field of the row, so it cannot change the
+   row's height; it shrinks and ends in an ellipsis before the duration and
+   the buttons would be pushed out (test/program-row-heights.js checks it). */
+.psr-row .psr-flex-tag {
+  flex: 0 1 auto;
+  min-width: 4em;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 75%;
+  color: #0c5c68;
+  background: #d5ecef;
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-right: 8px;
+}
 .channel-editor-modal-big {
   width:1200px;
   min-width: 98%;
@@ -795,4 +813,153 @@ div.programming-programs div.list-group-item {
 @keyframes schedCalPulse {
   0%   { background-color: #fff3cd; }
   100% { background-color: transparent; }
+}
+/* The Transitions section of a day-part or block card. */
+.tr-editor {
+  margin-bottom: 8px;
+}
+.tr-editor .tr-toggle {
+  padding-left: 0;
+  font-weight: 500;
+}
+.tr-editor .tr-situation {
+  margin-bottom: 10px;
+}
+.tr-editor .tr-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tr-editor .tr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.tr-editor .tr-head-buttons {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.tr-editor .tr-notice {
+  margin: 4px 0;
+}
+.tr-editor .tr-panel {
+  margin: 6px 0 8px 0;
+  padding: 8px 10px;
+  border: 1px solid #9fcfd6;
+  border-radius: 4px;
+  background: #f4fafb;
+}
+.tr-editor .tr-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.tr-editor .tr-caption {
+  font-size: 70%;
+  color: #777;
+  margin-bottom: 2px;
+}
+.tr-editor .tr-col-out .tr-caption {
+  text-align: right;
+}
+.tr-editor .tr-side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.tr-editor .tr-side-out {
+  justify-content: flex-end;
+}
+.tr-editor .tr-flex {
+  flex: 0 0 auto;
+  min-width: 6em;
+  text-align: center;
+  font-size: 80%;
+  color: #555;
+  background: #eeeeee;
+  border: 1px dashed #aaa;
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+.tr-editor .tr-chip {
+  cursor: pointer;
+  font-size: 80%;
+  background: #d5ecef;
+  border: 1px solid #9fcfd6;
+  border-radius: 12px;
+  padding: 1px 10px;
+}
+.tr-editor .tr-chip-open {
+  background: #0c5c68;
+  border-color: #0c5c68;
+  color: #fff;
+}
+.tr-editor .tr-chip-bad {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 1px #dc3545;
+}
+.tr-editor .tr-add {
+  font-size: 75%;
+  padding: 0 8px;
+}
+.tr-editor .tr-form {
+  margin: 6px 0 4px 0;
+  padding: 8px 10px;
+  border: 1px solid #9fcfd6;
+  border-radius: 4px;
+  background: #f4fafb;
+}
+.tr-editor .tr-sentence {
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.tr-editor .tr-form-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.tr-editor .tr-preview {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #ddd;
+}
+.tr-editor .tr-preview-names {
+  margin-left: 12px;
+}
+.tr-editor .tr-pv-section {
+  margin-top: 8px;
+}
+.tr-editor .tr-pv-item {
+  margin: 4px 0 4px 10px;
+  padding-left: 8px;
+  border-left: 3px solid #d5ecef;
+}
+.tr-editor .tr-pv-head {
+  font-size: 85%;
+  font-weight: 500;
+}
+.tr-editor .tr-pv-plan {
+  font-size: 85%;
+}
+.tr-editor .tr-pv-clip {
+  display: inline-block;
+  background: #d5ecef;
+  border-radius: 3px;
+  padding: 0 6px;
+  margin-right: 4px;
+}
+.tr-editor .tr-pv-fits {
+  margin: 1px 0 0 6px;
+  line-height: 1.3;
+}
+.tr-editor .tr-pv-flex {
+  display: inline-block;
+  background: #eeeeee;
+  border: 1px dashed #aaa;
+  border-radius: 3px;
+  padding: 0 6px;
+  margin-right: 4px;
 }

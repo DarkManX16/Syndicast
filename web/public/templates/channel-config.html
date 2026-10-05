@@ -186,6 +186,7 @@
                                 <span class="psr-tag" ng-if="rowTag(x)">{{ rowTag(x) }}</span>
                                 <span class="psr-title" ng-if="!x.isOffline">{{ rowTitle(x) }}</span>
                                 <span class="psr-flex-label" ng-if="x.isOffline">{{ rowOfflineLabel(x) }}</span>
+                                <span class="psr-flex-tag" ng-if="rowFlexTag(x)" title="{{ rowFlexTagTitle(x) }}">{{ rowFlexTag(x) }}</span>
                                 <span class="psr-duration">{{ rowDuration(x) }}</span>
                                 <span class="psr-break" ng-if="rowBreakAfter(x)">{{ rowBreakAfter(x) }}</span>
                                 <span class="flex-pull-right"></span>
@@ -743,6 +744,10 @@
                         <h6>Mix</h6>
                         <filler-mix-editor mix="dayPart.fillerCollections" filler-options="fillerOptions"></filler-mix-editor>
 
+                        <h6 style="margin-top: 10px;">Transitions</h6>
+                        <small class="text-danger d-block" ng-show="error.transitions && error.tab === 'dayparts'">{{error.transitions}}</small>
+                        <transitions-editor context="dayPart" channel="channel" filler-options="fillerOptions" lists-loaded="fillerOptionsLoaded" kind="day-part"></transitions-editor>
+
                         <h6 style="margin-top: 10px;">Starts</h6>
                         <div class="dp-start-row" ng-repeat="start in dayPart.starts">
                             <div class="form-row">
@@ -838,6 +843,10 @@
 
                         <h6 style="margin-top: 10px;">Mix</h6>
                         <filler-mix-editor mix="block.fillerCollections" filler-options="fillerOptions"></filler-mix-editor>
+
+                        <h6 style="margin-top: 10px;">Transitions</h6>
+                        <small class="text-danger d-block" ng-show="error.transitions && error.tab === 'blocks'">{{error.transitions}}</small>
+                        <transitions-editor context="block" channel="channel" filler-options="fillerOptions" lists-loaded="fillerOptionsLoaded" kind="block"></transitions-editor>
 
                         <h6 style="margin-top: 10px;">Airings</h6>
                         <div class="dp-start-row" ng-repeat="airing in block.airings">
