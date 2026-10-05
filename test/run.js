@@ -12,6 +12,7 @@ const suites = [
     './transitions',
     './transitions-editor',
     './show-match',
+    './names-review',
     './startTime-rotation',
     './save-resume',
     './channel-save',

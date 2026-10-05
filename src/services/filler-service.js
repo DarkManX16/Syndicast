@@ -1,4 +1,5 @@
 const events = require('events')
+const namesReview = require('../names-review');
 
 const FILLER_UPDATE = 30 * 60 * 1000; //30 minutes might be too aggressive
 //this will be configurable one day.
@@ -13,7 +14,19 @@ class FillerService extends events.EventEmitter {
     }
 
     async saveFiller(id, body) {
+        // An imported list's clips come back from Plex without the names saved on
+        // them, so the names that were saved are carried over (see carryNames). The
+        // refresh posts the stored list itself; the editor posts an imported list
+        // with no clips, so the stored ones are where the names are read from.
+        let before = null;
+        if (body.mode === "import") {
+            before = (Array.isArray(body.content) && body.content.length > 0) ? body.content
+                : ( (await this.fillerDB.getFiller(id)) || {} ).content;
+        }
         body = await this.prework(body);
+        if (Array.isArray(before) ) {
+            body.content = namesReview.carryNames(before, body.content);
+        }
         return this.fillerDB.saveFiller(id, body);
     }
 

@@ -1,10 +1,16 @@
 const showMatch = require('../show-match');
+const namesReview = require('../names-review');
+const transitions = require('../transitions');
+
+// The most clips a nickname check lists by name; the counts are always complete.
+const LISTED = 60;
 
 /*
- * Proposals for which show each clip of a filler list is about, for the filler
- * review screen. Read-only on purpose: it loads a list, every channel and the
- * alias file, and answers. Fixing a proposal and saving the names or an alias
- * is the review screen's job, through paths that do not exist yet.
+ * Proposals for which show each clip of a filler list is about, and the writes
+ * the names review screen makes (stage 5, step 6). Reading saves nothing. Saving
+ * is `saveNames`, the one caller of the alias file's writer: it writes `names`
+ * onto exactly the clips it is told about, and the nicknames it is told to teach,
+ * and checks both before it writes either.
  */
 class ShowMatchService {
 
@@ -15,7 +21,7 @@ class ShowMatchService {
         this.showAliasDB = showAliasDB;
     }
 
-    async vocabulary() {
+    async channels() {
         const numbers = await this.channelService.getAllChannelNumbers();
         const channels = [];
         for (const number of numbers) {
@@ -24,18 +30,36 @@ class ShowMatchService {
                 channels.push(channel);
             }
         }
+        return channels;
+    }
+
+    async vocabulary(channels) {
         const customShowNames = {};
         for (const info of await this.customShowDB.getAllShowsInfo() ) {
             customShowNames[info.id] = info.name;
         }
-        return showMatch.buildVocabulary(channels, customShowNames);
+        return showMatch.buildVocabulary(channels || await this.channels(), customShowNames);
     }
 
     /*
      * One entry per clip, in the list's order: what the clip says it names now
-     * (`names`, [] when it has none) and what the title says it names
-     * (`proposal`). `showNames` gives a display name for every key either
-     * mentions, so a client need not carry the vocabulary.
+     * (`names`, [] when it has none, `reviewed` when it was saved as naming no show)
+     * and what the title says it names (`proposal`).
+     */
+    rowsOf(filler, vocabulary, aliases) {
+        return (filler.content || []).map( (clip, index) => ({
+            index: index,
+            title: clip.title,
+            names: showMatch.namesOf(clip),
+            reviewed: showMatch.isReviewedNone(clip),
+            proposal: showMatch.propose(clip.title, vocabulary, aliases),
+        }) );
+    }
+
+    /*
+     * `showNames` gives a display name for every key a row mentions, so a client
+     * need not carry the vocabulary; `shows` is every show and custom show on the
+     * channels, by name, for the screen's pickers.
      */
     async matchFiller(id) {
         const filler = await this.fillerDB.getFiller(id);
@@ -44,6 +68,7 @@ class ShowMatchService {
         }
         const vocabulary = await this.vocabulary();
         const aliases = await this.showAliasDB.load();
+        const clips = this.rowsOf(filler, vocabulary, aliases);
         const showNames = {};
         const remember = (keys) => {
             for (const key of keys) {
@@ -52,21 +77,190 @@ class ShowMatchService {
                 }
             }
         };
-        const clips = (filler.content || []).map( (clip, index) => {
-            const names = showMatch.namesOf(clip);
-            const proposal = showMatch.propose(clip.title, vocabulary, aliases);
-            remember(names);
-            remember(proposal.names);
-            return { index: index, title: clip.title, names: names, proposal: proposal };
-        } );
+        for (const row of clips) {
+            remember(row.names);
+            remember(row.proposal.names);
+            remember(row.proposal.unresolved != null ? row.proposal.unresolved.recognised : []);
+            for (const hit of row.proposal.found) {
+                remember(hit.alsoKeys || []);
+            }
+        }
+        const shows = Object.keys(vocabulary.names)
+            .filter( (key) => /^(tv|custom)\./.test(key) )
+            .map( (key) => ({ key: key, name: vocabulary.names[key], custom: key.startsWith('custom.') }) )
+            .sort( (a, b) => a.name.localeCompare(b.name) );
         return {
             id: id,
             name: filler.name,
             aliasCount: Object.keys(aliases).length,
             showNames: showNames,
+            shows: shows,
             clips: clips,
         };
     }
+
+    /*
+     * Every list with how many of its clips are in each group, and the channels
+     * whose transition steps use it, the lists in use first (those that need a
+     * look before the ones that do not), then the rest in the Filler Lists order.
+     */
+    async overview() {
+        const channels = await this.channels();
+        const vocabulary = await this.vocabulary(channels);
+        const aliases = await this.showAliasDB.load();
+        const usedBy = {};
+        for (const channel of channels) {
+            for (const id of transitions.stepListIds(channel) ) {
+                (usedBy[id] = usedBy[id] || []).push( { number: channel.number, name: channel.name } );
+            }
+        }
+        const fillers = await this.fillerDB.getAllFillers();
+        const lists = fillers.map( (filler, position) => {
+            const counts = namesReview.summarize(this.rowsOf(filler, vocabulary, aliases));
+            return Object.assign({ id: filler.id, name: filler.name, usedBy: usedBy[filler.id] || [], position: position,
+                needsLook: namesReview.needsLook(counts) }, counts);
+        } );
+        lists.sort( (a, b) => ((b.usedBy.length > 0) - (a.usedBy.length > 0))
+            || ((a.usedBy.length > 0) ? (b.needsLook - a.needsLook) : 0) || (a.position - b.position) );
+        return { lists: lists };
+    }
+
+    // Every clip of every list, as checkNickname reads them.
+    async everyClip() {
+        const clips = [];
+        for (const filler of await this.fillerDB.getAllFillers() ) {
+            (filler.content || []).forEach( (clip, index) => {
+                clips.push( { list: filler.id, listName: filler.name, index: index, title: clip.title,
+                    names: showMatch.namesOf(clip), reviewed: showMatch.isReviewedNone(clip) } );
+            } );
+        }
+        return clips;
+    }
+
+    /*
+     * Whether a nickname may be taught, and which clips it would name: the answer
+     * of checkNickname with the lists' names added and the clips counted by whether
+     * they are in the list being reviewed. `index` is the clip it is taught from.
+     */
+    async checkNickname(id, text, showKey, index) {
+        const filler = await this.fillerDB.getFiller(id);
+        if (filler == null) {
+            return null;
+        }
+        const vocabulary = await this.vocabulary();
+        const aliases = await this.showAliasDB.load();
+        const source = ( (Number.isInteger(index)) && (filler.content[index] != null) ) ? filler.content[index].title : undefined;
+        const clips = await this.everyClip();
+        const result = showMatch.checkNickname(text, showKey, vocabulary, aliases, clips, { sourceTitle: source });
+        const listName = {};
+        for (const clip of clips) {
+            listName[clip.list] = clip.listName;
+        }
+        const show = (c) => ({ list: c.list, listName: listName[c.list], index: c.index, title: c.title,
+            names: c.names.map( (k) => vocabulary.names[k] || k ) });
+        // The clip it is taught from is not 'another clip'.
+        const others = result.newly.filter( (c) => ! ( (c.list === id) && (c.index === index) ) );
+        const here = others.filter( (c) => c.list === id );
+        return {
+            alias: result.alias,
+            ok: result.ok,
+            problems: result.problems,
+            showName: vocabulary.names[showKey] || showKey,
+            sourceNames: result.sourceNames || [],
+            sourceUnresolved: result.sourceUnresolved === true,
+            sourceShows: (result.sourceNames || []).map( (k) => vocabulary.names[k] || k ),
+            thisList: here.length,
+            otherLists: others.length - here.length,
+            newly: others.slice(0, LISTED).map(show),
+            changed: result.changed.slice(0, LISTED).map(show),
+        };
+    }
+
+    // What to offer when teaching a nickname from one clip.
+    async nicknameSuggestions(id, index, showKey) {
+        const filler = await this.fillerDB.getFiller(id);
+        if ( (filler == null) || (filler.content[index] == null) ) {
+            return null;
+        }
+        const vocabulary = await this.vocabulary();
+        const aliases = await this.showAliasDB.load();
+        // What the other clips name, as far as anyone knows: their saved names, else
+        // what their titles suggest, so a word the channel uses everywhere is seen as
+        // such before anything has been saved.
+        const corpus = (await this.everyClip() ).map( (c) => ({ title: c.title,
+            names: (c.names.length > 0) ? c.names : (c.reviewed ? [] : showMatch.propose(c.title, vocabulary, aliases).names) }) );
+        return showMatch.nicknameSuggestions(filler.content[index].title, showKey, vocabulary, aliases, corpus);
+    }
+
+    /*
+     * The review screen's save. `body` is { clips: [{ index, title, names }],
+     * aliases: { nickname: showKey } }, as names-review.savePayload makes it.
+     * Everything is checked first - the clips are still where the screen saw them,
+     * the show keys are real, each nickname passes checkNickname - and a problem
+     * writes nothing. Then `names` is set on exactly the clips listed (an empty list
+     * for "names no show") and the nicknames are added. Nothing else in the list
+     * or the alias file is touched. Throws a ReviewError, which carries what to say,
+     * and otherwise answers with the list as it now reads.
+     */
+    async saveNames(id, body) {
+        const filler = await this.fillerDB.getFiller(id);
+        if (filler == null) {
+            return null;
+        }
+        const clips = (body != null) && Array.isArray(body.clips) ? body.clips : [];
+        const wanted = (body != null) && (body.aliases != null) && (typeof(body.aliases) === 'object') ? body.aliases : {};
+        const vocabulary = await this.vocabulary();
+        const aliases = await this.showAliasDB.load();
+
+        const seen = new Set();
+        for (const c of clips) {
+            const here = Number.isInteger(c.index) ? filler.content[c.index] : undefined;
+            if ( (typeof(here) === 'undefined') || (here.title !== c.title) ) {
+                throw new ReviewError('The list has changed since this screen was opened (a clip is no longer where it was). Close the screen and open it again.');
+            }
+            if (seen.has(c.index) ) {
+                throw new ReviewError(`Clip ${c.index + 1} is in the save twice.`);
+            }
+            seen.add(c.index);
+            const problem = namesReview.picksProblem(c.names);
+            if (problem !== null) {
+                throw new ReviewError(`“${c.title}”: ${problem}.`);
+            }
+            for (const key of c.names) {
+                if (typeof(vocabulary.names[key]) === 'undefined') {
+                    throw new ReviewError(`“${c.title}”: ${key} is not a show on any channel.`);
+                }
+            }
+        }
+
+        const toTeach = {};
+        let known = aliases;
+        const everyClip = Object.keys(wanted).length > 0 ? await this.everyClip() : [];
+        for (const text of Object.keys(wanted) ) {
+            const checked = showMatch.checkNickname(text, wanted[text], vocabulary, known, everyClip);
+            if (! checked.ok) {
+                throw new ReviewError(`Nickname “${text}” was not saved: ${checked.problems.join(' ')}`);
+            }
+            toTeach[checked.alias] = wanted[text];
+            known = Object.assign({}, known, toTeach);
+        }
+
+        if (clips.length > 0) {
+            const copy = JSON.parse( JSON.stringify(filler) );
+            for (const c of clips) {
+                copy.content[c.index].names = c.names.slice();
+            }
+            await this.fillerDB.saveFiller(id, copy);
+        }
+        if (Object.keys(toTeach).length > 0) {
+            await this.showAliasDB.merge(toTeach);
+        }
+        return await this.matchFiller(id);
+    }
 }
 
+// A save that was refused, with a sentence for the person using the screen.
+class ReviewError extends Error {}
+
+ShowMatchService.ReviewError = ReviewError;
 module.exports = ShowMatchService;

@@ -604,16 +604,40 @@ function halfRead(title, hits, vocabulary, known) {
  */
 function findHits(title, vocabulary, known) {
     const { hits, remaining } = consumeTitles(title, vocabulary, known);
-    const wordPattern = /\S+/g;
-    let match;
-    while ( (match = wordPattern.exec(remaining)) !== null ) {
-        const key = known[match[0]];
-        if ( (typeof(key) === 'string') && Object.prototype.hasOwnProperty.call(known, match[0]) ) {
-            hits.push( { pos: match.index, end: match.index + match[0].length, key: key, text: match[0], via: 'alias' } );
+    let text = remaining;
+    for (const alias of aliasEntries(known) ) {
+        const needle = ' ' + alias.folded + ' ';
+        for (let from = 0; ; ) {
+            const at = text.indexOf(needle, from);
+            if (at === -1) {
+                break;
+            }
+            hits.push( { pos: at + 1, end: at + needle.length - 1, key: alias.key, text: alias.folded, via: 'alias' } );
+            text = text.slice(0, at) + ' '.repeat(needle.length) + text.slice(at + needle.length);
+            from = at + needle.length - 1;
         }
     }
     hits.sort( (a, b) => a.pos - b.pos );
     return hits;
+}
+
+/*
+ * The taught nicknames as the matcher reads them: folded the way titles are, so
+ * "Foster's" is the phrase "foster s" and "gundam 0083" is two words, and ordered
+ * longest first (most words, then most letters), so a phrase wins over a word
+ * that sits inside it. A nickname is a word or a phrase, matched as whole words,
+ * and only in what the show titles left over, as a single word always was.
+ */
+function aliasEntries(known) {
+    const entries = [];
+    for (const word of Object.keys(known) ) {
+        const folded = fold(word);
+        if ( (folded !== '') && (typeof(known[word]) === 'string') ) {
+            entries.push( { folded: folded, key: known[word], words: folded.split(' ').length } );
+        }
+    }
+    entries.sort( (a, b) => (b.words - a.words) || (b.folded.length - a.folded.length) || ((a.folded < b.folded) ? -1 : 1) );
+    return entries;
 }
 
 function propose(title, vocabulary, aliases) {
@@ -726,6 +750,200 @@ function learnAliases(title, showKey, vocabulary, aliases, corpus) {
 }
 
 /*
+ * Whether a folded text contains a folded phrase as whole words.
+ */
+function containsPhrase(foldedText, foldedPhrase) {
+    return (' ' + foldedText + ' ').indexOf(' ' + foldedPhrase + ' ') !== -1;
+}
+
+// The most words in a nickname: a longer one is a title, and titles are matched as titles.
+const MAX_NICKNAME_WORDS = 6;
+// A stretch of leftover words longer than this is a title's worth of words, not a nickname worth offering.
+const MAX_SUGGESTED_PHRASE_WORDS = 3;
+
+/*
+ * Whether a nickname is acceptable, and what it would do. The screen calls this
+ * before a nickname is saved (to show which clips it would name), and the save
+ * calls it again, so a refused nickname is refused whichever way it arrives.
+ *
+ *   text      what was typed: a word or a phrase ("static", "grim advs", "Foster's")
+ *   showKey   the show it names
+ *   clips     every clip to compare against, [{ list, index, title, names, reviewed }]:
+ *             `names` are the clip's saved names, `reviewed` when it was marked as
+ *             naming no show. A clip with saved names is never changed by a nickname.
+ *   options.sourceTitle   the clip it is being taught from, which it must end up naming
+ *
+ * A nickname is refused when it is made only of generic words (a number, "next",
+ * "promo", a word under three letters), when it is already a title or already
+ * means a show, and when it is a word that other shows' clips use: it would change
+ * the suggestion for a clip that already names a different show ("Adult" does, in
+ * an Adult Swim promo for Cowboy Bebop), or appears in a clip saved as naming a
+ * different one. It is also refused when the clip it is taught from would not be
+ * named by it, which says the title is read some other way.
+ *
+ * Returns { alias, ok, problems: [string], newly, changed, sourceNames,
+ * sourceUnresolved }: `alias` is the form that is stored (folded), `sourceNames`
+ * the names the clip it is taught from would then have (when one was given; []
+ * when its title still has a show that is not recognised, `sourceUnresolved`), `newly` the unsaved clips it would
+ * give a name to,
+ * { list, index, title, names }, and `changed` the clips whose suggestion it would
+ * alter or that are saved under a different show, { list, index, title, names }.
+ * Nothing passed in is changed.
+ */
+function checkNickname(text, showKey, vocabulary, aliases, clips, options) {
+    const known = aliases || {};
+    const alias = fold(text);
+    const problems = [];
+    const result = { alias: alias, ok: false, problems: problems, newly: [], changed: [] };
+    if (alias === '') {
+        problems.push('Type a word or a phrase.');
+        return result;
+    }
+    const words = alias.split(' ');
+    const display = (key) => (vocabulary.names[key] != null) ? vocabulary.names[key] : key;
+    if (typeof(vocabulary.names[showKey]) === 'undefined') {
+        problems.push('Pick the show it names first.');
+    }
+    if (words.length > MAX_NICKNAME_WORDS) {
+        problems.push(`That is ${words.length} words; a nickname is at most ${MAX_NICKNAME_WORDS}.`);
+    }
+    const generic = (w) => /^\d+$/.test(w) || STRUCTURAL.has(w) || FILLER_WORDS.has(w);
+    if (words.every( (w) => /^\d+$/.test(w) )) {
+        problems.push('A number on its own cannot name a show.');
+    } else if (words.every(generic) ) {
+        problems.push(`“${text}” is made only of everyday words (like “next” or “promo”), which many shows' clips use, so it cannot name one show.`);
+    } else if ( (words.length === 1) && (alias.length < 3) ) {
+        problems.push('A nickname needs at least three letters.');
+    }
+    if (Object.prototype.hasOwnProperty.call(known, alias) ) {
+        problems.push((known[alias] === showKey) ? 'That is already a nickname for this show.'
+            : `“${text}” already means ${display(known[alias])}.`);
+    }
+    const asTitle = vocabulary.entries.find( (e) => e.folded === alias );
+    if (typeof(asTitle) !== 'undefined') {
+        problems.push(`“${text}” is already the title of ${display(asTitle.key)}.`);
+    }
+    if (problems.length > 0) {
+        return result;
+    }
+
+    const withIt = Object.assign({}, known);
+    withIt[alias] = showKey;
+    const same = (a, b) => (a.length === b.length) && a.every( (k, i) => k === b[i] );
+    for (const clip of (clips || []) ) {
+        if (! containsPhrase(fold(clip.title), alias) ) {
+            continue;
+        }
+        const saved = namesOf(clip);
+        const hasSaved = (saved.length > 0) || (clip.reviewed === true);
+        const entry = { list: clip.list, index: clip.index, title: clip.title };
+        if (hasSaved) {
+            if ( (saved.length > 0) && (saved.indexOf(showKey) === -1) ) {
+                result.changed.push( Object.assign(entry, { names: saved }) );
+            }
+            continue;
+        }
+        const before = propose(clip.title, vocabulary, known).names;
+        const after = propose(clip.title, vocabulary, withIt).names;
+        if (same(before, after) ) {
+            continue;
+        }
+        if (before.length === 0) {
+            result.newly.push( Object.assign(entry, { names: after }) );
+        } else {
+            result.changed.push( Object.assign(entry, { names: before }) );
+        }
+    }
+    if (result.changed.length > 0) {
+        const sample = result.changed.slice(0, 3).map( (c) => `“${c.title}”`).join(', ');
+        problems.push(`Other shows' clips use “${text}”: it would change the suggestion for `
+            + `${result.changed.length} clip${result.changed.length === 1 ? '' : 's'} that name a different show (${sample}`
+            + `${result.changed.length > 3 ? ', and more' : ''}), so it is not a nickname for one show.`);
+    }
+    const source = (options != null) ? options.sourceTitle : undefined;
+    if ( (typeof(source) === 'string') && (problems.length === 0) ) {
+        const named = propose(source, vocabulary, withIt);
+        result.sourceNames = named.names;
+        result.sourceUnresolved = (named.unresolved != null);
+        // The nickname has to be what the clip's title is read by. The clip may still not
+        // be named (a title of two shows where the other one is not recognised either):
+        // that is for the next nickname.
+        if (! named.found.some( (h) => (h.via === 'alias') && (h.text === alias) ) ) {
+            problems.push(`“${text}” would not be used for the clip you are teaching it from (“${source}”): `
+                + ( (named.unresolved != null) ? 'its title still has a show that is not recognised.'
+                    : 'its title is read as ' + (named.names.length === 0 ? 'no show' : named.names.map(display).join(', ')) + '.' ));
+        }
+    }
+    result.ok = (problems.length === 0);
+    return result;
+}
+
+/*
+ * What to offer when someone teaches a nickname from a clip: the words of its
+ * title that learnAliases would learn, and the stretches of leftover words (the
+ * ones no show title took) that run two or more words, trimmed of "next", "promo"
+ * and the like at either end - "gundam 0083" from "Gundam 0083 NEXT". Each is
+ * { text, alias }: `text` as the title spells it, `alias` as it is stored. A phrase
+ * that also appears in a clip of `corpus` ([{ title, names }]) naming a different
+ * show is not offered: it is the channel's word, not the show's ("Adult Swim").
+ * These are only offers; checkNickname decides.
+ */
+function nicknameSuggestions(title, showKey, vocabulary, aliases, corpus) {
+    const known = aliases || {};
+    const out = [];
+    const seen = new Set();
+    const spell = (words) => {
+        const pattern = new RegExp(words.map( (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') ).join('[^A-Za-z0-9]+'), 'i');
+        const found = pattern.exec(String(title));
+        return (found !== null) ? found[0] : words.join(' ');
+    };
+    const elsewhere = [];
+    for (const clip of (corpus || []) ) {
+        const clipNames = Array.isArray(clip.names) ? clip.names : [];
+        if ( (clipNames.length > 0) && (clipNames.indexOf(showKey) === -1) ) {
+            elsewhere.push(fold(clip.title));
+        }
+    }
+    const offer = (words) => {
+        const alias = words.join(' ');
+        if ( (alias !== '') && ! seen.has(alias) && ! Object.prototype.hasOwnProperty.call(known, alias)
+            && ! elsewhere.some( (t) => containsPhrase(t, alias) ) ) {
+            seen.add(alias);
+            out.push( { text: spell(words), alias: alias } );
+        }
+    };
+    const { remaining } = consumeTitles(title, vocabulary, known);
+    const tokens = [];
+    const pattern = /\S+/g;
+    let m;
+    while ( (m = pattern.exec(remaining)) !== null ) {
+        tokens.push( { word: m[0], at: m.index } );
+    }
+    const trimmable = (w) => STRUCTURAL.has(w) || FILLER_WORDS.has(w);
+    let run = [];
+    const flush = () => {
+        while ( (run.length > 0) && trimmable(run[0]) ) { run.shift(); }
+        while ( (run.length > 0) && trimmable(run[run.length - 1]) ) { run.pop(); }
+        if ( (run.length >= 2) && (run.length <= MAX_SUGGESTED_PHRASE_WORDS) ) {
+            offer(run);
+        }
+        run = [];
+    };
+    for (let i = 0; i < tokens.length; i++) {
+        if ( (i > 0) && (tokens[i].at !== tokens[i - 1].at + tokens[i - 1].word.length + 1) ) {
+            flush();
+        }
+        run.push(tokens[i].word);
+    }
+    flush();
+    const learned = learnAliases(title, showKey, vocabulary, known, corpus);
+    for (const word of Object.keys(learned.added) ) {
+        offer([word]);
+    }
+    return out;
+}
+
+/*
  * The names a clip carries, as the rest of the code should see them: one to four
  * show keys, or [] for a clip that names nothing (no field, or one that is not
  * a valid shape - namesProblem is what says so). Hands back a copy.
@@ -755,13 +973,23 @@ function namesProblem(clip) {
     if (! Array.isArray(clip.names) ) {
         return `names is ${typeof(clip.names)} rather than an array of one to four show keys`;
     }
-    if ( (clip.names.length < 1) || (clip.names.length > MAX_NAMES) ) {
+    if (clip.names.length > MAX_NAMES) {
         return `names holds ${clip.names.length} entries, and should hold one to four show keys`;
     }
     if (! clip.names.every( (k) => (typeof(k) === 'string') && (k !== '') ) ) {
         return 'names holds something that is not a show key (a non-empty string such as "tv.Futurama")';
     }
     return null;
+}
+
+/*
+ * A clip whose names is an empty list was reviewed and names no show ("Names no
+ * show" on the review screen). It plays as any unnamed clip does; the difference
+ * is that the screen remembers the decision, so no suggestion is made for it again
+ * and "accept all" leaves it alone.
+ */
+function isReviewedNone(clip) {
+    return (clip != null) && Array.isArray(clip.names) && (clip.names.length === 0);
 }
 
 module.exports = {
@@ -772,4 +1000,7 @@ module.exports = {
     learnAliases: learnAliases,
     namesOf: namesOf,
     namesProblem: namesProblem,
+    isReviewedNone: isReviewedNone,
+    checkNickname: checkNickname,
+    nicknameSuggestions: nicknameSuggestions,
 };

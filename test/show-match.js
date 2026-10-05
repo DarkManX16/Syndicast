@@ -408,7 +408,7 @@ module.exports = async function run() {
         suite.check('a good shape has no problem', showMatch.namesProblem({ names: ['tv.A'] }) === null
             && showMatch.namesProblem({ title: 'x' }) === null);
         suite.check('a bad shape says what is wrong',
-            /array/.test(showMatch.namesProblem({ names: 'tv.A' })) && /one to four/.test(showMatch.namesProblem({ names: [] }))
+            /array/.test(showMatch.namesProblem({ names: 'tv.A' })) && /one to four/.test(showMatch.namesProblem({ names: ['a', 'b', 'c', 'd', 'e'] }))
             && /one to four/.test(showMatch.namesProblem({ names: ['a', 'b', 'c', 'd', 'e'] }))
             && showMatch.namesProblem({ names: ['tv.A', 'tv.B', 'tv.C', 'tv.D'] }) === null);
     }
@@ -461,10 +461,12 @@ module.exports = async function run() {
             suite.check('a list that has never heard of names saves byte for byte as it did',
                 fs.readFileSync(path.join(dir, 'plain.json'), 'utf8') === JSON.stringify(plain));
 
-            const bad = { name: 'B', content: [{ title: 'a', names: 'tv.A' }, { title: 'b', names: [] }], rank: 0 };
+            const bad = { name: 'B', content: [{ title: 'a', names: 'tv.A' }, { title: 'b', names: ['a', 'b', 'c', 'd', 'e'] }, { title: 'c', names: [] }], rank: 0 };
             const badRun = await captureErrors(() => db.saveFiller('bad', JSON.parse(JSON.stringify(bad))));
             suite.check('malformed names are warned about, once per clip, naming the clip',
                 badRun.lines.length === 2 && /"a"/.test(badRun.lines[0]), badRun.lines.join(' | '));
+            suite.check('an empty list is not malformed: it is a clip reviewed as naming no show',
+                ! badRun.lines.some( (l) => /"c"/.test(l) ) && showMatch.isReviewedNone({ names: [] }) && ! showMatch.isReviewedNone({}) && ! showMatch.isReviewedNone({ names: ['tv.A'] }));
             suite.check('and saved untouched',
                 JSON.stringify(JSON.parse(fs.readFileSync(path.join(dir, 'bad.json'), 'utf8')).content) === JSON.stringify(bad.content));
         } finally {

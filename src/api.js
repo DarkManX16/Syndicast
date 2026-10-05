@@ -532,6 +532,66 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
       }
     } );
 
+    // The names review screen's save (stage 5, step 6): names onto the clips it
+    // lists and nicknames into show-aliases.json, checked before anything is
+    // written. Answers with the list as it now reads, or 400 with what to say.
+    router.post('/api/filler/:id/names', async(req, res) => {
+      try {
+        let proposals = await showMatchService.saveNames(req.params.id, req.body);
+        if (proposals == null) {
+            return res.status(404).send("Filler not found");
+        }
+        res.send(proposals);
+      } catch(err) {
+        if (err instanceof showMatchService.constructor.ReviewError) {
+            return res.status(400).send({ error: err.message });
+        }
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // Whether a nickname may be taught, and which clips it would name. Saves nothing.
+    router.post('/api/filler/:id/nickname-check', async(req, res) => {
+      try {
+        let body = req.body || {};
+        let result = await showMatchService.checkNickname(req.params.id, String(body.text == null ? '' : body.text), body.showKey, body.index);
+        if (result == null) {
+            return res.status(404).send("Filler not found");
+        }
+        res.send(result);
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // Nicknames worth offering when teaching one from a clip. Saves nothing.
+    router.post('/api/filler/:id/nickname-suggestions', async(req, res) => {
+      try {
+        let body = req.body || {};
+        let result = await showMatchService.nicknameSuggestions(req.params.id, body.index, body.showKey);
+        if (result == null) {
+            return res.status(404).send("Filler or clip not found");
+        }
+        res.send({ suggestions: result });
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // Every list with its counts of clips by group and the channels whose
+    // transition steps use it, for the overview on the Filler Lists page.
+    router.get('/api/names-overview', async(req, res) => {
+      try {
+        res.send(await showMatchService.overview());
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
     router.get('/api/filler/:id/channels', async(req, res) => {
       try {
         let id = req.params.id;
