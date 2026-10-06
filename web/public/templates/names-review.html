@@ -71,8 +71,7 @@
                   <span ng-if="recognised(r).length > 0">Recognised: {{recognised(r).join(', ')}}.</span>
                   <span ng-if="recognised(r).length === 0">Nothing was recognised.</span>
                   <span ng-if="flagKind(r) === 'several'">Pick the shows, or teach a nickname for the one that was missed.</span>
-                  <span ng-if="flagKind(r) === 'movie'">Pick the movie it is for if a channel has it, or the show.</span>
-                  <span ng-if="flagKind(r) === 'saga'">Teach the saga as a season nickname (Teach a nickname, then pick the show and its season), or pick the show.</span>
+
                 </div>
 
                 <div class="nr-actions">
@@ -114,7 +113,8 @@
                 <div class="nr-panel" ng-if="teach.index === r.index">
                   <div class="small text-muted">
                     A nickname is a word or a phrase in a clip&rsquo;s title that means one show, like &ldquo;static&rdquo; for Static Shock or
-                    &ldquo;grim advs&rdquo; for The Grim Adventures of Billy &amp; Mandy. Everyday words like &ldquo;next&rdquo; or &ldquo;adult&rdquo; are refused.
+                    &ldquo;grim advs&rdquo; for The Grim Adventures of Billy &amp; Mandy, or one season of a show, like &ldquo;frieza saga&rdquo; for
+                    Dragon Ball Z season 3. Everyday words like &ldquo;next&rdquo; or &ldquo;adult&rdquo; are refused.
                   </div>
                   <div class="nr-slot">
                     <span class="nr-slot-label small">It means</span>

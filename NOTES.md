@@ -911,6 +911,73 @@ for the full spec, stages and acceptance tests.
       - **Not done, step 7's:** channel 1's own lists have no saved names yet, so a sequence on the
         live channel plays nothing until the lists named in the overview are reviewed.
 
+      **Movies and seasons in clip names, built Oct 6, 2026 (Sonnet 5.5), on branch
+      `names-movies-seasons`.** Ron's ask: "DragonBall Z Movie Cooler's Revenge Intro" plays before
+      that movie and not before a DBZ episode; Toonami's saga intros and Up Next promos play only
+      before their season; the most specific clip wins. Full rules are in the spec's "Movies,
+      seasons and specials" and "The most specific clip wins". 1,133 to 1,253 tests.
+
+      - **Additive, and proved so.** A name is still a show key; it may also be `movie.<title>`,
+        `{ show, season }` or `{ show, episode }` (`src/clip-names.js`). Names saved before read
+        and play as they did. The old and the new plan builders were run side by side over channel 1's
+        real lineup, 8 weeks, with a sequence on every day-part and block drawn from the 28 lists that
+        carry saved names: **3,522 breaks, 2,945 with clips, 0 plans differ.** Control: turning every
+        saved show name into a season name makes 2,243 differ, so the comparison can see a change.
+        The only existing test that changed is "[as] SGC2C - Season 5 Promo", which now names season 5.
+      - **What Plex and the data said.** Plex titles the DBZ seasons "Season 1" to "Season 9"; the sagas
+        are only in the folder names ("03. The FRIEZA Saga (Eps. 075-107)"), so those are offered as
+        hints, never as nicknames on their own. Specials are season 0 ("Bardock - The Father of Goku" is
+        S0E16). All four DBZ movies Ron has clips for are in Plex's "Y. Toonami Movies" library but on no
+        channel yet. No movie on any dev channel is outside a custom show, and 1,054 of the 1,374 distinct
+        movie items are under 15 minutes (Looney Tunes shorts, My Gym Partner's a Monkey), which is why a
+        movie is offered only at **40 minutes or more**. A movie in a custom show is keyed by its own title,
+        not the custom show's key, and a DBZ clip does not play before it.
+      - **What changes in the suggestions, on all 9,353 clips on the dev copy: 54, none with saved
+        names.** 39 become a season or a special ("Season N" next to a show), 9 DBZ saga titles and 6 titles
+        that say "Movie" or "Special" after a show with none on a channel become flagged and are no longer
+        read as the whole show. With the four DBZ movies and Bardock on a channel, the Dragon Ball Z Movie
+        Intro and Movie NEXT promos lists name their movies (9 clips) and the two Bardock clips name the
+        special. Teaching "frieza saga" (the real flow, in the browser) named the clip it came from and
+        suggested 5 more across lists.
+      - **Decisions.** (1) Specific clips from the step's list *and* its fallback list come before show
+        clips (Ron's call: the most specific clip wins), so the Bardock intro in "Dragon Ball Z Movie Intro"
+        beats a plain DBZ intro in the main list. (2) A special needs its show named in the clip as well
+        (without that, "The Musical Time Machine" named a Brak Show special). (3) A season from "Season N"
+        and a special are less certain, so "accept all" skips them; a movie by subtitle and a taught
+        nickname are confident. (4) A season nickname never counts a clip already suggesting the same show
+        as another show's clip, and a clip saved as the whole show never blocks it. (5) A subtitle of only
+        everyday words ("The Movie", "Part 2") is never offered.
+      - **The picker and the nickname panel.** Movies are a third group after Shows and Custom shows;
+        a show with seasons gets a second box ("Any episode", Specials, each season with its folder in
+        brackets, each special); the nickname panel has the same season box and, under "From your Plex
+        folders", one button per season that fills in the nickname (for example "frieza saga") and picks the
+        season. `GET /api/show-seasons` asks Plex (one episode of the show, then each season's first episode
+        for its folder, four at a time, 8s each, remembered 10 minutes) and falls back to the lineups' seasons.
+        A flagged clip opens the nickname panel with the show it recognised already picked.
+      - **A trap found on the way.** `marksOf(row)` built new objects on every digest, so `ng-repeat`
+        never settled and the console logged `$rootScope:infdig` whenever the review screen opened (it
+        worked anyway). Marks are now worked out once per proposal. Also: `show-match-service.js` checks
+        its seasons cache before reading every channel.
+      - **Writers and readers of a name, enumerated** (the rule for this kind of change): writers are the
+        review save (picks and nicknames, validated by `validName`), the alias file (`show-alias-db.js`
+        keeps strings and season objects only), the filler editor and `carryNames` (pass them through).
+        Readers: `namesOf`/`namesProblem` (shape), `propose` and `checkNickname` (the matcher),
+        `buildPlan` through `clipNames.fits`, the preview and Flex tag (through `buildPlan`), the
+        screen and the editor's Names tag (`clipNames.labelOf`), `match-lists.js`, and
+        `transitions-plan-day.js` (names in memory, through `buildPlan`).
+      - **Not done, and limits.** A custom show has no seasons (it is one show). A movie under 40 minutes
+        cannot be named. A special not filed under season 0 or as a movie cannot be named. The saga hint
+        comes only from folder names; a library with flat folders gets no hints. Not automated: the
+        screen's clicking and Plex fetching, checked by hand on a scratch server (port 18131) on a copy
+        of `.dizquetv-dev`, with real Plex, in the browser.
+      - **Tests.** `test/names-movies-seasons.js`, 120 checks, mutation-checked with 25 deliberate breaks,
+        all caught (a season or movie fitting everything, specific clips tried late or only from the main
+        list, a show clip before a movie, a movie not replacing its show, a special without its show,
+        "Season N", the saga and movie flags, the stop words, short movies, a season nickname that does
+        not narrow, the refinement counted as another show's clip, the repeat rule, the alias reader, the
+        save's checks and the seasons cache). One defensive check in the save (the nickname's shape, before
+        `checkNickname` would refuse it anyway) is covered only by its message.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
@@ -3427,6 +3494,13 @@ checks as of the fall-back fixes). Nine files:
   `names` is "reviewed, names no show"), the routes, the overview's order and counts, the
   Plex refresh carrying names, and the preview's "would fit once accepted" hints.
   `test/program-row-heights.js` also checks the filler rows' Names tag (three lengths).
+
+- `names-movies-seasons.js` - movies and seasons in clip names: the name shapes and how each fits a
+  program (`src/clip-names.js`), the vocabulary (movies of 40 minutes or more, specials, seasons), the
+  matcher's movie, special, season and flag rules, season nicknames and their checks, plan rows on a
+  Dragon Ball Z lineup (the most specific clip wins, from the list or its fallback), the screen's logic,
+  folder hints and Plex's seasons through a fake client, and the service and routes against real files
+  under the OS temp directory. Fixtures only.
 
 - `blocks-schedule-view.js` - `dayParts.weeklySegments`, the function the
   Schedule tab and the Day-Parts strip both draw from: a hand-derived Saturday

@@ -126,7 +126,15 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 }
                 return { state: 'none', label: 'no names', text: '' };
             };
-            scope.marksOf = (row) => review.marksOf(row.proposal);
+            // The marks are worked out once per proposal: ng-repeat over a list built fresh on every
+            // digest never settles ($rootScope:infdig), so the same objects are handed back each time.
+            const marksCache = new WeakMap();
+            scope.marksOf = (row) => {
+                if (! marksCache.has(row.proposal) ) {
+                    marksCache.set(row.proposal, review.marksOf(row.proposal) );
+                }
+                return marksCache.get(row.proposal);
+            };
             scope.recognised = (row) => ((row.proposal.unresolved != null) ? row.proposal.unresolved.recognised : []).map(nameLabel);
             scope.flagKind = (row) => (row.proposal.unresolved != null) ? (row.proposal.unresolved.kind || 'several') : null;
             scope.isFlagged = (row) => (row.proposal.unresolved != null) && (typeof(scope.pending[row.index]) === 'undefined') && (scope.view(row).state !== 'saved');
@@ -324,7 +332,9 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             // names first, and its season when the clip names one.
             const firstShow = (row) => {
                 const eff = review.effective(row, scope.pending);
-                const name = (eff.names.length > 0) ? eff.names[0] : null;
+                // a flagged clip names nothing yet, but says which show it recognised
+                const name = (eff.names.length > 0) ? eff.names[0]
+                    : ( (row.proposal.unresolved != null) && (row.proposal.unresolved.recognised.length > 0) ? row.proposal.unresolved.recognised[0] : null );
                 const key = (name == null) ? null : clipNames.showOf(name);
                 return ( (key != null) && ! /^movie[.]/.test(key) ) ? { key: key, part: clipNames.isSeasonName(name) ? 's:' + name.season : '' } : { key: null, part: '' };
             };

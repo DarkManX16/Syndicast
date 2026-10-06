@@ -222,14 +222,14 @@ class ShowMatchService {
      * remembered for ten minutes.
      */
     async showSeasons(showKey) {
+        const cached = this.seasonCache.get(showKey);
+        if ( (typeof(cached) !== 'undefined') && (Date.now() - cached.at < SEASONS_TTL_MS) ) {
+            return cached.value;
+        }
         const channels = await this.channels();
         const vocabulary = await this.vocabulary(channels);
         if ( (typeof(showKey) !== 'string') || ! showKey.startsWith('tv.') || (typeof(vocabulary.names[showKey]) === 'undefined') ) {
             return null;
-        }
-        const cached = this.seasonCache.get(showKey);
-        if ( (typeof(cached) !== 'undefined') && (Date.now() - cached.at < SEASONS_TTL_MS) ) {
-            return cached.value;
         }
         const fallback = showSeasons.lineupSeasons(vocabulary, showKey);
         let episode = null;
