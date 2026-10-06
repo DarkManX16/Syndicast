@@ -60,7 +60,7 @@
                   <span class="badge nr-badge-{{view(r).state}}">{{view(r).label}}</span>
                   <span class="nr-names-text" ng-if="view(r).text">{{view(r).text}}</span>
                   <span class="small text-muted" ng-if="view(r).state === 'suggested' &amp;&amp; r.proposal.names.length > 1">(in airing order: the one coming up first)</span>
-                  <span class="small text-muted" ng-if="view(r).state === 'pending' &amp;&amp; r.proposal.names.length > 0 &amp;&amp; (view(r).text !== r.proposal.names.map(showName).join('  →  '))">(your pick; the title suggested {{r.proposal.names.map(showName).join(', ')}})</span>
+                  <span class="small text-muted" ng-if="view(r).state === 'pending' &amp;&amp; r.proposal.names.length > 0 &amp;&amp; (view(r).text !== r.proposal.names.map(nameLabel).join('  →  '))">(your pick; the title suggested {{r.proposal.names.map(nameLabel).join(', ')}})</span>
                 </div>
 
                 <div class="nr-marks" ng-if="marksOf(r).length > 0">
@@ -70,7 +70,9 @@
                   {{r.proposal.unresolved.reason}}
                   <span ng-if="recognised(r).length > 0">Recognised: {{recognised(r).join(', ')}}.</span>
                   <span ng-if="recognised(r).length === 0">Nothing was recognised.</span>
-                  Pick the shows, or teach a nickname for the one that was missed.
+                  <span ng-if="flagKind(r) === 'several'">Pick the shows, or teach a nickname for the one that was missed.</span>
+                  <span ng-if="flagKind(r) === 'movie'">Pick the movie it is for if a channel has it, or the show.</span>
+                  <span ng-if="flagKind(r) === 'saga'">Teach the saga as a season nickname (Teach a nickname, then pick the show and its season), or pick the show.</span>
                 </div>
 
                 <div class="nr-actions">
@@ -82,15 +84,23 @@
                 </div>
 
                 <div class="nr-panel" ng-if="picker.index === r.index">
-                  <div class="small text-muted">Pick the show{{picker.slots.length > 1 ? 's, in the order they air' : ''}}. A clip that names several shows plays only when they air one after another, starting with the one coming up.</div>
+                  <div class="small text-muted">Pick the show{{picker.slots.length > 1 ? 's, in the order they air' : ''}}, or a movie, and for a show with seasons its season or a special. A clip for one movie, season or special plays only before that one. A clip that names several plays only when they air one after another, starting with the one coming up.</div>
                   <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="picker.filter"></input>
                   <div class="nr-slot" ng-repeat="slot in picker.slots track by $index">
                     <span class="nr-slot-label small">{{slotLabel($index, picker.slots.length)}}</span>
                     <select class="custom-select custom-select-sm"
-                        ng-model="picker.slots[$index]"
-                        ng-options="s.key as showLabel(s) for s in optionsFor(picker.slots[$index])">
-                      <option value="">Pick a show...</option>
+                        ng-model="slot.key" ng-change="slotShowChanged(slot)"
+                        ng-options="s.key as showLabel(s) group by s.group for s in optionsFor(slot.key)">
+                      <option value="">Pick a show or a movie...</option>
                     </select>
+                    <select class="custom-select custom-select-sm nr-part" ng-if="hasParts(slot)"
+                        ng-model="slot.part"
+                        ng-options="o.value as o.label for o in partsFor(slot)">
+                      <option value="">Any episode</option>
+                    </select>
+                    <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; partsState(slot).loading">reading the seasons&hellip;</span>
+                    <span class="small text-warning" ng-if="hasParts(slot) &amp;&amp; partsState(slot).error">{{partsState(slot).error}}</span>
+                    <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; partsState(slot).data &amp;&amp; partsState(slot).data.source === 'lineup'">The seasons the lineups have; Plex could not be asked.</span>
                     <button type="button" class="btn btn-sm btn-link text-danger" ng-if="picker.slots.length > 1" ng-click="removeSlot($index)" title="Remove this one">&times;</button>
                   </div>
                   <button type="button" class="btn btn-sm btn-link" ng-if="canAddSlot()" ng-click="addSlot()">+ another show after it</button>
@@ -113,9 +123,21 @@
                   <div class="nr-slot">
                     <span class="nr-slot-label small"></span>
                     <select class="custom-select custom-select-sm" ng-model="teach.showKey" ng-change="teachShowChanged()"
-                        ng-options="s.key as showLabel(s) for s in teachShows()">
+                        ng-options="s.key as showLabel(s) group by s.group for s in teachShows()">
                       <option value="">Pick the show...</option>
                     </select>
+                    <select class="custom-select custom-select-sm nr-part" ng-if="teachHasSeasons()"
+                        ng-model="teach.part" ng-change="teachSeasonChanged()"
+                        ng-options="o.value as o.label for o in teachParts()">
+                      <option value="">The whole show</option>
+                    </select>
+                  </div>
+                  <div class="nr-slot" ng-if="teachHints().length > 0">
+                    <span class="nr-slot-label small">From your Plex folders</span>
+                    <span>
+                      <button type="button" class="btn btn-sm btn-outline-secondary nr-suggest" ng-repeat="s in teachHints()"
+                          ng-click="useHint(s)" title="Fills in the nickname and the season. It is only a hint: it is checked like any nickname.">Season {{s.index}}: {{s.hint.alias}}</button>
+                    </span>
                   </div>
                   <div class="nr-slot" ng-if="teach.suggestions.length > 0">
                     <span class="nr-slot-label small">From this title</span>

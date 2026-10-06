@@ -501,7 +501,9 @@ module.exports = async function run() {
             out.clips.length === 4 && out.clips.map((c) => c.index).join() === '0,1,2,3');
         suite.check('a clip\'s own names and the proposal are reported separately',
             out.clips[2].names.join() === KEYS.sealab21 && out.clips[2].proposal.names.length === 0);
-        suite.check('the alias is used', out.clips[1].proposal.names.join() === KEYS.sgc);
+        suite.check('the alias is used, and "Season 5" narrows the show to that season',
+            out.clips[1].proposal.names.length === 1 && out.clips[1].proposal.names[0].show === KEYS.sgc && out.clips[1].proposal.names[0].season === 5
+            && out.clips[1].proposal.found.some( (h) => h.via === 'alias' ));
         suite.check('a pair comes with both shows', out.clips[3].proposal.names.join() === `${KEYS.sealab21},${KEYS.homeMovies}`);
         suite.check('the response carries display names for the keys it mentions',
             out.showNames[KEYS.bebop] === 'Cowboy Bebop' && out.showNames[KEYS.sgc] === 'Space Ghost Coast to Coast');

@@ -1,9 +1,12 @@
 const path = require('path');
 const fs = require('fs');
+const clipNames = require('../clip-names');
 
 /*
  * The words that mean a show, `<data>/show-aliases.json`: { "aliases": {
- * "sgc2c": "tv.Space Ghost Coast to Coast" } }. Shared by every filler list and
+ * "sgc2c": "tv.Space Ghost Coast to Coast" } }. A word may also mean one season of a
+ * show, { "frieza saga": { "show": "tv.Dragon Ball Z", "season": 3 } }, which a clip
+ * naming it is narrowed to. Shared by every filler list and
  * channel, since a word means the same show wherever it appears (see
  * docs/blocks-spec.md, Stage 5, "Which shows a clip names"). There is no alias
  * editor; the filler review screen is the alias editor.
@@ -49,7 +52,8 @@ class ShowAliasDB {
         }
         for (const word of Object.keys(stored)) {
             const key = stored[word];
-            if ( (typeof(key) === 'string') && /^[a-z]+\..+/.test(key) ) {
+            if ( ( (typeof(key) === 'string') && /^[a-z]+\..+/.test(key) )
+                || ( clipNames.isSeasonName(key) && clipNames.validName(key) ) ) {
                 aliases[word] = key;
             }
         }

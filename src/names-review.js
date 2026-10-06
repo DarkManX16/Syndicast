@@ -14,10 +14,11 @@
  * Nothing here changes a row; every function returns something new.
  */
 const showMatch = require('./show-match');
+const clipNames = require('./clip-names');
 
 // The groups, in the order the screen lists them: what needs a look comes first.
 const GROUPS = [
-    { id: 'flagged', title: 'Flagged: the title seems to name several shows, but not all were recognised' },
+    { id: 'flagged', title: 'Flagged: the title could not be read as a show, a movie or a season' },
     { id: 'uncertain', title: 'Less certain suggestions' },
     { id: 'confident', title: 'Confident suggestions, not saved yet' },
     { id: 'none', title: 'No suggestion' },
@@ -54,7 +55,19 @@ function marksOf(proposal) {
     const found = Array.isArray(proposal.found) ? proposal.found : [];
     const has = (test) => found.some(test);
     if (proposal.unresolved != null) {
-        marks.push( { id: 'flagged', label: 'flagged: a title with several shows, one not recognised', uncertain: true } );
+        const kind = proposal.unresolved.kind;
+        marks.push( { id: 'flagged', uncertain: true, label: (kind === 'movie') ? 'flagged: a movie or special that is not on a channel'
+            : (kind === 'saga') ? 'flagged: a saga that is not taught as a season nickname'
+            : 'flagged: a title with several shows, one not recognised' } );
+    }
+    if (has( (h) => h.subtitle === true )) {
+        marks.push( { id: 'movie', label: 'from the movie’s subtitle', uncertain: false } );
+    }
+    if (has( (h) => typeof(h.special) === 'string' )) {
+        marks.push( { id: 'special', label: 'from a special’s title: less certain', uncertain: true } );
+    }
+    if (has( (h) => h.seasonFromTitle === true )) {
+        marks.push( { id: 'season', label: 'from “Season N”: less certain, it may be for the whole show', uncertain: true } );
     }
     if (has( (h) => h.shortened === true )) {
         marks.push( { id: 'shortened', label: 'from a shortened title', uncertain: true } );
@@ -88,7 +101,7 @@ function groupOf(row) {
         return 'flagged';
     }
     if (status === 'suggested') {
-        return marksOf(row.proposal).length > 0 ? 'uncertain' : 'confident';
+        return marksOf(row.proposal).some( (m) => m.uncertain ) ? 'uncertain' : 'confident';
     }
     return 'none';
 }
@@ -167,15 +180,16 @@ function acceptAll(rows, pending) {
 }
 
 /*
- * A list of picked show keys, cleaned: blanks dropped, at most four, and the same
- * show not twice in a row (a clip that names "TMNT, TMNT" would never fit a break).
- * The same show may come back later in a list of several, since lineups repeat.
+ * A list of picked names (a show or movie key, or a season or an episode of a show),
+ * cleaned: blanks dropped, at most four, and the same name not twice in a row (a clip
+ * that names "TMNT, TMNT" would never fit a break). The same name may come back later
+ * in a list of several, since lineups repeat.
  */
-function cleanPicks(keys) {
+function cleanPicks(picks) {
     const out = [];
-    for (const key of keys) {
-        if ( (typeof(key) === 'string') && (key !== '') && (out.length < MAX_NAMES) && (out[out.length - 1] !== key) ) {
-            out.push(key);
+    for (const pick of picks) {
+        if ( clipNames.validName(pick) && (out.length < MAX_NAMES) && ! ( (out.length > 0) && clipNames.sameName(out[out.length - 1], pick) ) ) {
+            out.push(pick);
         }
     }
     return out;
@@ -190,10 +204,10 @@ function picksProblem(keys) {
         return `a clip can name at most ${MAX_NAMES} shows`;
     }
     for (let i = 0; i < keys.length; i++) {
-        if ( (typeof(keys[i]) !== 'string') || (keys[i] === '') ) {
+        if (! clipNames.validName(keys[i]) ) {
             return 'a show has not been picked';
         }
-        if ( (i > 0) && (keys[i] === keys[i - 1]) ) {
+        if ( (i > 0) && clipNames.sameName(keys[i], keys[i - 1]) ) {
             return 'the same show is picked twice in a row';
         }
     }
@@ -203,8 +217,9 @@ function picksProblem(keys) {
 /*
  * What a save sends: only the clips decided on this screen and only the
  * nicknames taught on it - a clip nobody looked at is not in it, so it is not
- * written. `nicknames` is [{ alias, showKey }] with `alias` already in the form
- * the matcher stores.
+ * written. `nicknames` is [{ alias, target }] with `alias` already in the form
+ * the matcher stores and `target` what it means: a show key, or { show, season } for
+ * a season nickname (older callers pass `showKey` for a show).
  */
 function savePayload(rows, pending, nicknames) {
     const byIndex = new Map(rows.map( (r) => [r.index, r] ));
@@ -219,7 +234,7 @@ function savePayload(rows, pending, nicknames) {
     clips.sort( (a, b) => a.index - b.index );
     const aliases = {};
     for (const n of nicknames) {
-        aliases[n.alias] = n.showKey;
+        aliases[n.alias] = (typeof(n.target) !== 'undefined') ? n.target : n.showKey;
     }
     return { clips: clips, aliases: aliases };
 }

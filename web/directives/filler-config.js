@@ -1,3 +1,5 @@
+const clipNames = require('../../src/clip-names');
+
 module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, namesReview) {
     return {
         restrict: 'E',
@@ -267,7 +269,8 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, 
             scope.suggested = {};
             scope.nameKeys = {};
 
-            const showNameOf = (key) => scope.nameKeys[key] || key.replace(/^[a-z]+./, '');
+            // A name is a show or movie key, or a season or a special of a show.
+            const showNameOf = (name) => clipNames.labelOf(name, scope.nameKeys);
 
             const loadNameInfo = async () => {
                 scope.suggested = {};

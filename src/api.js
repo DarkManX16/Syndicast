@@ -555,7 +555,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     router.post('/api/filler/:id/nickname-check', async(req, res) => {
       try {
         let body = req.body || {};
-        let result = await showMatchService.checkNickname(req.params.id, String(body.text == null ? '' : body.text), body.showKey, body.index);
+        let result = await showMatchService.checkNickname(req.params.id, String(body.text == null ? '' : body.text), body.showKey, body.index, body.season);
         if (result == null) {
             return res.status(404).send("Filler not found");
         }
@@ -570,11 +570,26 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     router.post('/api/filler/:id/nickname-suggestions', async(req, res) => {
       try {
         let body = req.body || {};
-        let result = await showMatchService.nicknameSuggestions(req.params.id, body.index, body.showKey);
+        let result = await showMatchService.nicknameSuggestions(req.params.id, body.index, body.showKey, body.season);
         if (result == null) {
             return res.status(404).send("Filler or clip not found");
         }
         res.send({ suggestions: result });
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // The seasons of a show, for the picker and the nickname panel: Plex's titles and the
+    // folders its files are in, else the seasons the lineups have. Reads only.
+    router.get('/api/show-seasons', async(req, res) => {
+      try {
+        let seasons = await showMatchService.showSeasons(String(req.query.show == null ? '' : req.query.show));
+        if (seasons == null) {
+            return res.status(404).send("Show not found");
+        }
+        res.send(seasons);
       } catch(err) {
         console.error(err);
         res.status(500).send("error");

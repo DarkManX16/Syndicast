@@ -29,6 +29,7 @@
 
 const dayParts = require('./day-parts');
 const showMatch = require('./show-match');
+const clipNames = require('./clip-names');
 
 const SITUATIONS = ['leaving', 'entering', 'betweenEpisodes', 'betweenShows'];
 const KINDS = ['list', 'generated'];
@@ -340,25 +341,34 @@ function assemble(channel, brk) {
  * there is no next program.
  */
 function showSequence(channel, brk, count) {
+    return sequencePrograms(channel, brk, count).map(showKey);
+}
+
+/*
+ * The same walk as showSequence, but the program that starts each show's run and not
+ * the show's key: a clip may name a season or a movie, which only the program itself
+ * says (its season, its title), so a name is compared with these.
+ */
+function sequencePrograms(channel, brk, count) {
     if ( (brk == null) || (brk.next == null) ) {
         return [];
     }
     const programs = channel.programs;
     const n = programs.length;
-    const keys = [ showKey(brk.next.program) ];
-    let last = keys[0];
-    for (let i = 1; (i < n) && (keys.length < count); i++) {
+    const found = [ brk.next.program ];
+    let last = showKey(found[0]);
+    for (let i = 1; (i < n) && (found.length < count); i++) {
         const program = programs[(brk.next.index + i) % n];
         if (program.isOffline === true) {
             continue;
         }
         const key = showKey(program);
         if (key !== last) {
-            keys.push(key);
+            found.push(program);
             last = key;
         }
     }
-    return keys;
+    return found;
 }
 
 /*
@@ -572,36 +582,53 @@ function buildPlan(channel, brk, env) {
         }
     }
 
-    const prevKey = (brk.prev != null) ? showKey(brk.prev.program) : null;
-    const nextKey = (brk.next != null) ? showKey(brk.next.program) : null;
-    // `order` is the shows a clip naming several must follow, in order: from the next
-    // show on for a step keyed on next, now then next for a pair step, and none
-    // for a step keyed on now.
+    const prevProgram = (brk.prev != null) ? brk.prev.program : null;
+    const nextProgram = (brk.next != null) ? brk.next.program : null;
+    // A name fits a program as the show it is in (any episode of it), or as that one
+    // movie, season or episode, which is the closer fit: see clip-names.js.
+    const nameFits = (name, program) => clipNames.fits(name, program, showKey);
+    // `order` is the programs a clip naming several must follow, in order: the first
+    // program of each show from the next one on for a step keyed on next, now then
+    // next for a pair step, and none for a step keyed on now. `singles` are the
+    // programs a clip naming one thing may be for.
     let sequence;
     const sequenceLazily = () => {
         if (typeof(sequence) === 'undefined') {
-            sequence = showSequence(channel, brk, showMatch.MAX_NAMES);
+            sequence = sequencePrograms(channel, brk, showMatch.MAX_NAMES);
         }
         return sequence;
     };
     const keyedShows = (keyedOn) => {
         if (keyedOn === 'next') {
-            return { singles: [nextKey], order: sequenceLazily() };
+            return { singles: [nextProgram], order: sequenceLazily() };
         }
         if (keyedOn === 'now') {
-            return { singles: [prevKey], order: null };
+            return { singles: [prevProgram], order: null };
         }
         return null;
     };
-    const fits = (names, keyed) => {
+    // How a clip's names fit the step's programs: false for not at all, 'unnamed' for a
+    // clip that names nothing, 'specific' when every name fits and at least one is for
+    // that exact movie, season or episode, else 'show'.
+    const fitsHow = (names, keyed) => {
         if (names.length === 0) {
-            return true;
+            return 'unnamed';
         }
+        let each;
         if (names.length === 1) {
-            return (names[0] === keyed.singles[0]) || ( (keyed.singles.length > 1) && (names[0] === keyed.singles[1]) );
+            each = [ nameFits(names[0], keyed.singles[0]) || ( (keyed.singles.length > 1) && nameFits(names[0], keyed.singles[1]) ) ];
+        } else if (keyed.order != null) {
+            each = names.map( (name, i) => nameFits(name, keyed.order[i]) );
+        } else {
+            return false;
         }
-        return (keyed.order != null) && names.every( (key, i) => key === keyed.order[i] );
+        if (! each.every( (x) => x )) {
+            return false;
+        }
+        return each.includes('specific') ? 'specific' : 'show';
     };
+    const fits = (names, keyed) => fitsHow(names, keyed) !== false;
+    const fitsSpecific = (names, keyed) => fitsHow(names, keyed) === 'specific';
 
     const lists = new Map();
     const clipsOf = (listId) => {
@@ -632,11 +659,20 @@ function buildPlan(channel, brk, env) {
         let own;
         let general;
         let ownFeatured;
+        // A tier marked `specific` takes only clips for that exact movie, season or
+        // episode; the others take any clip that fits as the show. resolve tries every
+        // specific tier of the step list and then of its fallback list before any other,
+        // so the closest clip wins whichever list it is in.
         if (step.match === 'pair') {
-            general = { singles: [prevKey, nextKey], order: [prevKey, nextKey] };
+            general = { singles: [prevProgram, nextProgram], order: [prevProgram, nextProgram] };
+            const pairFits = (names) => (names.length === 2) && nameFits(names[0], prevProgram) && nameFits(names[1], nextProgram);
+            const nextFits = (names) => (names.length === 1) && nameFits(names[0], nextProgram);
             own = [
-                { via: 'pair', accept: (names) => (names.length === 2) && (names[0] === prevKey) && (names[1] === nextKey) },
-                { via: 'next', accept: (names) => (names.length === 1) && (names[0] === nextKey) },
+                { via: 'pair', specific: true, accept: (names) => pairFits(names)
+                    && ( (nameFits(names[0], prevProgram) === 'specific') || (nameFits(names[1], nextProgram) === 'specific') ) },
+                { via: 'next', specific: true, accept: (names) => nextFits(names) && (nameFits(names[0], nextProgram) === 'specific') },
+                { via: 'pair', accept: pairFits },
+                { via: 'next', accept: nextFits },
             ];
             ownFeatured = own.concat([anyClip]);
         } else if ( (step.match === 'show') || (step.match === 'any') ) {
@@ -644,16 +680,23 @@ function buildPlan(channel, brk, env) {
             if (general === null) {
                 return null;
             }
-            own = [ { via: step.match, accept: (names) => ( (step.match === 'any') || (names.length > 0) ) && fits(names, general) } ];
-            ownFeatured = [ { via: step.match, accept: (names) => (names.length > 0) && fits(names, general) }, anyClip ];
+            own = [
+                { via: step.match, specific: true, accept: (names) => fitsSpecific(names, general) },
+                { via: step.match, accept: (names) => ( (step.match === 'any') || (names.length > 0) ) && fits(names, general) },
+            ];
+            ownFeatured = [
+                { via: step.match, specific: true, accept: (names) => fitsSpecific(names, general) },
+                { via: step.match, accept: (names) => (names.length > 0) && fits(names, general) }, anyClip ];
         } else {
             return undefined;
         }
         return {
             own: own,
             ownFeatured: ownFeatured,
-            fallback: [ { via: 'fallback', accept: (names) => fits(names, general) } ],
-            fallbackFeatured: [ { via: 'fallback', accept: (names) => (names.length > 0) && fits(names, general) }, anyClip ],
+            fallback: [ { via: 'fallback', specific: true, accept: (names) => fitsSpecific(names, general) },
+                { via: 'fallback', accept: (names) => fits(names, general) } ],
+            fallbackFeatured: [ { via: 'fallback', specific: true, accept: (names) => fitsSpecific(names, general) },
+                { via: 'fallback', accept: (names) => (names.length > 0) && fits(names, general) }, anyClip ],
         };
     };
 
@@ -724,18 +767,25 @@ function buildPlan(channel, brk, env) {
             skip(entry, `its list ${step.listId == null ? '(none chosen)' : `"${step.listId}"`} is missing or empty`, true);
             return;
         }
-        const attempts = (featured(step.listId) ? tiers.ownFeatured : tiers.own)
+        const own = (featured(step.listId) ? tiers.ownFeatured : tiers.own)
             .map( (tier) => ({ tier: tier, listId: step.listId, clips: primary }) );
+        const fell = [];
         if ( (step.fallbackListId != null) && (step.fallbackListId !== '') ) {
             const fallback = clipsOf(step.fallbackListId);
             if (fallback === null) {
                 plan.notes.push(`${entry.situation}.${entry.side} step "${step.id}": its fallback list "${step.fallbackListId}" is missing or empty`);
             } else {
                 for (const tier of (featured(step.fallbackListId) ? tiers.fallbackFeatured : tiers.fallback) ) {
-                    attempts.push( { tier: tier, listId: step.fallbackListId, clips: fallback } );
+                    fell.push( { tier: tier, listId: step.fallbackListId, clips: fallback } );
                 }
             }
         }
+        // The most specific clip wins: one for that exact movie, season or episode, from
+        // the step list or its fallback list, then one for the show, then the rest.
+        const attempts = own.filter( (a) => a.tier.specific === true ).concat(
+            fell.filter( (a) => a.tier.specific === true ),
+            own.filter( (a) => a.tier.specific !== true ),
+            fell.filter( (a) => a.tier.specific !== true ) );
         for (const attempt of attempts) {
             const fitting = choose(attempt.tier, attempt.clips);
             if (fitting.length > 0) {
@@ -745,7 +795,7 @@ function buildPlan(channel, brk, env) {
                 copy.fillerId = attempt.listId;
                 entry.found = {
                     kind: 'list', stepId: step.id, situation: entry.situation, side: entry.side,
-                    listId: attempt.listId, via: attempt.tier.via, names: namesState(clip),
+                    listId: attempt.listId, via: attempt.tier.via, specific: attempt.tier.specific === true, names: namesState(clip),
                     clip: copy, durationMs: clip.duration,
                     fits: fitting.map( (c) => c.title ),
                 };
@@ -806,6 +856,7 @@ module.exports = {
     assemble: assemble,
     showAfter: showAfter,
     showSequence: showSequence,
+    sequencePrograms: sequencePrograms,
     watchProblem: watchProblem,
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,
