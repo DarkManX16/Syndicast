@@ -150,7 +150,7 @@ let plexProxyService = new PlexProxyService(plexServerDB);
 let fillerService = new FillerService(fillerDB, plexProxyService,
     channelService);
 let showAliasDB = new ShowAliasDB(process.env.DATABASE);
-let showMatchService = new ShowMatchService(fillerDB, channelService, customShowDB, showAliasDB);
+let showMatchService = new ShowMatchService(fillerDB, channelService, customShowDB, showAliasDB, plexServerDB);
 
 i18next
     .use(i18nextBackend)

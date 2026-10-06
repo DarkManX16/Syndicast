@@ -27,6 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const showMatch = require('../src/show-match');
+const clipNames = require('../src/clip-names');
 
 function parseArgs(argv) {
     const args = { folder: null, lists: [], unnamed: 25, fixes: [], shows: [] };
@@ -132,7 +133,7 @@ function detail(results) {
         console.log(`\n=== ${list.name} (${rows.length} clips: ${hits.length} named, ${rows.length - hits.length} unnamed)`);
         const byShow = new Map();
         for (const r of hits) {
-            const label = r.proposal.names.map( (k) => vocabulary.names[k] || k ).join('  ->  ');
+            const label = r.proposal.names.map( (n) => clipNames.labelOf(n, vocabulary.names) ).join('  ->  ');
             if (! byShow.has(label) ) {
                 byShow.set(label, []);
             }
@@ -141,7 +142,9 @@ function detail(results) {
         for (const [label, group] of Array.from(byShow).sort( (a, b) => b[1].length - a[1].length )) {
             console.log(`  ${label}  (${group.length})`);
             for (const r of group.slice(0, 3) ) {
-                const via = r.proposal.found.map( (f) => f.via === 'alias' ? `alias "${f.text}"` : (f.standalone ? 'title, bracketed word alone' : 'title') ).join(', ');
+                const via = r.proposal.found.map( (f) => (f.via === 'alias' ? `alias "${f.text}"` : (f.standalone ? 'title, bracketed word alone' : 'title'))
+                    + (f.subtitle ? ', movie subtitle' : '') + (typeof(f.special) === 'string' ? ', special' : '')
+                    + (f.seasonFromTitle ? ', Season N' : '') ).join(', ');
                 console.log(`      ${r.clip.title}   [${via}]`);
             }
             if (group.length > 3) {

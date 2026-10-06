@@ -13,6 +13,7 @@ const suites = [
     './transitions-editor',
     './show-match',
     './names-review',
+    './names-movies-seasons',
     './startTime-rotation',
     './save-resume',
     './channel-save',

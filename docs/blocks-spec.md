@@ -291,6 +291,22 @@ different show: a clip plays only if every show it names is one the step is
 keyed on. A general bumper in place of a specific one is fine; "Up Next:
 Dexter's Lab" before Johnny Bravo is not.
 
+**The most specific clip wins (movies and seasons).** A clip that names one movie, one season
+or one special is a closer fit than one that names the show, and a step tries them first: (1)
+clips for that exact movie, season or episode from the step's list, then from its fallback list;
+(2) clips that name the show (or the shows, for a clip of several), from the step's list; (3) the
+fallback list's remaining clips that fit, unnamed ones included; and on a list whose clips feature
+shows, any clip last. So a Frieza Saga intro in the fallback list beats a plain DBZ intro in the main
+list before a season 3 episode, while before season 1 the plain DBZ intro plays and the Frieza Saga
+one never does. A clip fits only if every show it names is one the step is keyed on, as before,
+and now every season, movie or special among its names is the one that is on: a season 3 clip is
+never read as a clip for DBZ before a season 1 episode, and a DBZ clip is never read as a clip for
+a DBZ movie. A clip naming several fits a step keyed on `next` when each name fits the first
+program of the shows coming up in that order (the next show, the one after it, and so on), a
+season or a movie in the middle of the list included. A `pair` step tries a clip naming exactly
+that previous and next first, then one naming only the next, specific ones before plain ones in
+each. A match from the first tier is marked `specific` in the plan.
+
 Among the clips a step may use, the longest-idle plays first, read from the
 same per-clip play times filler uses, so a show with three Up Nexts rotates
 them. Cooldowns are a preference here, not a bar: the only clip that names
@@ -398,8 +414,9 @@ first). It is proposed automatically and fixed on a review screen:
   its own or a title two shows share, "flagged" for a multi-show title with a show not
   recognised), and whether its names are **saved**, **only suggested** or there are **none**. Flagged and
   less-certain clips come first, then confident suggestions, clips with no suggestion, and saved
-  ones. Per clip: accept the suggestion, pick the shows from the shows and custom shows on the
-  channels (up to four, in airing order), or mark the clip **"names no show"**, which is saved as
+  ones. Per clip: accept the suggestion, pick the shows from the shows, custom shows and movies on the
+  channels (up to four, in airing order; for a show with seasons, optionally one season or one
+  special, from Plex's titles), or mark the clip **"names no show"**, which is saved as
   `names: []` (a clip that was reviewed and names nothing: it plays as any unnamed clip does, but
   it is no longer suggested and "accept all" leaves it alone). "Accept all confident
   suggestions" shows its count first and skips less-certain and flagged clips. Decisions are
@@ -440,6 +457,63 @@ first). It is proposed automatically and fixed on a review screen:
   Aliases are stored once, in
   `<data>/show-aliases.json`, shared by every list and channel. There is no
   alias editor; the review screen is the alias editor.
+- **Movies, seasons and specials (built Oct 6, 2026).** A name in `names` is still a show key,
+  and every `names` saved before reads and plays unchanged. It may now also be (`src/clip-names.js`):
+
+  | A name | Stored as | Fits |
+  |---|---|---|
+  | The show | `"tv.Dragon Ball Z"` (and `custom.<id>`, `audio.<title>`) | every program of the show |
+  | One movie | `"movie.Dragon Ball Z: Cooler's Revenge"` | that movie, wherever it airs: on its own or inside a custom show (it is the movie's own title, never the custom show's key) |
+  | One season | `{ "show": "tv.Dragon Ball Z", "season": 3 }` | episodes of that season of the show; season 0 is its specials |
+  | One special | `{ "show": "tv.Dragon Ball Z", "episode": "Bardock - The Father of Goku" }` | the episode of that title |
+
+  The last three are *specific*. A show key does not fit a movie, and a movie key does not fit
+  the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
+  `tv.` show has seasons and specials; a custom show is one show. A name is valid when it is one of
+  these exactly (no extra fields, a whole season from 0 up); `namesProblem` warns at save about
+  anything else and `namesOf` reads it as naming nothing, so an unusable name never turns a clip
+  into a general one. A clip holds up to four names in air order, whatever they are, and the same
+  name is not picked twice in a row.
+
+  *What the matcher suggests.* (1) **A movie, by its subtitle**, the part after its colon with a
+  leading "The" optional, or by its whole title when it is not in a custom show (as before): "DragonBall
+  Z Movie Cooler's Revenge Intro" names "Dragon Ball Z: Cooler's Revenge" and not the show it
+  belongs to, which a movie that was found replaces. Only movies of **40 minutes or more** are
+  offered: the movie items under that on the channels are shorts and episodes that a custom show
+  holds as movies (1,054 of the 1,374 distinct ones on the dev channels are under 15 minutes),
+  and a subtitle of one of those would be looked for in every clip's title. A subtitle that is
+  only everyday words ("The Movie", "Part 2") is never offered. Marked `subtitle`, a confident
+  answer. (2) **A special**, by its title (its whole title or either side of a dash, at least two
+  words), only when the clip also names its show: "DragonBall Z Special Bardock Father of Goku
+  Intro". Less certain. (3) **A season**, from "Season N" next to a `tv.` show (the show before it,
+  or the only one): `seasonFromTitle`, less certain, because a promo for "Hannah Montana Season 1
+  DVD" is for the DVD and may be for the whole show; or from a **season nickname**: a phrase taught
+  as `{ show, season }` (below), which narrows the hit of its show in the same title and stands
+  for the season by itself when the show is not named. A taught nickname is a confident answer.
+  (4) **Flagged instead of read as the whole show**, `unresolved.kind`: `movie` when a title says
+  "movie", "film" or "special" right after a show that no channel airs such a movie or special of
+  (it would play before any episode), and `saga` when a title says "saga" with no season nickname
+  taught for it. Both name nothing until the review screen decides them.
+
+  *Season nicknames.* `show-aliases.json` may map a phrase to `{ "show": "tv.Dragon Ball Z",
+  "season": 3 }` as well as to a show key; the file's reader keeps either and drops anything else.
+  The nickname rules are the same (everyday words, numbers, a title or an existing nickname, a
+  clip saved under a different show, the clip it is taught from has to be read by it), with
+  two differences: a clip already saved as the whole show never blocks a season nickname for
+  that show, and an unsaved clip that already suggests the same show and would only gain the
+  season is counted as one the nickname newly suggests, not as another show's clip.
+
+  *Plex's seasons.* `GET /api/show-seasons?show=<key>` gives a show's seasons for the picker: Plex's
+  title for each, the folder the first episode of each is in, and the nickname that folder suggests
+  ("03. The FRIEZA Saga (Eps. 075-107)" is "frieza saga": the leading number, a bracketed part and
+  a leading "The" go; a folder that says no more than "Season 3" or the show's name suggests
+  nothing), and the show's season 0 episodes as specials. Plex is asked about one episode of the
+  show on a channel (its rating key and server), at most four seasons at a time and eight seconds
+  each, and the answer is remembered ten minutes. When Plex cannot be asked, or no episode of the
+  show on a channel has a rating key, the answer is the seasons and specials the lineups have, with
+  `source: 'lineup'` and no hints. Read-only. **A hint is only a hint**: clicking one fills the
+  nickname box and picks the season, and the nickname then goes through the same checks and the
+  same "would also name" list as any other before it can be saved.
 
 Our stamp, against the two programs we took the idea from: the clip knows
 what it is about, so one list serves every show and every pair, and the
@@ -677,6 +751,13 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    Verified on Ron's lists: the SGC2C case above learns from one fix. **Built Oct 4, 2026**; see NOTES.md.
    With it: the overview on the Filler Lists page, the preview's "would fit once their names are
    accepted" lines, and the matcher's phrase nicknames.
+6b. **Movies and seasons in names** — a name may also be one movie, one season of a show or one
+   special, the matcher suggests them, a step plays the most specific clip first, the picker gets a
+   Movies group, a season or special per show (Plex's titles, with the folder's saga name as a hint
+   for a season nickname), and a season nickname is `{ show, season }` in `show-aliases.json`.
+   Additive: nothing saved before changes (the plans of channel 1's 3,522 breaks over eight weeks are
+   identical with the old code and the new, on the names saved today). **Built Oct 6, 2026**; see
+   NOTES.md and "Movies, seasons and specials" above.
 7. **End to end on channel 1** — the Adult Swim NEXT sequence and one Toonami
    boundary configured on the copy, a day walked by script, then a
    **TiviMate preview** of two real breaks. Then the roadmap: tick the
@@ -786,6 +867,17 @@ until it is taught as an alias):
 - **The same Sunday before "Static" is taught:** Flex only; the three-show clip is unresolved and never plays
 - **Sat, only the three-show clip in the list, "Static" not taught:** Flex only; it is not read as TMNT then Teen Titans
 - **Static Shock → Teen Titans:** Flex only, with or without the alias
+
+Added with movies and seasons (Oct 6, 2026): `test/names-movies-seasons.js`, plan rows on a fixture of
+their own (a Toonami lineup of Dragon Ball, Dragon Ball Z seasons 1 to 5, the Bardock special and the
+movies in a custom show), with a between-shows step keyed on `next`:
+
+- **Before a season 3 episode:** the season 3 clip, not the plain DBZ one; **before season 1:** the plain DBZ clip, and neither the season 3 nor the season 4 clip; **before season 4:** the season 4 clip; **before season 5:** the plain DBZ clip
+- **Before the Cooler's Revenge movie:** the Cooler's Revenge clip, not the DBZ one; **before Lord Slug:** the Lord Slug clip; **before a movie nobody has a clip for:** nothing: a clip for the show is not a clip for its movie
+- **Before the Bardock special:** the special's clip; before a regular episode it never plays
+- **A special's clip in the fallback list, a show clip in the main list:** the special's clip wins, and before an ordinary episode the show clip wins; **a clip for another movie in the fallback list:** never plays
+- **A clip naming season 3 then Dragon Ball:** plays before a season 3 episode only when Dragon Ball follows, and beats a plain DBZ clip; **a pair step:** a season or a movie on either side is read
+- **A step keyed on the show that just ended** reads seasons of that show; **a season of another show, a name that is not valid, an unnamed ident:** as they were
 
 ## Open questions
 

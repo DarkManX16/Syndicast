@@ -1,9 +1,14 @@
 const showMatch = require('../show-match');
 const namesReview = require('../names-review');
 const transitions = require('../transitions');
+const clipNames = require('../clip-names');
+const showSeasons = require('../show-seasons');
+const Plex = require('../plex');
 
 // The most clips a nickname check lists by name; the counts are always complete.
 const LISTED = 60;
+// How long a show's seasons, as Plex gave them, are remembered.
+const SEASONS_TTL_MS = 10 * 60 * 1000;
 
 /*
  * Proposals for which show each clip of a filler list is about, and the writes
@@ -14,11 +19,16 @@ const LISTED = 60;
  */
 class ShowMatchService {
 
-    constructor(fillerDB, channelService, customShowDB, showAliasDB) {
+    // `plexServerDB` and `plexClient` are only for the seasons lookup (showSeasons), and
+    // both are optional: without them a show's seasons are the ones its lineups have.
+    constructor(fillerDB, channelService, customShowDB, showAliasDB, plexServerDB, plexClient) {
         this.fillerDB = fillerDB;
         this.channelService = channelService;
         this.customShowDB = customShowDB;
         this.showAliasDB = showAliasDB;
+        this.plexServerDB = plexServerDB || null;
+        this.plexClient = plexClient || ( (server) => new Plex(server) );
+        this.seasonCache = new Map();
     }
 
     async channels() {
@@ -70,9 +80,10 @@ class ShowMatchService {
         const aliases = await this.showAliasDB.load();
         const clips = this.rowsOf(filler, vocabulary, aliases);
         const showNames = {};
-        const remember = (keys) => {
-            for (const key of keys) {
-                if (typeof(vocabulary.names[key]) !== 'undefined') {
+        const remember = (names) => {
+            for (const name of names) {
+                const key = clipNames.showOf(name);
+                if ( (key != null) && (typeof(vocabulary.names[key]) !== 'undefined') ) {
                     showNames[key] = vocabulary.names[key];
                 }
             }
@@ -87,8 +98,14 @@ class ShowMatchService {
         }
         const shows = Object.keys(vocabulary.names)
             .filter( (key) => /^(tv|custom)\./.test(key) )
-            .map( (key) => ({ key: key, name: vocabulary.names[key], custom: key.startsWith('custom.') }) )
+            .map( (key) => ({ key: key, name: vocabulary.names[key], custom: key.startsWith('custom.'),
+                group: key.startsWith('custom.') ? 'Custom shows' : 'Shows' }) )
             .sort( (a, b) => a.name.localeCompare(b.name) );
+        // Every movie a clip may be for, after the shows: the movies of at least 40 minutes
+        // on the channels, in a custom show or not, and any other movie a channel airs.
+        for (const m of vocabulary.movies) {
+            shows.push( { key: m.key, name: m.name, custom: false, movie: true, inCustomShow: m.custom, group: 'Movies' } );
+        }
         return {
             id: id,
             name: filler.name,
@@ -142,7 +159,7 @@ class ShowMatchService {
      * of checkNickname with the lists' names added and the clips counted by whether
      * they are in the list being reviewed. `index` is the clip it is taught from.
      */
-    async checkNickname(id, text, showKey, index) {
+    async checkNickname(id, text, showKey, index, season) {
         const filler = await this.fillerDB.getFiller(id);
         if (filler == null) {
             return null;
@@ -151,13 +168,16 @@ class ShowMatchService {
         const aliases = await this.showAliasDB.load();
         const source = ( (Number.isInteger(index)) && (filler.content[index] != null) ) ? filler.content[index].title : undefined;
         const clips = await this.everyClip();
-        const result = showMatch.checkNickname(text, showKey, vocabulary, aliases, clips, { sourceTitle: source });
+        // A nickname means a show, or one season of it when `season` is given.
+        const target = Number.isInteger(season) ? { show: showKey, season: season } : showKey;
+        const result = showMatch.checkNickname(text, target, vocabulary, aliases, clips, { sourceTitle: source });
         const listName = {};
         for (const clip of clips) {
             listName[clip.list] = clip.listName;
         }
+        const label = (n) => clipNames.labelOf(n, vocabulary.names);
         const show = (c) => ({ list: c.list, listName: listName[c.list], index: c.index, title: c.title,
-            names: c.names.map( (k) => vocabulary.names[k] || k ) });
+            names: c.names.map(label) });
         // The clip it is taught from is not 'another clip'.
         const others = result.newly.filter( (c) => ! ( (c.list === id) && (c.index === index) ) );
         const here = others.filter( (c) => c.list === id );
@@ -165,10 +185,10 @@ class ShowMatchService {
             alias: result.alias,
             ok: result.ok,
             problems: result.problems,
-            showName: vocabulary.names[showKey] || showKey,
+            showName: (typeof(vocabulary.names[showKey]) === 'string') ? label(target) : showKey,
             sourceNames: result.sourceNames || [],
             sourceUnresolved: result.sourceUnresolved === true,
-            sourceShows: (result.sourceNames || []).map( (k) => vocabulary.names[k] || k ),
+            sourceShows: (result.sourceNames || []).map(label),
             thisList: here.length,
             otherLists: others.length - here.length,
             newly: others.slice(0, LISTED).map(show),
@@ -177,7 +197,7 @@ class ShowMatchService {
     }
 
     // What to offer when teaching a nickname from one clip.
-    async nicknameSuggestions(id, index, showKey) {
+    async nicknameSuggestions(id, index, showKey, season) {
         const filler = await this.fillerDB.getFiller(id);
         if ( (filler == null) || (filler.content[index] == null) ) {
             return null;
@@ -189,7 +209,53 @@ class ShowMatchService {
         // such before anything has been saved.
         const corpus = (await this.everyClip() ).map( (c) => ({ title: c.title,
             names: (c.names.length > 0) ? c.names : (c.reviewed ? [] : showMatch.propose(c.title, vocabulary, aliases).names) }) );
-        return showMatch.nicknameSuggestions(filler.content[index].title, showKey, vocabulary, aliases, corpus);
+        const target = Number.isInteger(season) ? { show: showKey, season: season } : showKey;
+        return showMatch.nicknameSuggestions(filler.content[index].title, target, vocabulary, aliases, corpus);
+    }
+
+    /*
+     * The seasons of a show for the picker and the nickname panel: Plex's own titles
+     * and the folder each season's files sit in (which is where a saga's name lives
+     * when Plex calls the season "Season 3"), else the seasons the lineups have. Plex
+     * is asked about one episode of the show on a channel; when it cannot be, or there
+     * is none, the lineups' seasons are answered with `source: 'lineup'`. Read-only,
+     * remembered for ten minutes.
+     */
+    async showSeasons(showKey) {
+        const cached = this.seasonCache.get(showKey);
+        if ( (typeof(cached) !== 'undefined') && (Date.now() - cached.at < SEASONS_TTL_MS) ) {
+            return cached.value;
+        }
+        const channels = await this.channels();
+        const vocabulary = await this.vocabulary(channels);
+        if ( (typeof(showKey) !== 'string') || ! showKey.startsWith('tv.') || (typeof(vocabulary.names[showKey]) === 'undefined') ) {
+            return null;
+        }
+        const fallback = showSeasons.lineupSeasons(vocabulary, showKey);
+        let episode = null;
+        for (const channel of channels) {
+            episode = (channel.programs || []).find( (p) => (p != null) && (p.type === 'episode') && (p.isOffline !== true)
+                && (typeof(p.customShowId) === 'undefined') && (('tv.' + p.showTitle) === showKey) && (p.ratingKey != null) && (p.serverKey != null) );
+            if (typeof(episode) !== 'undefined') {
+                break;
+            }
+            episode = null;
+        }
+        if ( (episode === null) || (this.plexServerDB === null) ) {
+            return fallback;
+        }
+        try {
+            const server = await this.plexServerDB.getPlexServerByName(episode.serverKey);
+            if (server == null) {
+                return fallback;
+            }
+            const value = await showSeasons.plexSeasons(this.plexClient(server), episode.ratingKey, showKey, vocabulary.names[showKey]);
+            this.seasonCache.set(showKey, { at: Date.now(), value: value });
+            return value;
+        } catch (err) {
+            console.error(`Could not read ${showKey}'s seasons from Plex; using the seasons its lineups have.`, err.message);
+            return fallback;
+        }
     }
 
     /*
@@ -226,9 +292,10 @@ class ShowMatchService {
             if (problem !== null) {
                 throw new ReviewError(`“${c.title}”: ${problem}.`);
             }
-            for (const key of c.names) {
+            for (const name of c.names) {
+                const key = clipNames.showOf(name);
                 if (typeof(vocabulary.names[key]) === 'undefined') {
-                    throw new ReviewError(`“${c.title}”: ${key} is not a show on any channel.`);
+                    throw new ReviewError(`“${c.title}”: ${key} is not a show or movie on any channel.`);
                 }
             }
         }
@@ -237,6 +304,9 @@ class ShowMatchService {
         let known = aliases;
         const everyClip = Object.keys(wanted).length > 0 ? await this.everyClip() : [];
         for (const text of Object.keys(wanted) ) {
+            if (! clipNames.validName(wanted[text]) ) {
+                throw new ReviewError(`Nickname “${text}” was not saved: it does not mean a show, a movie or a season of a show.`);
+            }
             const checked = showMatch.checkNickname(text, wanted[text], vocabulary, known, everyClip);
             if (! checked.ok) {
                 throw new ReviewError(`Nickname “${text}” was not saved: ${checked.problems.join(' ')}`);

@@ -250,6 +250,12 @@ module.exports = function ($http, $q) {
             return (await $http.post(`/api/filler/${id}/nickname-suggestions`, body)).data.suggestions;
         },
 
+        // A show's seasons for the picker and the nickname panel: Plex's titles and the
+        // folders their files are in, else the lineups' seasons (read-only).
+        getShowSeasons: async (showKey) => {
+            return (await $http.get('/api/show-seasons', { params: { show: showKey } })).data;
+        },
+
         // Every list with its counts of clips by group and the channels that use it.
         getNamesOverview: async () => {
             return (await $http.get('/api/names-overview')).data;

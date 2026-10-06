@@ -1019,6 +1019,8 @@ div.programming-programs div.list-group-item {
 .names-review .nr-panel { margin: 6px 0 4px 12px; padding: 8px 10px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; }
 .names-review .nr-slot { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
 .names-review .nr-slot-label { flex: 0 0 8rem; color: #555; }
+.names-review .nr-slot select { min-width: 0; flex: 1 1 14rem; }
+.names-review .nr-slot select.nr-part { flex: 1 1 12rem; }
 .names-review .nr-narrow { max-width: 16rem; margin: 4px 0; }
 .names-review .nr-suggest { margin: 0 4px 2px 0; }
 .names-review .nr-would { margin: 4px 0; padding-left: 1.2rem; }
