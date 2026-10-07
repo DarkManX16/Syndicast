@@ -169,33 +169,11 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             };
 
             // ---- picking shows, in airing order ----------------------------------
-            // A slot of the picker is { key, part }: the show or movie picked, and for a show
-            // with seasons, which part of it: '' for any episode, 's:3' for season 3, 'e:<title>'
-            // for one special.
-            const slotOf = (name) => {
-                if (typeof(name) === 'string') {
-                    return { key: name, part: '' };
-                }
-                if (clipNames.isSeasonName(name) ) {
-                    return { key: name.show, part: 's:' + name.season };
-                }
-                if (clipNames.isEpisodeName(name) ) {
-                    return { key: name.show, part: 'e:' + name.episode };
-                }
-                return { key: null, part: '' };
-            };
-            const nameOfSlot = (slot) => {
-                if (! slot.key) {
-                    return null;
-                }
-                if ( /^tv[.]/.test(slot.key) && /^s:\d+$/.test(slot.part || '') ) {
-                    return { show: slot.key, season: parseInt(slot.part.slice(2), 10) };
-                }
-                if ( /^tv[.]/.test(slot.key) && /^e:./.test(slot.part || '') ) {
-                    return { show: slot.key, episode: slot.part.slice(2) };
-                }
-                return slot.key;
-            };
+            // A slot of the picker is { key, kind, picked, special }: the show or movie picked and,
+            // for a show with seasons, which part of it: any episode, the seasons ticked, or one
+            // special. src/names-review.js turns a slot into a name and back.
+            const slotOf = review.slotOfName;
+            const nameOfSlot = review.slotName;
             scope.openPicker = (row) => {
                 scope.teach = null;
                 const eff = review.effective(row, scope.pending);
@@ -204,7 +182,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     names = row.proposal.unresolved.recognised.slice();
                 }
                 const slots = names.map(slotOf);
-                scope.picker = { index: row.index, slots: (slots.length > 0) ? slots : [ { key: null, part: '' } ], filter: '', error: '' };
+                scope.picker = { index: row.index, slots: (slots.length > 0) ? slots : [ review.emptySlot() ], filter: '', error: '' };
                 for (const slot of scope.picker.slots) {
                     ensureSeasons(slot.key);
                 }
@@ -212,18 +190,25 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.closePicker = () => { scope.picker = null; };
             scope.addSlot = () => {
                 if (scope.picker.slots.length < review.MAX_NAMES) {
-                    scope.picker.slots.push( { key: null, part: '' } );
+                    scope.picker.slots.push( review.emptySlot() );
                 }
             };
             scope.removeSlot = (i) => {
                 scope.picker.slots.splice(i, 1);
                 if (scope.picker.slots.length === 0) {
-                    scope.picker.slots.push( { key: null, part: '' } );
+                    scope.picker.slots.push( review.emptySlot() );
                 }
             };
             scope.slotShowChanged = (slot) => {
-                slot.part = '';
+                slot.kind = 'all';
+                slot.picked = {};
+                slot.special = '';
                 ensureSeasons(slot.key);
+            };
+            // What a slot reads as once it is used, shown under it.
+            scope.slotReads = (slot) => {
+                const name = (review.slotProblem(slot) === null) ? nameOfSlot(slot) : null;
+                return (name === null) ? '' : nameLabel(name);
             };
 
             // ---- a show's seasons: Plex's titles and folders, else the lineups' ------
@@ -234,18 +219,16 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 if ( ! key || ! /^tv[.]/.test(key) || (typeof(scope.seasonInfo[key]) !== 'undefined') ) {
                     return;
                 }
-                const info = { loading: true, data: null, options: [], teachOptions: [], error: '' };
+                const info = { loading: true, data: null, choices: [], specials: [], error: '' };
                 scope.seasonInfo[key] = info;
                 try {
                     const data = await dizquetv.getShowSeasons(key);
                     info.data = data;
                     for (const season of data.seasons) {
-                        const folder = (season.hint != null) ? ` (folder: ${season.folder})` : '';
-                        info.options.push( { value: 's:' + season.index, label: season.label + folder } );
-                        info.teachOptions.push( { value: 's:' + season.index, label: season.label } );
+                        info.choices.push( { index: season.index, label: season.label, folder: (season.hint != null) ? season.folder : null } );
                     }
                     for (const special of data.specials) {
-                        info.options.push( { value: 'e:' + special.title, label: 'Special: ' + special.title } );
+                        info.specials.push( { title: special.title } );
                     }
                 } catch (err) {
                     console.error(err);
@@ -255,21 +238,35 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     $timeout();
                 }
             };
-            // The parts a slot offers: what the show has, plus whatever the slot already holds.
-            const extraParts = new Map();
-            const partOptions = (info, part, teach) => {
-                const base = (info == null) ? [] : (teach ? info.teachOptions : info.options);
-                if ( ! part || base.some( (o) => o.value === part ) ) {
+            // The seasons a slot offers: what the show has, plus any the slot already holds that
+            // the show's list lacks. One list per combination, kept, so ng-repeat sees the same
+            // objects every digest.
+            const extraChoices = new Map();
+            const choicesFor = (info, picked, withFolders) => {
+                const base = (info == null) ? [] : info.choices;
+                const missing = review.pickedSeasons( { picked: picked } ).filter( (n) => ! base.some( (c) => c.index === n ) );
+                if (missing.length === 0) {
                     return base;
                 }
-                const once = (teach ? 't|' : 'p|') + part + '|' + (info == null ? '' : base.length);
-                if (! extraParts.has(once) ) {
-                    extraParts.set(once, base.concat( [ { value: part, label: part.startsWith('s:') ? 'Season ' + part.slice(2)
-                        : 'Special: ' + part.slice(2) } ] ));
+                const once = (info == null ? '' : info.choices.length) + '|' + missing.join(',');
+                if (! extraChoices.has(once) ) {
+                    extraChoices.set(once, base.concat( missing.map( (n) => ({ index: n, label: n === 0 ? 'Specials' : 'Season ' + n, folder: null }) ) ).sort( (a, b) => a.index - b.index ));
                 }
-                return extraParts.get(once);
+                return extraChoices.get(once);
             };
-            scope.partsFor = (slot) => partOptions(scope.seasonInfo[slot.key], slot.part, false);
+            scope.seasonChoices = (slot) => choicesFor(scope.seasonInfo[slot.key], slot.picked);
+            scope.specialChoices = (slot) => {
+                const info = scope.seasonInfo[slot.key];
+                const base = (info == null) ? [] : info.specials;
+                if ( ! slot.special || base.some( (o) => o.title === slot.special ) ) {
+                    return base;
+                }
+                const once = 'sp|' + slot.special + '|' + base.length;
+                if (! extraChoices.has(once) ) {
+                    extraChoices.set(once, base.concat( [ { title: slot.special } ] ));
+                }
+                return extraChoices.get(once);
+            };
             scope.hasParts = (slot) => !! slot.key && /^tv[.]/.test(slot.key);
             scope.partsState = (slot) => scope.seasonInfo[slot.key];
             scope.canAddSlot = () => (scope.picker != null) && (scope.picker.slots.length < review.MAX_NAMES);
@@ -304,11 +301,19 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.showLabel = (s) => s.custom ? `${s.name} (custom show)` : ( s.inCustomShow ? `${s.name} (in ${s.inCustomShow})` : s.name );
             scope.applyPicker = () => {
                 const p = scope.picker;
+                for (const slot of p.slots) {
+                    const trouble = review.slotProblem(slot);
+                    if (trouble !== null) {
+                        p.error = (trouble === 'a show has not been picked') ? 'Pick a show for every slot, or remove the empty one.'
+                            : (trouble === 'no season is ticked') ? `Tick at least one season of ${showName(slot.key)}, or choose \u201cAny episode\u201d.`
+                            : `Pick which special of ${showName(slot.key)}, or choose \u201cAny episode\u201d.`;
+                        return;
+                    }
+                }
                 const picks = p.slots.map(nameOfSlot);
                 const problem = review.picksProblem(picks);
                 if (problem !== null) {
-                    p.error = (problem === 'a show has not been picked') ? 'Pick a show for every slot, or remove the empty one.'
-                        : (problem === 'the same show is picked twice in a row') ? 'The same show cannot be picked twice in a row.' : problem;
+                    p.error = (problem === 'the same show is picked twice in a row') ? 'The same show cannot be picked twice in a row.' : problem;
                     return;
                 }
                 scope.pending[p.index] = { names: picks };
@@ -328,24 +333,33 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             // ---- teaching a nickname ---------------------------------------------
             let checkSerial = 0;
             let typing = null;
-            // A nickname means a show or one season of a tv show, never a movie: the show the clip
-            // names first, and its season when the clip names one.
+            // A nickname means a show or some seasons of a tv show, never a movie: the show the clip
+            // names first, and its seasons when the clip names them.
             const firstShow = (row) => {
                 const eff = review.effective(row, scope.pending);
                 // a flagged clip names nothing yet, but says which show it recognised
                 const name = (eff.names.length > 0) ? eff.names[0]
                     : ( (row.proposal.unresolved != null) && (row.proposal.unresolved.recognised.length > 0) ? row.proposal.unresolved.recognised[0] : null );
                 const key = (name == null) ? null : clipNames.showOf(name);
-                return ( (key != null) && ! /^movie[.]/.test(key) ) ? { key: key, part: clipNames.isSeasonName(name) ? 's:' + name.season : '' } : { key: null, part: '' };
+                if ( (key == null) || /^movie[.]/.test(key) ) {
+                    return { key: null, picked: {} };
+                }
+                const picked = {};
+                for (const n of clipNames.seasonsOf(name) ) {
+                    picked[n] = true;
+                }
+                return { key: key, picked: picked };
             };
-            const teachSeason = () => {
+            // The seasons the nickname is for, or undefined for the whole show.
+            const teachSeasons = () => {
                 const t = scope.teach;
-                return ( (t != null) && /^tv[.]/.test(t.showKey || '') && /^s:\d+$/.test(t.part || '') ) ? parseInt(t.part.slice(2), 10) : undefined;
+                return ( (t != null) && /^tv[.]/.test(t.showKey || '') && (t.kind === 'seasons') ) ? review.pickedSeasons(t) : undefined;
             };
             scope.openTeach = (row) => {
                 scope.picker = null;
                 const first = firstShow(row);
-                scope.teach = { index: row.index, title: row.title, showKey: first.key, part: first.part, text: '', suggestions: [], check: null, busy: false, filter: '', error: '' };
+                scope.teach = { index: row.index, title: row.title, showKey: first.key, kind: (Object.keys(first.picked).length > 0) ? 'seasons' : 'all', picked: first.picked,
+                    text: '', suggestions: [], check: null, busy: false, filter: '', error: '' };
                 if (scope.teach.showKey) {
                     ensureSeasons(scope.teach.showKey);
                     loadSuggestions();
@@ -358,7 +372,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     return;
                 }
                 try {
-                    const got = await dizquetv.getNicknameSuggestions(scope.list.id, { index: t.index, showKey: t.showKey, season: teachSeason() });
+                    const got = await dizquetv.getNicknameSuggestions(scope.list.id, { index: t.index, showKey: t.showKey, seasons: teachSeasons() });
                     if (scope.teach === t) {
                         t.suggestions = got;
                     }
@@ -378,9 +392,14 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     t.check = null;
                     return;
                 }
+                if ( (t.kind === 'seasons') && (teachSeasons().length === 0) ) {
+                    t.check = null;
+                    t.error = 'Tick at least one season, or choose \u201cThe whole show\u201d.';
+                    return;
+                }
                 t.busy = true;
                 try {
-                    const result = await dizquetv.checkNickname(scope.list.id, { text: t.text, showKey: t.showKey, season: teachSeason(), index: t.index });
+                    const result = await dizquetv.checkNickname(scope.list.id, { text: t.text, showKey: t.showKey, seasons: teachSeasons(), index: t.index });
                     if ( (serial === checkSerial) && (scope.teach === t) ) {
                         t.check = result;
                     }
@@ -401,7 +420,8 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 scope.teach.suggestions = [];
                 scope.teach.check = null;
                 scope.teach.error = '';
-                scope.teach.part = '';
+                scope.teach.kind = 'all';
+                scope.teach.picked = {};
                 ensureSeasons(scope.teach.showKey);
                 loadSuggestions();
                 runCheck();
@@ -415,7 +435,11 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 loadSuggestions();
                 runCheck();
             };
-            scope.teachParts = () => (scope.teach == null) ? [] : partOptions(scope.seasonInfo[scope.teach.showKey], scope.teach.part, true);
+            scope.teachChoices = () => (scope.teach == null) ? [] : choicesFor(scope.seasonInfo[scope.teach.showKey], scope.teach.picked);
+            scope.teachReads = () => {
+                const target = (scope.teach == null) ? null : review.nicknameTarget( { showKey: scope.teach.showKey, seasons: teachSeasons() } );
+                return (target == null) ? '' : nameLabel(target);
+            };
             scope.teachHasSeasons = () => (scope.teach != null) && /^tv[.]/.test(scope.teach.showKey || '');
             scope.teachSeasonState = () => (scope.teach == null) ? undefined : scope.seasonInfo[scope.teach.showKey];
             // The names the folders of a show's seasons suggest, as a hint only: one click
@@ -428,7 +452,9 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 return info.data.seasons.filter( (s) => s.hint != null );
             };
             scope.useHint = (season) => {
-                scope.teach.part = 's:' + season.index;
+                scope.teach.kind = 'seasons';
+                scope.teach.picked = {};
+                scope.teach.picked[season.index] = true;
                 scope.teach.text = season.hint.alias;
                 scope.teach.suggestions = [];
                 scope.teach.check = null;
@@ -458,8 +484,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.addNickname = () => {
                 const t = scope.teach;
                 const check = t.check;
-                const season = teachSeason();
-                const target = (typeof(season) === 'number') ? { show: t.showKey, season: season } : t.showKey;
+                const target = review.nicknameTarget( { showKey: t.showKey, seasons: teachSeasons() } );
                 scope.nicknames.push( { alias: check.alias, text: t.text.trim(), target: target, showName: nameLabel(target) } );
                 // The clip it was taught from takes the names the nickname gives it, unless
                 // the person already decided something else for it here.

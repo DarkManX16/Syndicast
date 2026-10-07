@@ -9,6 +9,8 @@
  *                                     that one movie, wherever it airs
  *   { show: "tv.Dragon Ball Z", season: 3 }
  *                                     one season of the show (0 is its specials)
+ *   { show: "tv.Justice League", seasons: [3, 4, 5] }
+ *                                     several seasons of one show (two or more, in order)
  *   { show: "tv.Dragon Ball Z", episode: "Bardock - The Father of Goku" }
  *                                     one episode of the show, by title: a special
  *
@@ -24,6 +26,10 @@ const SEASONED_SHOW = /^tv\..+/;
 
 function isSeasonName(n) {
     return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'season');
+}
+
+function isSeasonsName(n) {
+    return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'seasons');
 }
 
 function isEpisodeName(n) {
@@ -47,6 +53,12 @@ function validName(n) {
     if (fields === 'season,show') {
         return Number.isInteger(n.season) && (n.season >= 0);
     }
+    if (fields === 'seasons,show') {
+        // Two or more seasons, whole numbers from 0 up, ascending and without repeats: one
+        // way to write each set, so equal names compare equal. One season is the shape above.
+        return Array.isArray(n.seasons) && (n.seasons.length >= 2)
+            && n.seasons.every( (x, i) => Number.isInteger(x) && (x >= 0) && ( (i === 0) || (x > n.seasons[i - 1]) ) );
+    }
     if (fields === 'episode,show') {
         return (typeof(n.episode) === 'string') && (n.episode !== '');
     }
@@ -60,6 +72,9 @@ function nameId(n) {
     }
     if (isSeasonName(n) ) {
         return `${n.show}#season:${n.season}`;
+    }
+    if (isSeasonsName(n) && Array.isArray(n.seasons) ) {
+        return `${n.show}#seasons:${n.seasons.join(',')}`;
     }
     if (isEpisodeName(n) ) {
         return `${n.show}#episode:${n.episode}`;
@@ -103,10 +118,54 @@ function fits(name, program, showKey) {
     if (isSeasonName(name) ) {
         return (program.season === name.season) ? 'specific' : false;
     }
+    if (isSeasonsName(name) ) {
+        return (Array.isArray(name.seasons) && name.seasons.includes(program.season)) ? 'specific' : false;
+    }
     if (isEpisodeName(name) ) {
         return (program.title === name.episode) ? 'specific' : false;
     }
     return false;
+}
+
+/*
+ * The name for some seasons of a show, in the one shape that is stored: the show's key
+ * when none are given, { show, season } for one, { show, seasons } (sorted, no repeats)
+ * for several. `seasons` is an array of whole numbers; anything else in it is left out.
+ */
+function seasonsName(show, seasons) {
+    const list = Array.from(new Set((Array.isArray(seasons) ? seasons : []).filter( (x) => Number.isInteger(x) && (x >= 0) ))).sort( (a, b) => a - b );
+    if (list.length === 0) {
+        return show;
+    }
+    return (list.length === 1) ? { show: show, season: list[0] } : { show: show, seasons: list };
+}
+
+// The seasons a season or seasons name is for, ascending; [] for any other name.
+function seasonsOf(n) {
+    if (isSeasonName(n) ) {
+        return [n.season];
+    }
+    return (isSeasonsName(n) && Array.isArray(n.seasons) ) ? n.seasons.slice() : [];
+}
+
+/*
+ * Seasons as people read them: "Seasons 3–5", "Seasons 3, 5, 7–9", "Season 3"; season 0
+ * is "Specials" ("Specials, Seasons 3–5").
+ */
+function seasonsLabel(seasons) {
+    const list = seasons.filter( (x) => x !== 0 );
+    const runs = [];
+    for (const x of list) {
+        const last = runs[runs.length - 1];
+        if ( (typeof(last) !== 'undefined') && (x === last.to + 1) ) {
+            last.to = x;
+        } else {
+            runs.push( { from: x, to: x } );
+        }
+    }
+    const tokens = runs.map( (r) => (r.from === r.to) ? String(r.from) : (r.to === r.from + 1 ? `${r.from}, ${r.to}` : `${r.from}–${r.to}`) );
+    const text = (list.length === 0) ? '' : ( (list.length === 1 ? 'Season ' : 'Seasons ') + tokens.join(', ') );
+    return seasons.includes(0) ? ( (text === '') ? 'Specials' : 'Specials, ' + text ) : text;
 }
 
 /*
@@ -124,6 +183,9 @@ function labelOf(n, showNames) {
     if (isSeasonName(n) ) {
         return `${text(n.show)} · ${n.season === 0 ? 'Specials' : 'Season ' + n.season}`;
     }
+    if (isSeasonsName(n) && Array.isArray(n.seasons) ) {
+        return `${text(n.show)} · ${seasonsLabel(n.seasons)}`;
+    }
     if (isEpisodeName(n) ) {
         return `${text(n.show)} · “${n.episode}”`;
     }
@@ -132,6 +194,10 @@ function labelOf(n, showNames) {
 
 module.exports = {
     isSeasonName: isSeasonName,
+    isSeasonsName: isSeasonsName,
+    seasonsName: seasonsName,
+    seasonsOf: seasonsOf,
+    seasonsLabel: seasonsLabel,
     isEpisodeName: isEpisodeName,
     validName: validName,
     nameId: nameId,

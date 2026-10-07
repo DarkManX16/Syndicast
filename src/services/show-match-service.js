@@ -159,7 +159,7 @@ class ShowMatchService {
      * of checkNickname with the lists' names added and the clips counted by whether
      * they are in the list being reviewed. `index` is the clip it is taught from.
      */
-    async checkNickname(id, text, showKey, index, season) {
+    async checkNickname(id, text, showKey, index, season, seasons) {
         const filler = await this.fillerDB.getFiller(id);
         if (filler == null) {
             return null;
@@ -168,8 +168,9 @@ class ShowMatchService {
         const aliases = await this.showAliasDB.load();
         const source = ( (Number.isInteger(index)) && (filler.content[index] != null) ) ? filler.content[index].title : undefined;
         const clips = await this.everyClip();
-        // A nickname means a show, or one season of it when `season` is given.
-        const target = Number.isInteger(season) ? { show: showKey, season: season } : showKey;
+        // A nickname means a show, or one season of it when `season` is given, or several
+        // when `seasons` is.
+        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons } );
         const result = showMatch.checkNickname(text, target, vocabulary, aliases, clips, { sourceTitle: source });
         const listName = {};
         for (const clip of clips) {
@@ -197,7 +198,7 @@ class ShowMatchService {
     }
 
     // What to offer when teaching a nickname from one clip.
-    async nicknameSuggestions(id, index, showKey, season) {
+    async nicknameSuggestions(id, index, showKey, season, seasons) {
         const filler = await this.fillerDB.getFiller(id);
         if ( (filler == null) || (filler.content[index] == null) ) {
             return null;
@@ -209,7 +210,7 @@ class ShowMatchService {
         // such before anything has been saved.
         const corpus = (await this.everyClip() ).map( (c) => ({ title: c.title,
             names: (c.names.length > 0) ? c.names : (c.reviewed ? [] : showMatch.propose(c.title, vocabulary, aliases).names) }) );
-        const target = Number.isInteger(season) ? { show: showKey, season: season } : showKey;
+        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons } );
         return showMatch.nicknameSuggestions(filler.content[index].title, target, vocabulary, aliases, corpus);
     }
 

@@ -468,8 +468,9 @@ function buildVocabulary(channels, customShowNames) {
  * Z") is never read as a second show. Returns the hits and the text with the
  * matched words gone.
  */
-function consumeTitles(title, vocabulary, known) {
-    let text = ' ' + fold(title) + ' ';
+function consumeTitles(title, vocabulary, known, taken) {
+    // `taken` is the folded text with some words already blanked (see ownTitleNicknames).
+    let text = (typeof(taken) === 'string') ? taken : ' ' + fold(title) + ' ';
     const hits = [];
     const take = (entry, at, needle, alone) => {
         const hit = { pos: at + 1, end: at + needle.length - 1, key: entry.key, text: entry.folded, via: 'title' };
@@ -723,26 +724,69 @@ function halfRead(title, hits, vocabulary, known) {
  * `unresolved: { recognised, reason }`.
  */
 function findHits(title, vocabulary, known) {
-    const { hits, remaining } = consumeTitles(title, vocabulary, known);
-    let text = remaining;
-    for (const alias of aliasEntries(known) ) {
+    const ahead = ownTitleNicknames(title, vocabulary, known);
+    const { hits, remaining } = consumeTitles(title, vocabulary, known, ahead.text);
+    hits.push(...ahead.hits);
+    hits.push(...takeNicknames(remaining, aliasEntries(known)).hits);
+    hits.sort( (a, b) => a.pos - b.pos );
+    return hits;
+}
+
+// The hit a nickname makes at `at` in a folded text, with what it narrows the show to.
+function nicknameHit(alias, at, needle) {
+    const hit = { pos: at + 1, end: at + needle.length - 1, key: alias.key, text: alias.folded, via: 'alias' };
+    if (typeof(alias.season) === 'number') {
+        hit.season = alias.season;      // a nickname for one season of the show
+    }
+    if (Array.isArray(alias.seasons) ) {
+        hit.seasons = alias.seasons.slice();    // ... or for several of its seasons
+    }
+    return hit;
+}
+
+/*
+ * Every place the given nicknames (longest first) occur in a folded text as whole
+ * words, blanking each so a shorter one never reads inside it. Returns the hits and
+ * the text with them blanked.
+ */
+function takeNicknames(folded, entries) {
+    const hits = [];
+    let text = folded;
+    for (const alias of entries) {
         const needle = ' ' + alias.folded + ' ';
         for (let from = 0; ; ) {
             const at = text.indexOf(needle, from);
             if (at === -1) {
                 break;
             }
-            const hit = { pos: at + 1, end: at + needle.length - 1, key: alias.key, text: alias.folded, via: 'alias' };
-            if (typeof(alias.season) === 'number') {
-                hit.season = alias.season;      // a nickname for one season of the show
-            }
-            hits.push(hit);
+            hits.push(nicknameHit(alias, at, needle));
             text = text.slice(0, at) + ' '.repeat(needle.length) + text.slice(at + needle.length);
             from = at + needle.length - 1;
         }
     }
-    hits.sort( (a, b) => a.pos - b.pos );
-    return hits;
+    return { hits: hits, text: text };
+}
+
+/*
+ * A nickname for some seasons of a show may contain the show's own title ("justice
+ * league unlimited" for seasons 3 to 5 of Justice League). Titles are looked for first
+ * and a nickname only in what they leave, so such a phrase would never be found: the
+ * title would take "justice league" and leave "unlimited". These nicknames are
+ * therefore looked for in the whole title before the titles are. No other nickname is
+ * (none can contain a title of the show it names without being a longer title), so
+ * every nickname taught before reads as it did. Returns the hits and the folded text
+ * with their words blanked, which consumeTitles then reads.
+ */
+function ownTitleNicknames(title, vocabulary, known) {
+    const folded = ' ' + fold(title) + ' ';
+    const own = aliasEntries(known).filter( (alias) => alias.narrows === true
+        && vocabulary.entries.some( (e) => (e.key === alias.key) && (e.specific !== true) && (e.folded !== alias.folded)
+            && containsPhrase(alias.folded, e.folded) ) );
+    if (own.length === 0) {
+        return { hits: [], text: folded };
+    }
+    const taken = takeNicknames(folded, own);
+    return { hits: taken.hits, text: taken.text };
 }
 
 /*
@@ -759,7 +803,9 @@ function aliasEntries(known) {
         if ( (folded !== '') && (typeof(known[word]) === 'string') ) {
             entries.push( { folded: folded, key: known[word], words: folded.split(' ').length } );
         } else if ( (folded !== '') && clipNames.isSeasonName(known[word]) && clipNames.validName(known[word]) ) {
-            entries.push( { folded: folded, key: known[word].show, season: known[word].season, words: folded.split(' ').length } );
+            entries.push( { folded: folded, key: known[word].show, season: known[word].season, narrows: true, words: folded.split(' ').length } );
+        } else if ( (folded !== '') && clipNames.isSeasonsName(known[word]) && clipNames.validName(known[word]) ) {
+            entries.push( { folded: folded, key: known[word].show, seasons: known[word].seasons.slice(), narrows: true, words: folded.split(' ').length } );
         }
     }
     entries.sort( (a, b) => (b.words - a.words) || (b.folded.length - a.folded.length) || ((a.folded < b.folded) ? -1 : 1) );
@@ -816,10 +862,14 @@ function refineHits(title, hits, vocabulary) {
     const parents = new Set(out.filter( (h) => (h.specific === 'movie') && (typeof(h.parent) === 'string') ).map( (h) => h.parent ));
     out = out.filter( (h) => h.specific || (typeof(h.special) === 'string') || ! parents.has(h.key) );
 
-    for (const nick of out.filter( (h) => (h.via === 'alias') && (typeof(h.season) === 'number') ) ) {
-        const mate = out.find( (h) => (h !== nick) && ! h.specific && (h.key === nick.key) && (typeof(h.season) !== 'number') && (typeof(h.special) !== 'string') );
+    for (const nick of out.filter( (h) => (h.via === 'alias') && hasSeason(h) ) ) {
+        const mate = out.find( (h) => (h !== nick) && ! h.specific && (h.key === nick.key) && ! hasSeason(h) && (typeof(h.special) !== 'string') );
         if (typeof(mate) !== 'undefined') {
-            mate.season = nick.season;
+            if (Array.isArray(nick.seasons) ) {
+                mate.seasons = nick.seasons.slice();
+            } else {
+                mate.season = nick.season;
+            }
             nick.merged = true;
         }
     }
@@ -829,7 +879,7 @@ function refineHits(title, hits, vocabulary) {
     let found;
     while ( (found = seasonWord.exec(padded)) !== null ) {
         const at = found.index + 1;
-        const shows = out.filter( (h) => ! h.specific && /^tv\./.test(h.key) && (typeof(h.special) !== 'string') && (typeof(h.season) !== 'number') );
+        const shows = out.filter( (h) => ! h.specific && /^tv\./.test(h.key) && (typeof(h.special) !== 'string') && ! hasSeason(h) );
         const before = shows.filter( (h) => h.pos <= at );
         const target = (before.length > 0) ? before[before.length - 1]
             : ( (out.filter( (h) => /^tv\./.test(h.key) ).length === 1) && (shows.length === 1) ? shows[0] : undefined );
@@ -850,7 +900,15 @@ function nameOfHit(hit) {
     if ( (typeof(hit.season) === 'number') && /^tv\./.test(hit.key) ) {
         return { show: hit.key, season: hit.season };
     }
+    if ( Array.isArray(hit.seasons) && /^tv\./.test(hit.key) ) {
+        return clipNames.seasonsName(hit.key, hit.seasons);
+    }
     return hit.key;
+}
+
+// Whether a hit has been narrowed to a season, or to several.
+function hasSeason(hit) {
+    return (typeof(hit.season) === 'number') || Array.isArray(hit.seasons);
 }
 
 /*
@@ -872,7 +930,7 @@ function unreadable(title, refined, vocabulary) {
             return { kind: 'movie', reason: `The title seems to be for a movie or special of ${vocabulary.names[h.key] || 'a show'}, but no movie or special like it is on a channel, so it would be read as the whole show. Put the movie on a channel, or pick the show it is for.` };
         }
     }
-    if ( (words.indexOf('saga') !== -1) && (refined.length > 0) && ! refined.some( (h) => typeof(h.season) === 'number' ) ) {
+    if ( (words.indexOf('saga') !== -1) && (refined.length > 0) && ! refined.some(hasSeason) ) {
         return { kind: 'saga', reason: 'The title names a saga, which is part of a show and does not say which. Teach it as a season nickname (for example “frieza saga” for season 3), or pick the show.' };
     }
     return null;
@@ -1071,7 +1129,7 @@ function checkNickname(text, target, vocabulary, aliases, clips, options) {
     // key, or { show, season }); `showKey` is the show it belongs to.
     const showKey = clipNames.showOf(target);
     if ( (typeof(showKey) !== 'string') || (typeof(vocabulary.names[showKey]) === 'undefined')
-        || ( (typeof(target) !== 'string') && ! (clipNames.isSeasonName(target) && clipNames.validName(target)) ) ) {
+        || ( (typeof(target) !== 'string') && ! ( (clipNames.isSeasonName(target) || clipNames.isSeasonsName(target)) && clipNames.validName(target)) ) ) {
         problems.push('Pick the show it names first.');
     }
     if (words.length > MAX_NICKNAME_WORDS) {
@@ -1188,6 +1246,29 @@ function nicknameSuggestions(title, target, vocabulary, aliases, corpus) {
         }
     };
     const { remaining } = consumeTitles(title, vocabulary, known);
+    // For some seasons of a show, the show's own title with the word next to it ("justice
+    // league unlimited"): such a nickname is matched against the whole title, so the
+    // title's words are part of it.
+    if (typeof(target) !== 'string') {
+        const folded = ' ' + fold(title) + ' ';
+        const own = vocabulary.entries.filter( (e) => (e.key === showKey) && (e.specific !== true) && (folded.indexOf(' ' + e.folded + ' ') !== -1) )[0];
+        if (typeof(own) !== 'undefined') {
+            const at = folded.indexOf(' ' + own.folded + ' ');
+            const ownWords = own.folded.split(' ');
+            const usable = (w, from) => (w !== '') && (remaining.substr(from, w.length) === w) && ! /^\d+$/.test(w) && ! STRUCTURAL.has(w) && ! FILLER_WORDS.has(w);
+            const afterFrom = at + own.folded.length + 2;
+            const after = folded.slice(afterFrom).split(' ')[0];
+            if (usable(after, afterFrom) ) {
+                offer(ownWords.concat([after]));
+            }
+            const beforeWords = folded.slice(0, at).trim().split(' ');
+            const before = beforeWords[beforeWords.length - 1];
+            const beforeFrom = at - before.length;
+            if ( (before !== '') && usable(before, beforeFrom) ) {
+                offer([before].concat(ownWords));
+            }
+        }
+    }
     const tokens = [];
     const pattern = /\S+/g;
     let m;

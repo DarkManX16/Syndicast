@@ -465,12 +465,14 @@ first). It is proposed automatically and fixed on a review screen:
   | The show | `"tv.Dragon Ball Z"` (and `custom.<id>`, `audio.<title>`) | every program of the show |
   | One movie | `"movie.Dragon Ball Z: Cooler's Revenge"` | that movie, wherever it airs: on its own or inside a custom show (it is the movie's own title, never the custom show's key) |
   | One season | `{ "show": "tv.Dragon Ball Z", "season": 3 }` | episodes of that season of the show; season 0 is its specials |
+  | Several seasons | `{ "show": "tv.Justice League", "seasons": [3, 4, 5] }` | episodes of any of those seasons of the show (Justice League Unlimited is seasons 3 to 5 of Justice League in Plex) |
   | One special | `{ "show": "tv.Dragon Ball Z", "episode": "Bardock - The Father of Goku" }` | the episode of that title |
 
   The last three are *specific*. A show key does not fit a movie, and a movie key does not fit
   the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
   `tv.` show has seasons and specials; a custom show is one show. A name is valid when it is one of
-  these exactly (no extra fields, a whole season from 0 up); `namesProblem` warns at save about
+  these exactly (no extra fields, a whole season from 0 up; several seasons are two or more, ascending
+  and without repeats, since one season is the shape above); `namesProblem` warns at save about
   anything else and `namesOf` reads it as naming nothing, so an unusable name never turns a clip
   into a general one. A clip holds up to four names in air order, whatever they are, and the same
   name is not picked twice in a row.
@@ -496,7 +498,14 @@ first). It is proposed automatically and fixed on a review screen:
   taught for it. Both name nothing until the review screen decides them.
 
   *Season nicknames.* `show-aliases.json` may map a phrase to `{ "show": "tv.Dragon Ball Z",
-  "season": 3 }` as well as to a show key; the file's reader keeps either and drops anything else.
+  "season": 3 }`, or to several seasons, `{ "show": "tv.Justice League", "seasons": [3, 4, 5] }`
+  ("justice league unlimited"), as well as to a show key; the file's reader keeps any of them and drops
+  anything else. **A nickname for seasons may hold its show's own title** ("justice league unlimited"
+  holds "Justice League"). Nicknames are otherwise looked for only in what the titles leave, and this one
+  would never be found, so nicknames for seasons whose phrase contains a title of their own show are
+  looked for in the whole clip title first. No other nickname can hold a title of the show it names, so
+  every nickname taught before reads as it did. When teaching a nickname for seasons the screen offers
+  the show's title with the word next to it in the clip's title.
   The nickname rules are the same (everyday words, numbers, a title or an existing nickname, a
   clip saved under a different show, the clip it is taught from has to be read by it), with
   two differences: a clip already saved as the whole show never blocks a season nickname for

@@ -978,6 +978,42 @@ for the full spec, stages and acceptance tests.
         save's checks and the seasons cache). One defensive check in the save (the nickname's shape, before
         `checkNickname` would refuse it anyway) is covered only by its message.
 
+      **Several seasons in one name, Oct 7, 2026 (Sonnet 5.5), on branch `names-seasons-anyof`.**
+      Ron's ask: Justice League Unlimited is seasons 3 to 5 of Justice League in his Plex, so
+      "Toonami - Justice League Unlimited Short Intro" should play before any episode of seasons 3, 4
+      or 5, picked as several seasons in the picker and taught as a nickname ("justice league
+      unlimited"). The first of four commits on the branch (the others: "any one of" several shows,
+      the Movies tab, and a Nicknames page).
+
+      - **The shape.** `{ show: "tv.Justice League", seasons: [3, 4, 5] }` beside `{ show, season }`:
+        two or more seasons, ascending, no repeats (one season stays the old shape, so the picker's
+        one-season choice saves exactly what it did). It is specific like a season, fits an episode of
+        any listed season, and reads "Justice League · Seasons 3–5" (`clipNames.seasonsName` makes the
+        one stored form, `seasonsLabel` the words). Names saved before read and play as they did.
+      - **The nickname holds the show's own title.** A phrase is looked for only in what the titles
+        left, and "justice league unlimited" starts with the title "Justice League", which takes those
+        words first and leaves "unlimited": the phrase could never match, which is why Ron had taught
+        the one word "unlimited" (as season 3) instead. Nicknames for seasons whose phrase contains a
+        title of their own show are now looked for in the whole title first (`ownTitleNicknames`).
+        No other nickname can hold a title of its show, so nothing taught before reads differently.
+        The teach panel offers the show's title with the word next to it from the clip's title.
+      - **The picker** has three radios under a show with seasons (Any episode / Some seasons / A
+        special), a checkbox per season (Plex's title, the folder beside it) and a "reads as" line;
+        the teach panel has The whole show / Some seasons with the same checkboxes. The slot logic is
+        in `src/names-review.js` (`slotOfName`, `slotName`, `slotProblem`, `nicknameTarget`) so a test
+        drives it. The check and suggestion routes take `seasons: [..]` as well as `season`.
+      - **Proved additive** with `node scripts/compare-names-engines.js <data copy> <old checkout>`,
+        which runs two source trees side by side: on the dev copy (9,442 clips in 100 lists, 40
+        nicknames) the matcher proposes the same for every clip, and channel 1's 3,520 breaks over 8
+        weeks, with `show`, `pair` and `any` steps from the 40 lists that carry saved names on every
+        situation of every day-part and block, build the same plans: **0 differ**. The control
+        (every saved show narrowed to one season) differs on 2,702, so the comparison can see a
+        change. Test file: `test/names-seasons-anyof.js`, mutation-checked.
+      - **Ron's data.** His "unlimited" nickname (season 3 only) still works and the new phrase wins
+        where both are in a title. "Toonami - Justice League Unlimited Short Intro (4K HD)" is saved
+        as season 3 only and stays so until it is re-picked as seasons 3 to 5; a nickname never
+        rewrites a saved name.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;

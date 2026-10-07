@@ -92,15 +92,27 @@
                         ng-options="s.key as showLabel(s) group by s.group for s in optionsFor(slot.key)">
                       <option value="">Pick a show or a movie...</option>
                     </select>
-                    <select class="custom-select custom-select-sm nr-part" ng-if="hasParts(slot)"
-                        ng-model="slot.part"
-                        ng-options="o.value as o.label for o in partsFor(slot)">
-                      <option value="">Any episode</option>
-                    </select>
+                    <span class="nr-kind small" ng-if="hasParts(slot)">
+                      <label><input type="radio" ng-model="slot.kind" value="all"> Any episode</label>
+                      <label><input type="radio" ng-model="slot.kind" value="seasons"> Some seasons</label>
+                      <label><input type="radio" ng-model="slot.kind" value="special"> A special</label>
+                    </span>
                     <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; partsState(slot).loading">reading the seasons&hellip;</span>
                     <span class="small text-warning" ng-if="hasParts(slot) &amp;&amp; partsState(slot).error">{{partsState(slot).error}}</span>
                     <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; partsState(slot).data &amp;&amp; partsState(slot).data.source === 'lineup'">The seasons the lineups have; Plex could not be asked.</span>
                     <button type="button" class="btn btn-sm btn-link text-danger" ng-if="picker.slots.length > 1" ng-click="removeSlot($index)" title="Remove this one">&times;</button>
+                    <div class="nr-seasons small" ng-if="hasParts(slot) &amp;&amp; slot.kind === 'seasons'">
+                      <label class="nr-season" ng-repeat="c in seasonChoices(slot) track by c.index">
+                        <input type="checkbox" ng-model="slot.picked[c.index]"> {{c.label}}<span class="text-muted" ng-if="c.folder" title="{{c.folder}}"> (folder: {{c.folder.length > 40 ? c.folder.slice(0, 40) + '…' : c.folder}})</span>
+                      </label>
+                    </div>
+                    <div class="nr-seasons small" ng-if="hasParts(slot) &amp;&amp; slot.kind === 'special'">
+                      <select class="custom-select custom-select-sm nr-part" ng-model="slot.special"
+                          ng-options="o.title as o.title for o in specialChoices(slot)">
+                        <option value="">Pick a special...</option>
+                      </select>
+                    </div>
+                    <div class="nr-reads small text-muted" ng-if="slotReads(slot)">reads as: <b>{{slotReads(slot)}}</b></div>
                   </div>
                   <button type="button" class="btn btn-sm btn-link" ng-if="canAddSlot()" ng-click="addSlot()">+ another show after it</button>
                   <div class="text-danger small" ng-if="picker.error">{{picker.error}}</div>
@@ -126,11 +138,19 @@
                         ng-options="s.key as showLabel(s) group by s.group for s in teachShows()">
                       <option value="">Pick the show...</option>
                     </select>
-                    <select class="custom-select custom-select-sm nr-part" ng-if="teachHasSeasons()"
-                        ng-model="teach.part" ng-change="teachSeasonChanged()"
-                        ng-options="o.value as o.label for o in teachParts()">
-                      <option value="">The whole show</option>
-                    </select>
+                    <span class="nr-kind small" ng-if="teachHasSeasons()">
+                      <label><input type="radio" ng-model="teach.kind" value="all" ng-change="teachSeasonChanged()"> The whole show</label>
+                      <label><input type="radio" ng-model="teach.kind" value="seasons" ng-change="teachSeasonChanged()"> Some seasons</label>
+                    </span>
+                  </div>
+                  <div class="nr-slot" ng-if="teachHasSeasons() &amp;&amp; teach.kind === 'seasons'">
+                    <span class="nr-slot-label small"></span>
+                    <span class="nr-seasons small">
+                      <label class="nr-season" ng-repeat="c in teachChoices() track by c.index">
+                        <input type="checkbox" ng-model="teach.picked[c.index]" ng-change="teachSeasonChanged()"> {{c.label}}
+                      </label>
+                      <span class="text-muted" ng-if="teachSeasonState().loading">reading the seasons&hellip;</span>
+                    </span>
                   </div>
                   <div class="nr-slot" ng-if="teachHints().length > 0">
                     <span class="nr-slot-label small">From your Plex folders</span>

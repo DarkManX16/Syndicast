@@ -53,7 +53,7 @@ class ShowAliasDB {
         for (const word of Object.keys(stored)) {
             const key = stored[word];
             if ( ( (typeof(key) === 'string') && /^[a-z]+\..+/.test(key) )
-                || ( clipNames.isSeasonName(key) && clipNames.validName(key) ) ) {
+                || ( (clipNames.isSeasonName(key) || clipNames.isSeasonsName(key)) && clipNames.validName(key) ) ) {
                 aliases[word] = key;
             }
         }

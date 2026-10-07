@@ -555,7 +555,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     router.post('/api/filler/:id/nickname-check', async(req, res) => {
       try {
         let body = req.body || {};
-        let result = await showMatchService.checkNickname(req.params.id, String(body.text == null ? '' : body.text), body.showKey, body.index, body.season);
+        let result = await showMatchService.checkNickname(req.params.id, String(body.text == null ? '' : body.text), body.showKey, body.index, body.season, body.seasons);
         if (result == null) {
             return res.status(404).send("Filler not found");
         }
@@ -570,7 +570,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     router.post('/api/filler/:id/nickname-suggestions', async(req, res) => {
       try {
         let body = req.body || {};
-        let result = await showMatchService.nicknameSuggestions(req.params.id, body.index, body.showKey, body.season);
+        let result = await showMatchService.nicknameSuggestions(req.params.id, body.index, body.showKey, body.season, body.seasons);
         if (result == null) {
             return res.status(404).send("Filler or clip not found");
         }
