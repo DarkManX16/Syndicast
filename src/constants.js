@@ -5,6 +5,12 @@ module.exports = {
     TVGUIDE_MAXIMUM_FLEX_DURATION : 6 * 60 * 60 * 1000,
     TOO_FREQUENT: 1000,
 
+    // A break with less than this left and nothing to fill it ends there,
+    // rather than showing the offline screen: the show after it starts that
+    // much early, and the next break absorbs it. Half the lineup cursor's
+    // minute of tolerance, so the stream stays well inside it.
+    TINY_LEFTOVER: 30 * 1000,
+
     // Duration of things like the loading screen and the interlude (the black
     // frame that appears between videos). The goal of these things is to
     // prevent the video from getting stuck on the last second, which looks bad

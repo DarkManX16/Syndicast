@@ -196,8 +196,20 @@ async function checkRouter(suite) {
         stepped.dayParts = [{ name: 'All week', fillerCollections: [{ id: 'ADS', weight: 100, cooldown: 0 }],
             starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }],
             transitions: { betweenShows: { out: [anyStep('o', 'OUT')], in: [anyStep('i', 'IN')] } } }];
-        const channels = { 11: plain, 12: stepped };
-        const lists = { ADS: ads, OUT, IN };
+        // C: a list of 60s clips only, after a 255s break (15s left after
+        // four) and a 290s one (about 48s left after four).
+        const withBreak = (number, breakSecs) => {
+            const p = mkPrograms(String(number));
+            p[1] = { isOffline: true, duration: breakSecs * SEC };
+            const c = base(number, p);
+            c.fillerCollections = [{ id: 'LONG', weight: 100, cooldown: 0 }];
+            return c;
+        };
+        // ... and 15s left where the only short clips are on a 10 minute cooldown
+        const cooled = withBreak(15, 255);
+        cooled.fillerCollections = [{ id: 'LONG', weight: 100, cooldown: 0 }, { id: 'COOL', weight: 1, cooldown: 600 * SEC }];
+        const channels = { 11: plain, 12: stepped, 13: withBreak(13, 255), 14: withBreak(14, 290), 15: cooled };
+        const lists = { ADS: ads, OUT, IN, LONG: clips('Long', 8, 60), COOL: clips('Cool', 3, 12) };
         const channelService = Object.assign(new EventEmitter(), { getChannel: async (n) => channels[n] || null });
         const fillerService = { getFillersFromCollections: async (ch, cols) => cols.map((c) => ({
             id: c.id, content: lists[c.id] || [], weight: c.weight, cooldown: c.cooldown })) };
@@ -319,6 +331,29 @@ async function checkRouter(suite) {
         suite.check('A: in a break with steps, both viewers get the same out step, Flex and in step',
             s1.length > 4 && s1[0].startsWith('Out') && s1[s1.length - 1].startsWith('In') && s1.join('|') === s2.join('|'),
             `${s1.join(', ')}\n        vs ${s2.join(', ')}`);
+
+        // C: tiny leftovers.
+        channelCache.clear();
+        seen = await watch(13, [follow('c13', 13, T + 600 * SEC, 300)], T + 870 * SEC);
+        let types = seen.c13.map((i) => i.type);
+        const show13 = seen.c13.find((i) => i.title === 'B13');
+        suite.check('C: 15s left that no clip fits: no offline screen, the show after it starts from its beginning',
+            !types.includes('offline') && show13 && show13.start === 0, seen.c13.map((i) => `${i.type} ${i.title}`).join(', '));
+        suite.check('C: ... early, by what was left', show13 && show13.$at < T + 855 * SEC - 10 * SEC,
+            show13 && `asked ${(T + 855 * SEC - show13.$at) / 1000}s before the break's end`);
+        channelCache.clear();
+        store.update(15, listKey('COOL'), T + 590 * SEC);   // played 10s before the break
+        seen = await watch(15, [follow('c15', 15, T + 600 * SEC, 300)], T + 870 * SEC);
+        types = seen.c15.map((i) => i.type);
+        suite.check('C: 15s left where the short clips are on their cooldown: no offline screen either, the show from its start',
+            !types.includes('offline') && !seen.c15.some((i) => /^Cool/.test(i.title)) && seen.c15[seen.c15.length - 1].title === 'B15'
+                && seen.c15[seen.c15.length - 1].start === 0, seen.c15.map((i) => `${i.type} ${i.title}`).join(', '));
+        channelCache.clear();
+        seen = await watch(14, [follow('c14', 14, T + 600 * SEC, 300)], T + 905 * SEC);
+        types = seen.c14.map((i) => i.type);
+        suite.check('C: about 48s left that no clip fits is not tiny: the offline screen, as before, then the show',
+            types.filter((t) => t === 'offline').length === 1 && seen.c14[seen.c14.length - 1].title === 'B14',
+            seen.c14.map((i) => `${i.type} ${i.title} ${i.streamDuration}`).join(', '));
 
         // One viewer: every Flex request makes the next pick, as the picker always did.
         channelCache.clear();

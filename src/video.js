@@ -456,6 +456,19 @@ function video( channelService, fillerService, db, programmingService, activeCha
                     duration : 60000,
                 };
             }
+            if ( allowSkip && (lineupItem.type === 'offline') && (typeof(lineupItem.err) === 'undefined')
+                && (prog.program.isOffline === true) && (typeof(prog.transition) !== 'object')
+                && (helperFuncs.timeLeft(prog) < constants.TINY_LEFTOVER) ) {
+                // Nothing to fill the last seconds of the break: it ends here,
+                // and the show after it starts from its beginning that much early
+                // (or the break's in steps do), rather than the offline screen.
+                let dt = helperFuncs.timeLeft(prog);
+                for (let i = 0; i < redirectChannels.length; i++) {
+                    channelCache.clearPlayback(redirectChannels[i].number );
+                }
+                console.log(`Nothing to fill the last ${Math.round(dt / 1000)}s of the break, so it ends here`);
+                return await streamFunction(req, res, t0 + dt + 1, false);
+            }
             if ( (shared !== null) && (shared.kind === 'new') ) {
                 // only a clip is shared; with none to play, the next request tries again
                 let added = (lineupItem.type === 'commercial')
