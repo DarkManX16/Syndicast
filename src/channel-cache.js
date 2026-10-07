@@ -67,6 +67,47 @@ function setPlan(channelId, brk, plan, now) {
     held[planKey(brk)] = { plan: plan, until: brk.endTime + PLAN_KEEP_MS };
 }
 
+/*
+ * Each Flex entry's shared list of picks (shared-breaks.js), per channel and
+ * keyed by the entry and where it starts this time round the cycle, so every
+ * viewer of a break sees the same commercials. Dropped for a channel when it
+ * is saved, like its plans, and kept until an hour after the entry ends.
+ */
+let flexLogs = {};
+
+function getFlexLog(channelId, key) {
+    let held = (typeof(flexLogs[channelId]) === 'undefined') ? undefined : flexLogs[channelId][key];
+    return (typeof(held) === 'undefined') ? null : held;
+}
+
+/*
+ * Adds pick `index` to the entry's list: true, or false if the list has moved
+ * on (the pick is then the stream's own). `item` is copied.
+ */
+function addFlexPick(channelId, key, index, entryEnd, item, now) {
+    if (typeof(flexLogs[channelId]) === 'undefined') {
+        flexLogs[channelId] = {};
+    }
+    let held = flexLogs[channelId];
+    for (let k of Object.keys(held)) {
+        if (held[k].until < now) {
+            delete held[k];
+        }
+    }
+    if (typeof(held[key]) === 'undefined') {
+        held[key] = { picks: [], until: entryEnd + PLAN_KEEP_MS };
+    }
+    if (held[key].picks.length !== index) {
+        return false;
+    }
+    let copy = JSON.parse(JSON.stringify(item));
+    delete copy.cursor;
+    delete copy.redirectChannels;
+    delete copy.upperBounds;
+    held[key].picks.push({ at: now, item: copy });
+    return true;
+}
+
 let configCache = {};
 let numbers = null;
 
@@ -159,6 +200,7 @@ function saveChannelConfig(number, channel ) {
         }
     }
     delete plans[number];
+    delete flexLogs[number];
     numbers = null;
 }
 
@@ -262,6 +304,10 @@ function getCurrentLineupItem(channelId, t1) {
     }
     let recorded = cache[channelId];
     let lineupItem =  JSON.parse( JSON.stringify(recorded.lineupItem) );
+    // a commercial carried on from here was counted when it was picked: once
+    if (lineupItem.type === 'commercial') {
+        lineupItem.sharedPick = true;
+    }
     let diff = t1 - recorded.t0;
     let rem = lineupItem.duration - lineupItem.start;
     if (typeof(lineupItem.streamDuration) !== 'undefined') {
@@ -363,7 +409,10 @@ function getFillerLastPlayTime(programPlayTime, channelId, fillerId) {
 }
 
 function recordPlayback(programPlayTime, channelId, t0, lineupItem) {
-    recordProgramPlayTime(programPlayTime, channelId, lineupItem, t0);
+    // a shared pick's play times were recorded when it was picked: once
+    if (lineupItem.sharedPick !== true) {
+        recordProgramPlayTime(programPlayTime, channelId, lineupItem, t0);
+    }
     
     cache[channelId] = {
         t0: t0,
@@ -382,6 +431,7 @@ function clear() {
     resumeHints = {};
     cursors = {};
     plans = {};
+    flexLogs = {};
     numbers = null;
 }
 
@@ -402,4 +452,6 @@ module.exports = {
     dropCursor: dropCursor,
     getPlan: getPlan,
     setPlan: setPlan,
+    getFlexLog: getFlexLog,
+    addFlexPick: addFlexPick,
 }

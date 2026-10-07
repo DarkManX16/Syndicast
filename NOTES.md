@@ -3584,6 +3584,15 @@ checks as of the fall-back fixes). Nine files:
   the real `ffmpeg.js` was left cached with the real `spawn` - and unrefs
   the timers `video.js` arms per item, so `npm test` doesn't wait on them.
 
+- `shared-breaks.js` - the fixes for two viewers taking turns with the offline
+  screen (see Resolved): a list on the air not cooling down, on `createLineup`;
+  `shared-breaks.js`'s `decide` rules; and viewers on a fake clock through the
+  real router (two 3s and 25s apart, a tune-in joining partway, a break with
+  steps, a save dropping the lists, a lone viewer, and leftovers under and over
+  30 seconds). A trap: the cursor store sweeps cursors idle for an hour by the
+  clock it reads, so set the fake clock before setting a cursor by hand, or the
+  next request sweeps it away and the viewer silently takes the replay cache.
+
 - `transitions-editor.js` - stage 5 step 5, the logic behind the card editor
   (`src/transitions-editor.js`): the four ways a step chooses and the stored fields
   each is, the days / chance / "only when" rules the form keeps, deleting a watched
@@ -3748,6 +3757,132 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### Two viewers of a channel took turns with the offline screen
+
+Reported Oct 7, 2026: with channel 1 on TiviMate and on OBS (a VLC media
+source) at once, only one of them got commercials during a break and the other
+showed the fallback picture, the two swapping back and forth; shows played
+normally on both. Even with "one viewer" the fallback picture played far too
+often. Fixed on branch `shared-breaks` in three commits, Oct 7, 2026 (Opus 5.5).
+
+**The cause, and the only one.** A play time is recorded as the moment the item
+will *end* (`recordProgramPlayTime`: `t0 + remaining`). The picker's list check
+measured "time since this list last played" from there, so while a clip from a
+list was on the air for one viewer the time was negative, and
+`timeSince + SLACK >= cooldown` refused the list - even at cooldown 0 - until 10
+seconds before that clip ended. Most of channel 1's mixes are one list with no
+cooldown, so the second viewer found nothing, got the offline screen for exactly
+the rest of the first viewer's clip (`minimumWait`), then both asked again at
+the same moment and whoever was first had the list. That is the swap.
+
+**Measured before changing anything.** Every Flex pick and every fallback logged
+with its reason, by a `node -r` preload on a scratch server from the worktree
+(port 18140, on a copy of `.dizquetv-dev`; the repo's code ran unmodified), and by
+a fake-clock simulation through the real `video.js` router on the same copy
+(channel 1 and its real lists, seeded picks, 0.3-2.0s start-up latency less up to
+0.4s of read-ahead per item, the spread stage 4 measured). Both instruments are
+investigation scripts in the session scratchpad, not in the repo.
+- *Live, two `/video` streams of channel 1, one 8-minute Adult Swim break:* V1 6
+  fallbacks (169s of fallback picture), V2 9 (233s), every one "the only list is
+  on the air for the other viewer"; the lead changed 8 times; 0 of 12 commercials
+  shared. Both played the same stage 5 steps, because plans were already shared.
+- *Simulated days, two viewers 23s apart:* Wednesday 43% and 39% of Flex picks
+  were fallbacks (2.4h and 2.1h of fallback picture), Saturday 21% each (2.2h and
+  1.9h); 0 of 337 and 0 of 557 commercials shared.
+- *One viewer:* 0 fallbacks in a simulated Wednesday and Saturday (three seeds),
+  and 0 with a dropped connection about once an hour (the replay cache absorbs a
+  quick reconnect). Live, real items ended 0.3-0.5s after their recorded end, at
+  worst 0.27s early, nowhere near the 10s that would block a list.
+
+**The suspects, ruled out with counts.** Clip cooldowns: with
+`fillerRepeatCooldown` 0 they only stop the other viewer's current clip being
+picked twice; 0 fallbacks. The replay cache: once a day, at the second viewer's
+tune-in, handing over the show; 0 fallbacks. The stage 4 cursor: 0 times it gave
+up, 0 breaks passed over, and it keeps two viewers 3-6s apart at each break (15s
+at most). Stage 5 steps: their own lists, a shared plan; 0 fallbacks. A gap
+shorter than any clip: never on its own on channel 1 (its shortest clips are
+4-10s and under ~10s left is already skipped), 7-12 a day only where cause 1 also
+held the other list. CN Groovies' 20-minute cooldown showed up beside it in
+Powerhouse Era and never caused a fallback alone.
+
+**"One viewer" was two, as far as the server could tell.** At 4:33am that day the
+live server on 18000 had two `/video` streams of channel 1 open (concat ffmpegs
+started 3:28am and 3:53am), with OBS connected; read from the process list, nothing
+touched. An OBS media source can keep pulling a stream from a scene that is not
+showing. So count the viewers before trusting a description of them: the concat
+ffmpegs' `-i .../playlist?channel=N&...&stream=<id>` arguments say how many there are.
+
+**The fix, three commits.**
+1. *A list whose clip is still on the air is not cooling down* (d511032,
+   `helperFuncs.js`). A last-played time in the future counts as now in the list
+   check, so a list with no cooldown is never refused for another viewer's clip;
+   a configured cooldown still runs from the clip's end, and the wait the offline
+   screen is given is still measured from there. The clip check is unchanged, so
+   the clip on the air is still never picked twice at once (`timeSince <= 0`
+   excludes it). On its own this removed every simulated fallback (488 and 289 a
+   day to 0); it is the net under the next one.
+2. *One list of Flex picks per break, per channel* (3be308f,
+   `src/shared-breaks.js`, `channel-cache.js`, `lineup-cursor.js`, `video.js`), the
+   way stage 5 shares a break's plan. Each Flex entry of the lineup, each time
+   round the cycle (keyed by its index and where it starts), keeps its picks: the
+   first viewer to need pick k makes it with the picker as before and its play
+   times are recorded then, once; every other viewer plays pick k next, from its
+   start, marked `sharedPick` so `recordPlayback` records nothing again. The
+   cursor carries `pick`, how far into the list the stream is (0 on entering a
+   Flex entry). A viewer for whom a shared pick no longer fits what is left (it is
+   later than whoever made it by more than SLACK) picks its own for the rest of
+   that entry. A stream with no cursor (tune-in, `/m3u8`) joins the pick on the air
+   partway, as the replay cache already did, and a tune-in's own random-start
+   clip is never shared. The decision is taken after the last `await` in
+   `streamFunction`, so a second viewer's request cannot slip in between reading
+   the list and adding to it. Dropped on save and an hour after the entry, like
+   plans. A commercial continued from the replay cache is also marked as already
+   counted, for the same reason.
+3. *A leftover under 30 seconds with nothing to fill it ends the break*
+   (4dab300, `video.js`, `TINY_LEFTOVER` in `constants.js`): a Flex request that
+   would show the offline screen with under 30s left - no clip short enough, or
+   the short ones on their cooldown (one step wider than proposed, matching "no
+   fallback picture at all" for a tiny gap) - takes the same route as the old
+   short-break skip: the show after the break, or its in steps, start from their
+   beginning that much early and the next break absorbs it. A longer gap with
+   nothing to play keeps the offline screen, since a stream a minute early falls
+   off the cursor. Channels with a fallback clip are unaffected: they never get
+   the offline screen from the picker.
+
+**Verified.**
+- *Simulated days, final code, two viewers:* 0 fallbacks on Wednesday and
+  Saturday. Every break had the same commercials in the same order for both; none
+  differed before its last clip, and 29 of 69 (Wednesday) and 19 of 52 (Saturday)
+  differed only there - the viewers are a few seconds apart, so one has time for
+  one more clip, or its last shared pick no longer fits and it picks its own.
+- *One viewer, old (98a252d) against new, same seed:* identical item for item on
+  channels 1, 2 and 3, a Wednesday and a Saturday each (497 to 835 items a day).
+  Control: another seed differs from item 3.
+- *Live, final code (4dab300), scratch server on a fresh copy:* two `/video`
+  viewers 23s apart from 5:52am, a second pair 17s apart from 6:06am. The 5:56
+  break (Adult Swim leaving into Powerhouse Era, with its sign-off step): the same
+  step and the same 8 commercials for both, in order. The 6:22 break opened with
+  all four on the same commercial; the second pair then matched clip for clip
+  through all 13, though real Plex start-up put one of them 9s behind for a clip.
+  No offline screen in any break; both pairs started the next show within 2s of
+  each other.
+- *Tests:* `test/shared-breaks.js`, 40 checks: B on `createLineup`, the `decide`
+  rules, and viewers on a fake clock through the real router (3s apart, 25s
+  apart, a tune-in joining partway, a break with steps, a save dropping the lists,
+  a lone viewer, and the three leftover cases). 1,253 to 1,293 tests.
+  Mutation-checked: the clamp, the wait from the clip's end, replaying at all, the
+  fit check, the join, recording shared picks again, the cursor losing its pick
+  in three places, ignoring the shared item, the leftover rule and its limit each
+  fail checks. One line is unobservable and kept as intent: after a new pick finds
+  nothing, the cursor stays at that index, which `decide` would arrive at anyway
+  since it treats a pick past the end as "make the next one".
+- *Writers enumerated* (the rule for this kind of change). Play times:
+  `recordProgramPlayTime` (now skipped for a `sharedPick` item) and the redirect
+  error record in `video.js`. `sharedPick`: `decide` (replay and join) and
+  `getCurrentLineupItem` (commercials). `cursor.pick`: `cursorAfter`, from the
+  `pickNext` that only `video.js` sets; `withPick` in `nextEntry`/`flexFrom` carries
+  it. The lists: `addFlexPick` only, cleared by `saveChannelConfig` and `clear`.
 
 ### A concat restart replayed the tune-in, loading screen included
 
