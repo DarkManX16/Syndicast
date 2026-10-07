@@ -182,6 +182,11 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     names = row.proposal.unresolved.recognised.slice();
                 }
                 const slots = names.map(slotOf);
+                for (const slot of slots) {
+                    for (const m of slot.members) {
+                        ensureSeasons(m.key);
+                    }
+                }
                 scope.picker = { index: row.index, slots: (slots.length > 0) ? slots : [ review.emptySlot() ], filter: '', error: '' };
                 for (const slot of scope.picker.slots) {
                     ensureSeasons(slot.key);
@@ -199,6 +204,27 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     scope.picker.slots.push( review.emptySlot() );
                 }
             };
+            // A slot that is for any one of several shows: start with two to pick, never fewer.
+            scope.slotAnyChanged = (slot) => {
+                if (slot.any && (slot.members.length < 2) ) {
+                    while (slot.members.length < 2) {
+                        slot.members.push( { key: null } );
+                    }
+                }
+            };
+            scope.addMember = (members) => {
+                if (members.length < clipNames.MAX_ANY_OF) {
+                    members.push( { key: null } );
+                }
+            };
+            scope.removeMember = (members, i) => {
+                if (members.length > 2) {
+                    members.splice(i, 1);
+                }
+            };
+            scope.canAddMember = (members) => members.length < clipNames.MAX_ANY_OF;
+            // The shows a member of an any-of can be: shows and custom shows, never a movie.
+            scope.memberOptionsFor = (current) => scope.optionsFor(current).filter( (s) => (s.group !== 'Movies') || (s.key === current) );
             scope.slotShowChanged = (slot) => {
                 slot.kind = 'all';
                 slot.picked = {};
@@ -305,6 +331,8 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     const trouble = review.slotProblem(slot);
                     if (trouble !== null) {
                         p.error = (trouble === 'a show has not been picked') ? 'Pick a show for every slot, or remove the empty one.'
+                            : (trouble === 'the same show is picked twice in an any-of') ? 'The same show is picked twice in \u201cany one of these shows\u201d.'
+                            : (trouble === 'an any-of needs two shows') ? '\u201cAny one of these shows\u201d needs at least two shows.'
                             : (trouble === 'no season is ticked') ? `Tick at least one season of ${showName(slot.key)}, or choose \u201cAny episode\u201d.`
                             : `Pick which special of ${showName(slot.key)}, or choose \u201cAny episode\u201d.`;
                         return;
@@ -340,15 +368,33 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 // a flagged clip names nothing yet, but says which show it recognised
                 const name = (eff.names.length > 0) ? eff.names[0]
                     : ( (row.proposal.unresolved != null) && (row.proposal.unresolved.recognised.length > 0) ? row.proposal.unresolved.recognised[0] : null );
+                if (clipNames.isAnyOfName(name) ) {
+                    return { key: null, picked: {}, anyOf: name.anyOf.slice() };
+                }
                 const key = (name == null) ? null : clipNames.showOf(name);
                 if ( (key == null) || /^movie[.]/.test(key) ) {
-                    return { key: null, picked: {} };
+                    return { key: null, picked: {}, anyOf: null };
                 }
                 const picked = {};
                 for (const n of clipNames.seasonsOf(name) ) {
                     picked[n] = true;
                 }
-                return { key: key, picked: picked };
+                return { key: key, picked: picked, anyOf: null };
+            };
+            // The shows a nickname for any one of several is for, or undefined when it is not.
+            const teachAnyOf = () => {
+                const t = scope.teach;
+                return ( (t != null) && (t.kind === 'anyOf') ) ? t.members.map( (m) => m.key ).filter( (k) => !! k ) : undefined;
+            };
+            const anyOfProblem = (members) => {
+                const keys = members.map( (m) => m.key );
+                if (keys.some( (k) => ! k )) {
+                    return 'Pick a show for every box, or remove the empty one.';
+                }
+                if (new Set(keys).size !== keys.length) {
+                    return 'The same show is picked twice.';
+                }
+                return (keys.length < 2) ? 'Pick at least two shows.' : null;
             };
             // The seasons the nickname is for, or undefined for the whole show.
             const teachSeasons = () => {
@@ -358,9 +404,11 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.openTeach = (row) => {
                 scope.picker = null;
                 const first = firstShow(row);
-                scope.teach = { index: row.index, title: row.title, showKey: first.key, kind: (Object.keys(first.picked).length > 0) ? 'seasons' : 'all', picked: first.picked,
+                scope.teach = { index: row.index, title: row.title, showKey: first.key,
+                    kind: (first.anyOf !== null) ? 'anyOf' : ( (Object.keys(first.picked).length > 0) ? 'seasons' : 'all' ), picked: first.picked,
+                    members: (first.anyOf !== null) ? first.anyOf.map( (k) => ({ key: k }) ) : [ { key: null }, { key: null } ],
                     text: '', suggestions: [], check: null, busy: false, filter: '', error: '' };
-                if (scope.teach.showKey) {
+                if (scope.teach.showKey || (first.anyOf !== null) ) {
                     ensureSeasons(scope.teach.showKey);
                     loadSuggestions();
                 }
@@ -368,11 +416,14 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.closeTeach = () => { scope.teach = null; };
             const loadSuggestions = async () => {
                 const t = scope.teach;
-                if ( (t == null) || ! t.showKey ) {
+                if ( (t == null) || ( ! t.showKey && (teachAnyOf() === undefined) ) ) {
+                    return;
+                }
+                if ( (t.kind === 'anyOf') && (anyOfProblem(t.members) !== null) ) {
                     return;
                 }
                 try {
-                    const got = await dizquetv.getNicknameSuggestions(scope.list.id, { index: t.index, showKey: t.showKey, seasons: teachSeasons() });
+                    const got = await dizquetv.getNicknameSuggestions(scope.list.id, { index: t.index, showKey: t.showKey, seasons: teachSeasons(), anyOf: teachAnyOf() });
                     if (scope.teach === t) {
                         t.suggestions = got;
                     }
@@ -388,9 +439,17 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     return;
                 }
                 const serial = ++checkSerial;
-                if ( ((t.text || '').trim() === '') || ! t.showKey ) {
+                if ( ((t.text || '').trim() === '') || ( ! t.showKey && (t.kind !== 'anyOf') ) ) {
                     t.check = null;
                     return;
+                }
+                if (t.kind === 'anyOf') {
+                    const problem = anyOfProblem(t.members);
+                    if (problem !== null) {
+                        t.check = null;
+                        t.error = problem;
+                        return;
+                    }
                 }
                 if ( (t.kind === 'seasons') && (teachSeasons().length === 0) ) {
                     t.check = null;
@@ -399,7 +458,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 }
                 t.busy = true;
                 try {
-                    const result = await dizquetv.checkNickname(scope.list.id, { text: t.text, showKey: t.showKey, seasons: teachSeasons(), index: t.index });
+                    const result = await dizquetv.checkNickname(scope.list.id, { text: t.text, showKey: t.showKey, seasons: teachSeasons(), anyOf: teachAnyOf(), index: t.index });
                     if ( (serial === checkSerial) && (scope.teach === t) ) {
                         t.check = result;
                     }
@@ -429,6 +488,9 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             // The season (or none) a nickname is for changed: what the title offers and what the
             // nickname would do both depend on it.
             scope.teachSeasonChanged = () => {
+                if ( (scope.teach.kind === 'anyOf') && (scope.teach.members.length < 2) ) {
+                    scope.teach.members.push( { key: null } );
+                }
                 scope.teach.suggestions = [];
                 scope.teach.check = null;
                 scope.teach.error = '';
@@ -437,9 +499,21 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             };
             scope.teachChoices = () => (scope.teach == null) ? [] : choicesFor(scope.seasonInfo[scope.teach.showKey], scope.teach.picked);
             scope.teachReads = () => {
-                const target = (scope.teach == null) ? null : review.nicknameTarget( { showKey: scope.teach.showKey, seasons: teachSeasons() } );
+                const anyOf = teachAnyOf();
+                const target = (scope.teach == null) ? null
+                    : ( (anyOf !== undefined) ? ( (anyOfProblem(scope.teach.members) === null) ? review.nicknameTarget( { anyOf: anyOf } ) : null )
+                        : review.nicknameTarget( { showKey: scope.teach.showKey, seasons: teachSeasons() } ) );
                 return (target == null) ? '' : nameLabel(target);
             };
+            // Picking one of the shows of a nickname for any one of several changes what it would do.
+            scope.teachMemberChanged = () => {
+                scope.teach.suggestions = [];
+                scope.teach.check = null;
+                scope.teach.error = '';
+                loadSuggestions();
+                runCheck();
+            };
+            scope.teachMemberOptions = () => scope.teachShows();
             scope.teachHasSeasons = () => (scope.teach != null) && /^tv[.]/.test(scope.teach.showKey || '');
             scope.teachSeasonState = () => (scope.teach == null) ? undefined : scope.seasonInfo[scope.teach.showKey];
             // The names the folders of a show's seasons suggest, as a hint only: one click
@@ -477,14 +551,15 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.teachShows = () => {
                 const q = ((scope.teach && scope.teach.filter) || '').trim().toLowerCase();
                 const current = scope.teach ? scope.teach.showKey : null;
-                return scope.shows.filter( (s) => (s.movie !== true) && ( (q === '') || (s.name.toLowerCase().indexOf(q) !== -1) || (s.key === current) ) );
+                const kept = (scope.teach && scope.teach.kind === 'anyOf') ? scope.teach.members.map( (m) => m.key ) : [current];
+                return scope.shows.filter( (s) => (s.movie !== true) && ( (q === '') || (s.name.toLowerCase().indexOf(q) !== -1) || kept.includes(s.key) ) );
             };
             scope.canAddNickname = () => (scope.teach != null) && (scope.teach.check != null) && (scope.teach.check.ok === true)
                 && ! scope.nicknames.some( (n) => n.alias === scope.teach.check.alias );
             scope.addNickname = () => {
                 const t = scope.teach;
                 const check = t.check;
-                const target = review.nicknameTarget( { showKey: t.showKey, seasons: teachSeasons() } );
+                const target = review.nicknameTarget( { showKey: t.showKey, seasons: teachSeasons(), anyOf: teachAnyOf() } );
                 scope.nicknames.push( { alias: check.alias, text: t.text.trim(), target: target, showName: nameLabel(target) } );
                 // The clip it was taught from takes the names the nickname gives it, unless
                 // the person already decided something else for it here.

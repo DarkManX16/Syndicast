@@ -83,30 +83,44 @@
                 </div>
 
                 <div class="nr-panel" ng-if="picker.index === r.index">
-                  <div class="small text-muted">Pick the show{{picker.slots.length > 1 ? 's, in the order they air' : ''}}, or a movie, and for a show with seasons its season or a special. A clip for one movie, season or special plays only before that one. A clip that names several plays only when they air one after another, starting with the one coming up.</div>
+                  <div class="small text-muted">Pick the show{{picker.slots.length > 1 ? 's, in the order they air' : ''}}, or a movie, and for a show with seasons its season or a special. A clip for one movie, season or special plays only before that one. A clip that names several plays only when they air one after another, starting with the one coming up. &ldquo;Any one of these shows&rdquo; is one place in that list that any of the shows can fill: an actor&rsquo;s clip that stands for either of two shows plays before either.</div>
                   <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="picker.filter"></input>
                   <div class="nr-slot" ng-repeat="slot in picker.slots track by $index">
                     <span class="nr-slot-label small">{{slotLabel($index, picker.slots.length)}}</span>
-                    <select class="custom-select custom-select-sm"
+                    <span class="nr-kind small">
+                      <label><input type="radio" ng-model="slot.any" ng-value="false"> One show</label>
+                      <label><input type="radio" ng-model="slot.any" ng-value="true" ng-change="slotAnyChanged(slot)"> Any one of these shows</label>
+                    </span>
+                    <div class="nr-seasons" ng-if="slot.any">
+                      <div class="nr-member" ng-repeat="m in slot.members track by $index">
+                        <select class="custom-select custom-select-sm" ng-model="m.key"
+                            ng-options="s.key as showLabel(s) group by s.group for s in memberOptionsFor(m.key)">
+                          <option value="">Pick a show...</option>
+                        </select>
+                        <button type="button" class="btn btn-sm btn-link text-danger" ng-if="slot.members.length > 2" ng-click="removeMember(slot.members, $index)" title="Remove this show">&times;</button>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-link" ng-if="canAddMember(slot.members)" ng-click="addMember(slot.members)">+ add a show</button>
+                    </div>
+                    <select class="custom-select custom-select-sm" ng-if="!slot.any"
                         ng-model="slot.key" ng-change="slotShowChanged(slot)"
                         ng-options="s.key as showLabel(s) group by s.group for s in optionsFor(slot.key)">
                       <option value="">Pick a show or a movie...</option>
                     </select>
-                    <span class="nr-kind small" ng-if="hasParts(slot)">
+                    <span class="nr-kind small" ng-if="hasParts(slot) &amp;&amp; !slot.any">
                       <label><input type="radio" ng-model="slot.kind" value="all"> Any episode</label>
                       <label><input type="radio" ng-model="slot.kind" value="seasons"> Some seasons</label>
                       <label><input type="radio" ng-model="slot.kind" value="special"> A special</label>
                     </span>
-                    <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; partsState(slot).loading">reading the seasons&hellip;</span>
-                    <span class="small text-warning" ng-if="hasParts(slot) &amp;&amp; partsState(slot).error">{{partsState(slot).error}}</span>
-                    <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; partsState(slot).data &amp;&amp; partsState(slot).data.source === 'lineup'">The seasons the lineups have; Plex could not be asked.</span>
+                    <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; !slot.any &amp;&amp; partsState(slot).loading">reading the seasons&hellip;</span>
+                    <span class="small text-warning" ng-if="hasParts(slot) &amp;&amp; !slot.any &amp;&amp; partsState(slot).error">{{partsState(slot).error}}</span>
+                    <span class="small text-muted" ng-if="hasParts(slot) &amp;&amp; !slot.any &amp;&amp; partsState(slot).data &amp;&amp; partsState(slot).data.source === 'lineup'">The seasons the lineups have; Plex could not be asked.</span>
                     <button type="button" class="btn btn-sm btn-link text-danger" ng-if="picker.slots.length > 1" ng-click="removeSlot($index)" title="Remove this one">&times;</button>
-                    <div class="nr-seasons small" ng-if="hasParts(slot) &amp;&amp; slot.kind === 'seasons'">
+                    <div class="nr-seasons small" ng-if="hasParts(slot) &amp;&amp; !slot.any &amp;&amp; slot.kind === 'seasons'">
                       <label class="nr-season" ng-repeat="c in seasonChoices(slot) track by c.index">
                         <input type="checkbox" ng-model="slot.picked[c.index]"> {{c.label}}<span class="text-muted" ng-if="c.folder" title="{{c.folder}}"> (folder: {{c.folder.length > 40 ? c.folder.slice(0, 40) + '…' : c.folder}})</span>
                       </label>
                     </div>
-                    <div class="nr-seasons small" ng-if="hasParts(slot) &amp;&amp; slot.kind === 'special'">
+                    <div class="nr-seasons small" ng-if="hasParts(slot) &amp;&amp; !slot.any &amp;&amp; slot.kind === 'special'">
                       <select class="custom-select custom-select-sm nr-part" ng-model="slot.special"
                           ng-options="o.title as o.title for o in specialChoices(slot)">
                         <option value="">Pick a special...</option>
@@ -126,7 +140,8 @@
                   <div class="small text-muted">
                     A nickname is a word or a phrase in a clip&rsquo;s title that means one show, like &ldquo;static&rdquo; for Static Shock or
                     &ldquo;grim advs&rdquo; for The Grim Adventures of Billy &amp; Mandy, or one season of a show, like &ldquo;frieza saga&rdquo; for
-                    Dragon Ball Z season 3. Everyday words like &ldquo;next&rdquo; or &ldquo;adult&rdquo; are refused.
+                    Dragon Ball Z season 3, or any one of several shows, like &ldquo;christy carlson romano&rdquo; for Even Stevens or Kim Possible
+                    (a clip that stands for a show without saying which). Everyday words like &ldquo;next&rdquo; or &ldquo;adult&rdquo; are refused.
                   </div>
                   <div class="nr-slot">
                     <span class="nr-slot-label small">It means</span>
@@ -134,14 +149,31 @@
                   </div>
                   <div class="nr-slot">
                     <span class="nr-slot-label small"></span>
+                    <span class="nr-kind small">
+                      <label><input type="radio" ng-model="teach.kind" value="all" ng-change="teachSeasonChanged()"> One show</label>
+                      <label ng-if="teachHasSeasons()"><input type="radio" ng-model="teach.kind" value="seasons" ng-change="teachSeasonChanged()"> Some seasons of it</label>
+                      <label><input type="radio" ng-model="teach.kind" value="anyOf" ng-change="teachSeasonChanged()"> Any one of several shows</label>
+                    </span>
+                  </div>
+                  <div class="nr-slot" ng-if="teach.kind !== 'anyOf'">
+                    <span class="nr-slot-label small"></span>
                     <select class="custom-select custom-select-sm" ng-model="teach.showKey" ng-change="teachShowChanged()"
                         ng-options="s.key as showLabel(s) group by s.group for s in teachShows()">
                       <option value="">Pick the show...</option>
                     </select>
-                    <span class="nr-kind small" ng-if="teachHasSeasons()">
-                      <label><input type="radio" ng-model="teach.kind" value="all" ng-change="teachSeasonChanged()"> The whole show</label>
-                      <label><input type="radio" ng-model="teach.kind" value="seasons" ng-change="teachSeasonChanged()"> Some seasons</label>
-                    </span>
+                  </div>
+                  <div class="nr-slot" ng-if="teach.kind === 'anyOf'">
+                    <span class="nr-slot-label small"></span>
+                    <div class="nr-seasons">
+                      <div class="nr-member" ng-repeat="m in teach.members track by $index">
+                        <select class="custom-select custom-select-sm" ng-model="m.key" ng-change="teachMemberChanged()"
+                            ng-options="s.key as showLabel(s) group by s.group for s in teachMemberOptions()">
+                          <option value="">Pick a show...</option>
+                        </select>
+                        <button type="button" class="btn btn-sm btn-link text-danger" ng-if="teach.members.length > 2" ng-click="removeMember(teach.members, $index); teachMemberChanged()" title="Remove this show">&times;</button>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-link" ng-if="canAddMember(teach.members)" ng-click="addMember(teach.members)">+ add a show</button>
+                    </div>
                   </div>
                   <div class="nr-slot" ng-if="teachHasSeasons() &amp;&amp; teach.kind === 'seasons'">
                     <span class="nr-slot-label small"></span>

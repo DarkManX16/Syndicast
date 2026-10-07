@@ -1014,6 +1014,47 @@ for the full spec, stages and acceptance tests.
         as season 3 only and stays so until it is re-picked as seasons 3 to 5; a nickname never
         rewrites a saved name.
 
+      **"Any one of" several shows in a name, Oct 7, 2026 (Sonnet 5.5), same branch.** The second
+      commit. Ron's Disney Channel Wand IDs show an actor, not a show ("Emily Osment Wand ID",
+      "Christy Carlson Romano Wand ID"), and an actor can stand for more than one show (Christy
+      Carlson Romano: Even Stevens and Kim Possible). A name may now be `{ anyOf: [show, show, ...] }`
+      (`clipNames.anyOfName` makes the stored form): two to eight different shows or custom shows, in
+      the order picked; the same shows in another order are the same name (`nameId`).
+
+      - **What it fits and where it ranks.** A program of any member, as the show: not specific, so a
+        season clip beats it and a clip naming the show exactly shares its tier and takes its turn by
+        longest idle. In a "These clips feature shows" list it counts as naming the show coming up
+        (first tier). It is one place in a multi-show list, so "A then B" in airing order is unchanged
+        and an any-of can fill a place; the pair step reads it as the show that ended or is coming up.
+        All through `clipNames.fits`, so `buildPlan` needed no change.
+      - **Not the same as a multi-show title.** "Kim Possible to Even Stevens" is two places in
+        order; `{ anyOf: [Even Stevens, Kim Possible] }` is one place either can fill. Both are kept.
+      - **Nicknames.** A nickname for one show already worked ("emily osment" for Hannah Montana). It
+        can now mean an any-of (`show-aliases.json` keeps `{ anyOf: [...] }`; the reader drops one that
+        is not in the stored shape). A hit needs a key, so an any-of nickname's hit carries a made-up
+        `any:...` key that never equals a show's; `nameOfHit` turns it back into the name. A show the
+        title names itself beats an any-of nickname that includes it ("Christy Carlson Romano Kim
+        Possible Promo" is for Kim Possible). The nickname checks are the same with "the set of shows"
+        where there was "the show": a clip saved under a show that is none of them blocks it, one
+        saved under one of them does not (`clipNames.showsOf`). Teaching from "Christy Carlson Romano
+        Wand ID" now offers "christy carlson romano": a stretch of leftover words longer than three is
+        offered by its first three when they sit in no bracket.
+      - **Picker and teach panel.** A slot has "One show / Any one of these shows" and, for any-of, a
+        select per show with "+ add a show" (two to eight, movies not offered); the teach panel has "One
+        show / Some seasons of it / Any one of several shows". Slot logic stays in `src/names-review.js`
+        (`slotProblem` says why a slot is not a name yet), the check and suggestion routes take
+        `anyOf: [..]`.
+      - **Proved additive** again with `scripts/compare-names-engines.js` (0 of 9,442 proposals and 0 of
+        3,520 plans differ, control 2,702). Writers and readers of a name, enumerated: writers are the
+        review save (`validName`, every member must be a show on a channel), the alias file, the filler
+        editor and `carryNames` (pass through); readers are `namesOf`/`namesProblem`, `propose`,
+        `checkNickname`, `learnAliases`, `nicknameSuggestions`, `buildPlan` through `fits`, the screen
+        and Names tag through `labelOf` (the service gives every member a display name), and the
+        scripts. Tests in `test/names-seasons-anyof.js`, mutation-checked.
+      - **The Wand ID clips are not in the dev copy** (no title with "Wand" in any of the 100 lists), so
+        the check used the nearest real titles ("Express Yourself (Christy Romano)", the Kim Possible
+        and Even Stevens promos) and stand-ins named like Ron's.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;

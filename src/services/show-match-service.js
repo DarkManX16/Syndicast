@@ -82,9 +82,10 @@ class ShowMatchService {
         const showNames = {};
         const remember = (names) => {
             for (const name of names) {
-                const key = clipNames.showOf(name);
-                if ( (key != null) && (typeof(vocabulary.names[key]) !== 'undefined') ) {
-                    showNames[key] = vocabulary.names[key];
+                for (const key of clipNames.showsOf(name) ) {
+                    if (typeof(vocabulary.names[key]) !== 'undefined') {
+                        showNames[key] = vocabulary.names[key];
+                    }
                 }
             }
         };
@@ -159,7 +160,7 @@ class ShowMatchService {
      * of checkNickname with the lists' names added and the clips counted by whether
      * they are in the list being reviewed. `index` is the clip it is taught from.
      */
-    async checkNickname(id, text, showKey, index, season, seasons) {
+    async checkNickname(id, text, showKey, index, season, seasons, anyOf) {
         const filler = await this.fillerDB.getFiller(id);
         if (filler == null) {
             return null;
@@ -169,8 +170,8 @@ class ShowMatchService {
         const source = ( (Number.isInteger(index)) && (filler.content[index] != null) ) ? filler.content[index].title : undefined;
         const clips = await this.everyClip();
         // A nickname means a show, or one season of it when `season` is given, or several
-        // when `seasons` is.
-        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons } );
+        // when `seasons` is, or any one of several shows when `anyOf` is.
+        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons, anyOf: anyOf } );
         const result = showMatch.checkNickname(text, target, vocabulary, aliases, clips, { sourceTitle: source });
         const listName = {};
         for (const clip of clips) {
@@ -186,7 +187,7 @@ class ShowMatchService {
             alias: result.alias,
             ok: result.ok,
             problems: result.problems,
-            showName: (typeof(vocabulary.names[showKey]) === 'string') ? label(target) : showKey,
+            showName: (target !== null) && clipNames.showsOf(target).every( (k) => typeof(vocabulary.names[k]) === 'string' ) ? label(target) : String(showKey),
             sourceNames: result.sourceNames || [],
             sourceUnresolved: result.sourceUnresolved === true,
             sourceShows: (result.sourceNames || []).map(label),
@@ -198,7 +199,7 @@ class ShowMatchService {
     }
 
     // What to offer when teaching a nickname from one clip.
-    async nicknameSuggestions(id, index, showKey, season, seasons) {
+    async nicknameSuggestions(id, index, showKey, season, seasons, anyOf) {
         const filler = await this.fillerDB.getFiller(id);
         if ( (filler == null) || (filler.content[index] == null) ) {
             return null;
@@ -210,7 +211,10 @@ class ShowMatchService {
         // such before anything has been saved.
         const corpus = (await this.everyClip() ).map( (c) => ({ title: c.title,
             names: (c.names.length > 0) ? c.names : (c.reviewed ? [] : showMatch.propose(c.title, vocabulary, aliases).names) }) );
-        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons } );
+        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons, anyOf: anyOf } );
+        if (target === null) {
+            return [];
+        }
         return showMatch.nicknameSuggestions(filler.content[index].title, target, vocabulary, aliases, corpus);
     }
 
@@ -294,9 +298,10 @@ class ShowMatchService {
                 throw new ReviewError(`“${c.title}”: ${problem}.`);
             }
             for (const name of c.names) {
-                const key = clipNames.showOf(name);
-                if (typeof(vocabulary.names[key]) === 'undefined') {
-                    throw new ReviewError(`“${c.title}”: ${key} is not a show or movie on any channel.`);
+                for (const key of clipNames.showsOf(name) ) {
+                    if (typeof(vocabulary.names[key]) === 'undefined') {
+                        throw new ReviewError(`“${c.title}”: ${key} is not a show or movie on any channel.`);
+                    }
                 }
             }
         }
@@ -306,7 +311,7 @@ class ShowMatchService {
         const everyClip = Object.keys(wanted).length > 0 ? await this.everyClip() : [];
         for (const text of Object.keys(wanted) ) {
             if (! clipNames.validName(wanted[text]) ) {
-                throw new ReviewError(`Nickname “${text}” was not saved: it does not mean a show, a movie or a season of a show.`);
+                throw new ReviewError(`Nickname “${text}” was not saved: it does not mean a show, a movie or a season of a show, or any one of several shows.`);
             }
             const checked = showMatch.checkNickname(text, wanted[text], vocabulary, known, everyClip);
             if (! checked.ok) {

@@ -11,6 +11,9 @@
  *                                     one season of the show (0 is its specials)
  *   { show: "tv.Justice League", seasons: [3, 4, 5] }
  *                                     several seasons of one show (two or more, in order)
+ *   { anyOf: ["tv.Even Stevens", "tv.Kim Possible"] }
+ *                                     any one of several shows: a clip that represents a show
+ *                                     without announcing it (an actor's Wand ID)
  *   { show: "tv.Dragon Ball Z", episode: "Bardock - The Father of Goku" }
  *                                     one episode of the show, by title: a special
  *
@@ -32,6 +35,15 @@ function isSeasonsName(n) {
     return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'seasons');
 }
 
+function isAnyOfName(n) {
+    return (n != null) && (typeof(n) === 'object') && Object.prototype.hasOwnProperty.call(n, 'anyOf');
+}
+
+// The most shows one any-of name can hold.
+const MAX_ANY_OF = 8;
+// What an any-of member can be: a show or a custom show, never a movie or a season.
+const ANY_OF_MEMBER = /^(tv|custom)\..+/;
+
 function isEpisodeName(n) {
     return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'episode');
 }
@@ -45,6 +57,11 @@ function isEpisodeName(n) {
 function validName(n) {
     if ( (typeof(n) === 'string') && (n !== '') ) {
         return true;
+    }
+    if (isAnyOfName(n) && ! Array.isArray(n) ) {
+        // Two to eight different shows or custom shows, and nothing else in the object.
+        return (Object.keys(n).length === 1) && Array.isArray(n.anyOf) && (n.anyOf.length >= 2) && (n.anyOf.length <= MAX_ANY_OF)
+            && n.anyOf.every( (k) => (typeof(k) === 'string') && ANY_OF_MEMBER.test(k) ) && (new Set(n.anyOf).size === n.anyOf.length);
     }
     if ( (n == null) || (typeof(n) !== 'object') || Array.isArray(n) || (typeof(n.show) !== 'string') || ! SEASONED_SHOW.test(n.show) ) {
         return false;
@@ -79,6 +96,10 @@ function nameId(n) {
     if (isEpisodeName(n) ) {
         return `${n.show}#episode:${n.episode}`;
     }
+    if (isAnyOfName(n) && Array.isArray(n.anyOf) ) {
+        // The same shows in another order are the same name.
+        return 'anyOf:' + n.anyOf.slice().sort().join('|');
+    }
     return '#invalid';
 }
 
@@ -91,8 +112,22 @@ function showOf(n) {
     return (typeof(n) === 'string') ? n : ( (n != null) && (typeof(n.show) === 'string') ? n.show : null );
 }
 
-// Whether a name is for one movie, season or episode and not for a whole show.
+// The show keys a name is about: itself for a show or a movie, the show of a season or an
+// episode, every member of an any-of name. [] for anything that is not a name.
+function showsOf(n) {
+    if (isAnyOfName(n) ) {
+        return Array.isArray(n.anyOf) ? n.anyOf.slice() : [];
+    }
+    const key = showOf(n);
+    return (key === null) ? [] : [key];
+}
+
+// Whether a name is for one movie, season or episode and not for a whole show. An any-of
+// name is for whole shows, so it is not.
 function isSpecific(n) {
+    if (isAnyOfName(n) ) {
+        return false;
+    }
     return (typeof(n) !== 'string') || n.startsWith('movie.');
 }
 
@@ -105,6 +140,9 @@ function isSpecific(n) {
 function fits(name, program, showKey) {
     if ( (program == null) || (program.isOffline === true) ) {
         return false;
+    }
+    if (isAnyOfName(name) ) {
+        return (Array.isArray(name.anyOf) && name.anyOf.includes(showKey(program))) ? 'show' : false;
     }
     if (typeof(name) === 'string') {
         if (name.startsWith('movie.')) {
@@ -125,6 +163,19 @@ function fits(name, program, showKey) {
         return (program.title === name.episode) ? 'specific' : false;
     }
     return false;
+}
+
+/*
+ * The name for any one of some shows, in the one shape that is stored: null when none are
+ * given, the show's key for one, { anyOf } for two or more (repeats left out, the order
+ * kept). Keys that are not shows or custom shows are left out.
+ */
+function anyOfName(keys) {
+    const list = Array.from(new Set((Array.isArray(keys) ? keys : []).filter( (k) => (typeof(k) === 'string') && ANY_OF_MEMBER.test(k) )));
+    if (list.length === 0) {
+        return null;
+    }
+    return (list.length === 1) ? list[0] : { anyOf: list };
 }
 
 /*
@@ -180,6 +231,10 @@ function labelOf(n, showNames) {
     if (typeof(n) === 'string') {
         return text(n);
     }
+    if (isAnyOfName(n) ) {
+        const each = Array.isArray(n.anyOf) ? n.anyOf.map(text) : [];
+        return (each.length < 2) ? each.join('') : each.slice(0, -1).join(', ') + ' or ' + each[each.length - 1];
+    }
     if (isSeasonName(n) ) {
         return `${text(n.show)} · ${n.season === 0 ? 'Specials' : 'Season ' + n.season}`;
     }
@@ -195,6 +250,10 @@ function labelOf(n, showNames) {
 module.exports = {
     isSeasonName: isSeasonName,
     isSeasonsName: isSeasonsName,
+    isAnyOfName: isAnyOfName,
+    anyOfName: anyOfName,
+    MAX_ANY_OF: MAX_ANY_OF,
+    showsOf: showsOf,
     seasonsName: seasonsName,
     seasonsOf: seasonsOf,
     seasonsLabel: seasonsLabel,

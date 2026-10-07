@@ -1021,6 +1021,7 @@ div.programming-programs div.list-group-item {
 .names-review .nr-kind label { margin: 0 10px 0 0; white-space: nowrap; }
 .names-review .nr-seasons { flex: 1 0 100%; padding-left: 8.5rem; }
 .names-review .nr-season { display: inline-block; margin: 0 14px 2px 0; white-space: nowrap; }
+.names-review .nr-member { display: flex; align-items: center; gap: 4px; margin: 2px 0; }
 .names-review .nr-reads { flex: 1 0 100%; padding-left: 8.5rem; }
 .names-review .nr-slot-label { flex: 0 0 8rem; color: #555; }
 .names-review .nr-slot select { min-width: 0; flex: 1 1 14rem; }

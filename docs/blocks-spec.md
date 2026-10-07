@@ -467,15 +467,29 @@ first). It is proposed automatically and fixed on a review screen:
   | One season | `{ "show": "tv.Dragon Ball Z", "season": 3 }` | episodes of that season of the show; season 0 is its specials |
   | Several seasons | `{ "show": "tv.Justice League", "seasons": [3, 4, 5] }` | episodes of any of those seasons of the show (Justice League Unlimited is seasons 3 to 5 of Justice League in Plex) |
   | One special | `{ "show": "tv.Dragon Ball Z", "episode": "Bardock - The Father of Goku" }` | the episode of that title |
+  | Any one of several shows | `{ "anyOf": ["tv.Even Stevens", "tv.Kim Possible"] }` | a program of any of those shows |
 
-  The last three are *specific*. A show key does not fit a movie, and a movie key does not fit
-  the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
+  The movie, the seasons and the special are *specific*; an any-of name is not. A show key does not
+  fit a movie, and a movie key does not fit the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
   `tv.` show has seasons and specials; a custom show is one show. A name is valid when it is one of
   these exactly (no extra fields, a whole season from 0 up; several seasons are two or more, ascending
   and without repeats, since one season is the shape above); `namesProblem` warns at save about
   anything else and `namesOf` reads it as naming nothing, so an unusable name never turns a clip
   into a general one. A clip holds up to four names in air order, whatever they are, and the same
   name is not picked twice in a row.
+
+  **Any one of several shows (built Oct 7, 2026).** A clip that represents a show without announcing
+  it (an actor's Wand ID: "Emily Osment Wand ID", "Christy Carlson Romano Wand ID") names an actor, not a
+  show, and an actor may stand for more than one show (Christy Carlson Romano: Even Stevens and Kim
+  Possible). `{ "anyOf": [show, show, ...] }` is two to eight different shows or custom shows (never a
+  movie, a season or a special, and one show is just that show's key), and it fits a program of any of
+  them, as the show: it takes its turn by longest idle with a clip naming that show exactly, and it is not
+  a specific match. In a list whose clips feature shows it counts as naming the show coming up, so it is
+  in the first tier there. It takes one place in a clip's list of names, so "A then B" in airing order is
+  unchanged and an any-of can be one of the places ("Hannah Montana, then Even Stevens or Kim Possible").
+  The same shows in another order are the same name. A nickname for one show already worked ("emily
+  osment" for Hannah Montana); a nickname may now mean an any-of too. When a title names a show itself and
+  a nickname for an any-of that includes it, the show the title names wins.
 
   *What the matcher suggests.* (1) **A movie, by its subtitle**, the part after its colon with a
   leading "The" optional, or by its whole title when it is not in a custom show (as before): "DragonBall
@@ -505,7 +519,9 @@ first). It is proposed automatically and fixed on a review screen:
   would never be found, so nicknames for seasons whose phrase contains a title of their own show are
   looked for in the whole clip title first. No other nickname can hold a title of the show it names, so
   every nickname taught before reads as it did. When teaching a nickname for seasons the screen offers
-  the show's title with the word next to it in the clip's title.
+  the show's title with the word next to it in the clip's title. A stretch of leftover words too long to
+  be a nickname is also offered by its first three words when they sit inside no bracket ("christy
+  carlson romano" from "Christy Carlson Romano Wand ID").
   The nickname rules are the same (everyday words, numbers, a title or an existing nickname, a
   clip saved under a different show, the clip it is taught from has to be read by it), with
   two differences: a clip already saved as the whole show never blocks a season nickname for
