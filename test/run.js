@@ -21,6 +21,7 @@ const suites = [
     './lookahead',
     './lineup-cursor',
     './stream-cursor',
+    './shared-breaks',
     './backup-verified-copy',
     './backup-retention',
     './backup-restore-check',

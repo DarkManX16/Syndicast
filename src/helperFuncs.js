@@ -344,7 +344,20 @@ function pickRandomWithMaxDuration(programPlayTime, channel, fillers, maxDuratio
                 //Can't pick from this filler list due to cooldown
             } else if (!pickedList) {
                 let t1 = channelCache.getFillerLastPlayTime( programPlayTime, channel.number, fillers[j].id );
-                let timeSince = ( (t1 == 0) ?  D :  (t0 - t1) );
+                /*
+                 * A play time is recorded as the moment the item will end, so
+                 * while a clip from this list is still on the air - for another
+                 * viewer of the channel - t1 is in the future. Measured from
+                 * there, a list with no cooldown was refused until 10 seconds
+                 * before that clip ended, and on a mix of one list that left the
+                 * second viewer the offline screen for the rest of the first
+                 * viewer's clip, and the two took turns. An item still on the air
+                 * counts as playing now: no cooldown means none, and a cooldown
+                 * still runs from the end of the clip (the wait below is measured
+                 * from there). See NOTES.md, "Two viewers of a channel took turns
+                 * with the offline screen".
+                 */
+                let timeSince = ( (t1 == 0) ?  D :  Math.max(0, t0 - t1) );
                 if (timeSince + SLACK >= fillers[j].cooldown) {
                     //should we pick this list?
                     listM += fillers[j].weight;
@@ -356,7 +369,8 @@ function pickRandomWithMaxDuration(programPlayTime, channel, fillers, maxDuratio
                         break;
                     }
                 } else {
-                    let w = fillers[j].cooldown - timeSince;
+                    // from the end of the clip, however far ahead that is
+                    let w = fillers[j].cooldown - (t0 - t1);
                     if (clip.duration + w <= maxDuration + SLACK) {
                         minimumWait = Math.min(minimumWait, w);
                     }
