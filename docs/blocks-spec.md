@@ -552,6 +552,14 @@ cursor = { ..., inBreak: true, phase: 'out' | 'flex' | 'in', step: k,
 - **A viewer tuning in on the replay cache** inherits the item and its cursor
   as today, plan included, so two viewers 10 seconds apart see the same
   sequence.
+- **The Flex itself is shared too (Oct 7, 2026).** Each Flex entry keeps one
+  list of picks per channel, like the plan: the first viewer to need the next
+  commercial picks it and counts its cooldowns, once; every other viewer plays
+  the same one next, from its start. A viewer for whom a shared pick no longer
+  fits what is left of its break picks its own for the rest of it, and a
+  leftover under 30 seconds with nothing to fill it ends the break rather than
+  show the offline screen. See NOTES.md, "Two viewers of a channel took turns
+  with the offline screen".
 - **The 60-second tolerance** is unchanged and measured at the Flex, where it
   always was: a stream further off than that falls back to the clock as now.
 - A step's lineup item has `type: 'transition'`, so the channel detail page
