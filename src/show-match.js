@@ -67,7 +67,7 @@ const CLIP_MAX_MS = 60 * 1000;
  * episodes a custom show holds as movies - Looney Tunes, a gym-class cartoon - and
  * a subtitle of one of those would be matched against every clip's title.
  */
-const MOVIE_MIN_MS = 40 * 60 * 1000;
+const MOVIE_MIN_MS = clipNames.MOVIE_MIN_MS;
 
 /*
  * Words that do not make a subtitle a title of its own: "The Movie" is the end of
@@ -230,8 +230,7 @@ function buildVocabulary(channels, customShowNames) {
             if ( (program == null) || (program.isOffline === true) ) {
                 continue;
             }
-            if ( (program.type === 'movie') && (typeof(program.title) === 'string') && (program.title !== '')
-                && (typeof(program.duration) === 'number') && (program.duration >= MOVIE_MIN_MS) ) {
+            if (clipNames.isListableMovie(program) ) {
                 movies.set(program.title, (typeof(program.customShowId) !== 'undefined') ? (program.customShowName || 'a custom show') : null);
             }
             if ( (program.type === 'episode') && (typeof(program.showTitle) === 'string') && Number.isInteger(program.season)

@@ -24,6 +24,19 @@
  * Pure and free of I/O, like the modules that read it.
  */
 
+/*
+ * The movie length the names picker and the channel page's Movies tab share: a movie of 40
+ * minutes or more. The movie items under that on the channels are shorts and episodes that a
+ * custom show holds as movies, and listing them would bury the films.
+ */
+const MOVIE_MIN_MS = 40 * 60 * 1000;
+
+// Whether a program is a movie that is long enough to be listed (picked, shown under Movies).
+function isListableMovie(program) {
+    return (program != null) && (program.type === 'movie') && (typeof(program.title) === 'string') && (program.title !== '')
+        && (typeof(program.duration) === 'number') && (program.duration >= MOVIE_MIN_MS);
+}
+
 // A show a season or an episode belongs to is one with seasons: a series from Plex.
 const SEASONED_SHOW = /^tv\..+/;
 
@@ -248,6 +261,8 @@ function labelOf(n, showNames) {
 }
 
 module.exports = {
+    MOVIE_MIN_MS: MOVIE_MIN_MS,
+    isListableMovie: isListableMovie,
     isSeasonName: isSeasonName,
     isSeasonsName: isSeasonsName,
     isAnyOfName: isAnyOfName,

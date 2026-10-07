@@ -2545,6 +2545,26 @@ on shows.
       `lazy-img`, the same mechanisms the programming list and Plex library
       browser already use at this scale, are what actually render each tile.
 
+      **Movies inside custom shows, Oct 7, 2026 (Sonnet 5.5), on branch `names-seasons-anyof`.** The
+      Movies tab also lists the movies that sit inside custom shows, 40 minutes or longer, each
+      labelled with its custom show ("Halloweentown in Friday DCOM Movies"). A custom show's tile
+      stays under Shows and still counts the movies it holds: the movie is in both places. Before,
+      a movie in a custom show was reachable only by opening the custom show's tile.
+
+      - **The same rule as the names picker, by sharing it.** The length (`clipNames.MOVIE_MIN_MS`,
+        40 minutes) and the test (`clipNames.isListableMovie`) are one definition that `show-match.js`
+        and the library both read, and a test checks the two lists name the same movies. Shorts and
+        episodes that a custom show holds as movies (603 on channel 1, 646 on channel 3 on the dev
+        copy) stay out; a movie of its own is still listed at any length, as it was.
+      - **What it lists on the dev copy:** channel 1 14 movies (Cartoon Theatre Movies 12, My Gym
+        Partner's a Monkey 2), channel 3 15 (AfterToon, Friday DCOM, SATurday and Sunday Disney
+        Movies), channel 2 none. A movie in two custom shows is listed once for each; the same item
+        airing twice is one row with its count.
+      - **`buildLibrary` moved** from the controller into `src/channel-library.js` (pure, taking
+        `getShowData`), unchanged but for the new branch, so `test/channel-library.js` can drive it
+        with a lineup. Verified in the browser on a copy: channel 3's Movies tab reads "Movies (15)"
+        with the labels.
+
 ### Infrastructure
 
 - [ ] Public channel sharing without exposing an IP

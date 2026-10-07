@@ -494,7 +494,8 @@ first). It is proposed automatically and fixed on a review screen:
   *What the matcher suggests.* (1) **A movie, by its subtitle**, the part after its colon with a
   leading "The" optional, or by its whole title when it is not in a custom show (as before): "DragonBall
   Z Movie Cooler's Revenge Intro" names "Dragon Ball Z: Cooler's Revenge" and not the show it
-  belongs to, which a movie that was found replaces. Only movies of **40 minutes or more** are
+  belongs to, which a movie that was found replaces. Only movies of **40 minutes or more** (`clipNames.MOVIE_MIN_MS`, also the rule for the channel detail page's Movies tab, which
+  lists the long movies inside custom shows too, labelled with the custom show) are
   offered: the movie items under that on the channels are shorts and episodes that a custom show
   holds as movies (1,054 of the 1,374 distinct ones on the dev channels are under 15 minutes),
   and a subtitle of one of those would be looked for in every clip's title. A subtitle that is
