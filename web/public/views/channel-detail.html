@@ -135,7 +135,7 @@
                     <li class="list-group-item" ng-repeat="m in library.movies track by $index">
                         <div class="flex-container library-item-hover" ng-click="showProgramInfo(m.program)">
                             <img ng-if="displayImages" lazy-img="{{m.icon}}"></img>
-                            <span class="flex-grow-1">{{m.title}}</span>
+                            <span class="flex-grow-1">{{m.title}}<span ng-if="m.inCustomShow" class="text-muted small" style="margin-left: 0.5em;">in {{m.inCustomShow}}</span></span>
                             <span ng-if="m.count > 1" class="text-muted small" style="margin-right: 1em;">&times;{{m.count}}</span>
                             <span>{{durationString(m.durationMs)}}</span>
                         </div>

@@ -555,7 +555,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     router.post('/api/filler/:id/nickname-check', async(req, res) => {
       try {
         let body = req.body || {};
-        let result = await showMatchService.checkNickname(req.params.id, String(body.text == null ? '' : body.text), body.showKey, body.index, body.season);
+        let result = await showMatchService.checkNickname(req.params.id, String(body.text == null ? '' : body.text), body.showKey, body.index, body.season, body.seasons, body.anyOf);
         if (result == null) {
             return res.status(404).send("Filler not found");
         }
@@ -570,7 +570,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     router.post('/api/filler/:id/nickname-suggestions', async(req, res) => {
       try {
         let body = req.body || {};
-        let result = await showMatchService.nicknameSuggestions(req.params.id, body.index, body.showKey, body.season);
+        let result = await showMatchService.nicknameSuggestions(req.params.id, body.index, body.showKey, body.season, body.seasons, body.anyOf);
         if (result == null) {
             return res.status(404).send("Filler or clip not found");
         }
@@ -591,6 +591,40 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
         }
         res.send(seasons);
       } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // The Nicknames page: every nickname with what it means, and the shows to pick from.
+    router.get('/api/nicknames', async(req, res) => {
+      try {
+        res.send(await showMatchService.nicknames());
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // What editing or deleting a nickname would change, before it is saved. Saves nothing.
+    router.post('/api/nicknames/preview', async(req, res) => {
+      try {
+        res.send(await showMatchService.previewNickname(req.body));
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // Edits or deletes one nickname (only the alias file is written, never a clip).
+    // Answers with the list as it now reads, or 400 with what to say.
+    router.post('/api/nicknames/save', async(req, res) => {
+      try {
+        res.send(await showMatchService.saveNickname(req.body));
+      } catch(err) {
+        if (err instanceof showMatchService.constructor.ReviewError) {
+            return res.status(400).send({ error: err.message });
+        }
         console.error(err);
         res.status(500).send("error");
       }

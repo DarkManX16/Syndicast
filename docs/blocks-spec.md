@@ -455,8 +455,18 @@ first). It is proposed automatically and fixed on a review screen:
   nickname. A nickname that is used for its clip but leaves the clip's title with another show
   nobody has named yet is accepted, and the clip stays flagged until that one is taught too.
   Aliases are stored once, in
-  `<data>/show-aliases.json`, shared by every list and channel. There is no
-  alias editor; the review screen is the alias editor.
+  `<data>/show-aliases.json`, shared by every list and channel. The review screen
+  teaches nicknames; **the Nicknames page** (reached from a button on the Filler Lists page) lists every
+  nickname with what it means in words, how many clips have it in their title and whether a show it means is
+  gone, and edits or deletes one: its text, what it means (a show, some of its seasons, any one of several
+  shows), or both. A nickname only ever changes what is *suggested* for a clip whose names are not saved,
+  so **editing or deleting one never rewrites a name already saved on a clip**; before it saves, the page
+  lists the clips whose suggestion would change (what it is now, what it would become) and counts the clips
+  with the nickname in their title that keep a saved name, the way the teach panel lists the clips a new
+  nickname would name. An edit follows the rules of teaching a nickname (everyday words, a title, an
+  existing nickname, a show on a channel) except the check against other clips: changing what a nickname
+  means is a decision, and what it touches is listed. The writer reads the file as it is, so an entry
+  it does not touch is written back exactly as it was, and refuses a file that is not valid JSON.
 - **Movies, seasons and specials (built Oct 6, 2026).** A name in `names` is still a show key,
   and every `names` saved before reads and plays unchanged. It may now also be (`src/clip-names.js`):
 
@@ -465,20 +475,37 @@ first). It is proposed automatically and fixed on a review screen:
   | The show | `"tv.Dragon Ball Z"` (and `custom.<id>`, `audio.<title>`) | every program of the show |
   | One movie | `"movie.Dragon Ball Z: Cooler's Revenge"` | that movie, wherever it airs: on its own or inside a custom show (it is the movie's own title, never the custom show's key) |
   | One season | `{ "show": "tv.Dragon Ball Z", "season": 3 }` | episodes of that season of the show; season 0 is its specials |
+  | Several seasons | `{ "show": "tv.Justice League", "seasons": [3, 4, 5] }` | episodes of any of those seasons of the show (Justice League Unlimited is seasons 3 to 5 of Justice League in Plex) |
   | One special | `{ "show": "tv.Dragon Ball Z", "episode": "Bardock - The Father of Goku" }` | the episode of that title |
+  | Any one of several shows | `{ "anyOf": ["tv.Even Stevens", "tv.Kim Possible"] }` | a program of any of those shows |
 
-  The last three are *specific*. A show key does not fit a movie, and a movie key does not fit
-  the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
+  The movie, the seasons and the special are *specific*; an any-of name is not. A show key does not
+  fit a movie, and a movie key does not fit the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
   `tv.` show has seasons and specials; a custom show is one show. A name is valid when it is one of
-  these exactly (no extra fields, a whole season from 0 up); `namesProblem` warns at save about
+  these exactly (no extra fields, a whole season from 0 up; several seasons are two or more, ascending
+  and without repeats, since one season is the shape above); `namesProblem` warns at save about
   anything else and `namesOf` reads it as naming nothing, so an unusable name never turns a clip
   into a general one. A clip holds up to four names in air order, whatever they are, and the same
   name is not picked twice in a row.
 
+  **Any one of several shows (built Oct 7, 2026).** A clip that represents a show without announcing
+  it (an actor's Wand ID: "Emily Osment Wand ID", "Christy Carlson Romano Wand ID") names an actor, not a
+  show, and an actor may stand for more than one show (Christy Carlson Romano: Even Stevens and Kim
+  Possible). `{ "anyOf": [show, show, ...] }` is two to eight different shows or custom shows (never a
+  movie, a season or a special, and one show is just that show's key), and it fits a program of any of
+  them, as the show: it takes its turn by longest idle with a clip naming that show exactly, and it is not
+  a specific match. In a list whose clips feature shows it counts as naming the show coming up, so it is
+  in the first tier there. It takes one place in a clip's list of names, so "A then B" in airing order is
+  unchanged and an any-of can be one of the places ("Hannah Montana, then Even Stevens or Kim Possible").
+  The same shows in another order are the same name. A nickname for one show already worked ("emily
+  osment" for Hannah Montana); a nickname may now mean an any-of too. When a title names a show itself and
+  a nickname for an any-of that includes it, the show the title names wins.
+
   *What the matcher suggests.* (1) **A movie, by its subtitle**, the part after its colon with a
   leading "The" optional, or by its whole title when it is not in a custom show (as before): "DragonBall
   Z Movie Cooler's Revenge Intro" names "Dragon Ball Z: Cooler's Revenge" and not the show it
-  belongs to, which a movie that was found replaces. Only movies of **40 minutes or more** are
+  belongs to, which a movie that was found replaces. Only movies of **40 minutes or more** (`clipNames.MOVIE_MIN_MS`, also the rule for the channel detail page's Movies tab, which
+  lists the long movies inside custom shows too, labelled with the custom show) are
   offered: the movie items under that on the channels are shorts and episodes that a custom show
   holds as movies (1,054 of the 1,374 distinct ones on the dev channels are under 15 minutes),
   and a subtitle of one of those would be looked for in every clip's title. A subtitle that is
@@ -496,7 +523,16 @@ first). It is proposed automatically and fixed on a review screen:
   taught for it. Both name nothing until the review screen decides them.
 
   *Season nicknames.* `show-aliases.json` may map a phrase to `{ "show": "tv.Dragon Ball Z",
-  "season": 3 }` as well as to a show key; the file's reader keeps either and drops anything else.
+  "season": 3 }`, or to several seasons, `{ "show": "tv.Justice League", "seasons": [3, 4, 5] }`
+  ("justice league unlimited"), as well as to a show key; the file's reader keeps any of them and drops
+  anything else. **A nickname for seasons may hold its show's own title** ("justice league unlimited"
+  holds "Justice League"). Nicknames are otherwise looked for only in what the titles leave, and this one
+  would never be found, so nicknames for seasons whose phrase contains a title of their own show are
+  looked for in the whole clip title first. No other nickname can hold a title of the show it names, so
+  every nickname taught before reads as it did. When teaching a nickname for seasons the screen offers
+  the show's title with the word next to it in the clip's title. A stretch of leftover words too long to
+  be a nickname is also offered by its first three words when they sit inside no bracket ("christy
+  carlson romano" from "Christy Carlson Romano Wand ID").
   The nickname rules are the same (everyday words, numbers, a title or an existing nickname, a
   clip saved under a different show, the clip it is taught from has to be read by it), with
   two differences: a clip already saved as the whole show never blocks a season nickname for

@@ -215,6 +215,106 @@ function picksProblem(keys) {
 }
 
 /*
+ * The picker's slots. A slot is { key, kind, picked, special, any, members }: the show
+ * or movie key picked, and for a show with seasons what part of it: kind 'all' (any
+ * episode), 'seasons' (the seasons in `picked`, { 3: true, 4: true }) or 'special' (the
+ * episode titled `special`). A slot with `any` set is for any one of several shows
+ * instead, `members` ([{ key }, ...], two to eight) and no `key`. slotOfName reads a
+ * stored name into a slot and slotName turns a slot back into a name; slotProblem says
+ * why a slot cannot be one yet.
+ */
+function emptySlot() {
+    return { key: null, kind: 'all', picked: {}, special: '', any: false, members: [] };
+}
+
+function slotOfName(name) {
+    const slot = emptySlot();
+    if (typeof(name) === 'string') {
+        slot.key = name;
+    } else if (clipNames.isAnyOfName(name) ) {
+        slot.any = true;
+        slot.members = name.anyOf.map( (k) => ({ key: k }) );
+    } else if (clipNames.isSeasonName(name) || clipNames.isSeasonsName(name) ) {
+        slot.key = name.show;
+        slot.kind = 'seasons';
+        for (const n of clipNames.seasonsOf(name) ) {
+            slot.picked[n] = true;
+        }
+    } else if (clipNames.isEpisodeName(name) ) {
+        slot.key = name.show;
+        slot.kind = 'special';
+        slot.special = name.episode;
+    }
+    return slot;
+}
+
+function pickedSeasons(slot) {
+    return Object.keys(slot.picked || {}).filter( (k) => slot.picked[k] ).map(Number).sort( (a, b) => a - b );
+}
+
+function slotProblem(slot) {
+    if (slot.any === true) {
+        const keys = (slot.members || []).map( (m) => m.key );
+        if (keys.some( (k) => ! k )) {
+            return 'a show has not been picked';
+        }
+        if (new Set(keys).size !== keys.length) {
+            return 'the same show is picked twice in an any-of';
+        }
+        if (keys.length < 2) {
+            return 'an any-of needs two shows';
+        }
+        return (keys.length > clipNames.MAX_ANY_OF) ? 'an any-of holds too many shows' : null;
+    }
+    if (! slot.key) {
+        return 'a show has not been picked';
+    }
+    if (/^tv[.]/.test(slot.key) ) {
+        if ( (slot.kind === 'seasons') && (pickedSeasons(slot).length === 0) ) {
+            return 'no season is ticked';
+        }
+        if ( (slot.kind === 'special') && ! slot.special ) {
+            return 'no special is picked';
+        }
+    }
+    return null;
+}
+
+function slotName(slot) {
+    if (slotProblem(slot) !== null) {
+        return null;
+    }
+    if (slot.any === true) {
+        return clipNames.anyOfName(slot.members.map( (m) => m.key ));
+    }
+    if (/^tv[.]/.test(slot.key) && (slot.kind === 'seasons') ) {
+        return clipNames.seasonsName(slot.key, pickedSeasons(slot) );
+    }
+    if (/^tv[.]/.test(slot.key) && (slot.kind === 'special') ) {
+        return { show: slot.key, episode: slot.special };
+    }
+    return slot.key;
+}
+
+/*
+ * What a nickname means, from what the nickname panel or a request says: the show's
+ * key, { show, season } for one season, { show, seasons } for several, or { anyOf }
+ * when `anyOf` lists two or more shows. `seasons` is the list of seasons ticked (a
+ * single one is read as `season`); older callers pass `season`. null when no show is
+ * given.
+ */
+function nicknameTarget(spec) {
+    if ( (spec != null) && Array.isArray(spec.anyOf) ) {
+        return clipNames.anyOfName(spec.anyOf);
+    }
+    if ( (spec == null) || (typeof(spec.showKey) !== 'string') || (spec.showKey === '') ) {
+        return null;
+    }
+    const seasons = Array.isArray(spec.seasons) ? spec.seasons : ( Number.isInteger(spec.season) ? [spec.season] : [] );
+    return clipNames.seasonsName(spec.showKey, seasons);
+}
+
+/*
  * What a save sends: only the clips decided on this screen and only the
  * nicknames taught on it - a clip nobody looked at is not in it, so it is not
  * written. `nicknames` is [{ alias, target }] with `alias` already in the form
@@ -282,6 +382,12 @@ module.exports = {
     acceptAll: acceptAll,
     cleanPicks: cleanPicks,
     picksProblem: picksProblem,
+    emptySlot: emptySlot,
+    slotOfName: slotOfName,
+    slotName: slotName,
+    slotProblem: slotProblem,
+    pickedSeasons: pickedSeasons,
+    nicknameTarget: nicknameTarget,
     savePayload: savePayload,
     pendingCount: pendingCount,
     carryNames: carryNames,

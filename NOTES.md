@@ -978,6 +978,120 @@ for the full spec, stages and acceptance tests.
         save's checks and the seasons cache). One defensive check in the save (the nickname's shape, before
         `checkNickname` would refuse it anyway) is covered only by its message.
 
+      **Several seasons in one name, Oct 7, 2026 (Sonnet 5.5), on branch `names-seasons-anyof`.**
+      Ron's ask: Justice League Unlimited is seasons 3 to 5 of Justice League in his Plex, so
+      "Toonami - Justice League Unlimited Short Intro" should play before any episode of seasons 3, 4
+      or 5, picked as several seasons in the picker and taught as a nickname ("justice league
+      unlimited"). The first of four commits on the branch (the others: "any one of" several shows,
+      the Movies tab, and a Nicknames page).
+
+      - **The shape.** `{ show: "tv.Justice League", seasons: [3, 4, 5] }` beside `{ show, season }`:
+        two or more seasons, ascending, no repeats (one season stays the old shape, so the picker's
+        one-season choice saves exactly what it did). It is specific like a season, fits an episode of
+        any listed season, and reads "Justice League · Seasons 3–5" (`clipNames.seasonsName` makes the
+        one stored form, `seasonsLabel` the words). Names saved before read and play as they did.
+      - **The nickname holds the show's own title.** A phrase is looked for only in what the titles
+        left, and "justice league unlimited" starts with the title "Justice League", which takes those
+        words first and leaves "unlimited": the phrase could never match, which is why Ron had taught
+        the one word "unlimited" (as season 3) instead. Nicknames for seasons whose phrase contains a
+        title of their own show are now looked for in the whole title first (`ownTitleNicknames`).
+        No other nickname can hold a title of its show, so nothing taught before reads differently.
+        The teach panel offers the show's title with the word next to it from the clip's title.
+      - **The picker** has three radios under a show with seasons (Any episode / Some seasons / A
+        special), a checkbox per season (Plex's title, the folder beside it) and a "reads as" line;
+        the teach panel has The whole show / Some seasons with the same checkboxes. The slot logic is
+        in `src/names-review.js` (`slotOfName`, `slotName`, `slotProblem`, `nicknameTarget`) so a test
+        drives it. The check and suggestion routes take `seasons: [..]` as well as `season`.
+      - **Proved additive** with `node scripts/compare-names-engines.js <data copy> <old checkout>`,
+        which runs two source trees side by side: on the dev copy (9,442 clips in 100 lists, 40
+        nicknames) the matcher proposes the same for every clip, and channel 1's 3,520 breaks over 8
+        weeks, with `show`, `pair` and `any` steps from the 40 lists that carry saved names on every
+        situation of every day-part and block, build the same plans: **0 differ**. The control
+        (every saved show narrowed to one season) differs on 2,702, so the comparison can see a
+        change. Test file: `test/names-seasons-anyof.js`, mutation-checked.
+      - **Ron's data.** His "unlimited" nickname (season 3 only) still works and the new phrase wins
+        where both are in a title. "Toonami - Justice League Unlimited Short Intro (4K HD)" is saved
+        as season 3 only and stays so until it is re-picked as seasons 3 to 5; a nickname never
+        rewrites a saved name.
+
+      **"Any one of" several shows in a name, Oct 7, 2026 (Sonnet 5.5), same branch.** The second
+      commit. Ron's Disney Channel Wand IDs show an actor, not a show ("Emily Osment Wand ID",
+      "Christy Carlson Romano Wand ID"), and an actor can stand for more than one show (Christy
+      Carlson Romano: Even Stevens and Kim Possible). A name may now be `{ anyOf: [show, show, ...] }`
+      (`clipNames.anyOfName` makes the stored form): two to eight different shows or custom shows, in
+      the order picked; the same shows in another order are the same name (`nameId`).
+
+      - **What it fits and where it ranks.** A program of any member, as the show: not specific, so a
+        season clip beats it and a clip naming the show exactly shares its tier and takes its turn by
+        longest idle. In a "These clips feature shows" list it counts as naming the show coming up
+        (first tier). It is one place in a multi-show list, so "A then B" in airing order is unchanged
+        and an any-of can fill a place; the pair step reads it as the show that ended or is coming up.
+        All through `clipNames.fits`, so `buildPlan` needed no change.
+      - **Not the same as a multi-show title.** "Kim Possible to Even Stevens" is two places in
+        order; `{ anyOf: [Even Stevens, Kim Possible] }` is one place either can fill. Both are kept.
+      - **Nicknames.** A nickname for one show already worked ("emily osment" for Hannah Montana). It
+        can now mean an any-of (`show-aliases.json` keeps `{ anyOf: [...] }`; the reader drops one that
+        is not in the stored shape). A hit needs a key, so an any-of nickname's hit carries a made-up
+        `any:...` key that never equals a show's; `nameOfHit` turns it back into the name. A show the
+        title names itself beats an any-of nickname that includes it ("Christy Carlson Romano Kim
+        Possible Promo" is for Kim Possible). The nickname checks are the same with "the set of shows"
+        where there was "the show": a clip saved under a show that is none of them blocks it, one
+        saved under one of them does not (`clipNames.showsOf`). Teaching from "Christy Carlson Romano
+        Wand ID" now offers "christy carlson romano": a stretch of leftover words longer than three is
+        offered by its first three when they sit in no bracket.
+      - **Picker and teach panel.** A slot has "One show / Any one of these shows" and, for any-of, a
+        select per show with "+ add a show" (two to eight, movies not offered); the teach panel has "One
+        show / Some seasons of it / Any one of several shows". Slot logic stays in `src/names-review.js`
+        (`slotProblem` says why a slot is not a name yet), the check and suggestion routes take
+        `anyOf: [..]`.
+      - **Proved additive** again with `scripts/compare-names-engines.js` (0 of 9,442 proposals and 0 of
+        3,520 plans differ, control 2,702). Writers and readers of a name, enumerated: writers are the
+        review save (`validName`, every member must be a show on a channel), the alias file, the filler
+        editor and `carryNames` (pass through); readers are `namesOf`/`namesProblem`, `propose`,
+        `checkNickname`, `learnAliases`, `nicknameSuggestions`, `buildPlan` through `fits`, the screen
+        and Names tag through `labelOf` (the service gives every member a display name), and the
+        scripts. Tests in `test/names-seasons-anyof.js`, mutation-checked.
+      - **The Wand ID clips are not in the dev copy** (no title with "Wand" in any of the 100 lists), so
+        the check used the nearest real titles ("Express Yourself (Christy Romano)", the Kim Possible
+        and Even Stevens promos) and stand-ins named like Ron's.
+
+      **The Nicknames page, Oct 7, 2026 (Sonnet 5.5), same branch.** The fourth commit. Until now
+      a nickname could be taught on the review screen and never changed: "unlimited" (taught as
+      season 3 of Justice League as a stand-in) could not be removed, and Ron will teach many more.
+      A "Nicknames" button on the Filler Lists page opens `#!/nicknames`: every nickname with what it
+      means in words, how many clips have it in their title ("In titles") and whether a show it
+      means is no longer on any channel, searchable, with Edit and Delete.
+
+      - **Edit** changes the text, what it means (one show, some seasons of it, any one of several
+        shows, the same pickers as the teach panel) or both. **Delete** asks first. Neither writes a
+        clip: `ShowMatchService#saveNickname` only calls the alias file's new writer
+        (`ShowAliasDB#change`), and a test spies on `fillerDB.saveFiller` and compares the list files
+        byte for byte before and after. A nickname only changes what is *suggested* for a clip with
+        no saved names; a clip with names saved, or saved as naming no show, keeps them.
+      - **Before it saves, it shows what would change**, as the teach panel does (`POST
+        /api/nicknames/preview`, read-only; `src/nicknames.js previewEdit`): every unsaved clip
+        whose suggestion would be different with what it is now and what it would become (a flagged
+        title counts), the count of clips that keep a saved name, and the reason when the edit is
+        refused. Save is disabled until the preview is ok, and the save runs the same check again.
+      - **Rules.** The text and meaning follow teaching (`nicknameProblems`, split out of
+        `checkNickname`: a show on a channel, at most six words, not only everyday words or a
+        number, not a title, not another nickname) but not teaching's check against other clips,
+        which would refuse changing what a nickname means whenever a clip saved under the old show
+        has it in its title; here that is exactly what the preview lists.
+      - **The writer** (`ShowAliasDB#change`) reads the file as it is, not through the reader that
+        drops what it cannot use, so an entry the page does not touch (a hand-edited one) and any
+        other key in the file is written back as it was; a nickname keeps its place when it is only
+        given another meaning; the write goes through a temporary file and a rename; a file that is
+        not valid JSON is refused, never replaced.
+      - **What the real data showed.** On the dev copy, deleting the stand-in "unlimited" lists one
+        clip, "Comm Break (WWE Unlimited Action Figure) (2003)" in Nick GaS, that the stand-in had
+        been suggesting as Justice League season 3, and counts 4 clips that keep their names (the
+        Justice League intro saved as seasons 3 to 5, and others). The list files were identical
+        before and after (the checksum of every list in the folder).
+      - Test file `test/nicknames-page.js`, mutation-checked. Writers of the alias file, enumerated:
+        the review save (`merge`, adds only) and this page (`change`, edit and delete); readers are
+        `propose` and the checks, which read through `load`.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
@@ -2467,6 +2581,26 @@ on shows.
       first (reusing `getShowData`'s existing show grouping) - `vs-repeat` and
       `lazy-img`, the same mechanisms the programming list and Plex library
       browser already use at this scale, are what actually render each tile.
+
+      **Movies inside custom shows, Oct 7, 2026 (Sonnet 5.5), on branch `names-seasons-anyof`.** The
+      Movies tab also lists the movies that sit inside custom shows, 40 minutes or longer, each
+      labelled with its custom show ("Halloweentown in Friday DCOM Movies"). A custom show's tile
+      stays under Shows and still counts the movies it holds: the movie is in both places. Before,
+      a movie in a custom show was reachable only by opening the custom show's tile.
+
+      - **The same rule as the names picker, by sharing it.** The length (`clipNames.MOVIE_MIN_MS`,
+        40 minutes) and the test (`clipNames.isListableMovie`) are one definition that `show-match.js`
+        and the library both read, and a test checks the two lists name the same movies. Shorts and
+        episodes that a custom show holds as movies (603 on channel 1, 646 on channel 3 on the dev
+        copy) stay out; a movie of its own is still listed at any length, as it was.
+      - **What it lists on the dev copy:** channel 1 14 movies (Cartoon Theatre Movies 12, My Gym
+        Partner's a Monkey 2), channel 3 15 (AfterToon, Friday DCOM, SATurday and Sunday Disney
+        Movies), channel 2 none. A movie in two custom shows is listed once for each; the same item
+        airing twice is one row with its count.
+      - **`buildLibrary` moved** from the controller into `src/channel-library.js` (pure, taking
+        `getShowData`), unchanged but for the new branch, so `test/channel-library.js` can drive it
+        with a lineup. Verified in the browser on a copy: channel 3's Movies tab reads "Movies (15)"
+        with the labels.
 
 ### Infrastructure
 

@@ -3,6 +3,7 @@ const namesReview = require('../names-review');
 const transitions = require('../transitions');
 const clipNames = require('../clip-names');
 const showSeasons = require('../show-seasons');
+const nicknamesLogic = require('../nicknames');
 const Plex = require('../plex');
 
 // The most clips a nickname check lists by name; the counts are always complete.
@@ -82,9 +83,10 @@ class ShowMatchService {
         const showNames = {};
         const remember = (names) => {
             for (const name of names) {
-                const key = clipNames.showOf(name);
-                if ( (key != null) && (typeof(vocabulary.names[key]) !== 'undefined') ) {
-                    showNames[key] = vocabulary.names[key];
+                for (const key of clipNames.showsOf(name) ) {
+                    if (typeof(vocabulary.names[key]) !== 'undefined') {
+                        showNames[key] = vocabulary.names[key];
+                    }
                 }
             }
         };
@@ -159,7 +161,7 @@ class ShowMatchService {
      * of checkNickname with the lists' names added and the clips counted by whether
      * they are in the list being reviewed. `index` is the clip it is taught from.
      */
-    async checkNickname(id, text, showKey, index, season) {
+    async checkNickname(id, text, showKey, index, season, seasons, anyOf) {
         const filler = await this.fillerDB.getFiller(id);
         if (filler == null) {
             return null;
@@ -168,8 +170,9 @@ class ShowMatchService {
         const aliases = await this.showAliasDB.load();
         const source = ( (Number.isInteger(index)) && (filler.content[index] != null) ) ? filler.content[index].title : undefined;
         const clips = await this.everyClip();
-        // A nickname means a show, or one season of it when `season` is given.
-        const target = Number.isInteger(season) ? { show: showKey, season: season } : showKey;
+        // A nickname means a show, or one season of it when `season` is given, or several
+        // when `seasons` is, or any one of several shows when `anyOf` is.
+        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons, anyOf: anyOf } );
         const result = showMatch.checkNickname(text, target, vocabulary, aliases, clips, { sourceTitle: source });
         const listName = {};
         for (const clip of clips) {
@@ -185,7 +188,7 @@ class ShowMatchService {
             alias: result.alias,
             ok: result.ok,
             problems: result.problems,
-            showName: (typeof(vocabulary.names[showKey]) === 'string') ? label(target) : showKey,
+            showName: (target !== null) && clipNames.showsOf(target).every( (k) => typeof(vocabulary.names[k]) === 'string' ) ? label(target) : String(showKey),
             sourceNames: result.sourceNames || [],
             sourceUnresolved: result.sourceUnresolved === true,
             sourceShows: (result.sourceNames || []).map(label),
@@ -197,7 +200,7 @@ class ShowMatchService {
     }
 
     // What to offer when teaching a nickname from one clip.
-    async nicknameSuggestions(id, index, showKey, season) {
+    async nicknameSuggestions(id, index, showKey, season, seasons, anyOf) {
         const filler = await this.fillerDB.getFiller(id);
         if ( (filler == null) || (filler.content[index] == null) ) {
             return null;
@@ -209,7 +212,10 @@ class ShowMatchService {
         // such before anything has been saved.
         const corpus = (await this.everyClip() ).map( (c) => ({ title: c.title,
             names: (c.names.length > 0) ? c.names : (c.reviewed ? [] : showMatch.propose(c.title, vocabulary, aliases).names) }) );
-        const target = Number.isInteger(season) ? { show: showKey, season: season } : showKey;
+        const target = namesReview.nicknameTarget( { showKey: showKey, season: season, seasons: seasons, anyOf: anyOf } );
+        if (target === null) {
+            return [];
+        }
         return showMatch.nicknameSuggestions(filler.content[index].title, target, vocabulary, aliases, corpus);
     }
 
@@ -259,6 +265,90 @@ class ShowMatchService {
     }
 
     /*
+     * The Nicknames page: every nickname with what it means in words, how many clips have it in
+     * their title and whether a show it means is gone, plus the shows for the page's pickers
+     * (shows and custom shows; a nickname never means a movie). Reads only.
+     */
+    async nicknames() {
+        const vocabulary = await this.vocabulary();
+        const aliases = await this.showAliasDB.load();
+        const clips = await this.everyClip();
+        const shows = Object.keys(vocabulary.names)
+            .filter( (key) => /^(tv|custom)\./.test(key) )
+            .map( (key) => ({ key: key, name: vocabulary.names[key], custom: key.startsWith('custom.'),
+                group: key.startsWith('custom.') ? 'Custom shows' : 'Shows' }) )
+            .sort( (a, b) => a.name.localeCompare(b.name) );
+        const showNames = {};
+        for (const key of Object.keys(vocabulary.names) ) {
+            if (/^(tv|custom)\./.test(key) ) {
+                showNames[key] = vocabulary.names[key];
+            }
+        }
+        return { nicknames: nicknamesLogic.listNicknames(aliases, vocabulary, clips), shows: shows, showNames: showNames };
+    }
+
+    /*
+     * What editing or deleting a nickname would change, before anything is saved: the clips whose
+     * suggestion would be different (with what it is now and what it would become) and how many
+     * clips keep their saved names. `body` is { alias, remove: true } to delete, or { alias,
+     * newAlias?, showKey?, season?, seasons?, anyOf? } to change the text, what it means, or both.
+     * Reads only: no clip and no file is written.
+     */
+    async previewNickname(body) {
+        const vocabulary = await this.vocabulary();
+        const aliases = await this.showAliasDB.load();
+        const clips = await this.everyClip();
+        const given = (body != null) && ( (typeof(body.showKey) === 'string') || Array.isArray(body.anyOf) );
+        const edit = { alias: (body == null) ? undefined : body.alias, remove: (body != null) && (body.remove === true) };
+        if ( (body != null) && (typeof(body.newAlias) === 'string') ) {
+            edit.newAlias = body.newAlias;
+        }
+        if (given) {
+            // a meaning that is not one (no show, one show in a list of any-of's) is null, which the rules refuse
+            edit.target = namesReview.nicknameTarget( { showKey: body.showKey, season: body.season, seasons: body.seasons, anyOf: body.anyOf } );
+        }
+        const result = nicknamesLogic.previewEdit(edit, { vocabulary: vocabulary, aliases: aliases, clips: clips } );
+        const label = (n) => clipNames.labelOf(n, vocabulary.names);
+        const listed = result.changes.slice(0, nicknamesLogic.LISTED).map( (c) => ({
+            list: c.list, listName: c.listName, index: c.index, title: c.title,
+            before: c.beforeFlagged ? 'flagged' : (c.before.length === 0 ? 'no suggestion' : c.before.map(label).join(' → ')),
+            after: c.afterFlagged ? 'flagged' : (c.after.length === 0 ? 'no suggestion' : c.after.map(label).join(' → ')) }) );
+        return {
+            ok: result.ok,
+            problems: result.problems,
+            alias: result.alias,
+            newAlias: result.newAlias,
+            remove: result.remove,
+            target: result.target,
+            meaning: ( (result.target != null) && ! result.remove ) ? label(result.target) : null,
+            changed: result.changes.length,
+            changes: listed,
+            kept: result.kept,
+            // the nickname as it is now, for a delete's sentence
+            was: (typeof(aliases[result.alias]) !== 'undefined') ? label(aliases[result.alias]) : null,
+        };
+    }
+
+    /*
+     * Edits or deletes one nickname: the same check as previewNickname, and a refusal (nothing
+     * written) when it says the edit cannot be made. Only the alias file is written; no clip is
+     * ever touched, so every name already saved on a clip stays as it is. Throws a ReviewError and
+     * otherwise answers with the page's list as it now reads.
+     */
+    async saveNickname(body) {
+        const preview = await this.previewNickname(body);
+        if (! preview.ok) {
+            throw new ReviewError(preview.problems.join(' '));
+        }
+        try {
+            await this.showAliasDB.change(preview.alias, preview.remove ? null : preview.newAlias, preview.remove ? undefined : preview.target);
+        } catch (err) {
+            throw new ReviewError(err.message);
+        }
+        return await this.nicknames();
+    }
+
+    /*
      * The review screen's save. `body` is { clips: [{ index, title, names }],
      * aliases: { nickname: showKey } }, as names-review.savePayload makes it.
      * Everything is checked first - the clips are still where the screen saw them,
@@ -293,9 +383,10 @@ class ShowMatchService {
                 throw new ReviewError(`“${c.title}”: ${problem}.`);
             }
             for (const name of c.names) {
-                const key = clipNames.showOf(name);
-                if (typeof(vocabulary.names[key]) === 'undefined') {
-                    throw new ReviewError(`“${c.title}”: ${key} is not a show or movie on any channel.`);
+                for (const key of clipNames.showsOf(name) ) {
+                    if (typeof(vocabulary.names[key]) === 'undefined') {
+                        throw new ReviewError(`“${c.title}”: ${key} is not a show or movie on any channel.`);
+                    }
                 }
             }
         }
@@ -305,7 +396,7 @@ class ShowMatchService {
         const everyClip = Object.keys(wanted).length > 0 ? await this.everyClip() : [];
         for (const text of Object.keys(wanted) ) {
             if (! clipNames.validName(wanted[text]) ) {
-                throw new ReviewError(`Nickname “${text}” was not saved: it does not mean a show, a movie or a season of a show.`);
+                throw new ReviewError(`Nickname “${text}” was not saved: it does not mean a show, a movie or a season of a show, or any one of several shows.`);
             }
             const checked = showMatch.checkNickname(text, wanted[text], vocabulary, known, everyClip);
             if (! checked.ok) {
