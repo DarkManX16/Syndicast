@@ -10,6 +10,7 @@ const dayParts = require('./day-parts');
 const wereThereTooManyAttempts = require('./throttler');
 const lineupCursor = require('./lineup-cursor');
 const transitions = require('./transitions');
+const sharedBreaks = require('./shared-breaks');
 const crypto = require('crypto');
 
 module.exports = { router: video, shutdown: shutdown }
@@ -428,16 +429,45 @@ function video( channelService, fillerService, db, programmingService, activeCha
             brandChannel,
             dayParts.allFillerCollections(brandChannel)
         );
-        try {
-            let lineup = helperFuncs.createLineup(programPlayTimeDB, prog, brandChannel, fillers, isFirst, t0)
-            lineupItem = lineup.shift();
-        } catch (err) {
-            console.log("Error when attempting to pick video: " +err.stack);
-            lineupItem = {
-                isOffline: true,
-                err: err,
-                duration : 60000,
-            };
+        /*
+         * Flex shares one list of picks per break, per channel (shared-breaks.js),
+         * so every viewer sees the same commercials. Decided here, after the
+         * last await, so a second viewer's request cannot slip in between
+         * reading the list and adding to it.
+         */
+        let shared = null;
+        let sharedKey = null;
+        if ( (brandChannel === channel) && sharedBreaks.shareable(channel, prog) ) {
+            sharedKey = sharedBreaks.keyOf(prog, t0);
+            shared = sharedBreaks.decide(channelCache.getFlexLog(channel.number, sharedKey),
+                prog.pick, helperFuncs.timeLeft(prog), t0, isFirst);
+        }
+        if ( (shared !== null) && ( (shared.kind === 'replay') || (shared.kind === 'join') ) ) {
+            lineupItem = shared.item;
+        } else {
+            try {
+                let lineup = helperFuncs.createLineup(programPlayTimeDB, prog, brandChannel, fillers, isFirst, t0)
+                lineupItem = lineup.shift();
+            } catch (err) {
+                console.log("Error when attempting to pick video: " +err.stack);
+                lineupItem = {
+                    isOffline: true,
+                    err: err,
+                    duration : 60000,
+                };
+            }
+            if ( (shared !== null) && (shared.kind === 'new') ) {
+                // only a clip is shared; with none to play, the next request tries again
+                let added = (lineupItem.type === 'commercial')
+                    && channelCache.addFlexPick(channel.number, sharedKey, shared.index,
+                        sharedBreaks.entryEnd(prog, t0), lineupItem, t0);
+                if (! added) {
+                    shared.next = shared.index;
+                }
+            }
+        }
+        if (shared !== null) {
+            prog.pickNext = shared.next;
         }
       }
 

@@ -83,6 +83,19 @@ function entry(programs, index, start, t0) {
     };
 }
 
+/*
+ * Where a stream is in its Flex entry's shared list of picks (shared-breaks.js):
+ * `pick` on an entry is the index of the pick it plays next - 0 on entering a
+ * Flex entry, carried on the cursor while it stays in one - and is left off
+ * on the clock path, where shared-breaks.js finds the pick on the air instead.
+ */
+function withPick(obj, pick) {
+    if ( (obj !== null) && (typeof(pick) === 'number') ) {
+        obj.pick = pick;
+    }
+    return obj;
+}
+
 function hasPlanSteps(plan) {
     return (plan != null) && Array.isArray(plan.out) && Array.isArray(plan.in)
         && ( (plan.out.length > 0) || (plan.in.length > 0) );
@@ -150,7 +163,7 @@ function stepEntry(programs, plan, side, k) {
  * helperFuncs.timeLeft subtracts. An entry with too little left hands on to
  * the next, and after the last come the in steps.
  */
-function flexFrom(programs, plan, index, t0) {
+function flexFrom(programs, plan, index, t0, pick) {
     let start = entryStartOf(programs, plan, index);
     let flexEnd = plan.runEnd - plan.inMs;
     for (let k = 0; k < programs.length; k++) {
@@ -166,13 +179,15 @@ function flexFrom(programs, plan, index, t0) {
             flex.phase = 'flex';
             flex.step = null;
             flex.plan = plan;
-            return flex;
+            return withPick(flex, pick);
         }
         if (index === plan.lastFlex) {
             break;
         }
         start = end;
         index = (index + 1) % programs.length;
+        // the next Flex entry of the run has a list of its own
+        pick = (typeof(pick) === 'number') ? 0 : pick;
     }
     return inFrom(programs, plan, 0, t0);
 }
@@ -189,11 +204,11 @@ function inFrom(programs, plan, k, t0) {
     return entry(programs, index, plan.runEnd, t0);
 }
 
-function startBreak(programs, plan, t0) {
+function startBreak(programs, plan, t0, pick) {
     if (plan.out.length > 0) {
         return stepEntry(programs, plan, 'out', 0);
     }
-    return flexFrom(programs, plan, plan.firstFlex, t0);
+    return flexFrom(programs, plan, plan.firstFlex, t0, pick);
 }
 
 /*
@@ -219,10 +234,10 @@ function continueBreak(programs, cursor, t0) {
         if (cursor.step + 1 < plan.out.length) {
             return stepEntry(programs, plan, 'out', cursor.step + 1);
         }
-        return offTheFlex(plan, t0) ? null : flexFrom(programs, plan, plan.firstFlex, t0);
+        return offTheFlex(plan, t0) ? null : flexFrom(programs, plan, plan.firstFlex, t0, 0);
     }
     if (cursor.phase === 'flex') {
-        return offTheFlex(plan, t0) ? null : flexFrom(programs, plan, cursor.index, t0);
+        return offTheFlex(plan, t0) ? null : flexFrom(programs, plan, cursor.index, t0, cursor.pick);
     }
     if ( (cursor.phase === 'in') && (typeof(cursor.step) === 'number') ) {
         return inFrom(programs, plan, cursor.step + 1, t0);
@@ -259,7 +274,7 @@ function nextEntry(channel, cursor, t0, planFor) {
             return null;
         }
         if (end - t0 > SLACK + 1) {
-            return entry(programs, index, start, t0);
+            return withPick(entry(programs, index, start, t0), cursor.pick);
         }
     } else if (Math.abs(t0 - end) > TOLERANCE) {
         return null;
@@ -277,11 +292,11 @@ function nextEntry(channel, cursor, t0, planFor) {
             let brk = transitions.findBreak(channel, index, end);
             let plan = planFor(brk);
             if (hasPlanSteps(plan)) {
-                return startBreak(programs, phasePlan(plan, brk), t0);
+                return startBreak(programs, phasePlan(plan, brk), t0, 0);
             }
         }
         if ( (program.isOffline !== true) || (end + program.duration - t0 > SLACK + 1) ) {
-            return entry(programs, index, end, t0);
+            return withPick(entry(programs, index, end, t0), (program.isOffline === true) ? 0 : undefined);
         }
         // too little of this break is left for a clip: pass over it
         end += program.duration;
@@ -318,6 +333,10 @@ function cursorAfter(channel, obj, t0) {
         inBreak: (program.isOffline === true),
         fingerprint: fingerprint(program),
     };
+    if ( (program.isOffline === true) && (typeof(obj.pickNext) === 'number') ) {
+        // how far into the Flex entry's shared list of picks (video.js sets it)
+        cursor.pick = obj.pickNext;
+    }
     if (typeof(obj.phase) === 'string') {
         // in a break with steps: which phase, which step, and the plan itself
         cursor.phase = obj.phase;
