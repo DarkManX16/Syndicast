@@ -1112,6 +1112,46 @@ const MAX_NICKNAME_WORDS = 6;
 const MAX_SUGGESTED_PHRASE_WORDS = 3;
 
 /*
+ * Why a nickname's text and meaning cannot be taught, as sentences, [] when they can. `alias` is
+ * `text` folded. The rules that do not depend on any clip: the meaning is a show on a channel
+ * (or some seasons of one, or any of several), the text is a word or a phrase of at most six
+ * words that is not only everyday words, not already a title and not already a nickname in
+ * `known`. checkNickname adds what the clips say; the Nicknames page uses this one alone.
+ */
+function nicknameProblems(text, alias, target, vocabulary, known) {
+    const problems = [];
+    const words = alias.split(' ');
+    const display = (name) => (typeof(name) === 'string') && (vocabulary.names[name] == null) ? name : clipNames.labelOf(name, vocabulary.names);
+    // What a nickname names: a show, one season of a show, several, or any one of several
+    // shows (`target` is its key, or { show, season }, { show, seasons }, { anyOf }).
+    const targetKeys = clipNames.showsOf(target);
+    if ( (targetKeys.length === 0) || targetKeys.some( (k) => typeof(vocabulary.names[k]) === 'undefined' )
+        || ( (typeof(target) !== 'string') && ! ( (clipNames.isSeasonName(target) || clipNames.isSeasonsName(target) || clipNames.isAnyOfName(target)) && clipNames.validName(target)) ) ) {
+        problems.push('Pick the show it names first.');
+    }
+    if (words.length > MAX_NICKNAME_WORDS) {
+        problems.push(`That is ${words.length} words; a nickname is at most ${MAX_NICKNAME_WORDS}.`);
+    }
+    const generic = (w) => /^\d+$/.test(w) || STRUCTURAL.has(w) || FILLER_WORDS.has(w);
+    if (words.every( (w) => /^\d+$/.test(w) )) {
+        problems.push('A number on its own cannot name a show.');
+    } else if (words.every(generic) ) {
+        problems.push(`“${text}” is made only of everyday words (like “next” or “promo”), which many shows' clips use, so it cannot name one show.`);
+    } else if ( (words.length === 1) && (alias.length < 3) ) {
+        problems.push('A nickname needs at least three letters.');
+    }
+    if (Object.prototype.hasOwnProperty.call(known, alias) ) {
+        problems.push(clipNames.sameName(known[alias], target) ? 'That is already a nickname for this show.'
+            : `“${text}” already means ${display(known[alias])}.`);
+    }
+    const asTitle = vocabulary.entries.find( (e) => e.folded === alias );
+    if (typeof(asTitle) !== 'undefined') {
+        problems.push(`“${text}” is already the title of ${display(asTitle.key)}.`);
+    }
+    return problems;
+}
+
+/*
  * Whether a nickname is acceptable, and what it would do. The screen calls this
  * before a nickname is saved (to show which clips it would name), and the save
  * calls it again, so a refused nickname is refused whichever way it arrives.
@@ -1149,34 +1189,9 @@ function checkNickname(text, target, vocabulary, aliases, clips, options) {
         problems.push('Type a word or a phrase.');
         return result;
     }
-    const words = alias.split(' ');
     const display = (name) => (typeof(name) === 'string') && (vocabulary.names[name] == null) ? name : clipNames.labelOf(name, vocabulary.names);
-    // What a nickname names: a show, a movie, or one season of a show (`target` is its
-    // key, or { show, season }); `showKey` is the show it belongs to.
     const targetKeys = clipNames.showsOf(target);
-    if ( (targetKeys.length === 0) || targetKeys.some( (k) => typeof(vocabulary.names[k]) === 'undefined' )
-        || ( (typeof(target) !== 'string') && ! ( (clipNames.isSeasonName(target) || clipNames.isSeasonsName(target) || clipNames.isAnyOfName(target)) && clipNames.validName(target)) ) ) {
-        problems.push('Pick the show it names first.');
-    }
-    if (words.length > MAX_NICKNAME_WORDS) {
-        problems.push(`That is ${words.length} words; a nickname is at most ${MAX_NICKNAME_WORDS}.`);
-    }
-    const generic = (w) => /^\d+$/.test(w) || STRUCTURAL.has(w) || FILLER_WORDS.has(w);
-    if (words.every( (w) => /^\d+$/.test(w) )) {
-        problems.push('A number on its own cannot name a show.');
-    } else if (words.every(generic) ) {
-        problems.push(`“${text}” is made only of everyday words (like “next” or “promo”), which many shows' clips use, so it cannot name one show.`);
-    } else if ( (words.length === 1) && (alias.length < 3) ) {
-        problems.push('A nickname needs at least three letters.');
-    }
-    if (Object.prototype.hasOwnProperty.call(known, alias) ) {
-        problems.push(clipNames.sameName(known[alias], target) ? 'That is already a nickname for this show.'
-            : `“${text}” already means ${display(known[alias])}.`);
-    }
-    const asTitle = vocabulary.entries.find( (e) => e.folded === alias );
-    if (typeof(asTitle) !== 'undefined') {
-        problems.push(`“${text}” is already the title of ${display(asTitle.key)}.`);
-    }
+    problems.push(...nicknameProblems(text, alias, target, vocabulary, known));
     if (problems.length > 0) {
         return result;
     }
@@ -1397,5 +1412,6 @@ module.exports = {
     namesProblem: namesProblem,
     isReviewedNone: isReviewedNone,
     checkNickname: checkNickname,
+    nicknameProblems: nicknameProblems,
     nicknameSuggestions: nicknameSuggestions,
 };

@@ -3,6 +3,7 @@ const namesReview = require('../names-review');
 const transitions = require('../transitions');
 const clipNames = require('../clip-names');
 const showSeasons = require('../show-seasons');
+const nicknamesLogic = require('../nicknames');
 const Plex = require('../plex');
 
 // The most clips a nickname check lists by name; the counts are always complete.
@@ -261,6 +262,90 @@ class ShowMatchService {
             console.error(`Could not read ${showKey}'s seasons from Plex; using the seasons its lineups have.`, err.message);
             return fallback;
         }
+    }
+
+    /*
+     * The Nicknames page: every nickname with what it means in words, how many clips have it in
+     * their title and whether a show it means is gone, plus the shows for the page's pickers
+     * (shows and custom shows; a nickname never means a movie). Reads only.
+     */
+    async nicknames() {
+        const vocabulary = await this.vocabulary();
+        const aliases = await this.showAliasDB.load();
+        const clips = await this.everyClip();
+        const shows = Object.keys(vocabulary.names)
+            .filter( (key) => /^(tv|custom)\./.test(key) )
+            .map( (key) => ({ key: key, name: vocabulary.names[key], custom: key.startsWith('custom.'),
+                group: key.startsWith('custom.') ? 'Custom shows' : 'Shows' }) )
+            .sort( (a, b) => a.name.localeCompare(b.name) );
+        const showNames = {};
+        for (const key of Object.keys(vocabulary.names) ) {
+            if (/^(tv|custom)\./.test(key) ) {
+                showNames[key] = vocabulary.names[key];
+            }
+        }
+        return { nicknames: nicknamesLogic.listNicknames(aliases, vocabulary, clips), shows: shows, showNames: showNames };
+    }
+
+    /*
+     * What editing or deleting a nickname would change, before anything is saved: the clips whose
+     * suggestion would be different (with what it is now and what it would become) and how many
+     * clips keep their saved names. `body` is { alias, remove: true } to delete, or { alias,
+     * newAlias?, showKey?, season?, seasons?, anyOf? } to change the text, what it means, or both.
+     * Reads only: no clip and no file is written.
+     */
+    async previewNickname(body) {
+        const vocabulary = await this.vocabulary();
+        const aliases = await this.showAliasDB.load();
+        const clips = await this.everyClip();
+        const given = (body != null) && ( (typeof(body.showKey) === 'string') || Array.isArray(body.anyOf) );
+        const edit = { alias: (body == null) ? undefined : body.alias, remove: (body != null) && (body.remove === true) };
+        if ( (body != null) && (typeof(body.newAlias) === 'string') ) {
+            edit.newAlias = body.newAlias;
+        }
+        if (given) {
+            // a meaning that is not one (no show, one show in a list of any-of's) is null, which the rules refuse
+            edit.target = namesReview.nicknameTarget( { showKey: body.showKey, season: body.season, seasons: body.seasons, anyOf: body.anyOf } );
+        }
+        const result = nicknamesLogic.previewEdit(edit, { vocabulary: vocabulary, aliases: aliases, clips: clips } );
+        const label = (n) => clipNames.labelOf(n, vocabulary.names);
+        const listed = result.changes.slice(0, nicknamesLogic.LISTED).map( (c) => ({
+            list: c.list, listName: c.listName, index: c.index, title: c.title,
+            before: c.beforeFlagged ? 'flagged' : (c.before.length === 0 ? 'no suggestion' : c.before.map(label).join(' → ')),
+            after: c.afterFlagged ? 'flagged' : (c.after.length === 0 ? 'no suggestion' : c.after.map(label).join(' → ')) }) );
+        return {
+            ok: result.ok,
+            problems: result.problems,
+            alias: result.alias,
+            newAlias: result.newAlias,
+            remove: result.remove,
+            target: result.target,
+            meaning: ( (result.target != null) && ! result.remove ) ? label(result.target) : null,
+            changed: result.changes.length,
+            changes: listed,
+            kept: result.kept,
+            // the nickname as it is now, for a delete's sentence
+            was: (typeof(aliases[result.alias]) !== 'undefined') ? label(aliases[result.alias]) : null,
+        };
+    }
+
+    /*
+     * Edits or deletes one nickname: the same check as previewNickname, and a refusal (nothing
+     * written) when it says the edit cannot be made. Only the alias file is written; no clip is
+     * ever touched, so every name already saved on a clip stays as it is. Throws a ReviewError and
+     * otherwise answers with the page's list as it now reads.
+     */
+    async saveNickname(body) {
+        const preview = await this.previewNickname(body);
+        if (! preview.ok) {
+            throw new ReviewError(preview.problems.join(' '));
+        }
+        try {
+            await this.showAliasDB.change(preview.alias, preview.remove ? null : preview.newAlias, preview.remove ? undefined : preview.target);
+        } catch (err) {
+            throw new ReviewError(err.message);
+        }
+        return await this.nicknames();
     }
 
     /*

@@ -596,6 +596,40 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
       }
     } );
 
+    // The Nicknames page: every nickname with what it means, and the shows to pick from.
+    router.get('/api/nicknames', async(req, res) => {
+      try {
+        res.send(await showMatchService.nicknames());
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // What editing or deleting a nickname would change, before it is saved. Saves nothing.
+    router.post('/api/nicknames/preview', async(req, res) => {
+      try {
+        res.send(await showMatchService.previewNickname(req.body));
+      } catch(err) {
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
+    // Edits or deletes one nickname (only the alias file is written, never a clip).
+    // Answers with the list as it now reads, or 400 with what to say.
+    router.post('/api/nicknames/save', async(req, res) => {
+      try {
+        res.send(await showMatchService.saveNickname(req.body));
+      } catch(err) {
+        if (err instanceof showMatchService.constructor.ReviewError) {
+            return res.status(400).send({ error: err.message });
+        }
+        console.error(err);
+        res.status(500).send("error");
+      }
+    } );
+
     // Every list with its counts of clips by group and the channels whose
     // transition steps use it, for the overview on the Filler Lists page.
     router.get('/api/names-overview', async(req, res) => {

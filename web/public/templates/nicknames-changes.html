@@ -1,0 +1,26 @@
+<div class="small nk-changes">
+  <div ng-if="panel.preview.changed === 0" class="text-muted">
+    No clip&rsquo;s suggestion would change.
+  </div>
+  <div ng-if="panel.preview.changed > 0">
+    The suggestion would change for <b>{{panel.preview.changed}}</b> clip{{panel.preview.changed === 1 ? '' : 's'}} whose names are not saved yet.
+    Nothing is named until you accept a suggestion on the &ldquo;Match shows&rdquo; screen:
+    <ul class="nr-would">
+      <li ng-repeat="c in panel.preview.changes.slice(0, shownChanges)">
+        {{c.title}} <span class="text-muted">&mdash; in {{c.listName}}</span>
+        <span class="text-muted">: {{c.before}} &rarr; <b>{{c.after}}</b></span>
+      </li>
+    </ul>
+    <div class="text-muted" ng-if="panel.preview.changes.length > shownChanges">
+      and {{panel.preview.changes.length - shownChanges}} more.
+      <button type="button" class="btn btn-sm btn-link" ng-click="showMoreChanges()">show more</button>
+    </div>
+    <div class="text-muted" ng-if="panel.preview.changed > panel.preview.changes.length">
+      (the list shows the first {{panel.preview.changes.length}} of {{panel.preview.changed}})
+    </div>
+  </div>
+  <div class="text-muted" ng-if="panel.preview.kept > 0">
+    {{panel.preview.kept}} clip{{panel.preview.kept === 1 ? '' : 's'}} with this in the title {{panel.preview.kept === 1 ? 'has' : 'have'}} a name saved already, and
+    {{panel.preview.kept === 1 ? 'keeps' : 'keep'}} {{panel.preview.kept === 1 ? 'it' : 'them'}}: a saved name is never changed here.
+  </div>
+</div>

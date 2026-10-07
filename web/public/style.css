@@ -1036,3 +1036,13 @@ div.programming-programs div.list-group-item {
 .names-overview .nr-overview { margin-top: 8px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; }
 .names-overview .nr-num { text-align: right; width: 5.5rem; }
 .tr-editor .tr-pv-hint { margin: 1px 0 0 6px; color: #856404; }
+
+/* The Nicknames page (shares the review screen's panels and slots) */
+.nicknames-page .nk-table td { vertical-align: middle; }
+.nicknames-page .nk-alias { font-weight: 600; }
+.nicknames-page .nr-num { text-align: right; width: 6rem; }
+.nicknames-page .nk-actions { text-align: right; white-space: nowrap; }
+.nicknames-page .nk-open > td { background: #f4f8ff; }
+.nicknames-page .nk-panel-row > td { border-top: 0; }
+.nicknames-page .nk-changes { margin: 6px 0; }
+.nicknames-page .nr-slot-label { flex: 0 0 8rem; }

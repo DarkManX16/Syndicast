@@ -9,14 +9,14 @@ const clipNames = require('../clip-names');
  * naming it is narrowed to, several seasons, { "show": "tv.Justice League", "seasons": [3, 4, 5] },
  * or any one of several shows, { "anyOf": ["tv.Even Stevens", "tv.Kim Possible"] }. Shared by every filler list and
  * channel, since a word means the same show wherever it appears (see
- * docs/blocks-spec.md, Stage 5, "Which shows a clip names"). There is no alias
- * editor; the filler review screen is the alias editor.
+ * docs/blocks-spec.md, Stage 5, "Which shows a clip names"). The filler review
+ * screen teaches nicknames; the Nicknames page lists, edits and deletes them.
  *
  * Reading never creates, rewrites or repairs the file: a missing file is no
  * aliases, and one that cannot be read is no aliases plus a line in the log,
  * left exactly as it was so nothing hand-edited is lost to a stray typo. Writing
- * is separate and explicit, and nothing in the server calls it yet - the review
- * screen will be the only caller.
+ * is separate and explicit: the review screen adds nicknames (merge) and the
+ * Nicknames page edits and deletes them (change).
  */
 
 const FILE_NAME = 'show-aliases.json';
@@ -65,6 +65,51 @@ class ShowAliasDB {
         const text = JSON.stringify( { aliases: aliases }, null, 2 );
         await new Promise( (resolve, reject) => {
             fs.writeFile(this.file, text, (err) => err ? reject(err) : resolve());
+        } );
+    }
+
+    /*
+     * Changes one nickname, for the Nicknames page: renames it, changes what it means, or
+     * (with `newAlias` null) deletes it. `value` is what the nickname then means. The file is
+     * read as it is, without the reader's dropping of entries it cannot use, so a hand-edited
+     * entry this page does not touch is written back exactly as it was; a file that is not
+     * valid JSON is refused, never replaced. A nickname keeps its place in the file when it is
+     * only given another meaning. Throws when the nickname is not there or the new text is
+     * already another nickname. Returns nothing; nothing but the alias file is written.
+     */
+    async change(oldAlias, newAlias, value) {
+        let parsed = {};
+        try {
+            parsed = JSON.parse(await new Promise( (resolve, reject) => {
+                fs.readFile(this.file, 'utf8', (err, text) => err ? reject(err) : resolve(text));
+            } ));
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                throw new Error(`${this.file} could not be read as JSON, so it was not changed: ${err.message}`);
+            }
+        }
+        const stored = ( (parsed != null) && (typeof(parsed) === 'object') && (parsed.aliases != null) && (typeof(parsed.aliases) === 'object') ) ? parsed.aliases : {};
+        if (! Object.prototype.hasOwnProperty.call(stored, oldAlias) ) {
+            throw new Error(`“${oldAlias}” is not a nickname.`);
+        }
+        if ( (newAlias !== null) && (newAlias !== oldAlias) && Object.prototype.hasOwnProperty.call(stored, newAlias) ) {
+            throw new Error(`“${newAlias}” is already a nickname.`);
+        }
+        const next = {};
+        for (const key of Object.keys(stored) ) {
+            if (key !== oldAlias) {
+                next[key] = stored[key];
+            } else if (newAlias !== null) {
+                next[newAlias] = value;
+            }
+        }
+        const output = Object.assign({}, parsed, { aliases: next });
+        const temp = this.file + '.tmp';
+        await new Promise( (resolve, reject) => {
+            fs.writeFile(temp, JSON.stringify(output, null, 2), (err) => err ? reject(err) : resolve());
+        } );
+        await new Promise( (resolve, reject) => {
+            fs.rename(temp, this.file, (err) => err ? reject(err) : resolve());
         } );
     }
 

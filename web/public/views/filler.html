@@ -7,6 +7,10 @@
         <button class="pull-right btn btn-sm btn-primary" ng-click="selectFiller(-1)">
             <span class="fa fa-plus"></span>
         </button>
+        <a href="#!/nicknames" class="pull-right btn btn-sm btn-secondary" style="margin-right: 5px;"
+            title="Every nickname the clip names are read by: edit or delete one">
+            <i class='fa fa-tags'></i> Nicknames
+        </a>
         <button class="pull-right btn btn-sm btn-secondary" style="margin-right: 5px;"
             ng-show="fillers.length > 1" ng-disabled="savingOrder"
             title="Sort by name, Z to A" ng-click="sortFillersByName(true)">

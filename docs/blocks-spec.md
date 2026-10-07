@@ -455,8 +455,18 @@ first). It is proposed automatically and fixed on a review screen:
   nickname. A nickname that is used for its clip but leaves the clip's title with another show
   nobody has named yet is accepted, and the clip stays flagged until that one is taught too.
   Aliases are stored once, in
-  `<data>/show-aliases.json`, shared by every list and channel. There is no
-  alias editor; the review screen is the alias editor.
+  `<data>/show-aliases.json`, shared by every list and channel. The review screen
+  teaches nicknames; **the Nicknames page** (reached from a button on the Filler Lists page) lists every
+  nickname with what it means in words, how many clips have it in their title and whether a show it means is
+  gone, and edits or deletes one: its text, what it means (a show, some of its seasons, any one of several
+  shows), or both. A nickname only ever changes what is *suggested* for a clip whose names are not saved,
+  so **editing or deleting one never rewrites a name already saved on a clip**; before it saves, the page
+  lists the clips whose suggestion would change (what it is now, what it would become) and counts the clips
+  with the nickname in their title that keep a saved name, the way the teach panel lists the clips a new
+  nickname would name. An edit follows the rules of teaching a nickname (everyday words, a title, an
+  existing nickname, a show on a channel) except the check against other clips: changing what a nickname
+  means is a decision, and what it touches is listed. The writer reads the file as it is, so an entry
+  it does not touch is written back exactly as it was, and refuses a file that is not valid JSON.
 - **Movies, seasons and specials (built Oct 6, 2026).** A name in `names` is still a show key,
   and every `names` saved before reads and plays unchanged. It may now also be (`src/clip-names.js`):
 

@@ -1055,6 +1055,43 @@ for the full spec, stages and acceptance tests.
         the check used the nearest real titles ("Express Yourself (Christy Romano)", the Kim Possible
         and Even Stevens promos) and stand-ins named like Ron's.
 
+      **The Nicknames page, Oct 7, 2026 (Sonnet 5.5), same branch.** The fourth commit. Until now
+      a nickname could be taught on the review screen and never changed: "unlimited" (taught as
+      season 3 of Justice League as a stand-in) could not be removed, and Ron will teach many more.
+      A "Nicknames" button on the Filler Lists page opens `#!/nicknames`: every nickname with what it
+      means in words, how many clips have it in their title ("In titles") and whether a show it
+      means is no longer on any channel, searchable, with Edit and Delete.
+
+      - **Edit** changes the text, what it means (one show, some seasons of it, any one of several
+        shows, the same pickers as the teach panel) or both. **Delete** asks first. Neither writes a
+        clip: `ShowMatchService#saveNickname` only calls the alias file's new writer
+        (`ShowAliasDB#change`), and a test spies on `fillerDB.saveFiller` and compares the list files
+        byte for byte before and after. A nickname only changes what is *suggested* for a clip with
+        no saved names; a clip with names saved, or saved as naming no show, keeps them.
+      - **Before it saves, it shows what would change**, as the teach panel does (`POST
+        /api/nicknames/preview`, read-only; `src/nicknames.js previewEdit`): every unsaved clip
+        whose suggestion would be different with what it is now and what it would become (a flagged
+        title counts), the count of clips that keep a saved name, and the reason when the edit is
+        refused. Save is disabled until the preview is ok, and the save runs the same check again.
+      - **Rules.** The text and meaning follow teaching (`nicknameProblems`, split out of
+        `checkNickname`: a show on a channel, at most six words, not only everyday words or a
+        number, not a title, not another nickname) but not teaching's check against other clips,
+        which would refuse changing what a nickname means whenever a clip saved under the old show
+        has it in its title; here that is exactly what the preview lists.
+      - **The writer** (`ShowAliasDB#change`) reads the file as it is, not through the reader that
+        drops what it cannot use, so an entry the page does not touch (a hand-edited one) and any
+        other key in the file is written back as it was; a nickname keeps its place when it is only
+        given another meaning; the write goes through a temporary file and a rename; a file that is
+        not valid JSON is refused, never replaced.
+      - **What the real data showed.** On the dev copy, deleting the stand-in "unlimited" lists one
+        clip, "Comm Break (WWE Unlimited Action Figure) (2003)" in Nick GaS, that the stand-in had
+        been suggesting as Justice League season 3, and counts 4 clips that keep their names (the
+        Justice League intro saved as seasons 3 to 5, and others). The list files were identical
+        before and after (the checksum of every list in the folder).
+      - Test file `test/nicknames-page.js`, mutation-checked. Writers of the alias file, enumerated:
+        the review save (`merge`, adds only) and this page (`change`, edit and delete); readers are
+        `propose` and the checks, which read through `load`.
+
 - [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;

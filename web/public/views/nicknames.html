@@ -1,0 +1,128 @@
+<div class='container names-review nicknames-page'>
+    <h5>
+        Nicknames
+        <a href="#!/filler" class="pull-right btn btn-sm btn-secondary" title="Back to the Filler Lists">
+            <span class="fa fa-arrow-left"></span> Filler Lists
+        </a>
+    </h5>
+
+    <p class="small text-muted">
+        A nickname is a word or a phrase in a clip&rsquo;s title that stands for a show, for some seasons of a show, or for any one of
+        several shows, like &ldquo;frieza saga&rdquo; for Dragon Ball Z season 3. They are taught from the &ldquo;Match shows&rdquo; screen of a
+        filler list. Here you can change what one means or what it says, or delete it.
+        <b>Changing or deleting a nickname never changes a name already saved on a clip.</b> It only changes what is
+        <i>suggested</i> for clips whose names are not saved yet, and before you save, the clips whose suggestion would change are listed.
+    </p>
+
+    <div class="loader" ng-if="loading"></div>
+    <div class="text-danger small nr-error" ng-if="error">{{error}}</div>
+    <div class="text-success small nr-notice" ng-if="notice">{{notice}}</div>
+
+    <div ng-if="!loading &amp;&amp; !error">
+        <div class="nr-toolbar">
+            <input type="text" class="form-control form-control-sm nr-search" placeholder="Search nicknames..." ng-model="search"></input>
+            <span class="small text-muted">{{visible().length}} of {{rows.length}} nickname{{rows.length === 1 ? '' : 's'}}</span>
+        </div>
+
+        <p ng-if="rows.length === 0" class="text-muted small">No nicknames yet. Teach one from the &ldquo;Teach a nickname&hellip;&rdquo; button on the &ldquo;Match shows&rdquo; screen of a filler list.</p>
+
+        <table class="table table-sm nk-table" ng-if="rows.length > 0">
+            <thead>
+                <tr>
+                    <th>Nickname</th>
+                    <th>Means</th>
+                    <th class="nr-num" title="Clips, in every list, with the nickname in their title">In titles</th>
+                    <th style="width: 11em"></th>
+                </tr>
+            </thead>
+            <tbody ng-repeat="r in visible() track by r.alias">
+                <tr ng-class="{'nk-open': isOpen(r)}">
+                    <td class="nk-alias">&ldquo;{{r.alias}}&rdquo;</td>
+                    <td>
+                        {{r.label}}
+                        <span class="badge badge-light text-muted">{{kindLabel(r)}}</span>
+                        <span class="badge badge-warning" ng-if="r.missing" title="A show this means is no longer on any channel">show not on a channel</span>
+                    </td>
+                    <td class="nr-num" ng-class="{'text-muted': r.used === 0}">{{r.used}}</td>
+                    <td class="nk-actions">
+                        <button type="button" class="btn btn-sm btn-outline-primary" ng-click="openEdit(r)">Edit</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" ng-click="openDelete(r)">Delete</button>
+                    </td>
+                </tr>
+
+                <tr ng-if="isOpen(r)" class="nk-panel-row">
+                    <td colspan="4">
+                        <div class="nr-panel" ng-if="panel.mode === 'delete'">
+                            <div>Delete &ldquo;{{r.alias}}&rdquo;? It means <b>{{r.label}}</b>.</div>
+                            <div class="small text-muted" ng-if="panel.busy">checking&hellip;</div>
+                            <div class="text-danger small" ng-if="panel.error">{{panel.error}}</div>
+                            <div class="text-danger small" ng-repeat="p in panel.preview.problems">{{p}}</div>
+                            <div ng-include="'templates/nicknames-changes.html'" ng-if="panel.preview &amp;&amp; panel.preview.ok"></div>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-danger" ng-disabled="!canSave()" ng-click="save()">Delete this nickname</button>
+                                <button type="button" class="btn btn-sm btn-link" ng-click="close()">Cancel</button>
+                            </div>
+                        </div>
+
+                        <div class="nr-panel" ng-if="panel.mode === 'edit'">
+                            <div class="nr-slot">
+                                <span class="nr-slot-label small">Nickname</span>
+                                <input type="text" class="form-control form-control-sm" ng-model="panel.text" ng-change="changed(true)"
+                                    placeholder="a word or a phrase, as it appears in the titles"></input>
+                            </div>
+                            <div class="nr-slot">
+                                <span class="nr-slot-label small">It means</span>
+                                <span class="nr-kind small">
+                                    <label><input type="radio" ng-model="panel.kind" value="all" ng-change="kindChanged()"> One show</label>
+                                    <label ng-if="hasSeasons()"><input type="radio" ng-model="panel.kind" value="seasons" ng-change="kindChanged()"> Some seasons of it</label>
+                                    <label><input type="radio" ng-model="panel.kind" value="anyOf" ng-change="kindChanged()"> Any one of several shows</label>
+                                </span>
+                                <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="panel.filter"></input>
+                            </div>
+                            <div class="nr-slot" ng-if="panel.kind !== 'anyOf'">
+                                <span class="nr-slot-label small"></span>
+                                <select class="custom-select custom-select-sm" ng-model="panel.showKey" ng-change="showChanged()"
+                                    ng-options="s.key as showLabel(s) group by s.group for s in optionsFor(panel.showKey)">
+                                    <option value="">Pick the show...</option>
+                                </select>
+                            </div>
+                            <div class="nr-slot" ng-if="panel.kind === 'seasons' &amp;&amp; hasSeasons()">
+                                <span class="nr-slot-label small"></span>
+                                <span class="nr-seasons small">
+                                    <label class="nr-season" ng-repeat="c in seasonChoices() track by c.index">
+                                        <input type="checkbox" ng-model="panel.picked[c.index]" ng-change="changed(false)"> {{c.label}}
+                                    </label>
+                                    <span class="text-muted" ng-if="seasonState().loading">reading the seasons&hellip;</span>
+                                    <span class="text-warning" ng-if="seasonState().error">{{seasonState().error}}</span>
+                                </span>
+                            </div>
+                            <div class="nr-slot" ng-if="panel.kind === 'anyOf'">
+                                <span class="nr-slot-label small"></span>
+                                <div class="nr-seasons">
+                                    <div class="nr-member" ng-repeat="m in panel.members track by $index">
+                                        <select class="custom-select custom-select-sm" ng-model="m.key" ng-change="changed(false)"
+                                            ng-options="s.key as showLabel(s) group by s.group for s in optionsFor(m.key)">
+                                            <option value="">Pick a show...</option>
+                                        </select>
+                                        <button type="button" class="btn btn-sm btn-link text-danger" ng-if="panel.members.length > 2" ng-click="removeMember($index)" title="Remove this show">&times;</button>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-link" ng-if="canAddMember()" ng-click="addMember()">+ add a show</button>
+                                </div>
+                            </div>
+                            <div class="nr-reads small text-muted" ng-if="reads()">&ldquo;{{panel.text}}&rdquo; would mean: <b>{{reads()}}</b></div>
+
+                            <div class="small text-muted" ng-if="panel.busy">checking&hellip;</div>
+                            <div class="text-danger small" ng-if="panel.error">{{panel.error}}</div>
+                            <div class="text-danger small" ng-repeat="p in panel.preview.problems">{{p}}</div>
+                            <div ng-include="'templates/nicknames-changes.html'" ng-if="panel.preview &amp;&amp; panel.preview.ok"></div>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-primary" ng-disabled="!canSave()" ng-click="save()">Save changes</button>
+                                <button type="button" class="btn btn-sm btn-link" ng-click="close()">Cancel</button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

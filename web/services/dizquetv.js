@@ -256,6 +256,21 @@ module.exports = function ($http, $q) {
             return (await $http.get('/api/show-seasons', { params: { show: showKey } })).data;
         },
 
+        // The Nicknames page: every nickname with what it means (read-only), what editing or
+        // deleting one would change (read-only), and the save, which rejects with
+        // { data: { error } } when refused.
+        getNicknames: async () => {
+            return (await $http.get('/api/nicknames')).data;
+        },
+
+        previewNickname: async (body) => {
+            return (await $http.post('/api/nicknames/preview', body)).data;
+        },
+
+        saveNickname: async (body) => {
+            return (await $http.post('/api/nicknames/save', body)).data;
+        },
+
         // Every list with its counts of clips by group and the channels that use it.
         getNamesOverview: async () => {
             return (await $http.get('/api/names-overview')).data;
