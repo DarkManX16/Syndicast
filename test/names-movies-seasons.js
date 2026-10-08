@@ -183,6 +183,30 @@ module.exports = async function run() {
             ids(propose('Inuyasha Castle Beyond the Looking Glass promo')) === 'movie.Inuyasha the Movie 2: The Castle Beyond the Looking Glass');
         suite.check('a short in a custom show is never matched by a subtitle: "Rabbit Fire" names nothing',
             ids(propose('Rabbit Fire promo')) === '');
+        suite.check('a movie\'s whole title is offered in a custom show too, and is longer than the custom show\'s own name',
+            ids(propose('Cartoon Theatre Next Time (Scooby-Doo and the Goblin King)')) === 'movie.Scooby-Doo and the Goblin King');
+    }
+
+    // ---- fix (Oct 8, 2026): a movie's whole title takes part in the longest-match rule
+    // like a show's, in a custom show or not - real titles from Ron's "Cartoon Theatre
+    // Next Time" list, where a movie with no colon subtitle used to be read as the show
+    // it overlaps (or, with two shows in its words, as both) rather than as itself.
+    {
+        const overlapChannel = { number: 2, name: 'Overlap', scheduleBackup: { slots: [] }, programs: [
+            episode('Alvin and the Chipmunks', 1, 1), episode('The Jetsons', 1, 1), episode('The Flintstones', 1, 1),
+            movie('Alvin and the Chipmunks Meet Frankenstein', 75, { id: 'ct', name: 'Cartoon Theatre Movies' }),
+            movie('The Jetsons Meet The Flintstones', 90, { id: 'ct', name: 'Cartoon Theatre Movies' }),
+        ] };
+        const overlapVocab = showMatch.buildVocabulary([overlapChannel], { ct: 'Cartoon Theatre Movies' });
+        const overlapPropose = (title) => showMatch.propose(title, overlapVocab, {});
+        suite.check('"Alvin and the Chipmunks Meet Frankenstein" names the movie, not the show it overlaps',
+            ids(overlapPropose('Cartoon Theatre Next Time (Alvin and the Chipmunks Meet Frankenstein)')) === 'movie.Alvin and the Chipmunks Meet Frankenstein',
+            JSON.stringify(overlapPropose('Cartoon Theatre Next Time (Alvin and the Chipmunks Meet Frankenstein)').names));
+        suite.check('"The Jetsons Meet The Flintstones" names the movie, not two shows read out of its words',
+            ids(overlapPropose('Cartoon Theatre Next Time (The Jetsons Meet The Flintstones)')) === 'movie.The Jetsons Meet The Flintstones',
+            JSON.stringify(overlapPropose('Cartoon Theatre Next Time (The Jetsons Meet The Flintstones)').names));
+        suite.check('the plain show is still named on its own, unaffected',
+            ids(overlapPropose('Alvin and the Chipmunks Next Time')) === 'tv.Alvin and the Chipmunks');
     }
 
     // ---- fix (Oct 8, 2026): a movie in a custom show's own catalog names itself even

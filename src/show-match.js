@@ -240,6 +240,11 @@ function buildVocabulary(channels, customShowNames, customShows) {
             }
             if (clipNames.isListableMovie(program) ) {
                 movies.set(program.title, (typeof(program.customShowId) !== 'undefined') ? (program.customShowName || 'a custom show') : null);
+                // A movie's own whole title takes part in the longest-match rule exactly like a
+                // show's, whether or not it sits inside a custom show: the custom show's own name
+                // is still offered too (below), but the movie's title is usually the longer, more
+                // specific match, and the scan tries the longest title first.
+                add('movie.' + program.title, program.title);
             }
             if ( (program.type === 'episode') && (typeof(program.showTitle) === 'string') && Number.isInteger(program.season)
                 && (typeof(program.customShowId) === 'undefined') ) {
