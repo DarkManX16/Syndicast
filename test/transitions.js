@@ -607,16 +607,55 @@ module.exports = async function run() {
                 { id: 'nolist', kind: 'list', match: 'any' }], [], { EMPTY: [] });
             suite.check('a step whose list is empty, missing or unnamed is skipped, with one note each',
                 none.out.length === 0 && none.notes.length === 3 && none.skipped.every((s) => s.problem), none.notes.join(' | '));
-            const later = planFor([S('l', 'U', { match: 'show', keyedOn: 'later' }),
+            const stillUnbuilt = planFor([
                 { id: 'g', kind: 'generated', template: 'up-next', durationMs: 5000 },
                 S('x', 'U', { match: 'maybe' })], [], { U: [clipOf('B', 10, ['tv.Beta'])] });
-            suite.check('keyedOn later, the generated kind and an unknown match are skipped as problems, not played',
-                later.out.length === 0 && later.notes.length === 3, later.notes.join(' | '));
+            suite.check('the generated kind and an unknown match are skipped as problems, not played',
+                stillUnbuilt.out.length === 0 && stillUnbuilt.notes.length === 2, stillUnbuilt.notes.join(' | '));
             const bad = planFor([S('u', 'U', { match: 'show' })], [], { U: [
                 clipOf('Bad 1', 10, 'tv.Beta'), clipOf('Bad 2', 10, []), clipOf('Bad 3', 10, ['tv.Beta', 'tv.Gamma', 'tv.Alpha', 'tv.Delta', 'tv.Epsilon']),
                 clipOf('Bad 4', 0, ['tv.Beta']), clipOf('Good', 10, ['tv.Beta'])] });
             suite.check('a clip whose names are unusable, or that has no length, is never chosen',
                 titles(bad.out) === 'Good', titles(bad.out));
+        }
+
+        // -- keyedOn 'later' (step 8): the first program of the context's next
+        // airing or start, not either neighbour of the break
+        {
+            // A block airing only Monday 10-11am, and a day-part covering the rest
+            // of the week. Alpha (in the block) is followed by Beta (in the
+            // day-part): a genuine boundary, leaving the block. The block's next
+            // airing, a week on, opens with Gamma - found only by scanning past
+            // Beta and the long Flex between them, not by looking at either
+            // neighbour of this break.
+            const mon = at('2026-10-05T10:00:00');
+            const progs = [episode('Alpha', 1, 60), flex(5), episode('Beta', 1, 30), flex(9985), episode('Gamma', 1, 30)];
+            const channel = {
+                number: 18, name: 'Later', offlineMode: 'pic', fallback: [], fillerRepeatCooldown: 0, fillerCollections: [],
+                dayParts: [{ id: 'd', name: 'D', fillerCollections: mix([['A', 100]]),
+                    starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }] }],
+                blocks: [{ id: 'm', name: 'M', fillerCollections: mix([['B', 100]]),
+                    airings: [{ days: [1], start: 10 * HOUR, end: 11 * HOUR }],
+                    transitions: { leaving: { out: [S('l', 'U', { match: 'show', keyedOn: 'later' })], in: [] } } }],
+                programs: progs, duration: progs.reduce((a, p) => a + p.duration, 0), startTime: new Date(mon).toISOString(),
+            };
+            const brk = transitions.findBreak(channel, 1, mon + 60 * MIN);
+            suite.check('the break really is a boundary leaving the block, not a between-shows break inside it',
+                transitions.assemble(channel, brk).situation === 'boundary', transitions.assemble(channel, brk).situation);
+            const plan = (lists) => transitions.buildPlan(channel, brk, env(lists));
+            const named = plan({ U: [clipOf('Next time: Gamma', 10, ['tv.Gamma']), clipOf('Next time: Beta', 10, ['tv.Beta'])] });
+            suite.check('a step keyed on later plays the clip naming the show that opens the block\'s next airing a week on, not the show right after the break',
+                titles(named.out) === 'Next time: Gamma', titles(named.out));
+            const none = plan({ U: [clipOf('Next time: Beta', 10, ['tv.Beta'])] });
+            suite.check('with no clip naming that show it is skipped, and that is not a problem',
+                none.out.length === 0 && none.skipped.length === 1 && none.skipped[0].problem === false, JSON.stringify(none.skipped));
+            // A fallback works for a `later` step exactly as it does for `now`/`next` - room
+            // left for the generated stand-in bumpers planned as their own session.
+            channel.blocks[0].transitions.leaving.out[0].fallbackListId = 'G';
+            const withFallback = transitions.buildPlan(channel, brk,
+                env({ U: [clipOf('Next time: Beta', 10, ['tv.Beta'])], G: [clipOf('Generic stand-in', 8)] }));
+            suite.check('a fallback list stands in when nothing names the later show, like any other show step',
+                titles(withFallback.out) === 'Generic stand-in' && withFallback.out[0].via === 'fallback', titles(withFallback.out));
         }
 
         // -- purity

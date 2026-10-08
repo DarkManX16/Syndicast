@@ -488,6 +488,50 @@ function watchProblem(step, sequence) {
 }
 
 /*
+ * How far ahead a keyedOn 'later' step is willing to look for its context's next
+ * airing or start: a day-part start and a block airing both name weekdays, so if
+ * the context has not recurred within a week and a bit, it never will. Bounds
+ * `laterProgram`'s walk independently of how many programs that spans.
+ */
+const LATER_SCAN_WINDOW_MS = dayParts.WEEK + dayParts.DAY;
+// A hard backstop against looping forever over programs of zero duration (a
+// malformed fixture, say); real channels reach the time window first.
+const LATER_SCAN_GUARD = 100000;
+
+/*
+ * The first program of `context`'s next airing or start, after this break -
+ * keyedOn: 'later', for Cartoon Theatre's "Next Time": the one bumper that
+ * names neither neighbour, but the show the context opens with when it next
+ * comes round. Walks the cyclic lineup forward from the break, resolving each
+ * program's own context exactly as everywhere else (dayParts.resolveContext)
+ * rather than reworking its daylight-saving arithmetic forward: a day-part
+ * start or block airing names weekdays, so its next occurrence is at most a
+ * week away, and the first program found back in `context` is where it
+ * begins. null when the channel has no next program, or none is found within
+ * the window - a context that never recurs, or is not the one this break is
+ * leaving.
+ */
+function laterProgram(channel, brk, context) {
+    if ( (context == null) || (brk.next == null) ) {
+        return null;
+    }
+    const programs = channel.programs;
+    const n = programs.length;
+    const horizon = brk.next.startTime + LATER_SCAN_WINDOW_MS;
+    let at = brk.next.startTime;
+    let index = brk.next.index;
+    for (let guard = 0; (at < horizon) && (guard < LATER_SCAN_GUARD); guard++) {
+        const program = programs[index];
+        if ( (program.isOffline !== true) && (dayParts.resolveContext(channel, at) === context) ) {
+            return program;
+        }
+        at += program.duration;
+        index = (index + 1) % n;
+    }
+    return null;
+}
+
+/*
  * A clip's names as plan-building reads them: [] when it has none, the one or
  * two keys when it has, and null when the field is there but unusable, which
  * makes the clip ineligible everywhere. An unusable `names` must never turn a
@@ -548,8 +592,9 @@ function namesState(clip) {
  * Among the clips that fit a tier the longest idle plays, and a clip never
  * plays twice in one plan, so the in step of a break whose out step took the
  * only fitting clip falls through to its fallback or skips. Ties go to list
- * order, so one break always builds one plan. `keyedOn: 'later'` and the
- * 'generated' kind are not built and are skipped as problems.
+ * order, so one break always builds one plan. The 'generated' kind is not
+ * built yet and is skipped as a problem; `keyedOn: 'later'` keys a step on
+ * `laterProgram`, below.
  *
  * A step marked onlyIfNoMatch is decided after the unmarked ones, whose
  * outcomes are all known by then. A clip from a fallback list counts as a
@@ -598,12 +643,15 @@ function buildPlan(channel, brk, env) {
         }
         return sequence;
     };
-    const keyedShows = (keyedOn) => {
+    const keyedShows = (keyedOn, context) => {
         if (keyedOn === 'next') {
             return { singles: [nextProgram], order: sequenceLazily() };
         }
         if (keyedOn === 'now') {
             return { singles: [prevProgram], order: null };
+        }
+        if (keyedOn === 'later') {
+            return { singles: [laterProgram(channel, brk, context)], order: null };
         }
         return null;
     };
@@ -655,7 +703,7 @@ function buildPlan(channel, brk, env) {
     const featured = (listId) => (typeof(env.featuresShows) === 'function') && (env.featuresShows(listId) === true);
     const anyClip = { via: 'featured', accept: () => true };
 
-    const tiersOf = (step) => {
+    const tiersOf = (step, context) => {
         let own;
         let general;
         let ownFeatured;
@@ -676,7 +724,7 @@ function buildPlan(channel, brk, env) {
             ];
             ownFeatured = own.concat([anyClip]);
         } else if ( (step.match === 'show') || (step.match === 'any') ) {
-            general = keyedShows(step.keyedOn);
+            general = keyedShows(step.keyedOn, context);
             if (general === null) {
                 return null;
             }
@@ -753,13 +801,13 @@ function buildPlan(channel, brk, env) {
         if (leftOut(entry)) {
             return;
         }
-        const tiers = tiersOf(step);
+        const tiers = tiersOf(step, entry.context);
         if (typeof(tiers) === 'undefined') {
             skip(entry, `has match "${step.match}", which is not one of ${MATCHES.join(', ')}`, true);
             return;
         }
         if (tiers === null) {
-            skip(entry, (step.keyedOn === 'later') ? 'keyedOn "later" is not built yet' : `has keyedOn "${step.keyedOn}", which is not one of ${KEYED_ON.join(', ')}`, true);
+            skip(entry, `has keyedOn "${step.keyedOn}", which is not one of ${KEYED_ON.join(', ')}`, true);
             return;
         }
         const primary = clipsOf(step.listId);
@@ -857,6 +905,7 @@ module.exports = {
     showAfter: showAfter,
     showSequence: showSequence,
     sequencePrograms: sequencePrograms,
+    laterProgram: laterProgram,
     watchProblem: watchProblem,
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,

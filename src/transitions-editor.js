@@ -22,10 +22,9 @@ const transitions = require('./transitions');
 const showMatch = require('./show-match');
 
 /*
- * The four ways a step can choose its clips, as the form offers them. Each is a
+ * The five ways a step can choose its clips, as the form offers them. Each is a
  * (match, keyedOn) pair of the stored shape; `any` keeps keyedOn 'next', the
- * default, since the field is read but means nothing for it. `later` is not
- * offered (it is not built), and a stored step using it reads as unsupported.
+ * default, since the field is read but means nothing for it.
  */
 const WHICH = [
     { id: 'next', match: 'show', keyedOn: 'next', short: 'for the show coming up',
@@ -39,12 +38,15 @@ const WHICH = [
       about: ' for the show that just ended, then the one coming up (or, failing that, just the one coming up)' },
     { id: 'any', match: 'any', keyedOn: 'next', short: 'any clip',
       label: 'any clip from the list', about: '' },
+    { id: 'later', match: 'show', keyedOn: 'later', short: 'for the show next time',
+      label: 'a clip for the show that opens this, next time it comes round',
+      about: ' for the show that opens this, next time it comes round' },
 ];
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// Which of the four choices a stored step is, or null when it is none of them
-// (keyedOn 'later', an unknown match): those are shown and kept, never edited.
+// Which of the five choices a stored step is, or null when it is none of them
+// (a 'generated' kind, an unknown match): those are shown and kept, never edited.
 function whichOf(step) {
     const found = WHICH.find( (w) => (w.match === step.match) && ( (w.match !== 'show') || (w.keyedOn === step.keyedOn) ) );
     return (typeof(found) === 'undefined') ? null : found.id;
@@ -288,9 +290,7 @@ function describeStep(step, sequence, names) {
     }
     const which = whichOf(step);
     if (which === null) {
-        return step.keyedOn === 'later'
-            ? 'This step is keyed on the show after the next one, which is not built yet. It is kept as it is and skipped on air.'
-            : 'This step uses a way of choosing clips this editor does not know. It is kept as it is and skipped on air.';
+        return 'This step uses a way of choosing clips this editor does not know. It is kept as it is and skipped on air.';
     }
     const w = WHICH.find( (x) => x.id === which );
     const list = (step.listId == null || step.listId === '') ? 'a list you have not chosen yet'
@@ -325,7 +325,7 @@ function chipLabel(step, sequence, names) {
     const which = whichOf(step);
     const parts = [ stepListName(step, names) ];
     if (which === null) {
-        parts.push(step.keyedOn === 'later' ? 'names the show after next (not built yet)' : 'unknown choice');
+        parts.push('unknown choice');
         return parts.join(' · ');
     }
     parts.push(WHICH.find( (x) => x.id === which ).short);

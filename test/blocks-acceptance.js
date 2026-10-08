@@ -147,6 +147,11 @@ function sseq(id, listId, extra) {
 function nextStep(id, listId, extra) {
     return sseq(id, listId, Object.assign({ match: 'show' }, extra || {}));
 }
+// A show step keyed on 'later' (step 8): the show that opens this context's
+// next airing, skipped when nothing names it.
+function laterStep(id, listId, extra) {
+    return sseq(id, listId, Object.assign({ match: 'show', keyedOn: 'later' }, extra || {}));
+}
 function withTransitions(channel, byName) {
     const attach = (list) => (list || []).map((c) => (byName[c.name] ? Object.assign({}, c, { transitions: byName[c.name] }) : c));
     return Object.assign({}, channel, { dayParts: attach(channel.dayParts), blocks: attach(channel.blocks) });
@@ -176,6 +181,9 @@ const SEQ_LISTS = {
     'CN Cinema bumper': [named('CN Cinema bumper', 10)],
     'Cartoon Theatre intro': [named('Cartoon Theatre intro', 10)],
     'Cartoon Theatre closing': [named('Cartoon Theatre closing', 10)],
+    // Step 8: Ron's real "Cartoon Theatre Next Time" list names the movie each
+    // clip is for - one for the movie that opens next week's Cartoon Theatre.
+    'CT Next Time': [named('Cartoon Theatre Next Time (Gamma)', 10, ['movie.Cartoon Theatre Movie 2'])],
     'CN City Grim bumper': [named('CN City Grim bumper', 10, ['tv.Grim'])],
     // "Grim / Foster's" names the next show and the one after it: coming up, in that order.
     'Now/Then': [named('Now/Then (Grim / Fosters)', 10, ['tv.Grim', 'tv.Fosters']),
@@ -249,7 +257,9 @@ const ccnSeq = withTransitions(Object.assign({}, ccn, {
         leaving: { out: [sseq('mg-end', 'Miguzi ending'), sseq('mg-outro', 'CN City Miguzi outro')], in: [] },
     },
     'Cartoon Theatre': {
-        leaving: { out: [sseq('ct-closing', 'Cartoon Theatre closing')], in: [] },
+        // Step 8: Next Time, keyed on later, before the closing bumper - the spec's
+        // own order ("Next Time (if applicable) -> Cartoon Theatre closing").
+        leaving: { out: [laterStep('ct-next', 'CT Next Time'), sseq('ct-closing', 'Cartoon Theatre closing')], in: [] },
         entering: { out: [], in: [sseq('ct-cinema', 'CN Cinema bumper'), sseq('ct-intro', 'Cartoon Theatre intro')] },
     },
     'CN City Day': {
@@ -645,8 +655,7 @@ const ROWS = [
     // --- Stage 5: docs/blocks-spec.md "Stage 5". Most rows are plans - which
     // clips a break's steps choose. The three about a stream that is late,
     // very late or tuning in are played through the cursor (streamThrough,
-    // step 4). "Next Time" needs keyedOn "later", which is step 8, so the
-    // Cartoon Theatre -> Grim row has no Next Time step yet.
+    // step 4).
     //
     // Each row lays out its own lineup against the ccnSeq / nickSeq fixtures
     // above, so it holds whatever Ron's real block times are.
@@ -676,10 +685,15 @@ const ROWS = [
     // Grim's day-part has the Grim bumper before the Flex and, after it, a clip
     // naming Grim then Foster's: a step keyed on next reads two names as "coming
     // up: these two, in this order", so it plays only when the show after Grim
-    // is Foster's.
-    planRow(5, 'Sat, Cartoon Theatre -> Grim, followed by Foster\'s | closing -> Grim bumper -> Flex -> Now/Then (Grim / Fosters)',
-        'Cartoon Theatre closing -> CN City Grim bumper -> Flex -> Now/Then (Grim / Fosters)',
-        () => render(planOf(ccnSeq, [movie('Cartoon Theatre Movie', 90), flex(5), episode('Grim', 1, 25), flex(5), episode('Fosters', 1, 25)],
+    // is Foster's. Step 8's Next Time fires first, on the way out: the lineup
+    // carries one more Saturday, a week on (one long Flex standing in for the
+    // week between), opening with "Cartoon Theatre Movie 2" - the show
+    // keyedOn "later" finds by scanning past Grim and Foster's, not by reading
+    // either neighbour of this break.
+    planRow(5, 'Sat, Cartoon Theatre -> Grim, followed by Foster\'s | Next Time -> closing -> Grim bumper -> Flex -> Now/Then (Grim / Fosters)',
+        'Cartoon Theatre Next Time (Gamma) -> Cartoon Theatre closing -> CN City Grim bumper -> Flex -> Now/Then (Grim / Fosters)',
+        () => render(planOf(ccnSeq, [movie('Cartoon Theatre Movie', 90), flex(5), episode('Grim', 1, 25), flex(5), episode('Fosters', 1, 25),
+            flex(9930), movie('Cartoon Theatre Movie 2', 90)],
             '2026-01-17T16:30:00', 1))),
 
     planRow(5, 'Now/Then when Grim is followed by anything other than Foster\'s | skipped',

@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-5 built (situations, names, plans, playing them through the cursor, the card editor)
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-8, through "Next Time" and `keyedOn: 'later'`)
 
 ## Summary
 
@@ -280,8 +280,8 @@ step 3b reads, and plays, exactly as it did.
   script, may supply their own roll (`env.roll`).
 - **`keyedOn: 'later'`** keys a step on the first program of this context's
   *next* airing or start, for Cartoon Theatre's "Next Time" — the one bumper
-  in the examples that names neither neighbour. It is the last build step and
-  may slip past 1.0; the field is reserved either way.
+  in the examples that names neither neighbour. **Built Oct 8, 2026**; see
+  NOTES.md.
 
 **Matching falls back rather than skipping.** A step tries its most specific
 match, then the next, then its fallback list. A step with no fallback is the
@@ -526,15 +526,22 @@ first). It is proposed automatically and fixed on a review screen:
   `slotProblem` says why a set is not a name yet).
 
   *What the matcher suggests.* (1) **A movie, by its subtitle**, the part after its colon with a
-  leading "The" optional, or by its whole title when it is not in a custom show (as before): "DragonBall
+  leading "The" optional, or by its whole title, in a custom show or not (built Oct 8, 2026; until
+  then, only when it was not in a custom show): "DragonBall
   Z Movie Cooler's Revenge Intro" names "Dragon Ball Z: Cooler's Revenge" and not the show it
-  belongs to, which a movie that was found replaces. Only movies of **40 minutes or more** (`clipNames.MOVIE_MIN_MS`, also the rule for the channel detail page's Movies tab, which
+  belongs to, which a movie that was found replaces, and a movie with no subtitle ("Scooby-Doo and
+  the Goblin King") is found by its whole title the same way a show's is - the longest-match scan
+  tries it before the shorter, overlapping title of a show its words happen to share, or of the
+  custom show that holds it. Only movies of **40 minutes or more** (`clipNames.MOVIE_MIN_MS`, also the rule for the channel detail page's Movies tab, which
   lists the long movies inside custom shows too, labelled with the custom show) are
   offered: the movie items under that on the channels are shorts and episodes that a custom show
   holds as movies (1,054 of the 1,374 distinct ones on the dev channels are under 15 minutes),
   and a subtitle of one of those would be looked for in every clip's title. A subtitle that is
   only everyday words ("The Movie", "Part 2") is never offered. Marked `subtitle`, a confident
-  answer. (2) **A special**, by its title (its whole title or either side of a dash, at least two
+  answer. A movie offered this way need not be in any channel's current lineup: `buildVocabulary`'s
+  optional third argument, every custom show's own catalog (built Oct 8, 2026), reads its movies of
+  40 minutes or more regardless, since a custom show's rotation moves on long before Time Slots is
+  re-run to match - the picker and the save check (`saveNames`) accept them the same way. (2) **A special**, by its title (its whole title or either side of a dash, at least two
   words), only when the clip also names its show: "DragonBall Z Special Bardock Father of Goku
   Intro". Less certain. (3) **A season**, from "Season N" next to a `tv.` show (the show before it,
   or the only one): `seasonFromTitle`, less certain, because a promo for "Hannah Montana Season 1
@@ -835,7 +842,14 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    were, a week and five two-viewer days, and nothing was changed; see
    NOTES.md.
 8. **`keyedOn: 'later'`** and the Cartoon Theatre "Next Time" row — last, and
-   only once 1-7 are in.
+   only once 1-7 are in. `buildPlan` resolves it by walking the cyclic lineup
+   forward from the break through `dayParts.resolveContext`, the same
+   DST-aware function every other context read uses, rather than reworking
+   its arithmetic forward: a day-part start or block airing names weekdays,
+   so the window only needs to span a week and a bit. Real-data check: a
+   script over channel 1's two upcoming Cartoon Theatre leaving-breaks (Oct
+   10 and Oct 17, 2026) found the right movie each time, in under 1ms.
+   **Built Oct 8, 2026**; see NOTES.md.
 
 ### Stage 6 — Midrolls
 
@@ -881,7 +895,7 @@ fixture of its own, so they hold whatever the real block times are; the times
 named below are the spec's examples and not what the rows depend on. The three
 rows about a stream running late, very late or tuning in need the cursor and
 are tested with step 4's (built); "Next Time" in the Cartoon Theatre row needs
-`keyedOn: 'later'` (step 8). Added at step 3: the Nick at Nite rows, in which a
+`keyedOn: 'later'` (step 8, built). Added at step 3: the Nick at Nite rows, in which a
 WBRB and a BTTS marked `onlyIfNoMatch` play only when the Up Next step found
 no bumper - with a Next Promos step ahead of it that finds nothing and an Up
 Next that plays (both stay out), neither finding anything (both play), a promo
