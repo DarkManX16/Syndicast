@@ -526,15 +526,22 @@ first). It is proposed automatically and fixed on a review screen:
   `slotProblem` says why a set is not a name yet).
 
   *What the matcher suggests.* (1) **A movie, by its subtitle**, the part after its colon with a
-  leading "The" optional, or by its whole title when it is not in a custom show (as before): "DragonBall
+  leading "The" optional, or by its whole title, in a custom show or not (built Oct 8, 2026; until
+  then, only when it was not in a custom show): "DragonBall
   Z Movie Cooler's Revenge Intro" names "Dragon Ball Z: Cooler's Revenge" and not the show it
-  belongs to, which a movie that was found replaces. Only movies of **40 minutes or more** (`clipNames.MOVIE_MIN_MS`, also the rule for the channel detail page's Movies tab, which
+  belongs to, which a movie that was found replaces, and a movie with no subtitle ("Scooby-Doo and
+  the Goblin King") is found by its whole title the same way a show's is - the longest-match scan
+  tries it before the shorter, overlapping title of a show its words happen to share, or of the
+  custom show that holds it. Only movies of **40 minutes or more** (`clipNames.MOVIE_MIN_MS`, also the rule for the channel detail page's Movies tab, which
   lists the long movies inside custom shows too, labelled with the custom show) are
   offered: the movie items under that on the channels are shorts and episodes that a custom show
   holds as movies (1,054 of the 1,374 distinct ones on the dev channels are under 15 minutes),
   and a subtitle of one of those would be looked for in every clip's title. A subtitle that is
   only everyday words ("The Movie", "Part 2") is never offered. Marked `subtitle`, a confident
-  answer. (2) **A special**, by its title (its whole title or either side of a dash, at least two
+  answer. A movie offered this way need not be in any channel's current lineup: `buildVocabulary`'s
+  optional third argument, every custom show's own catalog (built Oct 8, 2026), reads its movies of
+  40 minutes or more regardless, since a custom show's rotation moves on long before Time Slots is
+  re-run to match - the picker and the save check (`saveNames`) accept them the same way. (2) **A special**, by its title (its whole title or either side of a dash, at least two
   words), only when the clip also names its show: "DragonBall Z Special Bardock Father of Goku
   Intro". Less certain. (3) **A season**, from "Season N" next to a `tv.` show (the show before it,
   or the only one): `seasonFromTitle`, less certain, because a promo for "Hannah Montana Season 1

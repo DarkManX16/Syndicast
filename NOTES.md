@@ -1240,17 +1240,27 @@ for the full spec, stages and acceptance tests.
         nothing - not a bug: those movies (Balto, A Man Called Flintstone, An American Tail III,
         Batman Mask of the Phantasm, Bugs Bunny Movie, Land Before Time III, Life and Advs of
         Santa Clause, Millionaire Dogs, Scooby-Doo Meets The Boo Brothers) are not anywhere in the
-        current 323-day lineup cycle yet, and `saveNames` refuses a movie key the vocabulary
-        doesn't have, so they become namable only once a future Time Slots regeneration actually
-        schedules them. 2 propose something worth a second look rather than accepting as-is:
-        "...Alvin and the Chipmunks Meet Frankenstein" matches the **show** `tv.Alvin and the
-        Chipmunks` (that movie has no colon subtitle to be found by inside its custom show, so the
-        matcher falls back to the overlapping show title) and "...The Jetsons Meet The Flintstones"
-        proposes **both** `tv.The Jetsons` and `tv.The Flintstones`, despite the title having none
-        of the "A to B" / "(A-B)" separators the several-shows rule requires - a real matcher gap,
-        flagged for its own look, separate from this build. Neither is harmful for a `later` step
-        specifically: a show key never fits a movie program, and a multi-name clip never fits
-        `later` (its `order` is null, the same as `now`), so at worst these two just never fire.
+        current 323-day lineup cycle, and (checked again below) not in any custom show's own
+        catalog either, so they need adding there - to "Cartoon Theatre Movies", presumably -
+        before any fix here can name them. 2 proposed something wrong, now fixed below.
+      - **Two matcher fixes, asked for before merging, each its own commit.** `buildVocabulary`
+        gains an optional third argument, `customShows` - every custom show's own definition
+        (`CustomShowDB.getAllShows()`), read for movies of 40 minutes or more independent of
+        whether any channel's current lineup is airing them, since a custom show's rotation moves
+        on long before Time Slots is re-run to match (`ShowMatchService#vocabulary` now reads
+        `getAllShows` instead of `getAllShowsInfo` to supply it). Checked against the real data:
+        none of the 9 unmatched movies above are in any custom show's catalog either, so this
+        alone does not make them namable yet - confirmed, not assumed. Separately, a movie's whole
+        title now takes part in the longest-match rule exactly like a show's title, in a custom
+        show or not; before, a movie with no colon subtitle inside a custom show was never offered
+        by its own title at all, only by whatever show title happened to overlap its words. Fixes
+        the two real clips above: "...Alvin and the Chipmunks Meet Frankenstein" no longer matches
+        the show `tv.Alvin and the Chipmunks`, and "...The Jetsons Meet The Flintstones" no longer
+        matches both `tv.The Jetsons` and `tv.The Flintstones` despite having none of the "A to B" /
+        "(A-B)" separators the several-shows rule requires - both now name the movie, proven with a
+        fixture built from the real titles. Both fixes touch only `show-match.js`'s vocabulary and
+        proposals, never `transitions.js`, so they cannot change what a saved plan plays - confirmed
+        by re-running the old-versus-new dump below after both and finding it unchanged.
       - **Old-versus-new, on a copy.** Every break of all three real channels over a week, built
         with the real filler lists (`env.getList`) through the code before this change and the code
         after: byte-identical, 1,149 breaks, nothing in the data touched by either run. Wiring the
@@ -1258,6 +1268,8 @@ for the full spec, stages and acceptance tests.
         live `.dizquetv-dev` was never touched) and re-running the new code changed exactly one of
         those 1,149 breaks - the Sat Oct 10 leaving-boundary above - and even there nothing played:
         correctly, since none of the 12 clips names "Scooby-Doo" plain, only "...on Zombie Island".
+        Re-run again after the two matcher fixes above: byte-identical to that wired run, as
+        expected, since neither fix touches what a saved plan reads.
       - **The preview.** A second, full copy of `.dizquetv-dev` under
         `C:\Projects\dizquetv-worktrees\later-step-data` (copied Oct 8, 2026, ~11:10 AM Central,
         with the Next Time step wired onto Cartoon Theatre and `xmltv-settings.json`'s `file` made
