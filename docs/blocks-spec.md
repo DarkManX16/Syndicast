@@ -806,7 +806,10 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    boundary configured on the copy, a day walked by script, then a
    **TiviMate preview** of two real breaks. Then the roadmap: tick the
    transition line, fold the slot-positions and sign-on lines into it, and
-   record the off-air leftover.
+   record the off-air leftover. **Built Oct 7, 2026, confirmed in TiviMate
+   Oct 8**; the channel's own lists, names and sequences were walked as they
+   were, a week and five two-viewer days, and nothing was changed; see
+   NOTES.md.
 8. **`keyedOn: 'later'`** and the Cartoon Theatre "Next Time" row — last, and
    only once 1-7 are in.
 

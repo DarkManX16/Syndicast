@@ -277,8 +277,10 @@ for the full spec, stages and acceptance tests.
       path and the daily branch of `slotInWindow` have only been checked by
       reading them, not by a real render.
 
-- [ ] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
-      and per block
+- [x] Transition bumpers: "we'll be right back", "back to the show", "up next", per series
+      and per block - *steps 1 to 7 built and confirmed in TiviMate; step 8
+      (`keyedOn: 'later'`, the Cartoon Theatre "Next Time") is its own line
+      below*
 
       Designed Oct 1, 2026 on Fable 5.1 - Stage 5 in
       [docs/blocks-spec.md](docs/blocks-spec.md), from channel 1's real
@@ -289,8 +291,9 @@ for the full spec, stages and acceptance tests.
       in four situations; a clip carries the shows it names, proposed from
       its title and fixed once on a review screen. Why they attach to the day-part or block, not to items, is in the spec's
       Editor section. The build order for Sonnet 5 is there too:
-      eight steps, TiviMate previews at steps 4 and 7. The two lines below
-      fold into this one when it ticks.
+      eight steps, TiviMate previews at steps 4 and 7. The slot filler
+      positions and sign-on lines below are folded into this one and ticked
+      with it.
 
       **Step 1 built Oct 2, 2026 (Sonnet 5.5): situations and assembly.**
       `src/transitions.js` is pure and nothing calls it from playback yet, so no
@@ -1092,7 +1095,75 @@ for the full spec, stages and acceptance tests.
         the review save (`merge`, adds only) and this page (`change`, edit and delete); readers are
         `propose` and the checks, which read through `load`.
 
-- [ ] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
+      **Step 7 built Oct 7, 2026 (Sonnet 5.5), confirmed in TiviMate by Ron on Oct 8: end to end on
+      channel 1.** Nothing was changed: this step is a check, run on a snapshot of `.dizquetv-dev`
+      taken Oct 7 at 7:29 PM Central (Ron saved Wand ID names and nicknames while it ran, so the
+      first snapshot was thrown away and every number below was re-run on the second). 1,477 tests
+      pass on `blocks` before it. Ron watched breaks from the watch list in TiviMate and they played
+      as listed; which ones he watched was not recorded.
+
+      - **Method (ad hoc, not kept).** A viewer walked through the real `video.js` router, with the
+        real cursor, plans and shared breaks, the real `ChannelDB`, `FillerDB` and saved names, on a
+        fake clock and a fake player, play times held in memory (seeded from the copy's play cache).
+        Plan-level scans over the whole 323-day cycle used `breaksBetween` and `buildPlan` with a
+        simulated rotation. Nothing wrote to the data folder.
+      - **One week, Thu Oct 8 to Wed Oct 14: 448 breaks, 448 programs.** Every program started from
+        its beginning, no fallback picture, and the tightest break had 72 seconds of room (a
+        Checkerboard Era break with no steps); the tightest with steps was the Toonami boundary on
+        Mon to Wed, a 186 to 206 second break with about 100 seconds of steps, which leaves 86 to
+        103. Over the whole lineup (19,975 breaks, 5,572 with steps), 143 breaks have
+        under 60 seconds of room: 123 are shorter than a minute before any step, and 20 are a
+        minute or more that steps squeeze (the Mon to Wed Toonami boundary on its short days, 48 to
+        57 seconds; Cartoon Theatre into CN City Night after "Yogi's First Christmas", 41; a few
+        Space Ghost, CCF and Miguzi breaks). One Adult Swim break, Aug 26 at 5:45 AM, is 27 seconds
+        with 40 of steps, so its Flex drops and the show starts about 13 seconds late.
+      - **Two viewers, five simulated days** (offsets 3, 25, 61, 137 and 300 seconds, player delays
+        0.3 to 2 seconds, about 8,000 requests): no fallback picture, and about half of each viewer's
+        commercials were shared picks.
+      - **What plays, by block.** Adult Swim: entering has "CN Up Next [Adult Swim]", an intro and the
+        first show's NEXT bumper; between shows a show promo only 8 of 44 times (a generic bumper
+        otherwise) and a NEXT bumper after; leaving a sign-off. Toonami: Mon to Wed entering the TOM
+        intro and show intro, Friday the NEXT promo and the "Powerhouse NEXT" promo; between shows a
+        show promo (4 of 12) or a bumper, then the show intro every time. Miguzi, Cartoon Cartoon
+        Fridays and Cartoon Theatre play their sequences as configured. Adult Swim (Sun.), Powerhouse
+        Era (222 breaks), CN City Day and Night between shows, Checkerboard Era, Toonami AcTN and
+        Midnight Run have no steps and play commercials only.
+      - **Steps that never fire or rarely do, all list gaps and none a bug.** The only step that never
+        fired in the week is "CCF Show Intro" on the Friday Toonami to CCF boundary: the first CCF
+        show is I Am Weasel and the list has no intro for it (also none for Johnny Bravo, What's New
+        Scooby-Doo?, Samurai Jack or Time Squad). Miguzi's show intros are one clip (Teen Titans), its
+        BTTS only Static Shock, its WBRB only Xiaolin Showdown, its show promos Static Shock, TMNT
+        and Teen Titans. "Miguzi WBRB (Generic)" and "CCF WBRB (Generic)" are not wired as fallbacks.
+        Lists no mix, step or fallback uses: the Toonami AcTN, Midnight Run and Nick at Nite lists,
+        the "CN City Bumpers" lists and the Wand IDs list.
+      - **The four checks.** (1) DBZ season 3: the first break before one is Mon Feb 8, 2027, 4:24 PM,
+        "DBZ NEXT promo (Frieza Saga) [TOM 3]" then "DBZ Intro [Frieza Saga]"; five of the ten season
+        3 breaks are in Midnight Run, which has no steps. A saga clip never played before a DBZ
+        episode of another season (0 of 91 breaks). But "Toonami Show Intros" is set to feature
+        shows, so season clips and unnamed intros fill in before The Transformers and Transformers:
+        Robots In Disguise, 46 times in the cycle and already on Tue Oct 13 and Wed Oct 14. (2)
+        Justice League Unlimited's intro was saved as season 3 only, as is the "unlimited" nickname:
+        it never plays before seasons 1 or 2, and seasons 4 and 5 get the plain Justice League intro.
+        (3) Channel 3 has no steps and no blocks, and the Wand IDs list (91 of 144 named by then) is
+        in no mix, so no ID can play; in a scratch copy with a hypothetical "show" step on every
+        day-part, an actor's ID played before their show (or any of an any-of's shows) 4,494 times
+        with 0 wrong by an independent check, season-specific IDs stayed on their seasons, and the
+        rest filled in. (4) Two viewers: above.
+      - **Left for Ron, nothing changed:** steps for Adult Swim (Sun.) and Powerhouse Era, the "feature
+        shows" setting on Toonami Show Intros, the Justice League intro as seasons 3 to 5, the missing
+        CCF and Miguzi clips, and wiring the Wand IDs.
+      - **The preview.** A detached worktree of `blocks` and a copy of the data under
+        `C:\Projects\dizquetv-worktrees`, port 18160, started through `Win32_Process.Create` so it
+        outlived the session. Two traps: `xmltv-settings.json`'s `file` is relative to the working
+        directory, so the first start from the worktree failed to write the guide (harmlessly, the
+        live file untouched) and the copy's setting was made absolute; and PowerShell 5.1's
+        `Set-Content -Encoding utf8` writes a byte order mark, which `diskdb` refuses and which
+        crashed the server at start. Write JSON with `[System.IO.File]::WriteAllText` and a
+        `UTF8Encoding($false)`.
+
+- [ ] Next Time bumper: `keyedOn: 'later'` and the Cartoon Theatre "Next Time" row (stage 5 step
+      8). The field is reserved and the builder skips it as a problem. See the spec.
+- [x] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
       see the spec. Nothing is left over.*
@@ -1156,11 +1227,13 @@ for the full spec, stages and acceptance tests.
       sync by construction (`scheduleBackup` is never written except
       alongside the programs it produced).
 
-- [ ] Sign-ons and sign-offs - *covered by stage 5's sequences, decided at
+- [x] Sign-ons and sign-offs - *covered by stage 5's sequences, decided at
       its design pass: a Leaving sequence at the end of the broadcast day and
-      an Entering one at its start. Left over as its own small item: an
-      overnight stretch that should look off-air, since the neighbour rule
-      plays one mix through a long break; see the spec's Stage 5.*
+      an Entering one at its start. Adult Swim's sign-off and sign-on ran as
+      configured in step 7. The leftover is the next line.*
+- [ ] An overnight stretch that looks off-air: the neighbour rule plays one
+      mix through a long break, so a stretch that should look off-air has no
+      way to; see the spec's Stage 5. Recorded at step 7, not built.
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
 - [ ] Rerun
@@ -2799,13 +2872,14 @@ be built:
       are a stronger lead for the skipping. See "A concat restart replayed
       the tune-in" under Resolved, and "Heavy buffering during playback"
       under Known issues.
-- [ ] Stage 5 transition bumpers (designed Oct 1, 2026 on Fable 5.1; Sonnet
+- [x] Stage 5 transition bumpers (designed Oct 1, 2026 on Fable 5.1; Sonnet
       5 builds). See Stage 5 in [docs/blocks-spec.md](docs/blocks-spec.md)
       for the design and the eight-step build order. The design pass decided
       that slot filler positions (HEAD/PRE/MID/POST/TAIL) and sign-ons and
       sign-offs are covered by stage 5's own sequences - see those two
       roadmap lines under Blocks system and Scheduling above - with one small
-      item left over, an off-air look overnight, recorded there.
+      item left over, an off-air look overnight, recorded there. Steps 1 to 7
+      are built; step 8 is its own line under Blocks system.
 - [ ] Per-position stored progress, then rerun, shuffle and ordered shuffle
       (Opus 5.5 throughout - see "Work that stays on Opus 5 end to end" in
       the Model guide below). See the "Per-position stored progress, which
