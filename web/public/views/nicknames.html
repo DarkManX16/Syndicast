@@ -75,7 +75,7 @@
                                 <span class="nr-kind small">
                                     <label><input type="radio" ng-model="panel.kind" value="all" ng-change="kindChanged()"> One show</label>
                                     <label ng-if="hasSeasons()"><input type="radio" ng-model="panel.kind" value="seasons" ng-change="kindChanged()"> Some seasons of it</label>
-                                    <label><input type="radio" ng-model="panel.kind" value="anyOf" ng-change="kindChanged()"> Any one of several shows</label>
+                                    <label><input type="radio" ng-model="panel.kind" value="anyOf" ng-change="kindChanged()"> Any one of several</label>
                                 </span>
                                 <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="panel.filter"></input>
                             </div>
@@ -99,14 +99,9 @@
                             <div class="nr-slot" ng-if="panel.kind === 'anyOf'">
                                 <span class="nr-slot-label small"></span>
                                 <div class="nr-seasons">
-                                    <div class="nr-member" ng-repeat="m in panel.members track by $index">
-                                        <select class="custom-select custom-select-sm" ng-model="m.key" ng-change="changed(false)"
-                                            ng-options="s.key as showLabel(s) group by s.group for s in optionsFor(m.key)">
-                                            <option value="">Pick a show...</option>
-                                        </select>
-                                        <button type="button" class="btn btn-sm btn-link text-danger" ng-if="panel.members.length > 2" ng-click="removeMember($index)" title="Remove this show">&times;</button>
-                                    </div>
-                                    <button type="button" class="btn btn-sm btn-link" ng-if="canAddMember()" ng-click="addMember()">+ add a show</button>
+                                    <name-member ng-repeat="m in panel.members track by $index" member="m" source="memberSource"
+                                        removable="panel.members.length > 2" on-change="changed(false)" on-remove="removeMember($index)"></name-member>
+                                    <button type="button" class="btn btn-sm btn-link" ng-if="canAddMember()" ng-click="addMember()">+ add another</button>
                                 </div>
                             </div>
                             <div class="nr-reads small text-muted" ng-if="reads()">&ldquo;{{panel.text}}&rdquo; would mean: <b>{{reads()}}</b></div>

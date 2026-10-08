@@ -1,5 +1,6 @@
 const clipNames = require('../../src/clip-names');
 const review = require('../../src/names-review');
+const seasonSource = require('../season-source');
 
 /*
  * The Nicknames page (docs/blocks-spec.md, Stage 5, "Which shows a clip names"): every
@@ -11,6 +12,7 @@ const review = require('../../src/names-review');
  */
 module.exports = function ($scope, $timeout, dizquetv) {
     const SHOWN = 12;
+    const seasons = seasonSource(dizquetv, $timeout);
 
     $scope.loading = true;
     $scope.error = '';
@@ -63,12 +65,13 @@ module.exports = function ($scope, $timeout, dizquetv) {
             mode: 'edit', alias: row.alias, text: row.alias, filter: '',
             kind: anyOf ? 'anyOf' : (clipNames.seasonsOf(row.target).length > 0 ? 'seasons' : 'all'),
             showKey: anyOf ? null : clipNames.showOf(row.target), picked: pickedOf(row.target),
-            members: anyOf ? row.target.anyOf.map( (k) => ({ key: k }) ) : [ { key: null }, { key: null } ],
+            members: anyOf ? row.target.anyOf.map(review.slotOfName) : [ review.emptySlot(), review.emptySlot() ],
             preview: null, busy: false, saving: false, error: '',
         };
         $scope.shownChanges = SHOWN;
         $scope.notice = '';
-        ensureSeasons($scope.panel.showKey);
+        seasons.ensure($scope.panel.showKey);
+        $scope.panel.members.forEach( (m) => seasons.ensure(m.key) );
         runPreview();
     };
     $scope.openDelete = (row) => {
@@ -84,6 +87,18 @@ module.exports = function ($scope, $timeout, dizquetv) {
 
     // ---- what it means: a show, some of its seasons, or any one of several shows -----------
     const pickedSeasons = (panel) => review.pickedSeasons(panel);
+    // A member's (or the list's) problem in words.
+    const troubleWords = (trouble, members) => {
+        const bad = members.find( (m) => review.slotProblem(m) !== null );
+        const of = (bad && bad.key) ? clipNames.labelOf(bad.key, $scope.showNames) : 'the show';
+        return (trouble === 'a show has not been picked') ? 'Pick a show or a movie for every box, or remove the empty one.'
+            : (trouble === 'the same name is picked twice in an any-of') ? 'The same name is picked twice.'
+            : (trouble === 'an any-of needs two names') ? 'Pick at least two names.'
+            : (trouble === 'a whole show and a part of the same show are both in an any-of') ? 'A whole show and a part of the same show are both picked: keep just one of them.'
+            : (trouble === 'no season is ticked') ? `Tick at least one season of ${of}, or choose “Any episode”.`
+            : (trouble === 'no special is picked') ? `Pick which special of ${of}, or choose “Any episode”.`
+            : trouble.charAt(0).toUpperCase() + trouble.slice(1) + '.';
+    };
     // The request for the panel as it stands, or a sentence about what is missing.
     const requestOf = (panel) => {
         if (panel.mode === 'delete') {
@@ -91,17 +106,11 @@ module.exports = function ($scope, $timeout, dizquetv) {
         }
         const body = { alias: panel.alias, newAlias: panel.text };
         if (panel.kind === 'anyOf') {
-            const keys = panel.members.map( (m) => m.key );
-            if (keys.some( (k) => ! k )) {
-                return { problem: 'Pick a show for every box, or remove the empty one.' };
+            const trouble = review.slotProblem( { any: true, members: panel.members } );
+            if (trouble !== null) {
+                return { problem: troubleWords(trouble, panel.members) };
             }
-            if (new Set(keys).size !== keys.length) {
-                return { problem: 'The same show is picked twice.' };
-            }
-            if (keys.length < 2) {
-                return { problem: 'Pick at least two shows.' };
-            }
-            body.anyOf = keys;
+            body.anyOf = panel.members.map(review.slotName);
         } else {
             if (! panel.showKey) {
                 return { problem: 'Pick the show it means.' };
@@ -176,11 +185,11 @@ module.exports = function ($scope, $timeout, dizquetv) {
     };
     $scope.kindChanged = () => {
         const panel = $scope.panel;
-        if ( (panel.kind === 'anyOf') && (panel.members.length < 2) ) {
-            panel.members.push( { key: null } );
+        while ( (panel.kind === 'anyOf') && (panel.members.length < 2) ) {
+            panel.members.push( review.emptySlot() );
         }
         if ( (panel.kind !== 'anyOf') && panel.showKey ) {
-            ensureSeasons(panel.showKey);
+            seasons.ensure(panel.showKey);
         }
         $scope.changed(false);
     };
@@ -188,12 +197,12 @@ module.exports = function ($scope, $timeout, dizquetv) {
         const panel = $scope.panel;
         panel.kind = 'all';
         panel.picked = {};
-        ensureSeasons(panel.showKey);
+        seasons.ensure(panel.showKey);
         $scope.changed(false);
     };
     $scope.addMember = () => {
         if ($scope.panel.members.length < clipNames.MAX_ANY_OF) {
-            $scope.panel.members.push( { key: null } );
+            $scope.panel.members.push( review.emptySlot() );
         }
     };
     $scope.removeMember = (i) => {
@@ -207,10 +216,11 @@ module.exports = function ($scope, $timeout, dizquetv) {
     // The shows a select offers: the ones the filter allows plus whatever is picked, one option
     // object per show kept between digests so ng-options settles.
     const extras = new Map();
-    $scope.optionsFor = (current) => {
+    // A nickname for one show never means a movie; a member of an any-of can.
+    const optionsOf = (current, withMovies) => {
         const q = (($scope.panel && $scope.panel.filter) || '').trim().toLowerCase();
         const keep = ($scope.panel && ($scope.panel.kind === 'anyOf')) ? $scope.panel.members.map( (m) => m.key ) : [current];
-        const out = $scope.shows.filter( (s) => (q === '') || (s.name.toLowerCase().indexOf(q) !== -1) || keep.includes(s.key) );
+        const out = $scope.shows.filter( (s) => (withMovies || (s.movie !== true)) && ( (q === '') || (s.name.toLowerCase().indexOf(q) !== -1) || keep.includes(s.key) ) );
         if ( current && ! out.some( (s) => s.key === current) ) {
             if (! extras.has(current) ) {
                 extras.set(current, { key: current, name: clipNames.labelOf(current, $scope.showNames), custom: false, group: 'Shows' });
@@ -219,49 +229,19 @@ module.exports = function ($scope, $timeout, dizquetv) {
         }
         return out;
     };
-    $scope.showLabel = (s) => s.custom ? `${s.name} (custom show)` : s.name;
+    $scope.optionsFor = (current) => optionsOf(current, false);
+    $scope.showLabel = (s) => s.custom ? `${s.name} (custom show)` : ( s.inCustomShow ? `${s.name} (in ${s.inCustomShow})` : s.name );
+    // What every member row of an any-of is given (web/directives/name-member.js).
+    $scope.memberSource = { options: (current) => optionsOf(current, true), label: $scope.showLabel, ensure: seasons.ensure,
+        hasParts: seasons.hasParts, choices: seasons.choices, specials: seasons.specials, state: seasons.state };
 
-    // ---- a show's seasons, from Plex or the lineups ----------------------------------------
-    $scope.seasonInfo = {};
-    const ensureSeasons = async (key) => {
-        if ( ! key || ! /^tv[.]/.test(key) || (typeof($scope.seasonInfo[key]) !== 'undefined') ) {
-            return;
-        }
-        const info = { loading: true, choices: [], error: '' };
-        $scope.seasonInfo[key] = info;
-        try {
-            const data = await dizquetv.getShowSeasons(key);
-            for (const season of data.seasons) {
-                info.choices.push( { index: season.index, label: season.label } );
-            }
-        } catch (err) {
-            console.error(err);
-            info.error = 'Unable to read this show’s seasons.';
-        } finally {
-            info.loading = false;
-            $timeout();
-        }
-    };
-    const extraChoices = new Map();
+    // ---- a show's seasons, from Plex or the lineups (web/season-source.js) ------------------
     $scope.seasonChoices = () => {
         const panel = $scope.panel;
-        if ( (panel == null) || (panel.mode !== 'edit') ) {
-            return [];
-        }
-        const info = $scope.seasonInfo[panel.showKey];
-        const base = (info == null) ? [] : info.choices;
-        const missing = pickedSeasons(panel).filter( (n) => ! base.some( (c) => c.index === n ) );
-        if (missing.length === 0) {
-            return base;
-        }
-        const once = panel.showKey + '|' + base.length + '|' + missing.join(',');
-        if (! extraChoices.has(once) ) {
-            extraChoices.set(once, base.concat( missing.map( (n) => ({ index: n, label: n === 0 ? 'Specials' : 'Season ' + n }) ) ).sort( (a, b) => a.index - b.index ));
-        }
-        return extraChoices.get(once);
+        return ( (panel == null) || (panel.mode !== 'edit') ) ? [] : seasons.choices( { key: panel.showKey, picked: panel.picked } );
     };
-    $scope.hasSeasons = () => ($scope.panel != null) && /^tv[.]/.test($scope.panel.showKey || '');
-    $scope.seasonState = () => ($scope.panel == null) ? undefined : $scope.seasonInfo[$scope.panel.showKey];
+    $scope.hasSeasons = () => ($scope.panel != null) && seasons.hasParts( { key: $scope.panel.showKey } );
+    $scope.seasonState = () => ($scope.panel == null) ? undefined : seasons.state( { key: $scope.panel.showKey } );
 
     // ---- saving ---------------------------------------------------------------------------
     $scope.canSave = () => ($scope.panel != null) && ($scope.panel.preview != null) && ($scope.panel.preview.ok === true)

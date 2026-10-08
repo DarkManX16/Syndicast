@@ -1095,6 +1095,61 @@ for the full spec, stages and acceptance tests.
         the review save (`merge`, adds only) and this page (`change`, edit and delete); readers are
         `propose` and the checks, which read through `load`.
 
+      **Movies, seasons and specials inside "any one of", Oct 8, 2026 (Sonnet 5.5), on branch
+      `names-anyof-mixed`.** Ron's ask: many Disney Channel Wand IDs stand for a star who was in a show
+      and in one particular DCOM (A.J. Trauth: Even Stevens, and one movie). Until now an any-of could
+      hold only shows and custom shows, so the only way to say "or that movie" was the whole DCOM custom
+      show, which made the ID play before every DCOM. An any-of member may now be any single name: a
+      show, a custom show, a movie (40 minutes or more), one season or several of a show, or a special.
+
+      - **The shape.** `{ anyOf: [member, ...] }`, two to eight different members, never another any-of,
+        never an audio show. A whole show beside a part of the same show is refused (redundant; two
+        different parts of one show are allowed). `clipNames.anyOfProblem` says why a set is not a name, and
+        `validName`, `slotProblem` and `anyOfName` all go through it. Every name saved before (shows and custom
+        shows only) is a valid member list of the same kind and has the id it had.
+      - **Ranking.** `clipNames.fits` returns the closest fit among the members: 'specific' before that
+        exact movie, season or special, 'show' before a program of a member that is a show. `buildPlan` needed
+        no change. On the dev copy, "Even Stevens, or Halloweentown" fits an Even Stevens episode as the show,
+        Halloweentown as specific, Hocus Pocus not at all, and it beats a plain clip for the whole Friday DCOM
+        custom show before Halloweentown. (Matching a movie that is in a custom show is by the movie's own
+        title, `movie.<title>`, which is how a movie in a custom show is already keyed.)
+      - **Nicknames** mean the same mixed sets (the alias reader keeps what `validName` accepts). An any-of
+        hit's `keys` are now `showsOf` the name, so a nickname that holds a member's show title is still
+        looked for in the whole title first, and "a show the title names itself beats an any-of that
+        includes it" reads the show inside a season member too. A movie alone is still not offered as the
+        meaning of a nickname.
+      - **The UI.** One member row, `name-member` (`web/directives/name-member.js`, template
+        `name-member.html`): the grouped select (Shows, Custom shows, Movies "(in Friday DCOM Movies)"), then
+        Any episode / Some seasons / A special and the seasons or the special. The review picker, the
+        teach panel and the Nicknames page all use it, and all three read seasons through one loader,
+        `web/season-source.js` (it replaces two copies of the same code). A member is a slot in
+        `src/names-review.js`. The Nicknames page's list now carries the movies, marked `movie`, for its
+        member rows only.
+      - **Proved additive** with `scripts/compare-names-engines.js` against the checkout before the change, on a
+        fresh copy of the dev data (9,602 clips in 104 lists, 49 nicknames): 0 proposals differ, and channel
+        1's 3,520 breaks over 8 weeks with `show`, `pair` and `any` steps from the 42 lists that carry
+        saved names: 0 plans differ. The control (every saved show narrowed to one season) differs on 2,702.
+      - **Ron's data.** The 8 Wand IDs that name the DCOM custom shows whole (A.J. Trauth, Kirsten Storms,
+        Tahj Mowry, Spencer Breslin, Mickey Mouse, Rutt & Tuke, the Epic Mickey ident, Basketball) are
+        untouched and read as before; narrowing them to a movie is a pick in the picker.
+      - **Checked by hand** on a scratch server (port 18170) on a copy of `.dizquetv-dev`, in the browser: the
+        picker on "Wand ID - A.J. Trauth" (replace the custom shows with the movie, Season 2 of Even Stevens,
+        save: `{ anyOf: [{ show, season: 2 }, "movie.Halloweentown"] }`), the teach panel (check says "Even
+        Stevens (Season 2) or Halloweentown") and the Nicknames editor (preview ok, 0 clips change, 12 keep
+        names). A layout bug found there (the row collapsed to a sliver) is fixed in `style.css`.
+      - **Writers and readers of a name, enumerated** (the rule for this kind of change): writers of an any-of
+        are the review save (`validName`; every member's show or movie must be on a channel), the alias file
+        (the reader keeps what `validName` accepts; the Nicknames page's writer reads the file as it is), the Nicknames save, the filler editor and
+        `carryNames` (pass through). Readers: `namesOf`/`namesProblem`, `fits` (all plans), `propose`,
+        `nicknameProblems`/`checkNickname`/`nicknameSuggestions` through `showsOf`, `nameOfHit`,
+        `listNicknames`, `labelOf` (a part of a show reads "Kim Possible (Seasons 1, 2)"), the screens.
+      - **Not done.** A nickname for one movie alone. A movie under 40 minutes. An any-of inside an any-of.
+        The review screen's "Search clips" box does not filter (a scope bug from step 6, not touched here;
+        its own task).
+      - Tests: `test/names-anyof-mixed.js` (68 checks), 19 deliberate breaks all caught; four checks in
+        `test/names-seasons-anyof.js` changed because they said a movie or a season was refused in an any-of
+        or named "shows" in a message. 1,477 to 1,545 tests.
+
       **Step 7 built Oct 7, 2026 (Sonnet 5.5), confirmed in TiviMate by Ron on Oct 8: end to end on
       channel 1.** Nothing was changed: this step is a check, run on a snapshot of `.dizquetv-dev`
       taken Oct 7 at 7:29 PM Central (Ron saved Wand ID names and nicknames while it ran, so the

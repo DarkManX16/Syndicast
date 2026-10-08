@@ -477,9 +477,9 @@ first). It is proposed automatically and fixed on a review screen:
   | One season | `{ "show": "tv.Dragon Ball Z", "season": 3 }` | episodes of that season of the show; season 0 is its specials |
   | Several seasons | `{ "show": "tv.Justice League", "seasons": [3, 4, 5] }` | episodes of any of those seasons of the show (Justice League Unlimited is seasons 3 to 5 of Justice League in Plex) |
   | One special | `{ "show": "tv.Dragon Ball Z", "episode": "Bardock - The Father of Goku" }` | the episode of that title |
-  | Any one of several shows | `{ "anyOf": ["tv.Even Stevens", "tv.Kim Possible"] }` | a program of any of those shows |
+  | Any one of several | `{ "anyOf": ["tv.Even Stevens", "movie.Halloweentown"] }` | a program that fits any one of its members (see below) |
 
-  The movie, the seasons and the special are *specific*; an any-of name is not. A show key does not
+  The movie, the seasons and the special are *specific*; an any-of name is neither, it ranks by the member that fits. A show key does not
   fit a movie, and a movie key does not fit the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
   `tv.` show has seasons and specials; a custom show is one show. A name is valid when it is one of
   these exactly (no extra fields, a whole season from 0 up; several seasons are two or more, ascending
@@ -488,18 +488,42 @@ first). It is proposed automatically and fixed on a review screen:
   into a general one. A clip holds up to four names in air order, whatever they are, and the same
   name is not picked twice in a row.
 
-  **Any one of several shows (built Oct 7, 2026).** A clip that represents a show without announcing
-  it (an actor's Wand ID: "Emily Osment Wand ID", "Christy Carlson Romano Wand ID") names an actor, not a
-  show, and an actor may stand for more than one show (Christy Carlson Romano: Even Stevens and Kim
-  Possible). `{ "anyOf": [show, show, ...] }` is two to eight different shows or custom shows (never a
-  movie, a season or a special, and one show is just that show's key), and it fits a program of any of
-  them, as the show: it takes its turn by longest idle with a clip naming that show exactly, and it is not
-  a specific match. In a list whose clips feature shows it counts as naming the show coming up, so it is
-  in the first tier there. It takes one place in a clip's list of names, so "A then B" in airing order is
-  unchanged and an any-of can be one of the places ("Hannah Montana, then Even Stevens or Kim Possible").
-  The same shows in another order are the same name. A nickname for one show already worked ("emily
-  osment" for Hannah Montana); a nickname may now mean an any-of too. When a title names a show itself and
-  a nickname for an any-of that includes it, the show the title names wins.
+  **Any one of several (built Oct 7, 2026; members widened Oct 8, 2026).** A clip that represents a show
+  without announcing it (an actor's Wand ID: "Emily Osment Wand ID", "Christy Carlson Romano Wand ID") names an
+  actor, not a show, and an actor may stand for more than one thing: Christy Carlson Romano for Even Stevens and
+  Kim Possible, A.J. Trauth for Even Stevens and one particular Disney Channel movie. `{ "anyOf": [member, ...] }`
+  is two to eight different members, and a member is any single name above: a show or a custom show
+  (`tv.`, `custom.`), a movie (`movie.`, 40 minutes or more), one season or several seasons of a show, or
+  a special; never another any-of and never an audio show. One member is just that name. A whole show next to a
+  part of the same show (Even Stevens, or Even Stevens season 2) is refused as redundant; two different parts of one
+  show are allowed. Names saved when an any-of held only shows and custom shows are members of the same kind and
+  read and play unchanged.
+
+  *It ranks by the member that fits* (`clipNames.fits`): before a program that is exactly a member's movie, season
+  or special it fits as **specific**, in the first tier with every other specific clip; before a program of a member
+  that is a show or a custom show it fits as the show, taking its turn by longest idle with a clip naming that
+  show exactly. When two members fit, the closer one counts. So "Even Stevens, or Halloweentown" plays as a plain
+  Even Stevens clip before an Even Stevens episode and as a specific clip before that one movie, and beats a clip
+  for the whole Friday DCOM custom show before it, which the custom show clip does not do for any other of its
+  movies. In a list whose clips feature shows it counts as naming what is coming up, so it is in the first tier
+  there. It takes one place in a clip's list of names, so "A then B" in airing order is unchanged and an any-of can
+  be one of the places ("Hannah Montana, then Even Stevens or Kim Possible"). The same members in another order are the same
+  name (`nameId` sorts the members' ids).
+
+  *Nicknames.* A nickname for one show already worked ("emily osment" for Hannah Montana); a nickname may mean
+  an any-of too, of the same mixed members (a nickname never means one movie alone). When a title names a show or a
+  movie itself and a nickname for an any-of that includes it (in any member, a season of it too), the one the title
+  names wins. The words an any-of nickname is looked for in follow the members' shows (`clipNames.showsOf`):
+  a nickname that holds the title of a member's show is looked for in the whole title first, as one for seasons is.
+  The checks for teaching one are those for a show with "the shows and movies it means": a clip saved under a show
+  or movie that is none of its members blocks it, one saved under one of them does not.
+
+  *The picker.* "Any one of these" in a slot holds member rows (two to eight), each the same choices as a single
+  name: a show, a custom show or a movie (movies labelled with their custom show), and for a show with seasons
+  "Any episode / Some seasons / A special". The review screen's picker and teach panel and the Nicknames page
+  share one row (`web/directives/name-member.js`) and one season loader (`web/season-source.js`), so a row
+  means the same thing wherever it is picked. Slot logic is `src/names-review.js` (a member is a slot,
+  `slotProblem` says why a set is not a name yet).
 
   *What the matcher suggests.* (1) **A movie, by its subtitle**, the part after its colon with a
   leading "The" optional, or by its whole title when it is not in a custom show (as before): "DragonBall

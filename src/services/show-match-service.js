@@ -267,7 +267,9 @@ class ShowMatchService {
     /*
      * The Nicknames page: every nickname with what it means in words, how many clips have it in
      * their title and whether a show it means is gone, plus the shows for the page's pickers
-     * (shows and custom shows; a nickname never means a movie). Reads only.
+     * (shows and custom shows, then the movies of 40 minutes or more, marked `movie`: a nickname
+     * never means one movie alone, but one member of an "any one of" nickname can be a movie).
+     * Reads only.
      */
     async nicknames() {
         const vocabulary = await this.vocabulary();
@@ -283,6 +285,10 @@ class ShowMatchService {
             if (/^(tv|custom)\./.test(key) ) {
                 showNames[key] = vocabulary.names[key];
             }
+        }
+        for (const m of vocabulary.movies) {
+            shows.push( { key: m.key, name: m.name, custom: false, movie: true, inCustomShow: m.custom, group: 'Movies' } );
+            showNames[m.key] = m.name;
         }
         return { nicknames: nicknamesLogic.listNicknames(aliases, vocabulary, clips), shows: shows, showNames: showNames };
     }
