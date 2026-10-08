@@ -15,6 +15,7 @@ const suites = [
     './names-review',
     './names-movies-seasons',
     './names-seasons-anyof',
+    './names-anyof-mixed',
     './channel-library',
     './nicknames-page',
     './startTime-rotation',

@@ -314,11 +314,12 @@ module.exports = async function run() {
 
     // ---- any one of several shows: the shape ------------------------------------------
     {
-        suite.check('any-of is two to eight different shows or custom shows, and nothing else in the object',
+        // (Members that are a movie, seasons of a show or a special are in test/names-anyof-mixed.js.)
+        suite.check('any-of is two to eight different names, and nothing else in the object',
             [CCR, { anyOf: [EVEN, KIM, HANNAH] }, { anyOf: [EVEN, 'custom.dc'] }].every(clipNames.validName)
-            && [{ anyOf: [EVEN] }, { anyOf: [] }, { anyOf: [EVEN, EVEN] }, { anyOf: [EVEN, 'movie.X'] }, { anyOf: [EVEN, 'audio.X'] }, { anyOf: [EVEN, 5] },
+            && [{ anyOf: [EVEN] }, { anyOf: [] }, { anyOf: [EVEN, EVEN] }, { anyOf: [EVEN, 'audio.X'] }, { anyOf: [EVEN, 5] },
                 { anyOf: [EVEN, ''] }, { anyOf: EVEN }, { anyOf: [EVEN, KIM], show: EVEN }, { anyOf: [EVEN, KIM], extra: 1 },
-                { anyOf: ['tv.1', 'tv.2', 'tv.3', 'tv.4', 'tv.5', 'tv.6', 'tv.7', 'tv.8', 'tv.9'] }, { anyOf: [{ show: EVEN, season: 1 }, KIM] }].every( (n) => ! clipNames.validName(n) ));
+                { anyOf: ['tv.1', 'tv.2', 'tv.3', 'tv.4', 'tv.5', 'tv.6', 'tv.7', 'tv.8', 'tv.9'] }].every( (n) => ! clipNames.validName(n) ));
         suite.check('eight shows is the most',
             clipNames.validName({ anyOf: ['tv.1', 'tv.2', 'tv.3', 'tv.4', 'tv.5', 'tv.6', 'tv.7', 'tv.8'] }));
         suite.check('the same shows in another order are the same name; other shows, a season or the show are not',
@@ -327,9 +328,9 @@ module.exports = async function run() {
         suite.check('an any-of name is about each of its shows, and is not specific',
             clipNames.showsOf(CCR).join() === `${EVEN},${KIM}` && clipNames.showsOf(JLU_SEASONS).join() === JL && clipNames.showsOf(EVEN).join() === EVEN
             && clipNames.showsOf(null).length === 0 && clipNames.isSpecific(CCR) === false && clipNames.isSpecific(JLU_SEASONS) === true);
-        suite.check('anyOfName makes the stored shape: nothing, one show, or two or more with repeats and non-shows left out, in the order given',
-            clipNames.anyOfName([]) === null && clipNames.anyOfName(['movie.X']) === null && clipNames.anyOfName([KIM]) === KIM
-            && JSON.stringify(clipNames.anyOfName([KIM, EVEN, KIM])) === JSON.stringify({ anyOf: [KIM, EVEN] }) && JSON.stringify(clipNames.anyOfName([EVEN, 'movie.X', KIM])) === JSON.stringify(CCR));
+        suite.check('anyOfName makes the stored shape: nothing, one name, or two or more with repeats and non-members left out, in the order given',
+            clipNames.anyOfName([]) === null && clipNames.anyOfName(['audio.X']) === null && clipNames.anyOfName([KIM]) === KIM
+            && JSON.stringify(clipNames.anyOfName([KIM, EVEN, KIM])) === JSON.stringify({ anyOf: [KIM, EVEN] }) && JSON.stringify(clipNames.anyOfName([EVEN, 'audio.X', KIM])) === JSON.stringify(CCR));
         const labels = { [EVEN]: 'Even Stevens', [KIM]: 'Kim Possible', [HANNAH]: 'Hannah Montana' };
         suite.check('it reads as words: A or B, A, B or C',
             clipNames.labelOf(CCR, labels) === 'Even Stevens or Kim Possible' && clipNames.labelOf({ anyOf: [EVEN, KIM, HANNAH] }, labels) === 'Even Stevens, Kim Possible or Hannah Montana');
@@ -455,13 +456,13 @@ module.exports = async function run() {
         blank.members = [ { key: EVEN }, { key: null } ];
         suite.check('a blank member is a problem, not a name', review.slotProblem(blank) === 'a show has not been picked' && review.slotName(blank) === null);
         blank.members = [ { key: EVEN }, { key: EVEN } ];
-        suite.check('the same show twice is a problem', review.slotProblem(blank) === 'the same show is picked twice in an any-of');
+        suite.check('the same show twice is a problem', review.slotProblem(blank) === 'the same name is picked twice in an any-of');
         blank.members = [ { key: EVEN } ];
-        suite.check('one show is a problem (that is a plain show)', review.slotProblem(blank) === 'an any-of needs two shows');
+        suite.check('one show is a problem (that is a plain show)', review.slotProblem(blank) === 'an any-of needs two names');
         blank.members = [ { key: EVEN }, { key: KIM }, { key: HANNAH } ];
         suite.check('three are a name in the order picked', JSON.stringify(review.slotName(blank)) === JSON.stringify({ anyOf: [EVEN, KIM, HANNAH] }));
         blank.members = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map( (n) => ({ key: 'tv.' + n }) );
-        suite.check('nine are too many', review.slotProblem(blank) === 'an any-of holds too many shows');
+        suite.check('nine are too many', review.slotProblem(blank) === 'an any-of holds too many names');
         suite.check('a nickname target can be any of several shows',
             JSON.stringify(review.nicknameTarget({ anyOf: [EVEN, KIM] })) === JSON.stringify(CCR) && review.nicknameTarget({ anyOf: [EVEN] }) === EVEN
             && review.nicknameTarget({ anyOf: [] }) === null && JSON.stringify(review.nicknameTarget({ showKey: JL, seasons: [3, 4] })) === JSON.stringify({ show: JL, seasons: [3, 4] }));
@@ -491,7 +492,7 @@ module.exports = async function run() {
             const service = new ShowMatchService(fillerDB, channelService, customShowDB, aliasDB);
 
             fs.writeFileSync(path.join(dir, 'show-aliases.json'), JSON.stringify({ aliases: {
-                [CCR_NICK]: CCR, one: { anyOf: [EVEN] }, same: { anyOf: [EVEN, EVEN] }, movie: { anyOf: [EVEN, 'movie.X'] }, sgc2c: 'tv.Space Ghost Coast to Coast' } }));
+                [CCR_NICK]: CCR, one: { anyOf: [EVEN] }, same: { anyOf: [EVEN, EVEN] }, audio: { anyOf: [EVEN, 'audio.X'] }, sgc2c: 'tv.Space Ghost Coast to Coast' } }));
             const loaded = await aliasDB.load();
             suite.check('the alias file reads an any-of nickname, and drops one that is not in the stored shape; the rest read as they did',
                 Object.keys(loaded).join() === `${CCR_NICK},sgc2c` && JSON.stringify(loaded[CCR_NICK]) === JSON.stringify(CCR));

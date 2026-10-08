@@ -1,0 +1,25 @@
+<div class="nr-member">
+  <select class="custom-select custom-select-sm" ng-model="member.key" ng-change="keyChanged()"
+      ng-options="s.key as source.label(s) group by s.group for s in source.options(member.key)">
+    <option value="">Pick a show or a movie...</option>
+  </select>
+  <button type="button" class="btn btn-sm btn-link text-danger" ng-if="removable" ng-click="onRemove()" title="Remove this one">&times;</button>
+  <span class="nr-kind small" ng-if="source.hasParts(member)">
+    <label><input type="radio" ng-model="member.kind" value="all" ng-change="onChange()"> Any episode</label>
+    <label><input type="radio" ng-model="member.kind" value="seasons" ng-change="onChange()"> Some seasons</label>
+    <label><input type="radio" ng-model="member.kind" value="special" ng-change="onChange()"> A special</label>
+  </span>
+  <span class="small text-muted" ng-if="source.hasParts(member) &amp;&amp; source.state(member).loading">reading the seasons&hellip;</span>
+  <span class="small text-warning" ng-if="source.hasParts(member) &amp;&amp; source.state(member).error">{{source.state(member).error}}</span>
+  <div class="nr-seasons small" ng-if="source.hasParts(member) &amp;&amp; member.kind === 'seasons'">
+    <label class="nr-season" ng-repeat="c in source.choices(member) track by c.index">
+      <input type="checkbox" ng-model="member.picked[c.index]" ng-change="onChange()"> {{c.label}}<span class="text-muted" ng-if="c.folder" title="{{c.folder}}"> (folder: {{folderText(c)}})</span>
+    </label>
+  </div>
+  <div class="nr-seasons small" ng-if="source.hasParts(member) &amp;&amp; member.kind === 'special'">
+    <select class="custom-select custom-select-sm nr-part" ng-model="member.special" ng-change="onChange()"
+        ng-options="o.title as o.title for o in source.specials(member)">
+      <option value="">Pick a special...</option>
+    </select>
+  </div>
+</div>

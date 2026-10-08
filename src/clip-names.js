@@ -11,9 +11,10 @@
  *                                     one season of the show (0 is its specials)
  *   { show: "tv.Justice League", seasons: [3, 4, 5] }
  *                                     several seasons of one show (two or more, in order)
- *   { anyOf: ["tv.Even Stevens", "tv.Kim Possible"] }
- *                                     any one of several shows: a clip that represents a show
- *                                     without announcing it (an actor's Wand ID)
+ *   { anyOf: ["tv.Even Stevens", "movie.Halloweentown"] }
+ *                                     any one of several of the names here (two to eight, none an
+ *                                     any-of): a clip that represents a show without announcing it
+ *                                     (an actor's Wand ID: a show, or a movie the actor was in)
  *   { show: "tv.Dragon Ball Z", episode: "Bardock - The Father of Goku" }
  *                                     one episode of the show, by title: a special
  *
@@ -52,10 +53,11 @@ function isAnyOfName(n) {
     return (n != null) && (typeof(n) === 'object') && Object.prototype.hasOwnProperty.call(n, 'anyOf');
 }
 
-// The most shows one any-of name can hold.
+// The most names one any-of name can hold.
 const MAX_ANY_OF = 8;
-// What an any-of member can be: a show or a custom show, never a movie or a season.
-const ANY_OF_MEMBER = /^(tv|custom)\..+/;
+// What an any-of member can be as a plain key: a show, a custom show or a movie. (An audio
+// show is not one; a season or a special is an object.)
+const ANY_OF_MEMBER = /^(tv|custom|movie)\..+/;
 
 function isEpisodeName(n) {
     return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'episode');
@@ -72,9 +74,9 @@ function validName(n) {
         return true;
     }
     if (isAnyOfName(n) && ! Array.isArray(n) ) {
-        // Two to eight different shows or custom shows, and nothing else in the object.
-        return (Object.keys(n).length === 1) && Array.isArray(n.anyOf) && (n.anyOf.length >= 2) && (n.anyOf.length <= MAX_ANY_OF)
-            && n.anyOf.every( (k) => (typeof(k) === 'string') && ANY_OF_MEMBER.test(k) ) && (new Set(n.anyOf).size === n.anyOf.length);
+        // Two to eight different names (a show, a custom show, a movie, seasons of a show or a
+        // special; never another any-of), and nothing else in the object.
+        return (Object.keys(n).length === 1) && (anyOfProblem(n.anyOf) === null);
     }
     if ( (n == null) || (typeof(n) !== 'object') || Array.isArray(n) || (typeof(n.show) !== 'string') || ! SEASONED_SHOW.test(n.show) ) {
         return false;
@@ -95,6 +97,45 @@ function validName(n) {
     return false;
 }
 
+/*
+ * Whether `m` can be one of the names an any-of holds: a key of a show, a custom show or a
+ * movie, or a season, several seasons or a special of a show; never another any-of.
+ */
+function isAnyOfMember(m) {
+    if (typeof(m) === 'string') {
+        return ANY_OF_MEMBER.test(m);
+    }
+    return (m != null) && (typeof(m) === 'object') && ! isAnyOfName(m) && validName(m);
+}
+
+/*
+ * Why `members` are not an any-of name, as a sentence, or null when they are: two to eight
+ * names that can be members, all different, and none a whole show next to a part of the
+ * same show ("Even Stevens, or Even Stevens season 2" is just Even Stevens).
+ */
+function anyOfProblem(members) {
+    if (! Array.isArray(members) ) {
+        return 'an any-of is a list';
+    }
+    if (members.some( (m) => ! isAnyOfMember(m) )) {
+        return 'a name in an any-of is not a show, a movie, a season of a show or a special';
+    }
+    if (new Set(members.map(nameId)).size !== members.length) {
+        return 'the same name is picked twice in an any-of';
+    }
+    if (members.length < 2) {
+        return 'an any-of needs two names';
+    }
+    if (members.length > MAX_ANY_OF) {
+        return 'an any-of holds too many names';
+    }
+    const whole = new Set(members.filter( (m) => typeof(m) === 'string' ));
+    if (members.some( (m) => (typeof(m) !== 'string') && whole.has(m.show) )) {
+        return 'a whole show and a part of the same show are both in an any-of';
+    }
+    return null;
+}
+
 // One string for a name, equal for equal names: for comparing, de-duplicating and keys.
 function nameId(n) {
     if (typeof(n) === 'string') {
@@ -111,7 +152,7 @@ function nameId(n) {
     }
     if (isAnyOfName(n) && Array.isArray(n.anyOf) ) {
         // The same shows in another order are the same name.
-        return 'anyOf:' + n.anyOf.slice().sort().join('|');
+        return 'anyOf:' + n.anyOf.map(nameId).sort().join('|');
     }
     return '#invalid';
 }
@@ -126,17 +167,18 @@ function showOf(n) {
 }
 
 // The show keys a name is about: itself for a show or a movie, the show of a season or an
-// episode, every member of an any-of name. [] for anything that is not a name.
+// episode, the show or movie of every member of an any-of name (each once). [] for anything
+// that is not a name.
 function showsOf(n) {
     if (isAnyOfName(n) ) {
-        return Array.isArray(n.anyOf) ? n.anyOf.slice() : [];
+        return Array.isArray(n.anyOf) ? Array.from(new Set(n.anyOf.map(showOf).filter( (k) => k !== null ))) : [];
     }
     const key = showOf(n);
     return (key === null) ? [] : [key];
 }
 
 // Whether a name is for one movie, season or episode and not for a whole show. An any-of
-// name is for whole shows, so it is not.
+// name is neither: how it ranks depends on the member that fits (see `fits`).
 function isSpecific(n) {
     if (isAnyOfName(n) ) {
         return false;
@@ -155,7 +197,18 @@ function fits(name, program, showKey) {
         return false;
     }
     if (isAnyOfName(name) ) {
-        return (Array.isArray(name.anyOf) && name.anyOf.includes(showKey(program))) ? 'show' : false;
+        // It ranks by the member that fits: 'specific' before the exact movie, season or
+        // special of a member, 'show' before a program of a member that is a show. When more
+        // than one member fits, the closer one.
+        let best = false;
+        for (const member of (Array.isArray(name.anyOf) ? name.anyOf : []) ) {
+            const how = fits(member, program, showKey);
+            if (how === 'specific') {
+                return 'specific';
+            }
+            best = best || how;
+        }
+        return best;
     }
     if (typeof(name) === 'string') {
         if (name.startsWith('movie.')) {
@@ -179,12 +232,21 @@ function fits(name, program, showKey) {
 }
 
 /*
- * The name for any one of some shows, in the one shape that is stored: null when none are
- * given, the show's key for one, { anyOf } for two or more (repeats left out, the order
- * kept). Keys that are not shows or custom shows are left out.
+ * The name for any one of some names, in the one shape that is stored: null when none are
+ * given, the name itself for one, { anyOf } for two or more (repeats left out, the order
+ * kept). Members are the names an any-of can hold (a show, a custom show, a movie, seasons
+ * of a show or a special); anything else is left out. Whether the result is a valid name is
+ * `validName`'s to say: at most eight, and no whole show beside a part of it.
  */
-function anyOfName(keys) {
-    const list = Array.from(new Set((Array.isArray(keys) ? keys : []).filter( (k) => (typeof(k) === 'string') && ANY_OF_MEMBER.test(k) )));
+function anyOfName(members) {
+    const seen = new Set();
+    const list = [];
+    for (const m of (Array.isArray(members) ? members : []) ) {
+        if (isAnyOfMember(m) && ! seen.has(nameId(m)) ) {
+            seen.add(nameId(m));
+            list.push(m);
+        }
+    }
     if (list.length === 0) {
         return null;
     }
@@ -245,7 +307,9 @@ function labelOf(n, showNames) {
         return text(n);
     }
     if (isAnyOfName(n) ) {
-        const each = Array.isArray(n.anyOf) ? n.anyOf.map(text) : [];
+        // A member that is part of a show reads "Kim Possible (Seasons 1–2)", so the part is not
+        // taken for the whole list's.
+        const each = Array.isArray(n.anyOf) ? n.anyOf.map( (m) => labelOf(m, showNames).replace(/ · (.*)$/, ' ($1)') ) : [];
         return (each.length < 2) ? each.join('') : each.slice(0, -1).join(', ') + ' or ' + each[each.length - 1];
     }
     if (isSeasonName(n) ) {
@@ -267,6 +331,8 @@ module.exports = {
     isSeasonsName: isSeasonsName,
     isAnyOfName: isAnyOfName,
     anyOfName: anyOfName,
+    anyOfProblem: anyOfProblem,
+    isAnyOfMember: isAnyOfMember,
     MAX_ANY_OF: MAX_ANY_OF,
     showsOf: showsOf,
     seasonsName: seasonsName,

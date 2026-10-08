@@ -809,9 +809,10 @@ function aliasEntries(known) {
         } else if ( (folded !== '') && clipNames.isSeasonsName(known[word]) && clipNames.validName(known[word]) ) {
             entries.push( { folded: folded, key: known[word].show, keys: [known[word].show], seasons: known[word].seasons.slice(), narrows: true, words: folded.split(' ').length } );
         } else if ( (folded !== '') && clipNames.isAnyOfName(known[word]) && clipNames.validName(known[word]) ) {
-            // A nickname for any one of several shows. A hit needs a key: this one is made up from the
-            // shows, and never a show's own, so nothing else reads it as one (see nameOfHit).
-            entries.push( { folded: folded, key: 'any:' + clipNames.nameId(known[word]), keys: known[word].anyOf.slice(), anyOf: known[word].anyOf.slice(),
+            // A nickname for any one of several names. A hit needs a key: this one is made up from the
+            // names, and never a show's own, so nothing else reads it as one (see nameOfHit). `keys` are
+            // the shows and movies its members are about; `anyOf` the members themselves.
+            entries.push( { folded: folded, key: 'any:' + clipNames.nameId(known[word]), keys: clipNames.showsOf(known[word]), anyOf: known[word].anyOf.slice(),
                 narrows: true, words: folded.split(' ').length } );
         }
     }
@@ -990,7 +991,7 @@ function propose(title, vocabulary, aliases) {
     // "Christy Carlson Romano Kim Possible Promo" is for Kim Possible, not for Even Stevens too.
     const plainShows = new Set(names.filter( (n) => ! clipNames.isAnyOfName(n) ).map(clipNames.showOf));
     for (let i = names.length - 1; i >= 0; i--) {
-        if (clipNames.isAnyOfName(names[i]) && names[i].anyOf.some( (k) => plainShows.has(k) )) {
+        if (clipNames.isAnyOfName(names[i]) && clipNames.showsOf(names[i]).some( (k) => plainShows.has(k) )) {
             names.splice(i, 1);
         }
     }

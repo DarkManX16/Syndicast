@@ -218,10 +218,11 @@ function picksProblem(keys) {
  * The picker's slots. A slot is { key, kind, picked, special, any, members }: the show
  * or movie key picked, and for a show with seasons what part of it: kind 'all' (any
  * episode), 'seasons' (the seasons in `picked`, { 3: true, 4: true }) or 'special' (the
- * episode titled `special`). A slot with `any` set is for any one of several shows
- * instead, `members` ([{ key }, ...], two to eight) and no `key`. slotOfName reads a
- * stored name into a slot and slotName turns a slot back into a name; slotProblem says
- * why a slot cannot be one yet.
+ * episode titled `special`). A slot with `any` set is for any one of several names
+ * instead, `members` (two to eight slots of the first kind, each a show, a custom show, a
+ * movie, seasons of a show or a special: never another any-of) and no `key`. A member that
+ * is only { key } is a whole show or a movie. slotOfName reads a stored name into a slot and
+ * slotName turns a slot back into a name; slotProblem says why a slot cannot be one yet.
  */
 function emptySlot() {
     return { key: null, kind: 'all', picked: {}, special: '', any: false, members: [] };
@@ -233,7 +234,7 @@ function slotOfName(name) {
         slot.key = name;
     } else if (clipNames.isAnyOfName(name) ) {
         slot.any = true;
-        slot.members = name.anyOf.map( (k) => ({ key: k }) );
+        slot.members = name.anyOf.map(slotOfName);
     } else if (clipNames.isSeasonName(name) || clipNames.isSeasonsName(name) ) {
         slot.key = name.show;
         slot.kind = 'seasons';
@@ -254,17 +255,15 @@ function pickedSeasons(slot) {
 
 function slotProblem(slot) {
     if (slot.any === true) {
-        const keys = (slot.members || []).map( (m) => m.key );
-        if (keys.some( (k) => ! k )) {
-            return 'a show has not been picked';
+        const members = slot.members || [];
+        for (const m of members) {
+            // A member is one show, movie, set of seasons or special, never an any-of.
+            const why = (m.any === true) ? 'an any-of cannot hold another any-of' : slotProblem(m);
+            if (why !== null) {
+                return why;
+            }
         }
-        if (new Set(keys).size !== keys.length) {
-            return 'the same show is picked twice in an any-of';
-        }
-        if (keys.length < 2) {
-            return 'an any-of needs two shows';
-        }
-        return (keys.length > clipNames.MAX_ANY_OF) ? 'an any-of holds too many shows' : null;
+        return clipNames.anyOfProblem(members.map(slotName));
     }
     if (! slot.key) {
         return 'a show has not been picked';
@@ -285,7 +284,7 @@ function slotName(slot) {
         return null;
     }
     if (slot.any === true) {
-        return clipNames.anyOfName(slot.members.map( (m) => m.key ));
+        return clipNames.anyOfName(slot.members.map(slotName));
     }
     if (/^tv[.]/.test(slot.key) && (slot.kind === 'seasons') ) {
         return clipNames.seasonsName(slot.key, pickedSeasons(slot) );
@@ -299,7 +298,8 @@ function slotName(slot) {
 /*
  * What a nickname means, from what the nickname panel or a request says: the show's
  * key, { show, season } for one season, { show, seasons } for several, or { anyOf }
- * when `anyOf` lists two or more shows. `seasons` is the list of seasons ticked (a
+ * when `anyOf` lists two or more names (shows, movies, seasons of a show, specials; see
+ * clipNames.anyOfName). `seasons` is the list of seasons ticked (a
  * single one is read as `season`); older callers pass `season`. null when no show is
  * given.
  */
