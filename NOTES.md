@@ -4780,3 +4780,31 @@ a delete confirmation, spliced an earlier row out of `$scope.fillers` from
 the console to reproduce the exact stale-index condition, confirmed the
 delete completed correctly (checked against the API afterward), and
 confirmed an ordinary delete with no race still works as before.
+
+### The names review search box didn't filter
+
+`web/public/templates/names-review.html`'s `nr-toolbar` (the "Search
+clips..." input) sits inside the `ng-if="list && !loading"` block, which
+Angular compiles onto a new child scope. `ng-model="search"` wrote into a
+`search` property on that child scope, while `web/directives/names-review.js`
+read and filtered on `scope.search` of the outer (directive) scope -
+`rebuild()` never saw a keystroke. Every other `ng-model` in the same
+template already binds through an object path (`picker.filter`, `slot.key`,
+`teach.text`, and the rest), which this same `ng-if` nesting does not break:
+a dotted path writes into a property of an object the child scope inherits
+by reference, not a new property shadowing the parent's own. `search` was
+the one bare, non-dotted binding, so it was the only one affected.
+
+Fixed by renaming the field to `ui.search`, both in the template and in the
+directive's three uses of it (initial value, `rebuild()`'s read, and the
+reset in `open()`), so the write lands on the `ui` object the child scope
+already holds a reference to.
+
+No test drives the compiled template: `test/names-review.js` and its
+siblings exercise `src/names-review.js`'s grouping/accept-all/save logic
+directly, and nothing in `test/` compiles Angular directives (no
+`angular-mocks`, no jsdom). Checked by hand instead, on a copy of
+`.dizquetv-dev` on a spare port: opened Library > Filler > "Which clips name
+a show?" > a list with 138 saved clips, typed "Batman" into Search clips,
+confirmed it narrowed to the 4 matching rows, then cleared the box and
+confirmed all 138 came back.
