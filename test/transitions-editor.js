@@ -124,17 +124,17 @@ module.exports = async function run() {
         }
         suite.check('200 new steps get 200 different ids', ids.size === 200);
 
-        for (const id of ['next', 'now', 'pair', 'any']) {
+        for (const id of ['next', 'now', 'pair', 'any', 'later']) {
             editor.setWhich(s, id);
             suite.check(`choosing "${id}" reads back as "${id}"`, editor.whichOf(s) === id, `${s.match}/${s.keyedOn}`);
         }
-        suite.check('a stored step keyed on "later" is none of the four, and not supported',
-            editor.whichOf(step('x', { match: 'show', keyedOn: 'later' })) === null
-            && ! editor.isSupported(step('x', { match: 'show', keyedOn: 'later' })));
+        suite.check('a stored step keyed on "later" is supported, built at step 8',
+            editor.whichOf(step('x', { match: 'show', keyedOn: 'later' })) === 'later'
+            && editor.isSupported(step('x', { match: 'show', keyedOn: 'later' })));
         suite.check('a "generated" step is not supported', ! editor.isSupported(step('x', { kind: 'generated' })));
         suite.check('a plain list step is', editor.isSupported(step('x')));
         let threw = false;
-        try { editor.setWhich(s, 'later'); } catch (err) { threw = true; }
+        try { editor.setWhich(s, 'nonsense'); } catch (err) { threw = true; }
         suite.check('choosing something that is not offered is an error, not a stored guess', threw);
     }
 
@@ -256,9 +256,11 @@ module.exports = async function run() {
             sentence(step('s', { listId: '' })).startsWith('Plays any clip from a list you have not chosen yet'));
         suite.check('a list that was deleted is said plainly',
             sentence(step('s', { listId: 'gone' })).includes('a list that no longer exists'));
-        suite.check('"later" and "generated" read as not built, kept as they are',
-            sentence(step('s', { keyedOn: 'later', match: 'show' })).includes('not built yet')
-            && sentence(step('s', { kind: 'generated' })).includes('not built yet'));
+        suite.check('"generated" reads as not built, kept as it is',
+            sentence(step('s', { kind: 'generated' })).includes('not built yet'));
+        suite.check('"later" reads its own sentence, built at step 8',
+            sentence(step('s', { listId: 'upnext', keyedOn: 'later', match: 'show' }))
+                === 'Plays a clip from Up Next for the show that opens this, next time it comes round; if none matches, plays nothing.');
         suite.check('the sentence ends with one full stop and has no doubled punctuation',
             ['upnext', 'wbrb'].every( (l) => { const t = sentence(step('s', { listId: l, days: [2], chance: 20 })); return t.endsWith('.') && ! t.includes('..') && ! t.includes(';;'); }));
 
@@ -270,6 +272,8 @@ module.exports = async function run() {
             editor.chipLabel(step('s', { listId: 'wbrb', match: 'any' }), [], names).includes('any clip')
             && editor.chipLabel(step('s', { match: 'show', keyedOn: 'now' }), [], names).includes('for the show that just ended')
             && editor.chipLabel(step('s', { match: 'pair' }), [], names).includes('for the show that just ended, then the one coming up'));
+        suite.check('"later" has its own chip words too, built at step 8',
+            editor.chipLabel(step('s', { match: 'show', keyedOn: 'later' }), [], names).includes('for the show next time'));
         suite.check('days and chance show on the chip, since they decide whether it plays',
             editor.chipLabel(step('s', { days: [1, 2], chance: 25 }), [], names).endsWith('Mon Tue · 25%'));
         suite.check('a mark shows on the chip',
@@ -394,10 +398,10 @@ module.exports = async function run() {
             step('k2', { listId: 'upnext', match: 'pair' }),
             step('k3', { listId: 'wbrb', match: 'any' }),
             step('k4', { kind: 'generated' }),
-            step('k5', { match: 'show', keyedOn: 'later' }),
+            step('k5', { listId: 'intro', match: 'show', keyedOn: 'later' }),
         ];
-        suite.check('keyed on the show that ended, on both, and on neither; steps that are not built are not named',
-            editor.flexTag(keyed, 6, starts[6], names).text === 'Up Next · Beta / Up Next · Beta → Gamma / WBRB',
+        suite.check('keyed on the show that ended, on both, and on neither; "later" is named too (step 8), a step that is not built is not',
+            editor.flexTag(keyed, 6, starts[6], names).text === 'Up Next · Beta / Up Next · Beta → Gamma / WBRB / Intro',
             editor.flexTag(keyed, 6, starts[6], names).text);
 
         const missing = fixtureChannel();

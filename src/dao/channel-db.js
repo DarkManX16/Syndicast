@@ -278,9 +278,10 @@ function warnAboutBlocks(json) {
  *
  * A step with no list is skipped at play time with one log line rather than
  * failing, so it is a warning here and not an error; the reserved kind
- * 'generated' and keyedOn 'later' are accepted because the stored shape
- * reserves them already. A step's onlyIfNoMatch names the step it watches, so
- * one that names nothing usable is a step that will never play.
+ * 'generated' is accepted because the stored shape reserves it already, and
+ * keyedOn 'later' is a plain, built value like 'now' and 'next'. A step's
+ * onlyIfNoMatch names the step it watches, so one that names nothing usable
+ * is a step that will never play.
  */
 function warnAboutTransitions(json) {
     const complain = (message) => {

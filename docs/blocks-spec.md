@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, steps 1-5 built (situations, names, plans, playing them through the cursor, the card editor)
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-8, through "Next Time" and `keyedOn: 'later'`)
 
 ## Summary
 
@@ -280,8 +280,8 @@ step 3b reads, and plays, exactly as it did.
   script, may supply their own roll (`env.roll`).
 - **`keyedOn: 'later'`** keys a step on the first program of this context's
   *next* airing or start, for Cartoon Theatre's "Next Time" — the one bumper
-  in the examples that names neither neighbour. It is the last build step and
-  may slip past 1.0; the field is reserved either way.
+  in the examples that names neither neighbour. **Built Oct 8, 2026**; see
+  NOTES.md.
 
 **Matching falls back rather than skipping.** A step tries its most specific
 match, then the next, then its fallback list. A step with no fallback is the
@@ -835,7 +835,14 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    were, a week and five two-viewer days, and nothing was changed; see
    NOTES.md.
 8. **`keyedOn: 'later'`** and the Cartoon Theatre "Next Time" row — last, and
-   only once 1-7 are in.
+   only once 1-7 are in. `buildPlan` resolves it by walking the cyclic lineup
+   forward from the break through `dayParts.resolveContext`, the same
+   DST-aware function every other context read uses, rather than reworking
+   its arithmetic forward: a day-part start or block airing names weekdays,
+   so the window only needs to span a week and a bit. Real-data check: a
+   script over channel 1's two upcoming Cartoon Theatre leaving-breaks (Oct
+   10 and Oct 17, 2026) found the right movie each time, in under 1ms.
+   **Built Oct 8, 2026**; see NOTES.md.
 
 ### Stage 6 — Midrolls
 
@@ -881,7 +888,7 @@ fixture of its own, so they hold whatever the real block times are; the times
 named below are the spec's examples and not what the rows depend on. The three
 rows about a stream running late, very late or tuning in need the cursor and
 are tested with step 4's (built); "Next Time" in the Cartoon Theatre row needs
-`keyedOn: 'later'` (step 8). Added at step 3: the Nick at Nite rows, in which a
+`keyedOn: 'later'` (step 8, built). Added at step 3: the Nick at Nite rows, in which a
 WBRB and a BTTS marked `onlyIfNoMatch` play only when the Up Next step found
 no bumper - with a Next Promos step ahead of it that finds nothing and an Up
 Next that plays (both stay out), neither finding anything (both play), a promo

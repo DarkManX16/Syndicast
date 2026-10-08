@@ -1216,8 +1216,57 @@ for the full spec, stages and acceptance tests.
         crashed the server at start. Write JSON with `[System.IO.File]::WriteAllText` and a
         `UTF8Encoding($false)`.
 
-- [ ] Next Time bumper: `keyedOn: 'later'` and the Cartoon Theatre "Next Time" row (stage 5 step
-      8). The field is reserved and the builder skips it as a problem. See the spec.
+      **Step 8 built Oct 8, 2026 (Sonnet 5.5), on branch `later-step`: `keyedOn: 'later'` and
+      Cartoon Theatre's "Next Time".** `transitions.js` gains `laterProgram(channel, brk, context)`:
+      walks the cyclic lineup forward from the break, resolving each future program's context
+      through the same `dayParts.resolveContext` every other context read already uses, rather than
+      reworking its daylight-saving arithmetic forward. A day-part start or block airing names
+      weekdays, so the walk only needs a week-and-a-day window to be sure of finding the context's
+      next occurrence if there is one. `keyedShows('later', context)` feeds that program into the
+      same `fitsHow`/tier machinery `now` and `next` already use, so a fallback list and the
+      never-a-different-show rule work for it unchanged, with nothing special needed for the
+      generated stand-in bumpers planned as their own session later. The editor gets a fifth
+      `WHICH` choice ("for the show next time"); the two "not built yet" messages it used to show
+      for this `keyedOn` are gone.
+
+      - **Real-data check, on a copy of `.dizquetv-dev`.** A script walked channel 1's two
+        upcoming Cartoon Theatre leaving-boundaries and ran the new resolver by hand: Sat Oct 10,
+        2026 8:12:36 PM found the movie opening Sat Oct 17 at 7:00 PM ("Scooby-Doo"), and Sat Oct
+        17's break found Sat Oct 24's ("Scooby-Doo 2: Monsters Unleashed") - both in under 1ms,
+        884 and 883 scan steps respectively, over the real 39,999-program lineup.
+      - **Ron's real "Cartoon Theatre Next Time" list (12 clips), checked against the real
+        matcher.** 1 already has saved names that will fire correctly ("...on Zombie Island" to
+        `movie.Scooby-Doo on Zombie Island`, and that movie is genuinely in the lineup). 9 propose
+        nothing - not a bug: those movies (Balto, A Man Called Flintstone, An American Tail III,
+        Batman Mask of the Phantasm, Bugs Bunny Movie, Land Before Time III, Life and Advs of
+        Santa Clause, Millionaire Dogs, Scooby-Doo Meets The Boo Brothers) are not anywhere in the
+        current 323-day lineup cycle yet, and `saveNames` refuses a movie key the vocabulary
+        doesn't have, so they become namable only once a future Time Slots regeneration actually
+        schedules them. 2 propose something worth a second look rather than accepting as-is:
+        "...Alvin and the Chipmunks Meet Frankenstein" matches the **show** `tv.Alvin and the
+        Chipmunks` (that movie has no colon subtitle to be found by inside its custom show, so the
+        matcher falls back to the overlapping show title) and "...The Jetsons Meet The Flintstones"
+        proposes **both** `tv.The Jetsons` and `tv.The Flintstones`, despite the title having none
+        of the "A to B" / "(A-B)" separators the several-shows rule requires - a real matcher gap,
+        flagged for its own look, separate from this build. Neither is harmful for a `later` step
+        specifically: a show key never fits a movie program, and a multi-name clip never fits
+        `later` (its `order` is null, the same as `now`), so at worst these two just never fire.
+      - **Old-versus-new, on a copy.** Every break of all three real channels over a week, built
+        with the real filler lists (`env.getList`) through the code before this change and the code
+        after: byte-identical, 1,149 breaks, nothing in the data touched by either run. Wiring the
+        real "Cartoon Theatre Next Time" list onto Cartoon Theatre's `leaving.out` on the copy (the
+        live `.dizquetv-dev` was never touched) and re-running the new code changed exactly one of
+        those 1,149 breaks - the Sat Oct 10 leaving-boundary above - and even there nothing played:
+        correctly, since none of the 12 clips names "Scooby-Doo" plain, only "...on Zombie Island".
+      - **The preview.** A second, full copy of `.dizquetv-dev` under
+        `C:\Projects\dizquetv-worktrees\later-step-data` (copied Oct 8, 2026, ~11:10 AM Central,
+        with the Next Time step wired onto Cartoon Theatre and `xmltv-settings.json`'s `file` made
+        absolute, the same trap as step 7's preview), a detached worktree of `blocks`
+        (`.claude/worktrees/later-step`), port 18180, started through `Win32_Process.Create` so it
+        outlives the session. `.dizquetv-dev` itself was never written to.
+
+- [x] Next Time bumper: `keyedOn: 'later'` and the Cartoon Theatre "Next Time" row (stage 5 step
+      8). **Built Oct 8, 2026**; see the "Step 8" entry above (after Step 7) and the spec.
 - [x] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
@@ -2933,8 +2982,8 @@ be built:
       that slot filler positions (HEAD/PRE/MID/POST/TAIL) and sign-ons and
       sign-offs are covered by stage 5's own sequences - see those two
       roadmap lines under Blocks system and Scheduling above - with one small
-      item left over, an off-air look overnight, recorded there. Steps 1 to 7
-      are built; step 8 is its own line under Blocks system.
+      item left over, an off-air look overnight, recorded there. All eight
+      steps are built; step 8 has its own line under Blocks system.
 - [ ] Per-position stored progress, then rerun, shuffle and ordered shuffle
       (Opus 5.5 throughout - see "Work that stays on Opus 5 end to end" in
       the Model guide below). See the "Per-position stored progress, which
