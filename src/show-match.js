@@ -192,12 +192,20 @@ function abbreviationsOf(found) {
  * the name stamped on its programs and is the only way to name a custom show
  * that a slot references and no program carries yet.
  *
+ * `customShows` (optional) is every custom show's own definition - `{ id, name,
+ * content }` as CustomShowDB.getAllShows() gives them - read for its movies
+ * alone: a movie of at least MOVIE_MIN_MS in a custom show's own catalog is a
+ * name a clip can take whether or not that movie is in any channel's current
+ * lineup, since a custom show's rotation moves on long before Time Slots is
+ * re-run to match. `channels` still carries every other kind of name (shows,
+ * custom shows themselves, tracks) and whatever movies it finds besides.
+ *
  * Returns { entries, names, ambiguous }: entries are { key, name, folded }
  * longest title first (so the longest is tried first), names maps a key to its
  * display name, and ambiguous maps a folded title that more than one key owns
  * to those keys.
  */
-function buildVocabulary(channels, customShowNames) {
+function buildVocabulary(channels, customShowNames, customShows) {
     const customNames = customShowNames || {};
     const found = new Map();           // key -> Set of names it is known by
     const display = {};
@@ -274,6 +282,24 @@ function buildVocabulary(channels, customShowNames) {
                 add(id, id.slice('tv.'.length));
             } else if (id.startsWith('audio.') && (id.length > 'audio.'.length) ) {
                 add(id, id.slice('audio.'.length));
+            }
+        }
+    }
+
+    // Every custom show's own catalog, for its movies alone - the same two things a
+    // movie in a channel's lineup gets above (`movies`, the whole title in `found`),
+    // so a clip can name a movie whether or not its custom show currently airs it.
+    for (const show of (customShows || []) ) {
+        if (show == null) {
+            continue;
+        }
+        const customName = (typeof(customNames[show.id]) === 'string') ? customNames[show.id] : show.name;
+        for (const item of (show.content || []) ) {
+            if (clipNames.isListableMovie(item) ) {
+                if (! movies.has(item.title) ) {
+                    movies.set(item.title, (typeof(customName) === 'string') ? customName : 'a custom show');
+                }
+                add('movie.' + item.title, item.title);
             }
         }
     }

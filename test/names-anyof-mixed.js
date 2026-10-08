@@ -274,7 +274,8 @@ module.exports = async function run() {
             const fillerDB = new FillerDB(fillerDir);
             const aliasDB = new ShowAliasDB(dir);
             const channelService = { getAllChannelNumbers: async () => [1], getChannel: async () => CHANNELS[0] };
-            const customShowDB = { getAllShowsInfo: async () => [ { id: 'dc', name: 'Friday DCOM Movies' } ] };
+            const customShowDB = { getAllShowsInfo: async () => [ { id: 'dc', name: 'Friday DCOM Movies' } ],
+                getAllShows: async () => [ { id: 'dc', name: 'Friday DCOM Movies', content: [] } ] };
             const service = new ShowMatchService(fillerDB, channelService, customShowDB, aliasDB);
 
             fs.writeFileSync(path.join(dir, 'show-aliases.json'), JSON.stringify({ aliases: {

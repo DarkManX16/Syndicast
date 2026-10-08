@@ -45,11 +45,12 @@ class ShowMatchService {
     }
 
     async vocabulary(channels) {
+        const customShows = await this.customShowDB.getAllShows();
         const customShowNames = {};
-        for (const info of await this.customShowDB.getAllShowsInfo() ) {
-            customShowNames[info.id] = info.name;
+        for (const show of customShows) {
+            customShowNames[show.id] = show.name;
         }
-        return showMatch.buildVocabulary(channels || await this.channels(), customShowNames);
+        return showMatch.buildVocabulary(channels || await this.channels(), customShowNames, customShows);
     }
 
     /*

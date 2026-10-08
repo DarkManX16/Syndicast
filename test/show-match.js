@@ -490,7 +490,8 @@ module.exports = async function run() {
             getAllChannelNumbers: async () => [1, 2],
             getChannel: async (n) => CHANNELS.find((c) => c.number === n),
         };
-        const customShowDB = { getAllShowsInfo: async () => [{ id: 'c1', name: 'Looney Tunes', count: 3 }] };
+        const customShowDB = { getAllShowsInfo: async () => [{ id: 'c1', name: 'Looney Tunes', count: 3 }],
+            getAllShows: async () => [{ id: 'c1', name: 'Looney Tunes', content: [] }] };
         const aliasDB = { load: spy('load', async () => ({ sgc2c: KEYS.sgc })),
             save: spy('save', async () => {}), merge: spy('merge', async () => ({})) };
         const service = new ShowMatchService(fillerDB, channelService, customShowDB, aliasDB);

@@ -214,7 +214,7 @@ module.exports = async function run() {
             fillerDB.saveFiller = (...args) => { fillerWrites++; return realSave(...args); };
             const aliasDB = new ShowAliasDB(dir);
             const channelService = { getAllChannelNumbers: async () => [1], getChannel: async () => CHANNELS[0] };
-            const customShowDB = { getAllShowsInfo: async () => [] };
+            const customShowDB = { getAllShowsInfo: async () => [], getAllShows: async () => [] };
             const service = new ShowMatchService(fillerDB, channelService, customShowDB, aliasDB);
             const fillerBefore = sha(fillerFile);
             const aliasBefore = sha(aliasFile);
