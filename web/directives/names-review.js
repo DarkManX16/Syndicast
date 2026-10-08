@@ -32,7 +32,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.pending = {};
             scope.nicknames = [];
             scope.only = null;
-            scope.search = '';
+            scope.ui = { search: '' };
             scope.sections = [];
             scope.counts = review.summarize([]);
             scope.plan = review.acceptAllPlan([], {});
@@ -53,7 +53,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
             scope.chipLabel = (id) => CHIP[id];
 
             const rebuild = () => {
-                const q = (scope.search || '').trim().toLowerCase();
+                const q = (scope.ui.search || '').trim().toLowerCase();
                 const ordered = review.orderRows(scope.rows)
                     .filter( (r) => (q === '') || (String(r.title).toLowerCase().indexOf(q) !== -1) );
                 scope.sections = review.GROUPS
@@ -98,7 +98,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                 scope.rows = [];
                 scope.sections = [];
                 scope.only = null;
-                scope.search = '';
+                scope.ui.search = '';
                 $timeout();
                 try {
                     load(await dizquetv.getFillerMatch(id));
