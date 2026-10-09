@@ -38,7 +38,7 @@ function newStreamId() {
     return crypto.randomBytes(8).toString('hex');
 }
 
-function video( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB ) {
+function video( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB, cardService ) {
     var router = express.Router()
 
     router.get('/setup', (req, res) => {
@@ -185,6 +185,8 @@ function video( channelService, fillerService, db, programmingService, activeCha
             getList: (id) => (Array.isArray(lists[id]) ? lists[id] : null),
             featuresShows: (id) => (featuring[id] === true),
             lastPlayed: (clip) => channelCache.getProgramLastPlayTime(programPlayTimeDB, channel.number, clip),
+            // a generated card already rendered (card-service.js), or null: never rendered here
+            card: (want) => ( (cardService != null) ? cardService.cardFor(want, channel) : null ),
         };
         return (brk) => {
             let plan = channelCache.getPlan(channel.number, brk);

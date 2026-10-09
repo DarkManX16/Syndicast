@@ -195,8 +195,22 @@ module.exports = async function run() {
             startTime: new Date(stepStart).toISOString(),
             transcoding: {},
         };
+        // Channel 12: channel 11 with its out step a generated card for the show
+        // coming up, from a stand-in card service that has one ready.
+        const carded = Object.assign({}, stepped, { number: 12, name: 'Cards',
+            dayParts: [{ name: 'All week', fillerCollections: mix([['Fill', 100]]),
+                starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }],
+                transitions: { betweenShows: { out: [{ id: 'c', kind: 'generated', templateId: 'tpl', keyedOn: 'next' }], in: [] } } }] });
+        const cardWants = [];
+        const cardService = {
+            cardFor: (want, ch) => {
+                cardWants.push( { want: want, channel: ch.number } );
+                return { file: 'C:/data/generated/cards/abc.ts', key: 'abc', title: 'Next Time: B', durationMs: 15 * SEC,
+                    streamStats: { videoWidth: 1920, videoHeight: 1080, videoCodec: 'mpeg2video', audioCodec: 'aac', audioIndex: 'a' } };
+            },
+        };
         const channelService = Object.assign(new EventEmitter(), {
-            getChannel: async (n) => (n === 9 ? channel : (n === 11 ? stepped : null)),
+            getChannel: async (n) => (n === 9 ? channel : (n === 11 ? stepped : (n === 12 ? carded : null))),
         });
         const fillerService = { getFillersFromCollections: async (ch, cols) => cols.map((c) => ({
             id: c.id, content: STEP_LISTS[c.id] || fill, weight: c.weight, cooldown: c.cooldown })) };
@@ -210,7 +224,7 @@ module.exports = async function run() {
 
         const video = loadVideoWith({ '../src/ffmpeg': FakeFFMPEG, '../src/program-player': FakePlayer });
         const app = express();
-        app.use(video.router(channelService, fillerService, db, programmingService, activeChannelService, freshStore()));
+        app.use(video.router(channelService, fillerService, db, programmingService, activeChannelService, freshStore(), cardService));
         server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
         const port = server.address().port;
         const savedPort = process.env.PORT;
@@ -317,6 +331,29 @@ module.exports = async function run() {
             seen.map(describe).join(' | '));
         suite.check('... the Flex ended where the in step begins: 35s of room, a 30s clip, then the in step',
             seen[2] && seen[2].type === 'commercial' && seen[2].streamDuration === 30 * SEC, describe(seen[2]));
+
+        // The same break on channel 12, whose out step is a generated card.
+        {
+            const askCard = async (query) => {
+                const before = played.length;
+                await get(port, `/stream?channel=12&${query}`);
+                const item = played[before];
+                if (item && query.includes('stream=')) fakeNow += item.streamDuration;
+                return item;
+            };
+            fakeNow = S - 30 * SEC;
+            const viaCard = [];
+            for (let k = 0; k < 3; k++) viaCard.push(await askCard(`session=${300 + k}&stream=carder`));
+            suite.check('a break whose out step is a card: the end of the show, the card, then Flex',
+                viaCard.map((i) => i && `${i.type} ${i.title}`).join(', ') === 'program A, transition Next Time: B, commercial Fill#1',
+                viaCard.map(describe).join(' | '));
+            suite.check('... the card is played from its file, whole, with its stream details and no Plex server',
+                viaCard[1] && (viaCard[1].generatedFile === 'C:/data/generated/cards/abc.ts') && (viaCard[1].start === 0)
+                && (viaCard[1].streamDuration === 15 * SEC) && (viaCard[1].streamStats.videoCodec === 'mpeg2video')
+                && (typeof(viaCard[1].serverKey) === 'undefined'), describe(viaCard[1]));
+            suite.check('... the card service was asked for the show coming up, on this channel',
+                (cardWants.length > 0) && (cardWants[0].channel === 12) && (cardWants[0].want.program.title === 'B'));
+        }
 
         // A second viewer reaching the same break later plays the same plan,
         // though "Out A" has played since and "Out B" is now the longer idle.
