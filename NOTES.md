@@ -1277,14 +1277,83 @@ for the full spec, stages and acceptance tests.
         (`.claude/worktrees/later-step`), port 18180, started through `Win32_Process.Create` so it
         outlives the session. `.dizquetv-dev` itself was never written to.
 
+      **Step 9 built Oct 9, 2026 (Sonnet 5), on branch `next-time-cards`: generated cards, the
+      first piece of the Generated Up Next bumpers roadmap item.** When step 8's real "Next Time"
+      clip has none for next week's movie, a card Syndicast renders itself stands in: a lively
+      stretch of the movie with its title and when it airs over the picture, then Ron's real
+      marquee ending. Designed from Ron's 12 real "Cartoon Theatre Next Time" clips (all ~15s, the
+      same marquee ending in all 12 and reusable, no shared music bed across them - measured by
+      cross-correlating their audio, which barely matched). Seven new modules
+      (`src/card-templates.js`, `src/card-moment.js`, `src/card-render.js`,
+      `src/dao/card-template-db.js`, `src/services/card-service.js`, `src/card-player.js`,
+      `src/card-api.js`), a `kind: 'generated'` step in `transitions.js`'s `buildPlan` built on the
+      same `now`/`next`/`later` lookups and `onlyIfNoMatch` rule every list step uses, and a Cards
+      page. See docs/blocks-spec.md, Stage 5, "Generated cards", for the design.
+
+      - **Playback never waits.** `buildPlan` asks `env.card(want)` for a card already on disk and
+        skips the step, as a logged problem, when there isn't one - the same shape as a step whose
+        list is missing. A background service (`card-service.js`) renders ahead: a minute after
+        boot, every 30 minutes, and 10 seconds after a channel is saved, it builds the plan of
+        every break in the next week with the real `buildPlan` and an `env.card` that only records
+        what is wanted, then renders whatever is missing, one at a time.
+      - **The card itself.** `footageSeconds` (11.25s by default) of the movie's own picture and
+        sound, a lively stretch picked automatically (`card-moment.js`: keyframes from `ffprobe`,
+        momentary loudness from `ffmpeg`'s `ebur128`, scored and kept outside the first tenth and
+        last fifth of the movie, a quiet stretch passed over) or chosen by hand on the Cards page,
+        with the title (Plex's own clear logo for the movie when it has one) and the airtime line
+        over it, then the template's ending clip. Every line of text goes to a file `drawtext`
+        reads with `textfile=`, never into the filter graph itself, so a title like "Scooby-Doo 2:
+        Monsters Unleashed" or "Wakko's Wish" renders exactly as saved - checked on both. A movie
+        whose file (and Plex stream) can't be read gets the poster-and-art card instead, darkened
+        by brightness alone so the colour survives. Rendered to the channel's own resolution,
+        frame rate, codecs and bitrates (`card-templates.js`'s `cardFormat`), a hardware encoder
+        rendering with the software encoder of the same codec, so it plays through
+        `FFMPEG.spawnStream` exactly as a Plex clip does. No new dependency: ffmpeg and ffprobe,
+        already required.
+      - **Real-data check, on the Oct 10 and Oct 17, 2026 Cartoon Theatre leaving-breaks (the same
+        two step 8 found the movie for).** Both real cards rendered through the live service, in
+        the channel's real 1920x1080 MPEG-2/AAC format: the Oct 10 break's card for "Scooby-Doo"
+        (15.136s, -18.9 LUFS, rendered in 6s, moment auto-picked at 44:21.9, the same stretch a
+        hand check with the same measurements had picked the day before) and the Oct 17 break's
+        card for "Scooby-Doo 2: Monsters Unleashed" (15.136s, moment auto-picked at 68:10.4,
+        rendered in 9s). Both frames checked: the title, Plex's clear logo, and the airtime line
+        all placed correctly; the second movie's colon-and-space title rendered intact.
+      - **Old-versus-new, on three copies of the Oct 8 snapshot (not the Oct 8 copy itself, whose
+        lineup had since moved on on the live server - a second copy was taken Oct 9 for this).**
+        Every break of all three real channels over a week, built with the real filler lists
+        through the code before this change and the code after: byte-identical, 1,143 breaks (the
+        lineup moved between Oct 8 and Oct 9's copies, so this is not step 8's 1,149 - re-measured
+        rather than assumed). Wiring the real Next Time list and the new card step onto Cartoon
+        Theatre's `leaving.out`, in that order, and re-running the new code against the *same*
+        Oct 9 snapshot (the first comparison's copy, unwired, read again to rule out any drift
+        between separately-timed copies, which caught an unrelated day-part step id difference on
+        the first attempt): exactly one break differed in each of three one-week windows -
+        Oct 10's, correctly gaining the new steps as "not rendered yet" before any card existed;
+        Oct 17's, the same; and Oct 24's (the week already covered by the spec's Oct 18 snapshot),
+        where Ron's real "...on Zombie Island" clip actually matched the movie that leaving-break
+        opens into next and played, and the card step correctly stayed out
+        ("only plays if \"...\" finds no clip, and it did"). Every other break, on all three
+        channels, every week checked: unchanged.
+      - **The preview.** A third copy of `.dizquetv-dev` under
+        `C:\Projects\dizquetv-worktrees\next-time-cards-data` (copied Oct 8, 2026, ~7:38 PM
+        Central, `xmltv-settings.json`'s `file` made absolute, the same trap as steps 7 and 8's
+        previews), a detached worktree of `blocks` (`.claude/worktrees/next-time-cards`), port
+        18190, started through `Win32_Process.Create` so it outlives the session. A "Cartoon
+        Theatre Next Time" template was saved through the real Cards page, with Ron's real ending
+        clip and closing-music bed. `.dizquetv-dev` itself was never touched.
+
 - [x] Next Time bumper: `keyedOn: 'later'` and the Cartoon Theatre "Next Time" row (stage 5 step
       8). **Built Oct 8, 2026**; see the "Step 8" entry above (after Step 7) and the spec.
+- [x] Generated Next Time cards for Cartoon Theatre: when step 8's real clip has none for next
+      week's movie, a card Syndicast renders itself stands in (stage 5 step 9, the first piece of
+      the Generated Up Next bumpers roadmap item below, pulled into 1.0). **Built Oct 9, 2026**;
+      see the "Step 9" entry above and the spec.
 - [x] Slot filler positions (HEAD / PRE / MID / POST / TAIL) - *covered by
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
       see the spec. Nothing is left over.*
 - [ ] Midrolls
-- [ ] Generated Up Next bumpers (after 1.0)
+- [ ] Generated Up Next bumpers (after 1.0, except the Next Time piece below)
 
       Syndicast builds these live at airtime from its own schedule, so they
       always match
@@ -1293,20 +1362,29 @@ for the full spec, stages and acceptance tests.
       Styled per day-part and block from a template (colors, logo, layout),
       so the style changes automatically when the block changes.
 
-      Three kinds:
+      Three kinds, one built:
 
-      - "Up Next": a short clean clip from the actual next episode, plus the
+      - [x] "Next Time": Cartoon Theatre's stand-in when step 8's real clip has
+        none for next week's movie - a few seconds of the movie itself with its
+        title and airtime, then a real ending clip. The first piece of this
+        item, pulled into 1.0 and built on the `generated` step type below (see
+        "Generated Next Time cards for Cartoon Theatre" above and
+        docs/blocks-spec.md, Stage 5, "Generated cards"). **Built Oct 9, 2026.**
+      - [ ] "Up Next": a short clean clip from the actual next episode, plus the
         show's Plex logo or artwork and its start time.
-      - "Later Tonight": a show further down the schedule.
-      - "Tonight on [block]": a lineup card listing the block's next few
+      - [ ] "Later Tonight": a show further down the schedule.
+      - [ ] "Tonight on [block]": a lineup card listing the block's next few
         shows.
 
       Built as a new step type, "generated", inside stage 5's transition
       sequences, matching the channel's resolution and aspect setting. Stage
-      5's design pass has to leave room for it (see docs/blocks-spec.md).
+      5's design pass left room for it and the Next Time card built it (see
+      docs/blocks-spec.md).
 
-      Depends on stage 5 and the chapter and segment detector, which picks a
-      clip that avoids cold opens and credits.
+      "Up Next" and "Tonight on [block]" still depend on the chapter and
+      segment detector, which picks a clip of the actual next episode that
+      avoids a cold open and credits - a movie has no such episode to clip
+      from, which is why the Next Time card needed none of that to come first.
 
 - [ ] Date-aware promos (after 1.0)
 
@@ -2795,7 +2873,10 @@ on shows.
 
 - [ ] Public channel sharing without exposing an IP
 
-      Also covers livestreaming straight from the UI.
+      Also covers livestreaming straight from the UI. In the 1.0 must list
+      below, not after 1.0 - see "Public channel sharing without exposing my
+      IP address" there, and "The XMLTV guide can hand a viewer your Plex
+      access token" under Known issues, which the design has to close.
 - [ ] Easier version updates
 - [ ] Fix random crashes during streaming
 - [x] Fix time slots breaking across daylight savings (fixed in 8d72c52 -
@@ -2996,8 +3077,14 @@ be built:
       roadmap lines under Blocks system and Scheduling above - with one small
       item left over, an off-air look overnight, recorded there. All eight
       steps are built; step 8 has its own line under Blocks system.
+- [x] Generated Next Time cards for Cartoon Theatre (stage 5 step 9, Sonnet 5).
+      The first piece of the Generated Up Next bumpers roadmap item, pulled
+      into 1.0: when step 8's real "Next Time" clip has none for next week's
+      movie, a card Syndicast renders itself stands in. See "Generated Next
+      Time cards for Cartoon Theatre" under Blocks system above and
+      docs/blocks-spec.md, Stage 5, "Generated cards". **Built Oct 9, 2026.**
 - [ ] Per-position stored progress, then rerun, shuffle and ordered shuffle
-      (Opus 5.5 throughout - see "Work that stays on Opus 5 end to end" in
+      (Opus 5.5 · Xhigh throughout - see "Work that stays on Opus 5 end to end" in
       the Model guide below). See the "Per-position stored progress, which
       fixes two things at once" Known issues entry above, which covers the
       four roadmap lines it unblocks.
@@ -3049,12 +3136,18 @@ be built:
 - [ ] Random crashes during streaming, caught by a 48-hour soak and fixed if
       seen (Opus 5.5). See the Infrastructure roadmap line above and the
       Model guide below.
+- [ ] Public channel sharing without exposing my IP address (Opus 5.5 · Xhigh
+      to design, Sonnet 5 · High to build). Moved into 1.0 from after it; now
+      also covers livestreaming straight from the UI. See its Infrastructure
+      roadmap line above and "The XMLTV guide can hand a viewer your Plex
+      access token" under Known issues below - a channel shared publicly is
+      exactly the case where that leaked token stops being theoretical, so
+      the design has to close it, not just the public-sharing mechanism
+      itself.
 - [ ] Release: version 1.0.0, README current, merge blocks into main, tag
       v1.0.0 (Sonnet 5).
 
-After 1.0: "Public channel sharing without exposing an IP" under
-Infrastructure above, which now also covers livestreaming straight from the
-UI. Everything else unticked stays in the roadmap as it is.
+Everything else unticked stays in the roadmap as it is.
 
 ## Known issues / future work
 

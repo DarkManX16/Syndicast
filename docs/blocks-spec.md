@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-8, through "Next Time" and `keyedOn: 'later'`)
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-9, through "Next Time", `keyedOn: 'later'` and generated cards)
 
 ## Summary
 
@@ -337,13 +337,78 @@ a clip with an unusable `names` or no length is never chosen, and a list without
 the setting keeps the rule above, a named clip never playing before a different
 show. The setting belongs to the list, so it applies to every step that reads it.
 
-**Room for a "generated" step.** `kind` is the extension point. After 1.0,
-`{ kind: 'generated', template: 'up-next' | 'later-tonight' | 'tonight-on',
-durationMs }` slots in beside `list` steps: the plan below carries each step
-as `{ kind, durationMs, ... }` and the cursor's phase machine reads only
-`durationMs`, so a generated step needs a renderer in `video.js` and nothing
-in the cursor. The `now`/`next`/`later` lookups are the same ones its three
-templates need.
+**Generated cards (step 9, built Oct 9, 2026).** `kind: 'generated'` is a step
+that plays a card Syndicast renders itself, in the same shape as a `list` step:
+`{ kind: 'generated', templateId, keyedOn: 'now' | 'next' | 'later',
+onlyIfNoMatch, days, chance }`. It uses the same `now`/`next`/`later` lookups
+every `show` step uses — `keyedAiring` in `buildPlan`, built on `laterAiring`
+(`laterProgram` with the moment it starts) — so a card step is keyed on a show
+exactly the way a list step is, and the never-a-different-show rule has
+nothing to do here: there is no name to misread, only the show the step is
+already keyed on.
+
+`buildPlan` never renders. It asks `env.card(want)` — `want` is
+`{ templateId, stepId, keyedOn, program, airStart, breakStart, channelNumber }`
+— for a card that is already on disk, and skips the step (a problem, logged)
+when there isn't one: *"its card for 'Scooby-Doo' is not rendered yet"*. This
+is the one rule that makes the design work — **playback never waits on
+rendering** — and it is also what lets a scanner learn exactly which cards a
+channel's next week of breaks will want, by supplying an `env.card` that
+records every `want` and always answers null (`src/services/card-service.js`,
+`scanOnce`).
+
+A background service does the rendering, a week ahead, where the plan calls
+for a card the moment the movie is known:
+
+- **`scanOnce`** walks every channel with a card step, builds the plan of
+  every break in the next 7 days with the real `buildPlan`, and renders
+  whatever `env.card` reported wanting and does not already have a file on
+  disk. Runs a minute after boot, every 30 minutes, and 10 seconds after a
+  channel is saved (`channel-update`).
+- **The card itself** (`src/card-render.js`) is `footageSeconds` of the
+  movie's own picture and sound — a lively stretch, picked automatically
+  (`src/card-moment.js`: keyframes from `ffprobe`, momentary loudness from
+  `ffmpeg`'s `ebur128`, scored and chosen outside the first tenth and the
+  last fifth of the movie, a quiet stretch passed over) or chosen by hand on
+  the Cards page — with the template's words over it (the movie's title as
+  Plex's own clear logo when it has one, else drawn text; when it airs, as
+  TONIGHT / TOMORROW / the weekday / NEXT and the weekday), then the
+  template's ending clip. Every line of text is written to a file and read
+  with `textfile=`, never put in the filter graph itself, so a title with a
+  colon, an apostrophe or a percent sign (`Scooby-Doo 2: Monsters Unleashed`,
+  `Wakko's Wish`) renders exactly as saved. A movie whose file cannot be read
+  (and cannot be read through Plex either) gets a poster card instead: the
+  movie's Plex background art, pushed in slowly, blurred and darkened by
+  brightness alone — never a black box, which drains the colour too — with
+  its poster in a gold frame and the same words, and the template's music bed
+  if it has one.
+- **The channel's own format.** `src/card-templates.js`'s `cardFormat` reads
+  the channel's resolution and bitrates (its own transcoding override first,
+  then the global ffmpeg settings) and renders a card to exactly that shape —
+  codec, bitrate, buffer size, frame rate, audio sample rate and channels —
+  so it plays through `FFMPEG.spawnStream` precisely as a Plex clip does and
+  nothing in the pipeline has to correct it. A hardware encoder
+  (`h264_nvenc`, `hevc_qsv`, …) renders with the software encoder of the same
+  codec, since a card is made in the background, not live.
+- **The card's key.** `cardKey` hashes the template (all but its id and
+  name), the channel's format, the movie, the airtime line and a hand-chosen
+  moment. Any of them changing — a template edit, a bitrate change, a
+  different week's airtime, choosing a different moment — renders a new file
+  under a new key; nothing stale ever plays, and nothing is re-rendered for
+  no reason.
+- **Playback.** A card's lineup item carries `generatedFile` and the stream
+  details it was rendered with (`src/helperFuncs.js`'s `createLineup`); a new
+  player, `src/card-player.js`, follows `plex-player.js`'s own shape but
+  calls `FFMPEG.spawnStream` on that file directly, with no Plex server in
+  the loop. `program-player.js` picks it whenever a lineup item carries
+  `generatedFile`.
+- **The Cards page** (`web/views/cards.html`, `src/card-api.js`) edits a
+  template's words, fonts, colours, the three text positions, its ending
+  clip and an optional music bed; previews a frame or a short clip for any
+  movie on the channels, through the exact renderer that makes the real
+  cards; and lists the cards the next week needs, each movie's picked
+  moment with a box to override it in mm:ss, and whether a card is waiting,
+  rendering, ready or failed.
 
 #### Which shows a clip names (settles open question 1)
 
@@ -662,7 +727,13 @@ except the new optional fields.
   context of the overnight break — its neighbours are the evening and morning
   shows. Revisit as its own small item: a break longer than some hours
   resolves per clip from the clock.
-- **Generated Up Next bumpers** stay after 1.0, as the `generated` kind above.
+- **Generated Up Next bumpers.** The Next Time piece (step 9, "Generated
+  cards" above) is pulled into 1.0 and built. The other two kinds, "Up Next"
+  and "Tonight on [block]", stay after 1.0: they depend on the chapter and
+  segment detector, which does not exist yet, to pick a clip of the actual
+  next episode that avoids a cold open and credits — a generated card for a
+  movie has no such episode to clip from, which is exactly why the Next Time
+  card could come first.
 
 #### Channel 1's NEXT promos
 
@@ -850,6 +921,17 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    script over channel 1's two upcoming Cartoon Theatre leaving-breaks (Oct
    10 and Oct 17, 2026) found the right movie each time, in under 1ms.
    **Built Oct 8, 2026**; see NOTES.md.
+9. **Generated cards** — the first piece of the Generated Up Next bumpers
+   roadmap item, pulled into 1.0 and designed from Ron's real "Cartoon
+   Theatre Next Time" clips: a `kind: 'generated'` step that plays a card
+   Syndicast renders itself when step 8's real Next Time clip has none for
+   next week's movie, built on the same `now`/`next`/`later` lookups and the
+   same `onlyIfNoMatch` rule every list step uses, so the real clip always
+   wins and the card is only its stand-in. `src/card-templates.js`,
+   `src/card-moment.js`, `src/card-render.js`,
+   `src/services/card-service.js`, `src/card-player.js`, `src/card-api.js`,
+   the Cards page — see "Generated cards (step 9…)" above for the design and
+   NOTES.md for the build. **Built Oct 9, 2026.**
 
 ### Stage 6 — Midrolls
 
@@ -895,7 +977,10 @@ fixture of its own, so they hold whatever the real block times are; the times
 named below are the spec's examples and not what the rows depend on. The three
 rows about a stream running late, very late or tuning in need the cursor and
 are tested with step 4's (built); "Next Time" in the Cartoon Theatre row needs
-`keyedOn: 'later'` (step 8, built). Added at step 3: the Nick at Nite rows, in which a
+`keyedOn: 'later'` (step 8, built); when no real clip fits it, the generated
+card that stands in for it is step 9's own plan rows, in
+`test/transitions-generated.js`, not `blocks-acceptance.js`'s `ROWS` (built).
+Added at step 3: the Nick at Nite rows, in which a
 WBRB and a BTTS marked `onlyIfNoMatch` play only when the Up Next step found
 no bumper - with a Next Promos step ahead of it that finds nothing and an Up
 Next that plays (both stay out), neither finding anything (both play), a promo
