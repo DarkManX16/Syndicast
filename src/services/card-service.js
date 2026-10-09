@@ -107,6 +107,7 @@ class CardService {
             previews: path.join(this.folder, 'previews'),
         };
         this.templateDB = options.templateDB;
+        this.cardPath = (key) => path.join(this.dirs.cards, key + '.ts');
         this.run = options.runner || defaultRunner;
         this.now = options.now || (() => Date.now());
         this.log = options.log || ( (line) => console.log(line) );
@@ -138,7 +139,11 @@ class CardService {
             }
             try {
                 const meta = JSON.parse(await fs.promises.readFile(path.join(this.dirs.cards, name), 'utf8'));
-                if (fs.existsSync(meta.file)) {
+                // the file is always this service's own folder plus the key, never the
+                // path a sidecar happens to have been written with: a sidecar copied
+                // alongside its folder (a preview on a copy, a restored backup) is read
+                // from where it actually is now.
+                if (fs.existsSync(this.cardPath(meta.key))) {
                     this.ready.set(meta.key, meta);
                 }
             } catch (err) {
@@ -191,10 +196,11 @@ class CardService {
             return null;
         }
         const meta = this.ready.get(d.key);
-        if ( (meta == null) || ! fs.existsSync(meta.file) ) {
+        const file = (meta != null) ? this.cardPath(meta.key) : null;
+        if ( (meta == null) || ! fs.existsSync(file) ) {
             return null;
         }
-        return { file: meta.file, key: meta.key, title: meta.title, durationMs: meta.durationMs, streamStats: meta.streamStats };
+        return { file: file, key: meta.key, title: meta.title, durationMs: meta.durationMs, streamStats: meta.streamStats };
     }
 
     // ---- scanning ------------------------------------------------------------------------------
@@ -244,10 +250,16 @@ class CardService {
         let failed = 0;
         for (const item of list) {
             const meta = this.ready.get(item.key);
-            if (meta != null) {
+            // "ready" is only honoured when the file is actually still there: the sidecar
+            // on its own is not proof, since it can outlive the file it describes (deleted
+            // by hand, by another copy's prune, by anything outside this service).
+            if ( (meta != null) && fs.existsSync(this.cardPath(meta.key)) ) {
                 meta.lastWanted = now;
                 await this.writeMeta(meta);
                 continue;
+            }
+            if (meta != null) {
+                this.ready.delete(item.key);
             }
             const ok = await this.render(item);
             if (ok) {
@@ -272,7 +284,7 @@ class CardService {
         for (const [key, meta] of Array.from(this.ready.entries())) {
             if ( (meta.lastWanted || meta.renderedAt || 0) < cutoff ) {
                 this.ready.delete(key);
-                for (const f of [meta.file, path.join(this.dirs.cards, key + '.json')]) {
+                for (const f of [this.cardPath(key), path.join(this.dirs.cards, key + '.json')]) {
                     await fs.promises.rm(f, { force: true });
                 }
             }
@@ -447,23 +459,28 @@ class CardService {
         const settings = this.options.getFfmpegSettings() || {};
         const work = path.join(this.dirs.work, workName);
         await fs.promises.mkdir(work, { recursive: true });
-        const job = cardRender.renderJob( {
-            mode: prepared.mode, template: template, format: format, title: title, whenText: when,
-            sources: prepared.sources, fontDir: fontDir(), workDir: work, output: output,
-        } );
-        for (const name of Object.keys(job.files)) {
-            await fs.promises.writeFile(path.join(work, name), job.files[name], 'utf8');
+        try {
+            // renderJob can throw (a title or path with a quote in it,
+            // card-render.js's escapeFilterPath) before any file is written or
+            // ffmpeg is run; the work folder must still be cleaned up.
+            const job = cardRender.renderJob( {
+                mode: prepared.mode, template: template, format: format, title: title, whenText: when,
+                sources: prepared.sources, fontDir: fontDir(), workDir: work, output: output,
+            } );
+            for (const name of Object.keys(job.files)) {
+                await fs.promises.writeFile(path.join(work, name), job.files[name], 'utf8');
+            }
+            return await this.run(settings.ffmpegPath, job.args);
+        } finally {
+            await fs.promises.rm(work, { recursive: true, force: true });
         }
-        const r = await this.run(settings.ffmpegPath, job.args);
-        await fs.promises.rm(work, { recursive: true, force: true });
-        return r;
     }
 
     async render(item) {
         const { key, template, format, when, movieKey, chosen, want } = item;
         this.rendering = key;
         const tmp = path.join(this.dirs.cards, key + '.part.ts');
-        const file = path.join(this.dirs.cards, key + '.ts');
+        const file = this.cardPath(key);
         try {
             const prepared = await this.sourcesFor(want.program, template, movieKey, chosen);
             const r = await this.runRender( { template, format, title: want.program.title || '', when, prepared, workName: key, output: tmp } );
@@ -540,7 +557,7 @@ class CardService {
         this.ready.delete(key);
         this.failures.delete(key);
         if (meta != null) {
-            await fs.promises.rm(meta.file, { force: true });
+            await fs.promises.rm(this.cardPath(key), { force: true });
             await fs.promises.rm(path.join(this.dirs.cards, key + '.json'), { force: true });
         }
     }

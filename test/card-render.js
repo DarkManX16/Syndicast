@@ -164,6 +164,47 @@ module.exports = async () => {
                 (v.codec_name === 'mpeg2video') && (v.width === 480) && (v.height === 270)
                 && (a.codec_name === 'aac') && (a.sample_rate === '48000') && (a.channels === 2), JSON.stringify(info.streams));
         }
+
+        // A poster card with no art and no poster at all falls back to a plain
+        // background (card-render.js's bare lavfi `color` source). At a frame
+        // rate whose reciprocal rounds to more than one frame (60 and
+        // 60000/1001, not 29.97), the source used to emit 2 frames instead of
+        // 1, and zoompan's own frame-count multiplier then doubled the whole
+        // card's length with the second half black.
+        for (const fps of ['60', '60000/1001']) {
+            const bareFormat = Object.assign({}, small, { fps: fps });
+            const work = path.join(dir, 'work-bare-' + fps.replace('/', '_'));
+            fs.mkdirSync(work);
+            const out = path.join(dir, `bare-${fps.replace('/', '_')}.ts`);
+            const template = cards.normalizeTemplate( Object.assign( { name: 'Test', footageSeconds: 4,
+                ending: { file: ending, startS: 2, lengthS: 3 } }, fonts ) );
+            const j = render.renderJob( {
+                mode: 'poster', template: template, format: bareFormat, title: TITLE, whenText: 'NEXT SATURDAY · 7PM',
+                sources: { movie: null, movieHasAudio: false, momentS: null,
+                    logo: null, poster: null, art: null,
+                    ending: ending, endingHasAudio: true, music: null, musicHasAudio: false },
+                fontDir: fontDir, workDir: work, output: out,
+            } );
+            for (const name of Object.keys(j.files)) {
+                fs.writeFileSync(path.join(work, name), j.files[name], 'utf8');
+            }
+            const r = run(j.args);
+            const ok = suite.check(`a bare poster card (no art, no poster) renders at ${fps}fps`, r.status === 0,
+                r.status === 0 ? '' : (r.stderr || '').split('\n').slice(-6).join(' | '));
+            if (! ok) {
+                continue;
+            }
+            const info = probe(ffmpeg, out);
+            const duration = parseFloat(info.format.duration);
+            suite.check(`... at ${fps}fps it is still 7s long (4s, then the 3s ending), not doubled`,
+                Math.abs(duration - 7) < 0.3, String(duration));
+            // no black stretch anywhere in the card: a doubled bare background used to
+            // leave the whole second half (the real duration's worth, after the correct
+            // content already played once) as black
+            const bd = childProcess.spawnSync(ffmpeg, ['-v', 'error', '-i', out, '-vf', 'blackdetect=d=0.5:pix_th=0.10', '-an', '-f', 'null', '-'],
+                { encoding: 'utf8' });
+            suite.check(`... no black stretch in it`, ! /black_start/.test(bd.stderr), bd.stderr.slice(-300));
+        }
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

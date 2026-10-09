@@ -94,7 +94,14 @@ function fakeRunner(state) {
 }
 
 async function setup(options) {
-    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'syndicast-cards-'));
+    let folder = fs.mkdtempSync(path.join(os.tmpdir(), 'syndicast-cards-'));
+    if (options.quotedPath === true) {
+        // a data folder under a path with a quote in it (a Windows user named
+        // O'Brien, say) - escapeFilterPath (card-render.js) refuses such a path
+        // rather than risk it breaking out of an ffmpeg filter argument
+        folder = path.join(folder, "O'Brien");
+        fs.mkdirSync(folder);
+    }
     const movieFile = path.join(folder, 'movie.mp4');
     if (options.movieReadable !== false) {
         fs.writeFileSync(movieFile, 'movie');
@@ -170,6 +177,29 @@ module.exports = async () => {
             await reloaded.init();
             suite.check('after a restart, cards already rendered are ready again without rendering', reloaded.cardFor(want, s.channel) !== null);
 
+            // a card copied to a different folder (a preview server on a copy of the data
+            // folder, a restored backup) must be read from where it actually is, never from
+            // the path its sidecar was written with
+            const copyFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'syndicast-cards-copy-'));
+            cleanups.push(copyFolder);
+            fs.cpSync(s.folder, copyFolder, { recursive: true });
+            const copied = new CardService( Object.assign( {}, s.service.options, { folder: copyFolder, runner: fakeRunner(s.state) } ) );
+            await copied.init();
+            const copiedCard = copied.cardFor(want, s.channel);
+            suite.check("a card read from a copied data folder is served from the copy, not the sidecar's own recorded path",
+                (copiedCard !== null) && copiedCard.file.startsWith(copyFolder) && fs.existsSync(copiedCard.file), JSON.stringify(copiedCard));
+
+            // a card whose file was removed (by hand, by another copy's prune, by anything
+            // outside the service) is not "ready": it is re-rendered, not served as a lie
+            const beforeGone = s.state.renders.length;
+            const missingMeta = s.service.ready.get(s.service.describe(want, s.channel).key);
+            fs.rmSync(path.join(s.folder, 'generated', 'cards', missingMeta.key + '.ts'));
+            suite.check('cardFor already treats a missing file as not ready', s.service.cardFor(want, s.channel) === null);
+            await s.service.scan();
+            suite.check('... and a scan renders it again rather than leaving it "ready" with nothing on disk',
+                s.state.renders.length === beforeGone + 1);
+            suite.check('... it is ready again afterwards', s.service.cardFor(want, s.channel) !== null);
+
             s.clock.now = MON + 13 * 24 * HOUR;
             await s.service.prune();
             const kept = fs.readdirSync(path.join(s.folder, 'generated', 'cards')).filter( (f) => /\.ts$/.test(f) );
@@ -215,6 +245,19 @@ module.exports = async () => {
             await s.service.scan();
             await s.templateDB.deleteTemplate('tpl_ct');
             suite.check('a deleted template has no card', s.service.cardFor(brkWant(s.channel), s.channel) === null);
+        }
+        {
+            // the quote in the path makes card-render.js's escapeFilterPath throw before
+            // any file is written or ffmpeg runs, inside runRender - the render still
+            // fails cleanly (not a crash) and leaves nothing behind in generated/work/
+            const s = await setup({ quotedPath: true });
+            cleanups.push(path.dirname(s.folder));
+            const summary = await s.service.scan();
+            suite.check('a path with a quote in it fails the render cleanly, not a crash', summary.failed === 1, JSON.stringify(summary));
+            const up = s.service.upcoming();
+            suite.check('... reported on the page', (up[0].state === 'failed') && /quote/.test(up[0].error), JSON.stringify(up));
+            const workDir = path.join(s.folder, 'generated', 'work');
+            suite.check('... and nothing is left behind in generated/work/', fs.readdirSync(workDir).length === 0, fs.readdirSync(workDir).join(', '));
         }
         {
             const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'syndicast-cards-'));

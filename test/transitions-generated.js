@@ -111,10 +111,21 @@ module.exports = async () => {
             (plan.out.length === 0) && (wants.length === 0) && (plan.notes.length === 1) && /template/.test(plan.notes[0]), plan.notes.join(' | '));
     }
     {
+        // The card step here is itself unconditional (onlyIfNoMatch: null), so
+        // watchProblem does not reject `closing` for watching a conditional step -
+        // that would make `closing` skip as a problem before ever asking whether the
+        // card played, which is exactly the bug a looser fixture here would hide.
+        const plainCard = card({ onlyIfNoMatch: null });
         const closing = { id: 'closing', kind: 'list', listId: 'CL', match: 'any', onlyIfNoMatch: 'card' };
-        const { plan } = run([nextTime, card(), closing], Object.assign({ CL: [clipOf('Closing', 10)] }, noRealClip), true);
-        suite.check('a card that plays counts as found, for a step watching it',
-            (plan.out.length === 1) && (plan.out[0].kind === 'generated'), plan.out.map( (s) => s.clip.title ).join(', '));
+        const lists = Object.assign({ CL: [clipOf('Closing', 10)] }, noRealClip);
+        const ready = run([plainCard, closing], lists, true);
+        suite.check('a card that plays counts as found: a step watching it stays out',
+            (ready.plan.out.length === 1) && (ready.plan.out[0].kind === 'generated'),
+            ready.plan.out.map( (s) => s.clip.title ).join(', '));
+        const unready = run([plainCard, closing], lists, false);
+        suite.check('... and when the card step finds nothing (not rendered yet), the step watching it plays',
+            (unready.plan.out.length === 1) && (unready.plan.out[0].clip.title === 'Closing'),
+            unready.plan.out.map( (s) => s.clip.title ).join(', '));
     }
     {
         const channel = channelWith([]);

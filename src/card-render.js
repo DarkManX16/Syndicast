@@ -110,9 +110,13 @@ function renderJob({ mode, template, format, title, whenText, sources, fontDir, 
     if (footage) {
         iMain = input(['-ss', String(sources.momentS), '-t', String(F), '-i', sources.movie]);
     } else {
-        // no art and no poster: one frame of a plain dark background, pushed in like art
+        // no art and no poster: one frame of a plain dark background, pushed in like art.
+        // The source is read at 1fps for exactly 1 second - deliberately decoupled from
+        // the output FPS, which can be 60 or 60000/1001: `d=` is a duration in seconds,
+        // and its reciprocal at those rates rounds to 2 frames, not 1, which doubled the
+        // whole card (zoompan's own frame-count multiplier ran twice).
         iMain = (background != null) ? still(background)
-            : input(['-f', 'lavfi', '-i', `color=c=0x14101C:s=${W}x${H}:r=${FPS}:d=${r2(1 / fpsNumber(FPS))}`]);
+            : input(['-f', 'lavfi', '-i', `color=c=0x14101C:s=${W}x${H}:r=1:d=1`]);
         if (usePoster) {
             iPoster = still(sources.poster);
         }
