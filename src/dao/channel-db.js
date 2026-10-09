@@ -337,6 +337,9 @@ function warnAboutTransitions(json) {
                         if ( (kindOfStep === 'list') && ( (typeof(step.listId) === 'undefined') || (step.listId === null) || (step.listId === '') ) ) {
                             complain(`${stepLabel} names no filler list, so it will be skipped.`);
                         }
+                        if ( (kindOfStep === 'generated') && ( (typeof(step.templateId) !== 'string') || (step.templateId === '') ) ) {
+                            complain(`${stepLabel} is a generated card that names no card template, so it will be skipped.`);
+                        }
                         if ( (typeof(step.match) !== 'undefined') && (transitions.MATCHES.indexOf(step.match) === -1) ) {
                             complain(`${stepLabel} has match "${step.match}", which is not one of ${transitions.MATCHES.join(', ')}.`);
                         }

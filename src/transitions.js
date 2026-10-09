@@ -512,6 +512,13 @@ const LATER_SCAN_GUARD = 100000;
  * leaving.
  */
 function laterProgram(channel, brk, context) {
+    const airing = laterAiring(channel, brk, context);
+    return (airing === null) ? null : airing.program;
+}
+
+// laterProgram's program with the moment it starts, { program, startTime }: a
+// generated card says when the show is on.
+function laterAiring(channel, brk, context) {
     if ( (context == null) || (brk.next == null) ) {
         return null;
     }
@@ -523,7 +530,7 @@ function laterProgram(channel, brk, context) {
     for (let guard = 0; (at < horizon) && (guard < LATER_SCAN_GUARD); guard++) {
         const program = programs[index];
         if ( (program.isOffline !== true) && (dayParts.resolveContext(channel, at) === context) ) {
-            return program;
+            return { program: program, startTime: at };
         }
         at += program.duration;
         index = (index + 1) % n;
@@ -559,6 +566,12 @@ function namesState(clip) {
  *                         a number in [0, 1) judging a step's chance (optional;
  *                         default is defaultRoll, derived from the break, so
  *                         tests can force one)
+ *   env.card(want)        a generated card that is already rendered, or null
+ *                         (optional; unset, no card is ever ready). want is
+ *                         { templateId, stepId, keyedOn, program, airStart,
+ *                         breakStart, channelNumber }. Asked only for a card
+ *                         step that would play, so a caller can also use it to
+ *                         learn which cards are wanted.
  *   env.log               unused here; a caller logs plan.notes
  *
  * Returns the assembled break plus what each step chose:
@@ -592,9 +605,16 @@ function namesState(clip) {
  * Among the clips that fit a tier the longest idle plays, and a clip never
  * plays twice in one plan, so the in step of a break whose out step took the
  * only fitting clip falls through to its fallback or skips. Ties go to list
- * order, so one break always builds one plan. The 'generated' kind is not
- * built yet and is skipped as a problem; `keyedOn: 'later'` keys a step on
- * `laterProgram`, below.
+ * order, so one break always builds one plan. `keyedOn: 'later'` keys a step
+ * on `laterProgram`, below.
+ *
+ * A 'generated' step plays a card made for the show it is keyed on (now, next or
+ * later, as a list step), from its template (`templateId`), when env.card has one
+ * ready: { kind: 'generated', stepId, situation, side, templateId, via: 'generated',
+ * names: [], clip, durationMs, fits, want }, clip carrying the card's file as
+ * generatedFile. A card that is not ready yet is skipped, never waited for: the
+ * break's Flex takes its time. Marked onlyIfNoMatch on the real clip's step, it is
+ * the stand-in for when no real clip names the show.
  *
  * A step marked onlyIfNoMatch is decided after the unmarked ones, whose
  * outcomes are all known by then. A clip from a fallback list counts as a
@@ -642,6 +662,19 @@ function buildPlan(channel, brk, env) {
             sequence = sequencePrograms(channel, brk, showMatch.MAX_NAMES);
         }
         return sequence;
+    };
+    // The program a step keyed on now, next or later is about, and when it starts.
+    const keyedAiring = (keyedOn, context) => {
+        if (keyedOn === 'next') {
+            return (brk.next != null) ? { program: brk.next.program, startTime: brk.next.startTime } : null;
+        }
+        if (keyedOn === 'now') {
+            return (brk.prev != null) ? { program: brk.prev.program, startTime: brk.prev.startTime } : null;
+        }
+        if (keyedOn === 'later') {
+            return laterAiring(channel, brk, context);
+        }
+        return undefined;
     };
     const keyedShows = (keyedOn, context) => {
         if (keyedOn === 'next') {
@@ -792,8 +825,48 @@ function buildPlan(channel, brk, env) {
         return false;
     };
 
+    const resolveCard = (entry) => {
+        const step = entry.step;
+        if ( (typeof(step.templateId) !== 'string') || (step.templateId === '') ) {
+            skip(entry, 'names no card template', true);
+            return;
+        }
+        if (leftOut(entry)) {
+            return;
+        }
+        const airing = keyedAiring(step.keyedOn, entry.context);
+        if (typeof(airing) === 'undefined') {
+            skip(entry, `has keyedOn "${step.keyedOn}", which is not one of ${KEYED_ON.join(', ')}`, true);
+            return;
+        }
+        if ( (airing === null) || (airing.program == null) ) {
+            skip(entry, 'has no show to announce', false);
+            return;
+        }
+        const want = {
+            templateId: step.templateId, stepId: step.id, keyedOn: step.keyedOn, program: airing.program,
+            airStart: airing.startTime, breakStart: brk.startTime, channelNumber: channel.number,
+        };
+        const card = (typeof(env.card) === 'function') ? env.card(want) : null;
+        if (card == null) {
+            skip(entry, `its card for "${airing.program.title}" is not rendered yet`, true);
+            return;
+        }
+        entry.found = {
+            kind: 'generated', stepId: step.id, situation: entry.situation, side: entry.side,
+            templateId: step.templateId, via: 'generated', specific: false, names: [],
+            clip: { title: card.title, key: 'card|' + card.key, duration: card.durationMs,
+                generatedFile: card.file, streamStats: card.streamStats },
+            durationMs: card.durationMs, fits: [card.title], want: want,
+        };
+    };
+
     const resolve = (entry) => {
         const step = entry.step;
+        if (step.kind === 'generated') {
+            resolveCard(entry);
+            return;
+        }
         if (step.kind !== 'list') {
             skip(entry, `${step.kind} steps are not built yet`, true);
             return;
@@ -906,6 +979,7 @@ module.exports = {
     showSequence: showSequence,
     sequencePrograms: sequencePrograms,
     laterProgram: laterProgram,
+    laterAiring: laterAiring,
     watchProblem: watchProblem,
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,

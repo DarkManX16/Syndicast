@@ -40,6 +40,7 @@ const suites = [
     './card-templates',
     './card-moment',
     './card-render',
+    './transitions-generated',
 ];
 
 (async () => {
