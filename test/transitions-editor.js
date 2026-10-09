@@ -138,8 +138,9 @@ module.exports = async function run() {
         suite.check('a stored step keyed on "later" is supported, built at step 8',
             editor.whichOf(step('x', { match: 'show', keyedOn: 'later' })) === 'later'
             && editor.isSupported(step('x', { match: 'show', keyedOn: 'later' })));
-        suite.check('a generated card step keyed on a show is supported', editor.isSupported(card('x'))
-            && editor.isSupported(card('x', { keyedOn: 'next' })) && editor.isSupported(card('x', { keyedOn: 'now' })));
+        suite.check('a generated card step keyed on the show next time is supported', editor.isSupported(card('x')));
+        suite.check('... one keyed on the show coming up or the show that just ended is not: a card can only be for the show next time, for now',
+            ! editor.isSupported(card('x', { keyedOn: 'next' })) && ! editor.isSupported(card('x', { keyedOn: 'now' })));
         suite.check('... one keyed on something the editor does not know is not', ! editor.isSupported(card('x', { keyedOn: 'sometime' })));
         suite.check('a kind the editor does not know is not supported', ! editor.isSupported(step('x', { kind: 'video' })));
         suite.check('a plain list step is', editor.isSupported(step('x')));
@@ -276,8 +277,8 @@ module.exports = async function run() {
         suite.check('... with no template chosen yet, it says so',
             sentence(card('c', { templateId: '' })).startsWith('Plays a generated card from a template you have not chosen yet'));
         suite.check('... a card limited to days and chance says that too',
-            sentence(card('c', { keyedOn: 'next', days: [6], chance: 50 })) === 'Plays a generated card, “Cartoon Theatre Next Time”, for the show coming up; only on Sat; about 50% of the time.',
-            sentence(card('c', { keyedOn: 'next', days: [6], chance: 50 })));
+            sentence(card('c', { days: [6], chance: 50 })) === 'Plays a generated card, “Cartoon Theatre Next Time”, for the show that opens this, next time it comes round; only on Sat; about 50% of the time.',
+            sentence(card('c', { days: [6], chance: 50 })));
         suite.check("a card's chip: the template, the show, and what it watches",
             editor.chipLabel(c, [nt, c], names) === 'Card: Cartoon Theatre Next Time · for the show next time · if “Up Next” finds nothing',
             editor.chipLabel(c, [nt, c], names));
@@ -428,10 +429,10 @@ module.exports = async function run() {
             step('k4', { kind: 'video' }),
             step('k5', { listId: 'intro', match: 'show', keyedOn: 'later' }),
             card('k6', { templateId: '' }),
-            card('k7', { keyedOn: 'next' }),
+            card('k7'),
         ];
-        suite.check('keyed on the show that ended, on both, and on neither; "later" is named too (step 8), a card with its show; a step that is not built, or a card with no template, is not',
-            editor.flexTag(keyed, 6, starts[6], names).text === 'Up Next · Beta / Up Next · Beta → Gamma / WBRB / Intro / Card: Cartoon Theatre Next Time · Gamma',
+        suite.check('keyed on the show that ended, on both, and on neither; "later" is named too (step 8), a card (keyed on "later", so it names no show here); a step that is not built, or a card with no template, is not',
+            editor.flexTag(keyed, 6, starts[6], names).text === 'Up Next · Beta / Up Next · Beta → Gamma / WBRB / Intro / Card: Cartoon Theatre Next Time',
             editor.flexTag(keyed, 6, starts[6], names).text);
 
         const missing = fixtureChannel();
@@ -623,8 +624,11 @@ module.exports = async function run() {
             && (typeof(sw.templateId) === 'undefined'), JSON.stringify(sw));
         const anyStep = step('an', { match: 'any' });
         editor.setKind(anyStep, 'generated');
-        suite.check('an "any clip" step made a card is for the show coming up', anyStep.keyedOn === 'next');
-        suite.check('the card choices are the three keyed on a show', editor.CARD_WHICH.map( (w) => w.id ).join(',') === 'next,now,later');
+        suite.check('an "any clip" step made a card is for the show next time, the only choice a card has', anyStep.keyedOn === 'later');
+        suite.check('a list step switched to a card that was keyed on the show coming up still becomes "for the show next time"',
+            editor.setKind(step('x', { match: 'show', keyedOn: 'next' }), 'generated').keyedOn === 'later');
+        suite.check('the only card choice is "for the show next time": a near-term one would ask the renderer for a new card every break',
+            editor.CARD_WHICH.map( (w) => w.id ).join(',') === 'later');
         const none = step('none', { listId: null });
         draft.leaving.in.push(none);
         suite.check('a list that is null counts as none chosen', editor.closeStep(draft, 'leaving', none).removed);

@@ -147,12 +147,9 @@
                         </div>
                         <div class="form-group">
                             <label class="small d-block">Which show is the card for?</label>
-                            <div class="form-check" ng-repeat="w in cardWhich">
-                                <input class="form-check-input" type="radio" name="tr-cwhich-{{$id}}" id="tr-cwhich-{{$id}}-{{w.id}}"
-                                    ng-model="form.which" ng-value="w.id" ng-change="formChanged('which')">
-                                <label class="form-check-label small" for="tr-cwhich-{{$id}}-{{w.id}}">{{w.label}}</label>
-                            </div>
-                            <small class="text-muted">A card is made ahead of time, so it is ready when the break comes. To play it only when no real clip names the show, set &ldquo;Only when&rdquo; below to that clip's step.</small>
+                            <p class="small">{{cardWhich[0].label}}</p>
+                            <small class="text-muted d-block">A card is made ahead of time, a week or so before it is needed, so it is ready when the break comes. That is also why a card can only be for the show next time, for now: the show coming up or the show that just ended is known only minutes ahead, so a card for either would need rendering fresh for every single break, which the background renderer cannot keep up with. A list step has no such limit.</small>
+                            <small class="text-muted d-block">To play the card only when no real clip names the show, set &ldquo;Only when&rdquo; below to that clip's step.</small>
                         </div>
                     </div>
 

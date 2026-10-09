@@ -44,11 +44,21 @@ const WHICH = [
 ];
 
 /*
- * The three a generated card can be for (docs/blocks-spec.md, Stage 5, "Generated
- * cards"): a card is always about one show, so only the choices keyed on a show.
+ * What a generated card can be for (docs/blocks-spec.md, Stage 5, "Generated
+ * cards"): only "for the show next time", for now. A card is rendered ahead of
+ * time, a week or so before it is needed; keyed on the show coming up or the
+ * show that just ended, a near-term break's own airtime is baked into its
+ * when-text, so a step on a block with frequent transitions could ask the
+ * background renderer for a new card on every single break, with no way to
+ * reuse one. "Later" is always at least a day out, so a card for it is only
+ * ever rendered once or twice a week - see NOTES.md, "Generated Next Time
+ * cards for Cartoon Theatre".
  */
-const CARD_WHICH = WHICH.filter( (w) => w.match === 'show' )
+const CARD_WHICH = WHICH.filter( (w) => w.id === 'later' )
     .map( (w) => Object.assign({}, w, { label: w.label.replace(/^a clip/, 'a card') }) );
+// Every keyedOn a 'show' list step can use (next, now, later) - unlike
+// CARD_WHICH, not narrowed to what a generated step may use.
+const SHOW_KEYED_ON = WHICH.filter( (w) => w.match === 'show' ).map( (w) => w.keyedOn );
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -87,20 +97,20 @@ function isSupported(step) {
  */
 function setKind(step, kind) {
     if (kind === 'generated') {
-        const keyed = (step.match === 'show') ? step.keyedOn : 'next';
+        const keyed = (step.match === 'show') ? step.keyedOn : 'later';
         delete step.listId;
         delete step.fallbackListId;
         delete step.match;
         step.kind = 'generated';
         step.templateId = (typeof(step.templateId) === 'string') ? step.templateId : '';
-        step.keyedOn = CARD_WHICH.some( (w) => w.keyedOn === keyed ) ? keyed : 'next';
+        step.keyedOn = CARD_WHICH.some( (w) => w.keyedOn === keyed ) ? keyed : 'later';
     } else {
         delete step.templateId;
         step.kind = 'list';
         step.listId = '';
         step.fallbackListId = null;
         step.match = 'show';
-        step.keyedOn = CARD_WHICH.some( (w) => w.keyedOn === step.keyedOn ) ? step.keyedOn : 'next';
+        step.keyedOn = SHOW_KEYED_ON.includes(step.keyedOn) ? step.keyedOn : 'next';
     }
     return step;
 }

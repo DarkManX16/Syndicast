@@ -3867,6 +3867,44 @@ A measurement trap worth keeping: **Windows reuses a pid within a minute**.
 Two items a minute apart both got pid 40368 here, so per-process records
 keyed on pid alone mixed them up. Key them on pid plus spawn time.
 
+### A failed generated-card render never falls back to the poster card
+
+Found in the whole-branch review of stage 5 step 9 (NOTES.md, "Generated Next
+Time cards for Cartoon Theatre"), Oct 9, 2026. `card-service.js`'s `render`
+picks footage or poster mode once, in `sourcesFor`, purely from whether the
+movie's own file (or its Plex stream) can be read - never revisited if the
+footage-mode ffmpeg render itself then fails for some other reason (a decode
+glitch on that particular stretch, say). Such a card stays "failed" on the
+Cards page and is retried unchanged every half hour, rather than falling back
+to the poster-and-art card the way an unreadable movie already does. Likely
+shape: on a footage-mode failure, retry once in poster mode within the same
+`render()` call before giving up.
+
+### No save-time check that a card template's ending or music file has a picture
+
+Found in the same review. The Cards page's "Check" button already reports
+whether an ending or music file has sound and a picture (`/api/cards/probe`),
+but nothing stops a template being saved without using it - and a silent
+ending (no video stream) fails every card rendered from that template, not
+just a warning. Likely shape: `card-templates.js`'s `templateProblems` (or a
+save-time probe in `card-api.js`) rejects an ending or music file confirmed to
+have no video stream, the way a missing name already is.
+
+### ffmpeg, ffprobe and the Plex image fetch have no timeout
+
+Found in the same review. `card-service.js`'s `defaultRunner` (ffmpeg/ffprobe)
+and its `request()` call for Plex's poster, art and clear logo have no read
+timeout. A stalled Plex connection mid-analysis, or a wedged ffmpeg process,
+would hang that render forever - and since `scan()` only runs one scan at a
+time, no future scan starts either, until the server is restarted. Not fixed
+in the review's fix pass: a real fix needs either a hanging process/server to
+verify against or new mocking infrastructure, and an unverified change to a
+reliability-critical path is a worse risk than the gap it would close. **Part
+of 1.0's crash-soak hardening** (the "Random crashes during streaming, caught
+by a 48-hour soak" item in the 1.0 list above) - a card-service hang during
+the soak should surface this the same way a streaming crash would, and the
+fix (bounded timeouts on both) belongs with whatever else that soak turns up.
+
 ## Testing notes
 
 ### `npm test` runs the blocks suite
