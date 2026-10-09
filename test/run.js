@@ -37,6 +37,7 @@ const suites = [
     './ffmpeg-qos',
     './bundle-freshness',
     './program-row-heights',
+    './card-templates',
 ];
 
 (async () => {
