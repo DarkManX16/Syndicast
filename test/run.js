@@ -41,6 +41,7 @@ const suites = [
     './card-moment',
     './card-render',
     './transitions-generated',
+    './card-service',
 ];
 
 (async () => {

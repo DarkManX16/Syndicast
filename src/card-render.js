@@ -110,7 +110,9 @@ function renderJob({ mode, template, format, title, whenText, sources, fontDir, 
     if (footage) {
         iMain = input(['-ss', String(sources.momentS), '-t', String(F), '-i', sources.movie]);
     } else {
-        iMain = still(background);
+        // no art and no poster: one frame of a plain dark background, pushed in like art
+        iMain = (background != null) ? still(background)
+            : input(['-f', 'lavfi', '-i', `color=c=0x14101C:s=${W}x${H}:r=${FPS}:d=${r2(1 / fpsNumber(FPS))}`]);
         if (usePoster) {
             iPoster = still(sources.poster);
         }

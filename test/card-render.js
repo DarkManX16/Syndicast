@@ -109,6 +109,9 @@ module.exports = async () => {
     suite.check('the poster card darkens the art by brightness, keeping its colour', posterGraph.includes('lutyuv=y=') && ! posterGraph.includes('color=black@0.55'));
     suite.check('a silent section is left silent; only sections with sound are levelled',
         /anullsrc[^;]*[movieaudio]/.test(posterGraph) && posterGraph.includes('[movieaudio]anull[a0]') && /[d+:a][^;]*loudnorm[^;]*[a1]/.test(posterGraph));
+    const bare = job({ mode: 'poster', sources: Object.assign({}, SOURCES, { movie: null, movieHasAudio: false }) });
+    suite.check('a poster card with no art and no poster at all stands on a plain dark background',
+        bare.args.join(' ').includes('color=c=0x14101C') && ! bare.args.includes('null'), bare.args.slice(0, 12).join(' '));
     suite.check('the poster card never reads the movie', ! poster.args.includes('G:/Cartoon Theatre Movies/Scooby-Doo 2.mp4'));
 
     // ---- real renders -------------------------------------------------------------------------

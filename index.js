@@ -29,6 +29,8 @@ const M3uService = require("./src/services/m3u-service");
 const FillerDB = require("./src/dao/filler-db");
 const ShowAliasDB = require("./src/dao/show-alias-db");
 const ShowMatchService = require("./src/services/show-match-service");
+const CardTemplateDB = require("./src/dao/card-template-db");
+const CardService = require("./src/services/card-service");
 const CustomShowDB = require("./src/dao/custom-show-db");
 const TVGuideService = require("./src/services/tv-guide-service");
 const EventService = require("./src/services/event-service");
@@ -151,6 +153,20 @@ let fillerService = new FillerService(fillerDB, plexProxyService,
     channelService);
 let showAliasDB = new ShowAliasDB(process.env.DATABASE);
 let showMatchService = new ShowMatchService(fillerDB, channelService, customShowDB, showAliasDB, plexServerDB);
+// Generated cards (docs/blocks-spec.md, Stage 5, "Generated cards"): rendered a week ahead, in the background.
+let cardTemplateDB = new CardTemplateDB(process.env.DATABASE);
+let cardService = new CardService( {
+    folder: process.env.DATABASE,
+    templateDB: cardTemplateDB,
+    channelService: channelService,
+    fillerService: fillerService,
+    getFfmpegSettings: () => db['ffmpeg-settings'].find()[0],
+    getPlexServer: (name) => db['plex-servers'].find( { name: name } )[0] || null,
+} );
+cardTemplateDB.load()
+    .then( () => cardService.init() )
+    .then( () => cardService.start() )
+    .catch( (err) => console.error('Generated cards could not start; card steps will be skipped.', err) );
 
 i18next
     .use(i18nextBackend)
@@ -325,12 +341,12 @@ app.use('/favicon.svg', express.static(
 app.use('/custom.css', express.static(path.join(process.env.DATABASE, 'custom.css')))
 
 // API Routers
-app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService))
+app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService, cardService))
 app.use('/api/cache/images', cacheImageService.apiRouters())
 app.use('/' + fontAwesome, express.static(path.join(process.env.DATABASE, fontAwesome)))
 app.use('/' + bootstrap, express.static(path.join(process.env.DATABASE, bootstrap)))
 
-app.use(video.router( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB  ))
+app.use(video.router( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB, cardService  ))
 app.use(hdhr.router)
 app.listen(process.env.PORT, () => {
     console.log(`HTTP server running on port: http://*:${process.env.PORT}`)
