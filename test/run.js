@@ -38,6 +38,7 @@ const suites = [
     './bundle-freshness',
     './program-row-heights',
     './card-templates',
+    './card-moment',
 ];
 
 (async () => {
