@@ -247,6 +247,32 @@ module.exports = async () => {
             suite.check('a deleted template has no card', s.service.cardFor(brkWant(s.channel), s.channel) === null);
         }
         {
+            // a save, a moment change or "render again" landing while a scan is already
+            // running must not be dropped until the next 30-minute tick: it schedules a
+            // follow-up scan that starts the moment the running one finishes
+            const s = await setup({});
+            cleanups.push(s.folder);
+            let calls = 0;
+            let release = null;
+            const real = s.service.scanOnce.bind(s.service);
+            s.service.scanOnce = async () => {
+                calls++;
+                if (calls === 1) {
+                    await new Promise( (resolve) => { release = resolve; } );
+                }
+                return real();
+            };
+            const first = s.service.scan();
+            await new Promise( (resolve) => setImmediate(resolve) ); // let the first scanOnce reach its await
+            const second = s.service.scan();
+            suite.check('a scan requested while one is already running joins the same in-flight promise', second === first);
+            release();
+            await first;
+            await new Promise( (resolve) => setImmediate(resolve) ); // let the chained follow-up scan start
+            await new Promise( (resolve) => setImmediate(resolve) );
+            suite.check('... and a follow-up scan runs right after, not 30 minutes later', calls === 2, String(calls));
+        }
+        {
             // the quote in the path makes card-render.js's escapeFilterPath throw before
             // any file is written or ffmpeg runs, inside runRender - the render still
             // fails cleanly (not a crash) and leaves nothing behind in generated/work/

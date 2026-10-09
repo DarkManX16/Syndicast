@@ -1303,7 +1303,10 @@ for the full spec, stages and acceptance tests.
         with the title (Plex's own clear logo for the movie when it has one) and the airtime line
         over it, then the template's ending clip. Every line of text goes to a file `drawtext`
         reads with `textfile=`, never into the filter graph itself, so a title like "Scooby-Doo 2:
-        Monsters Unleashed" or "Wakko's Wish" renders exactly as saved - checked on both. A movie
+        Monsters Unleashed" or "Wakko's Wish" renders exactly as saved - checked with a real render
+        of that exact title (`test/card-render.js`'s real-render pass); the two real Oct 10 and Oct
+        17 cards below used Plex's own clear logo for the title instead of drawn text, since both
+        movies have one, so they don't exercise this path themselves. A movie
         whose file (and Plex stream) can't be read gets the poster-and-art card instead, darkened
         by brightness alone so the colour survives. Rendered to the channel's own resolution,
         frame rate, codecs and bitrates (`card-templates.js`'s `cardFormat`), a hardware encoder
@@ -1337,10 +1340,26 @@ for the full spec, stages and acceptance tests.
       - **The preview.** A third copy of `.dizquetv-dev` under
         `C:\Projects\dizquetv-worktrees\next-time-cards-data` (copied Oct 8, 2026, ~7:38 PM
         Central, `xmltv-settings.json`'s `file` made absolute, the same trap as steps 7 and 8's
-        previews), a detached worktree of `blocks` (`.claude/worktrees/next-time-cards`), port
-        18190, started through `Win32_Process.Create` so it outlives the session. A "Cartoon
-        Theatre Next Time" template was saved through the real Cards page, with Ron's real ending
+        previews), the `next-time-cards` branch's own worktree (`.claude/worktrees/next-time-cards`,
+        branched from `blocks`), port 18190, started through `Win32_Process.Create` so it outlives
+        the session. A "Cartoon Theatre Next Time" template was saved through the real Cards page,
+        with Ron's real ending
         clip and closing-music bed. `.dizquetv-dev` itself was never touched.
+      - **A scratch channel (905), where a card airs every 20 minutes, not weekly.** Two real
+        movies none of Ron's 12 real clips name (The Pagemaster, The Iron Giant), each in its own
+        short block, so every cycle wants the generated card, never a real clip. Deliberately
+        bounded: a `later`-keyed card whose next airing is only minutes away bakes the exact clock
+        time into its when-text ("TODAY · 12:40AM"), so every occurrence is its own card, unlike
+        the real weekly Cartoon Theatre, where the next airing is always a day or more out and a
+        card renders once or twice a week. An unbounded every-few-minutes channel would have asked
+        the real week-ahead scanner to render on the order of 2,500 distinct cards on its first
+        pass - hours of work and tens of gigabytes - so the block's own airings are confined to a
+        four-hour daily window (`00:00`-`04:00`), about 175 cards a week. Confirmed live, through
+        the real running preview server: `/api/channel/905/now-playing` matched the predicted
+        schedule, and the server's own log carried the plan line
+        `Break plan, channel 905, boundary break ending 1:35:54 AM: Next Time: The Iron Giant ->
+        Flex -> (none)` - the generated card chosen as the out step of a real break, by the
+        production code, not a test fixture.
 
 - [x] Next Time bumper: `keyedOn: 'later'` and the Cartoon Theatre "Next Time" row (stage 5 step
       8). **Built Oct 8, 2026**; see the "Step 8" entry above (after Step 7) and the spec.

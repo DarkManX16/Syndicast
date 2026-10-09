@@ -117,6 +117,7 @@ class CardService {
         this.lastWants = [];            // from the last scan, for the page
         this.analysis = {};             // moments.json
         this.scanning = null;
+        this.rescanRequested = false;
         this.timers = [];
     }
 
@@ -205,12 +206,26 @@ class CardService {
 
     // ---- scanning ------------------------------------------------------------------------------
 
+    /*
+     * A scan asked for while one is already running does not wait for the next
+     * half-hour tick: it joins the running one (so its caller still gets a
+     * promise that resolves), and marks that a follow-up scan should start the
+     * moment the running one finishes, since whatever changed (a save, a moment,
+     * "render again") may not be reflected in the scan already under way.
+     */
     scan() {
-        if (this.scanning === null) {
-            this.scanning = this.scanOnce().finally( () => {
-                this.scanning = null;
-            } );
+        if (this.scanning !== null) {
+            this.rescanRequested = true;
+            return this.scanning;
         }
+        this.rescanRequested = false;
+        this.scanning = this.scanOnce().finally( () => {
+            this.scanning = null;
+            if (this.rescanRequested) {
+                this.rescanRequested = false;
+                this.scan().catch( (err) => this.log(`Cards: follow-up scan failed: ${err.stack || err}`) );
+            }
+        } );
         return this.scanning;
     }
 

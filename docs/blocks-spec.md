@@ -394,15 +394,22 @@ for a card the moment the movie is known:
   name), the channel's format, the movie, the airtime line and a hand-chosen
   moment. Any of them changing — a template edit, a bitrate change, a
   different week's airtime, choosing a different moment — renders a new file
-  under a new key; nothing stale ever plays, and nothing is re-rendered for
-  no reason.
+  under a new key, and nothing is re-rendered for no reason. Not everything
+  that can make a card look different is in the key, though: a picked-but-
+  unchosen moment and Plex's poster, art and clear logo are cached by movie
+  with no expiry, an ending or music clip's own content is not part of the
+  key (only its path, start and length are), and whether a card rendered as
+  footage or the poster fallback is not either — a movie whose file is
+  temporarily unreadable at render time keeps its poster card, under the
+  same key a footage card would have used, until "Render again" on the Cards
+  page.
 - **Playback.** A card's lineup item carries `generatedFile` and the stream
   details it was rendered with (`src/helperFuncs.js`'s `createLineup`); a new
   player, `src/card-player.js`, follows `plex-player.js`'s own shape but
   calls `FFMPEG.spawnStream` on that file directly, with no Plex server in
   the loop. `program-player.js` picks it whenever a lineup item carries
   `generatedFile`.
-- **The Cards page** (`web/views/cards.html`, `src/card-api.js`) edits a
+- **The Cards page** (`web/public/views/cards.html`, `src/card-api.js`) edits a
   template's words, fonts, colours, the three text positions, its ending
   clip and an optional music bed; previews a frame or a short clip for any
   movie on the channels, through the exact renderer that makes the real
