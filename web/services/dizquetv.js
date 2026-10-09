@@ -263,6 +263,18 @@ module.exports = function ($http, $q) {
             return (await $http.get('/api/nicknames')).data;
         },
 
+        // Generated cards (src/card-api.js).
+        getCardTemplates: async () => (await $http.get('/api/cards/templates')).data,
+        getCards: async () => (await $http.get('/api/cards', { headers: { 'Cache-Control': 'no-cache' } })).data,
+        saveCardTemplate: async (template) => (await $http.post('/api/cards/templates', template)).data,
+        deleteCardTemplate: async (id) => (await $http.delete(`/api/cards/templates/${encodeURIComponent(id)}`)).data,
+        setCardMoment: async (movieKey, startS) => (await $http.post('/api/cards/moment', { movieKey, startS })).data,
+        rerenderCard: async (key) => (await $http.post('/api/cards/rerender', { key })).data,
+        scanCards: async () => (await $http.post('/api/cards/scan', {})).data,
+        getCardMovies: async () => (await $http.get('/api/cards/movies')).data,
+        previewCard: async (body) => (await $http.post('/api/cards/preview', body)).data,
+        probeCardFile: async (file) => (await $http.post('/api/cards/probe', { file })).data,
+
         previewNickname: async (body) => {
             return (await $http.post('/api/nicknames/preview', body)).data;
         },

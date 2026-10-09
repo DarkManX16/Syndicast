@@ -26,7 +26,14 @@ const ChannelDB = require('../src/dao/channel-db');
 
 const LIST_NAMES = { wbrb: 'WBRB', btts: 'BTTS', signoff: 'Sign Off', intro: 'Intro', upnext: 'Up Next', generic: 'Generic',
     gone: null };
-const names = { listName: (id) => (typeof(LIST_NAMES[id]) === 'undefined') ? null : LIST_NAMES[id] };
+const TEMPLATE_NAMES = { ct: 'Cartoon Theatre Next Time' };
+const names = { listName: (id) => (typeof(LIST_NAMES[id]) === 'undefined') ? null : LIST_NAMES[id],
+    templateName: (id) => (typeof(TEMPLATE_NAMES[id]) === 'undefined') ? null : TEMPLATE_NAMES[id] };
+// A generated card step, as the form stores one.
+function card(id, extra) {
+    return Object.assign({ id, kind: 'generated', templateId: 'ct', keyedOn: 'later',
+        onlyIfNoMatch: null, days: null, chance: null }, extra || {});
+}
 
 function episode(show, n, mins) {
     return { title: `${show} ${n}`, key: `/e/${show}${n}`, type: 'episode', showTitle: show,
@@ -131,7 +138,10 @@ module.exports = async function run() {
         suite.check('a stored step keyed on "later" is supported, built at step 8',
             editor.whichOf(step('x', { match: 'show', keyedOn: 'later' })) === 'later'
             && editor.isSupported(step('x', { match: 'show', keyedOn: 'later' })));
-        suite.check('a "generated" step is not supported', ! editor.isSupported(step('x', { kind: 'generated' })));
+        suite.check('a generated card step keyed on a show is supported', editor.isSupported(card('x'))
+            && editor.isSupported(card('x', { keyedOn: 'next' })) && editor.isSupported(card('x', { keyedOn: 'now' })));
+        suite.check('... one keyed on something the editor does not know is not', ! editor.isSupported(card('x', { keyedOn: 'sometime' })));
+        suite.check('a kind the editor does not know is not supported', ! editor.isSupported(step('x', { kind: 'video' })));
         suite.check('a plain list step is', editor.isSupported(step('x')));
         let threw = false;
         try { editor.setWhich(s, 'nonsense'); } catch (err) { threw = true; }
@@ -256,8 +266,23 @@ module.exports = async function run() {
             sentence(step('s', { listId: '' })).startsWith('Plays any clip from a list you have not chosen yet'));
         suite.check('a list that was deleted is said plainly',
             sentence(step('s', { listId: 'gone' })).includes('a list that no longer exists'));
-        suite.check('"generated" reads as not built, kept as it is',
-            sentence(step('s', { kind: 'generated' })).includes('not built yet'));
+        suite.check('a kind the editor does not know reads as not built, kept as it is',
+            sentence(step('s', { kind: 'video' })).includes('not built yet'));
+        const nt = step('nt', { listId: 'upnext', match: 'show', keyedOn: 'later' });
+        const c = card('c', { onlyIfNoMatch: 'nt' });
+        suite.check('a card step says what it plays, for which show, and when',
+            sentence(c, [nt, c]) === 'Plays a generated card, “Cartoon Theatre Next Time”, for the show that opens this, next time it comes round; only when the “Up Next” step found nothing.',
+            sentence(c, [nt, c]));
+        suite.check('... with no template chosen yet, it says so',
+            sentence(card('c', { templateId: '' })).startsWith('Plays a generated card from a template you have not chosen yet'));
+        suite.check('... a card limited to days and chance says that too',
+            sentence(card('c', { keyedOn: 'next', days: [6], chance: 50 })) === 'Plays a generated card, “Cartoon Theatre Next Time”, for the show coming up; only on Sat; about 50% of the time.',
+            sentence(card('c', { keyedOn: 'next', days: [6], chance: 50 })));
+        suite.check("a card's chip: the template, the show, and what it watches",
+            editor.chipLabel(c, [nt, c], names) === 'Card: Cartoon Theatre Next Time · for the show next time · if “Up Next” finds nothing',
+            editor.chipLabel(c, [nt, c], names));
+        suite.check('a step watching a card names it as the card',
+            editor.chipLabel(step('w', { onlyIfNoMatch: 'c' }), [c, step('w', { onlyIfNoMatch: 'c' })], names).includes('if “Card: Cartoon Theatre Next Time” finds nothing'));
         suite.check('"later" reads its own sentence, built at step 8',
             sentence(step('s', { listId: 'upnext', keyedOn: 'later', match: 'show' }))
                 === 'Plays a clip from Up Next for the show that opens this, next time it comes round; if none matches, plays nothing.');
@@ -290,7 +315,10 @@ module.exports = async function run() {
         suite.check('a mark that cannot be honoured is a problem', p(step('s', { onlyIfNoMatch: 'ghost' })).length === 1);
         suite.check('an empty days list in a stored step is a problem', p(step('s', { days: [] })).length === 1);
         suite.check('a bad chance in a stored step is a problem', p(step('s', { chance: 0 })).length === 1);
-        suite.check('a step that is not a list step has none to report', p(step('s', { kind: 'generated', listId: '' })).length === 0);
+        suite.check('a step of a kind the editor does not know has none to report', p(step('s', { kind: 'video', listId: '' })).length === 0);
+        suite.check('a card step with no template is a problem', p(card('s', { templateId: '' })).length === 1);
+        suite.check('a card step whose template was deleted is a problem', p(card('s', { templateId: 'gone' })).length === 1);
+        suite.check('a card step with its template is fine', p(card('s')).length === 0);
         const draft = editor.emptyDraft();
         suite.check('an empty draft has no unfinished step', ! editor.hasUnfinishedStep(draft));
         draft.leaving.in.push(step('u', { listId: '' }));
@@ -397,11 +425,13 @@ module.exports = async function run() {
             step('k1', { listId: 'upnext', match: 'show', keyedOn: 'now' }),
             step('k2', { listId: 'upnext', match: 'pair' }),
             step('k3', { listId: 'wbrb', match: 'any' }),
-            step('k4', { kind: 'generated' }),
+            step('k4', { kind: 'video' }),
             step('k5', { listId: 'intro', match: 'show', keyedOn: 'later' }),
+            card('k6', { templateId: '' }),
+            card('k7', { keyedOn: 'next' }),
         ];
-        suite.check('keyed on the show that ended, on both, and on neither; "later" is named too (step 8), a step that is not built is not',
-            editor.flexTag(keyed, 6, starts[6], names).text === 'Up Next · Beta / Up Next · Beta → Gamma / WBRB / Intro',
+        suite.check('keyed on the show that ended, on both, and on neither; "later" is named too (step 8), a card with its show; a step that is not built, or a card with no template, is not',
+            editor.flexTag(keyed, 6, starts[6], names).text === 'Up Next · Beta / Up Next · Beta → Gamma / WBRB / Intro / Card: Cartoon Theatre Next Time · Gamma',
             editor.flexTag(keyed, 6, starts[6], names).text);
 
         const missing = fixtureChannel();
@@ -567,10 +597,34 @@ module.exports = async function run() {
             closed.removed && same(draft.betweenShows.out.map( (x) => x.id ), ['real']) && closed.cleared.length === 1 && watcher.onlyIfNoMatch === null);
         suite.check('closing a step that has a list leaves it',
             ! editor.closeStep(draft, 'betweenShows', real).removed && draft.betweenShows.out.length === 1);
-        const odd = step('odd', { kind: 'generated', listId: '' });
+        const odd = step('odd', { kind: 'video', listId: '' });
         draft.leaving.out.push(odd);
         suite.check('a step the editor does not build is never removed for having no list',
             ! editor.closeStep(draft, 'leaving', odd).removed && draft.leaving.out.length === 1);
+        const unmade = card('unmade', { templateId: '' });
+        draft.leaving.out.push(unmade);
+        suite.check('closing a card step with no template takes it out', editor.closeStep(draft, 'leaving', unmade).removed);
+        const made = card('made');
+        draft.leaving.out.push(made);
+        suite.check('... one with a template stays', ! editor.closeStep(draft, 'leaving', made).removed);
+        const unfinished = editor.emptyDraft();
+        unfinished.leaving.out.push(card('u', { templateId: '' }));
+        suite.check('a card step with no template is unfinished, and holds up saving', editor.hasUnfinishedStep(unfinished));
+
+        // switching a step between a clip and a card
+        const sw = step('sw', { listId: 'upnext', match: 'show', keyedOn: 'later', fallbackListId: 'generic' });
+        editor.setKind(sw, 'generated');
+        suite.check('a clip step made a card keeps its show and drops its lists',
+            (sw.kind === 'generated') && (sw.keyedOn === 'later') && (sw.templateId === '') && (typeof(sw.listId) === 'undefined')
+            && (typeof(sw.fallbackListId) === 'undefined') && (typeof(sw.match) === 'undefined'), JSON.stringify(sw));
+        editor.setKind(sw, 'list');
+        suite.check('... and made a clip step again it asks for a list, still for the same show',
+            (sw.kind === 'list') && (sw.listId === '') && (sw.match === 'show') && (sw.keyedOn === 'later')
+            && (typeof(sw.templateId) === 'undefined'), JSON.stringify(sw));
+        const anyStep = step('an', { match: 'any' });
+        editor.setKind(anyStep, 'generated');
+        suite.check('an "any clip" step made a card is for the show coming up', anyStep.keyedOn === 'next');
+        suite.check('the card choices are the three keyed on a show', editor.CARD_WHICH.map( (w) => w.id ).join(',') === 'next,now,later');
         const none = step('none', { listId: null });
         draft.leaving.in.push(none);
         suite.check('a list that is null counts as none chosen', editor.closeStep(draft, 'leaving', none).removed);

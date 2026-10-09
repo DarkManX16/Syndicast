@@ -43,6 +43,7 @@ const suites = [
     './transitions-generated',
     './card-service',
     './card-player',
+    './card-api',
 ];
 
 (async () => {

@@ -43,27 +43,70 @@ const WHICH = [
       about: ' for the show that opens this, next time it comes round' },
 ];
 
+/*
+ * The three a generated card can be for (docs/blocks-spec.md, Stage 5, "Generated
+ * cards"): a card is always about one show, so only the choices keyed on a show.
+ */
+const CARD_WHICH = WHICH.filter( (w) => w.match === 'show' )
+    .map( (w) => Object.assign({}, w, { label: w.label.replace(/^a clip/, 'a card') }) );
+
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// Which of the five choices a stored step is, or null when it is none of them
-// (a 'generated' kind, an unknown match): those are shown and kept, never edited.
+// Which of the choices a stored step is, or null when it is none of them (a kind
+// or an unknown match the editor does not know): those are shown and kept, never edited.
 function whichOf(step) {
+    if (step.kind === 'generated') {
+        const card = CARD_WHICH.find( (w) => w.keyedOn === step.keyedOn );
+        return (typeof(card) === 'undefined') ? null : card.id;
+    }
     const found = WHICH.find( (w) => (w.match === step.match) && ( (w.match !== 'show') || (w.keyedOn === step.keyedOn) ) );
     return (typeof(found) === 'undefined') ? null : found.id;
 }
 
 function setWhich(step, id) {
-    const w = WHICH.find( (x) => x.id === id );
+    const choices = (step.kind === 'generated') ? CARD_WHICH : WHICH;
+    const w = choices.find( (x) => x.id === id );
     if (typeof(w) === 'undefined') {
-        throw new Error(`transitionsEditor.setWhich: "${id}" is not one of ${WHICH.map( (x) => x.id ).join(', ')}`);
+        throw new Error(`transitionsEditor.setWhich: "${id}" is not one of ${choices.map( (x) => x.id ).join(', ')}`);
     }
-    step.match = w.match;
+    if (step.kind !== 'generated') {
+        step.match = w.match;
+    }
     step.keyedOn = w.keyedOn;
     return step;
 }
 
 function isSupported(step) {
-    return (step.kind === 'list') && (whichOf(step) !== null);
+    return ( (step.kind === 'list') || (step.kind === 'generated') ) && (whichOf(step) !== null);
+}
+
+/*
+ * A step becomes a clip from a list or a generated card, keeping the show it
+ * is for (a step for "any clip" or "the pair" becomes a card for the show
+ * coming up), its mark, days and chance. What only the other kind uses goes.
+ */
+function setKind(step, kind) {
+    if (kind === 'generated') {
+        const keyed = (step.match === 'show') ? step.keyedOn : 'next';
+        delete step.listId;
+        delete step.fallbackListId;
+        delete step.match;
+        step.kind = 'generated';
+        step.templateId = (typeof(step.templateId) === 'string') ? step.templateId : '';
+        step.keyedOn = CARD_WHICH.some( (w) => w.keyedOn === keyed ) ? keyed : 'next';
+    } else {
+        delete step.templateId;
+        step.kind = 'list';
+        step.listId = '';
+        step.fallbackListId = null;
+        step.match = 'show';
+        step.keyedOn = CARD_WHICH.some( (w) => w.keyedOn === step.keyedOn ) ? step.keyedOn : 'next';
+    }
+    return step;
+}
+
+function hasNoTemplate(step) {
+    return (step.kind === 'generated') && ( (typeof(step.templateId) !== 'string') || (step.templateId === '') );
 }
 
 function emptyDraft() {
@@ -157,7 +200,7 @@ function removeStep(draft, situation, step) {
  * steps whose "only when" named it (cleared, as for any deletion).
  */
 function closeStep(draft, situation, step) {
-    if ( (step.kind === 'list') && ( (step.listId == null) || (step.listId === '') ) ) {
+    if ( ( (step.kind === 'list') && ( (step.listId == null) || (step.listId === '') ) ) || hasNoTemplate(step) ) {
         return { removed: true, cleared: removeStep(draft, situation, step) };
     }
     return { removed: false, cleared: [] };
@@ -270,7 +313,23 @@ function listText(listId, names) {
     return (name == null) ? null : name;
 }
 
+// A card template's name, or null for one that is not there (or not known yet).
+function templateText(templateId, names) {
+    if ( (typeof(templateId) !== 'string') || (templateId === '') || (typeof(names.templateName) !== 'function') ) {
+        return null;
+    }
+    const name = names.templateName(templateId);
+    return (name == null) ? null : name;
+}
+
 function stepListName(step, names) {
+    if (step.kind === 'generated') {
+        if (hasNoTemplate(step)) {
+            return 'Card: (no template chosen)';
+        }
+        const name = templateText(step.templateId, names);
+        return 'Card: ' + ( (name === null) ? '(a template that no longer exists)' : name );
+    }
     if ( (step.listId == null) || (step.listId === '') ) {
         return '(no list chosen)';
     }
@@ -284,21 +343,9 @@ function stepListName(step, names) {
  * matches, plays nothing." `sequence` is every step of the step's situation, so
  * a watched step can be named.
  */
-function describeStep(step, sequence, names) {
-    if (step.kind !== 'list') {
-        return `This is a "${step.kind}" step, which is not built yet. It is kept as it is and skipped on air.`;
-    }
-    const which = whichOf(step);
-    if (which === null) {
-        return 'This step uses a way of choosing clips this editor does not know. It is kept as it is and skipped on air.';
-    }
-    const w = WHICH.find( (x) => x.id === which );
-    const list = (step.listId == null || step.listId === '') ? 'a list you have not chosen yet'
-        : (listText(step.listId, names) === null ? 'a list that no longer exists' : listText(step.listId, names));
-    const parts = [ `Plays ${which === 'any' ? 'any clip' : 'a clip'} from ${list}${w.about}` ];
-    const fallback = (step.fallbackListId == null || step.fallbackListId === '') ? null
-        : (listText(step.fallbackListId, names) === null ? 'a list that no longer exists' : listText(step.fallbackListId, names));
-    parts.push(`if ${which === 'any' ? 'nothing in it fits' : 'none matches'}, plays ${fallback === null ? 'nothing' : 'a clip from ' + fallback}`);
+// What limits a step, as the clauses ending its sentence.
+function limitClauses(step, sequence, names) {
+    const parts = [];
     if (isMarked(step)) {
         const watched = sequence.find( (s) => (s !== step) && (s.id === step.onlyIfNoMatch) );
         parts.push(watched
@@ -313,12 +360,52 @@ function describeStep(step, sequence, names) {
     if ( (step.chance != null) && (step.chance < 100) ) {
         parts.push(`about ${step.chance}% of the time`);
     }
-    return parts.join('; ') + '.';
+    return parts;
+}
+
+function describeStep(step, sequence, names) {
+    if ( (step.kind === 'generated') && (whichOf(step) !== null) ) {
+        const w = CARD_WHICH.find( (x) => x.id === whichOf(step) );
+        const name = templateText(step.templateId, names);
+        const what = hasNoTemplate(step) ? 'Plays a generated card from a template you have not chosen yet'
+            : (name === null) ? 'Plays a generated card from a template that no longer exists'
+            : `Plays a generated card, “${name}”,`;
+        return [ what + w.about ].concat(limitClauses(step, sequence, names)).join('; ') + '.';
+    }
+    if (step.kind !== 'list') {
+        return `This is a "${step.kind}" step, which is not built yet. It is kept as it is and skipped on air.`;
+    }
+    const which = whichOf(step);
+    if (which === null) {
+        return 'This step uses a way of choosing clips this editor does not know. It is kept as it is and skipped on air.';
+    }
+    const w = WHICH.find( (x) => x.id === which );
+    const list = (step.listId == null || step.listId === '') ? 'a list you have not chosen yet'
+        : (listText(step.listId, names) === null ? 'a list that no longer exists' : listText(step.listId, names));
+    const parts = [ `Plays ${which === 'any' ? 'any clip' : 'a clip'} from ${list}${w.about}` ];
+    const fallback = (step.fallbackListId == null || step.fallbackListId === '') ? null
+        : (listText(step.fallbackListId, names) === null ? 'a list that no longer exists' : listText(step.fallbackListId, names));
+    parts.push(`if ${which === 'any' ? 'nothing in it fits' : 'none matches'}, plays ${fallback === null ? 'nothing' : 'a clip from ' + fallback}`);
+    return parts.concat(limitClauses(step, sequence, names)).join('; ') + '.';
 }
 
 // The chip on a card: list, how it chooses, what happens when nothing fits, then
 // whatever limits it.
 function chipLabel(step, sequence, names) {
+    if ( (step.kind === 'generated') && (whichOf(step) !== null) ) {
+        const parts = [ stepListName(step, names), CARD_WHICH.find( (x) => x.id === whichOf(step) ).short ];
+        if (isMarked(step)) {
+            const watched = sequence.find( (s) => (s !== step) && (s.id === step.onlyIfNoMatch) );
+            parts.push(watched ? `if “${stepListName(watched, names)}” finds nothing` : 'watches a missing step');
+        }
+        if (Array.isArray(step.days) && (step.days.length > 0)) {
+            parts.push(dayWords(step.days).join(' '));
+        }
+        if ( (step.chance != null) && (step.chance < 100) ) {
+            parts.push(`${step.chance}%`);
+        }
+        return parts.join(' · ');
+    }
     if (step.kind !== 'list') {
         return `${step.kind} step (not built yet)`;
     }
@@ -356,15 +443,20 @@ function chipLabel(step, sequence, names) {
  */
 function problemsOf(step, sequence, names) {
     const problems = [];
-    if (step.kind !== 'list') {
+    if (step.kind === 'generated') {
+        if (hasNoTemplate(step)) {
+            problems.push('Choose the card template this step plays. (A card step with no template is removed when you close it.)');
+        } else if ( (typeof(names.templateName) === 'function') && (templateText(step.templateId, names) === null) ) {
+            problems.push('The card template this step plays no longer exists.');
+        }
+    } else if (step.kind !== 'list') {
         return problems;
-    }
-    if (step.listId == null || step.listId === '') {
+    } else if (step.listId == null || step.listId === '') {
         problems.push('Choose the list this step draws from. (A step with no list is removed when you close it.)');
     } else if (listText(step.listId, names) === null) {
         problems.push('The list this step draws from no longer exists.');
     }
-    if (step.fallbackListId != null && step.fallbackListId !== '' && listText(step.fallbackListId, names) === null) {
+    if (step.kind === 'list' && step.fallbackListId != null && step.fallbackListId !== '' && listText(step.fallbackListId, names) === null) {
         problems.push('The fallback list no longer exists.');
     }
     const watch = transitions.watchProblem(step, sequence);
@@ -384,7 +476,7 @@ function problemsOf(step, sequence, names) {
 
 // True when saving should wait: a step is there with no list to draw from.
 function hasUnfinishedStep(draft) {
-    return allSteps(draft).some( (s) => (s.kind === 'list') && (s.listId == null || s.listId === '') );
+    return allSteps(draft).some( (s) => ( (s.kind === 'list') && (s.listId == null || s.listId === '') ) || hasNoTemplate(s) );
 }
 
 // A step as stored: everything it carries, nothing that is only the form's.
@@ -556,7 +648,7 @@ function flexTag(channel, index, entryStart, names) {
     }
     const assembled = transitions.assemble(channel, brk);
     const weekday = new Date(brk.startTime).getDay();
-    const label = (e) => ( (e.step.kind === 'list') && (whichOf(e.step) !== null)
+    const label = (e) => ( isSupported(e.step) && ! hasNoTemplate(e.step)
         && (transitions.daysProblem(e.step) === null)
         && ( (e.step.days == null) || e.step.days.includes(weekday) ) ) ? tagLabel(e.step, brk, names) : null;
     const before = first ? assembled.out.map(label).filter( (l) => l !== null ) : [];
@@ -602,6 +694,23 @@ function overlayProposedNames(clips, matchResponse) {
         }
         return Object.assign({}, clip, { names: p.proposal.names.slice() });
     } );
+}
+
+/*
+ * A stand-in for env.card in the preview: the browser cannot see which cards are
+ * rendered, so every card step reads as playing, for the length its template
+ * runs. `templates` is { id: { name, seconds } }; a template not there plays nothing.
+ */
+function previewCard(templates) {
+    return (want) => {
+        const t = (templates || {})[want.templateId];
+        if (t == null) {
+            return null;
+        }
+        const show = (want.program != null) ? (programLabel(want.program) || want.program.title || '') : '';
+        return { file: null, key: 'preview', title: `Card: ${t.name}${show ? ' · ' + show : ''}`,
+            durationMs: Math.round( (t.seconds || 15) * 1000 ), streamStats: null };
+    };
 }
 
 /*
@@ -747,7 +856,10 @@ function mmss(ms) {
 
 module.exports = {
     WHICH: WHICH,
+    CARD_WHICH: CARD_WHICH,
     DAY_NAMES: DAY_NAMES,
+    setKind: setKind,
+    previewCard: previewCard,
     whichOf: whichOf,
     setWhich: setWhich,
     isSupported: isSupported,

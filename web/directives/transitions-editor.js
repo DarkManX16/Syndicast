@@ -30,6 +30,8 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
             channel: '=channel',
             fillerOptions: '=fillerOptions',
             listsLoaded: '=listsLoaded',
+            cardTemplates: '=cardTemplates',
+            templatesLoaded: '=templatesLoaded',
             kind: '@kind',
         },
         link: function (scope, element, attrs) {
@@ -40,6 +42,7 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
             scope.panel = null;       // null, 'quick' or 'copy': the small panels under the heading
             scope.notice = '';
             scope.which = editor.WHICH;
+            scope.cardWhich = editor.CARD_WHICH;
             scope.weekDays = editor.DAY_NAMES.map( (name, id) => ({ id: id, name: name }) );
             // Off by default: the preview shows what will air, from the names saved on the lists.
             // Ticked, it overlays the matcher's suggestions in memory (nothing is saved).
@@ -64,6 +67,13 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                         return (scope.listsLoaded === true) ? found.name : (found.name || '…');
                     }
                     return (scope.listsLoaded === true) ? null : '…';
+                },
+                templateName: (id) => {
+                    const found = (scope.cardTemplates || []).find( (t) => t.id === id );
+                    if (typeof(found) !== 'undefined') {
+                        return found.name;
+                    }
+                    return (scope.templatesLoaded === true) ? null : '…';
                 },
             };
 
@@ -106,6 +116,11 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                 };
                 scope.listChoices = choicesFor(scope.form.listId);
                 scope.fallbackChoices = choicesFor(scope.form.fallback);
+                const templates = (scope.cardTemplates || []).map( (t) => ({ id: t.id, name: t.name }) );
+                if ( (scope.form.templateId !== null) && ! templates.some( (t) => t.id === scope.form.templateId ) && (scope.templatesLoaded === true) ) {
+                    templates.push( { id: scope.form.templateId, name: '(a template that no longer exists)' } );
+                }
+                scope.templateChoices = templates;
                 const draft = scope.draft;
                 const situation = scope.form.situation;
                 scope.markChoices = editor.markOptions(draft, situation, scope.form.step)
@@ -123,7 +138,8 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                 scope.form = null;
                 const closed = editor.closeStep(scope.draft, f.situation, f.step);
                 if (closed.removed) {
-                    scope.notice = 'That step had no list chosen, so it was removed.';
+                    scope.notice = (f.step.kind === 'generated') ? 'That card step had no template chosen, so it was removed.'
+                        : 'That step had no list chosen, so it was removed.';
                     changed();
                 }
             };
@@ -142,8 +158,10 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                     step: step,
                     // null, not '', is "none" in the form: the blank option an
                     // <select ng-options> shows is the one matching null.
+                    kind: step.kind,
                     listId: step.listId || null,
                     fallback: step.fallbackListId || null,
+                    templateId: step.templateId || null,
                     which: editor.whichOf(step),
                     mark: editor.isMarked(step) ? step.onlyIfNoMatch : null,
                     chance: (step.chance == null) ? '' : String(step.chance),
@@ -171,7 +189,15 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
             scope.formChanged = (field) => {
                 const f = scope.form;
                 const step = f.step;
-                if (field === 'list') {
+                if (field === 'kind') {
+                    editor.setKind(step, f.kind);
+                    f.which = editor.whichOf(step);
+                    f.listId = null;
+                    f.fallback = null;
+                    f.templateId = null;
+                } else if (field === 'template') {
+                    step.templateId = f.templateId || '';
+                } else if (field === 'list') {
                     step.listId = f.listId || '';
                 } else if (field === 'fallback') {
                     step.fallbackListId = f.fallback || null;
@@ -309,6 +335,7 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
             scope.$on('$destroy', closeForm);
 
             scope.$watch('fillerOptions', rebuildChoices);
+            scope.$watch('cardTemplates', rebuildChoices);
             scope.$watch('listsLoaded', rebuildChoices);
 
             // ---- the preview ----------------------------------------------------
@@ -366,6 +393,11 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                         lastPlayed: () => 0,
                         featuresShows: (id) => got.featuring[id] === true,
                         listName: names.listName,
+                        // every card step reads as playing, for its template's length
+                        card: editor.previewCard( (scope.cardTemplates || []).reduce( (all, t) => {
+                            all[t.id] = { name: t.name, seconds: t.seconds };
+                            return all;
+                        }, {} ) ),
                     };
                     const from = Date.now();
                     const view = editor.previewBreaks(channel, scope.context, from, from + WEEK, env);
