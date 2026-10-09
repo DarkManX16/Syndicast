@@ -39,6 +39,7 @@ const suites = [
     './program-row-heights',
     './card-templates',
     './card-moment',
+    './card-render',
 ];
 
 (async () => {
