@@ -1,0 +1,258 @@
+<div class='container cards-page'>
+    <h5>Cards</h5>
+
+    <p class="small text-muted">
+        A card is a bumper Syndicast makes itself, for a step that plays one: a few seconds of the movie it announces, with its title
+        and when it airs over the picture, then your ending clip. Cards are made ahead of time, a week before they air, so a break
+        never waits for one. Your real clips always come first: set the card step to play &ldquo;only when&rdquo; the real clip's step
+        found nothing. A movie whose file cannot be read gets a poster card instead: its Plex art and poster with the same words.
+    </p>
+
+    <div class="loader" ng-if="loading"></div>
+    <div class="text-danger small" ng-if="error">{{error}}</div>
+    <div class="text-success small" ng-if="notice">{{notice}}</div>
+
+    <div ng-if="!loading">
+        <!-- ---------------------------------------------------------------- coming up -->
+        <h6 class="cd-heading">Coming up in the next week
+            <button type="button" class="btn btn-sm btn-outline-secondary pull-right" ng-click="scanNow()">Look again now</button>
+        </h6>
+        <p ng-if="upcoming.length === 0" class="text-muted small">
+            No card is needed in the next week. A card is needed when a channel has a card step and, in a break it plays in, no real clip
+            wins over it.
+        </p>
+        <table class="table table-sm cd-table" ng-if="upcoming.length > 0">
+            <thead>
+                <tr><th>Movie</th><th>Plays in the break at</th><th>Says</th><th>Card</th><th style="width: 19rem">Stretch of the movie it shows</th><th></th></tr>
+            </thead>
+            <tbody>
+                <tr ng-repeat="u in upcoming track by u.key">
+                    <td><b>{{u.title}}</b><div class="small text-muted">{{templateName(u.templateId)}}, channel {{u.channel}}</div></td>
+                    <td class="small">{{when(u.breakStart)}}</td>
+                    <td class="small">{{u.when}}</td>
+                    <td class="small" ng-class="{'text-danger': u.state === 'failed', 'text-success': u.state === 'ready'}">
+                        {{stateLabel(u)}}<div ng-if="u.error" class="small">{{u.error}}</div>
+                    </td>
+                    <td>
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" ng-model="momentText[u.key]" placeholder="mm:ss" title="Where in the movie the card's stretch starts">
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-primary" ng-click="setMoment(u)">Use</button>
+                                <button type="button" class="btn btn-outline-secondary" ng-click="autoMoment(u)" ng-disabled="u.momentSource !== 'chosen'" title="Go back to the stretch Syndicast picked">Picked</button>
+                            </div>
+                        </div>
+                        <div class="small text-muted">{{u.momentSource === 'chosen' ? 'your choice' : (u.momentS === null ? 'picked when the card is made' : 'picked automatically')}}</div>
+                    </td>
+                    <td class="cd-actions">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="previewUpcoming(u)" title="A small preview to watch here">Preview</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="rerender(u)" title="Make this card again from scratch">Make again</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ---------------------------------------------------------------- templates -->
+        <h6 class="cd-heading">Templates
+            <button type="button" class="btn btn-sm btn-primary pull-right" ng-click="newTemplate()" ng-if="form === null">New template</button>
+        </h6>
+        <p ng-if="templates.length === 0 &amp;&amp; form === null" class="text-muted small">No templates yet.</p>
+        <table class="table table-sm cd-table" ng-if="templates.length > 0 &amp;&amp; form === null">
+            <tbody>
+                <tr ng-repeat="t in templates track by t.id">
+                    <td><b>{{t.name}}</b> <span class="small text-muted">{{t.seconds}}s</span>
+                        <div class="small text-danger" ng-repeat="p in t.problems">{{p}}</div></td>
+                    <td class="cd-actions">
+                        <button type="button" class="btn btn-sm btn-outline-primary" ng-click="edit(t)">Edit</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" ng-click="remove(t)">Delete</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ---------------------------------------------------------------- the form -->
+        <div class="cd-form" ng-if="form !== null">
+            <div class="form-row">
+                <div class="form-group col-md-6">
+                    <label class="small">Name</label>
+                    <input type="text" class="form-control form-control-sm" ng-model="form.name">
+                </div>
+                <div class="form-group col-md-3">
+                    <label class="small">Seconds of the movie</label>
+                    <input type="number" min="3" max="30" step="0.25" class="form-control form-control-sm" ng-model="form.footageSeconds">
+                </div>
+                <div class="form-group col-md-3">
+                    <label class="small">Whole card</label>
+                    <div class="form-control-plaintext form-control-sm">{{totalSeconds()}}s with the ending</div>
+                </div>
+            </div>
+
+            <div class="cd-section">Words</div>
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label class="small">First line</label>
+                    <input type="text" class="form-control form-control-sm" ng-model="form.headingTop">
+                </div>
+                <div class="form-group col-md-4">
+                    <label class="small">Second line</label>
+                    <input type="text" class="form-control form-control-sm" ng-model="form.headingMain">
+                </div>
+                <div class="form-group col-md-4">
+                    <label class="small">Shown for the first</label>
+                    <div class="input-group input-group-sm">
+                        <input type="number" min="0" max="30" step="0.25" class="form-control" ng-model="form.headingSeconds">
+                        <div class="input-group-append"><span class="input-group-text">seconds</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-check small">
+                <input class="form-check-input" type="checkbox" id="cd-logo" ng-model="form.useClearLogo">
+                <label class="form-check-label" for="cd-logo">Show the movie's title as Plex's logo for it, when Plex has one (otherwise the title is written out)</label>
+            </div>
+            <p class="small text-muted">Then the title and when it airs: &ldquo;NEXT SATURDAY &middot; 7PM&rdquo;, or TONIGHT or TOMORROW when that is true.</p>
+
+            <div class="cd-section">Look</div>
+            <div class="form-row">
+                <div class="form-group col-md-3">
+                    <label class="small">Font of the second line</label>
+                    <select class="custom-select custom-select-sm" ng-model="form.headingFont" ng-options="f as f for f in fonts"></select>
+                </div>
+                <div class="form-group col-md-3">
+                    <label class="small">Font of everything else</label>
+                    <select class="custom-select custom-select-sm" ng-model="form.textFont" ng-options="f as f for f in fonts"></select>
+                </div>
+                <div class="form-group col-md-2">
+                    <label class="small">Second line</label>
+                    <input type="color" class="form-control form-control-sm" ng-model="form.gold">
+                </div>
+                <div class="form-group col-md-2">
+                    <label class="small">Its outline</label>
+                    <input type="color" class="form-control form-control-sm" ng-model="form.outline">
+                </div>
+                <div class="form-group col-md-2">
+                    <label class="small">Other text</label>
+                    <input type="color" class="form-control form-control-sm" ng-model="form.textColor">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label class="small">The two lines, from the top: {{form.headingPct}}%</label>
+                    <input type="range" min="5" max="90" class="custom-range" ng-model="form.headingPct" ng-change="form.headingPct = +form.headingPct">
+                </div>
+                <div class="form-group col-md-4">
+                    <label class="small">The title, from the top: {{form.titlePct}}%</label>
+                    <input type="range" min="5" max="90" class="custom-range" ng-model="form.titlePct" ng-change="form.titlePct = +form.titlePct">
+                </div>
+                <div class="form-group col-md-4">
+                    <label class="small">When it airs, from the top: {{form.whenPct}}%</label>
+                    <input type="range" min="5" max="95" class="custom-range" ng-model="form.whenPct" ng-change="form.whenPct = +form.whenPct">
+                </div>
+            </div>
+
+            <div class="cd-section">Ending</div>
+            <div class="form-row">
+                <div class="form-group col-md-6">
+                    <label class="small">Clip to end on (a file on this computer)</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" ng-model="form.ending.file" placeholder="G:\CCN\Cartoon Theatre\...">
+                        <div class="input-group-append"><button type="button" class="btn btn-outline-secondary" ng-click="checkFile('ending')">Check</button></div>
+                    </div>
+                    <small class="text-muted">{{form.check.ending}}</small>
+                </div>
+                <div class="form-group col-md-3">
+                    <label class="small">From (seconds into it)</label>
+                    <input type="number" min="0" step="0.01" class="form-control form-control-sm" ng-model="form.ending.startS">
+                </div>
+                <div class="form-group col-md-3">
+                    <label class="small">For (seconds)</label>
+                    <input type="number" min="0" step="0.01" class="form-control form-control-sm" ng-model="form.ending.lengthS">
+                </div>
+            </div>
+
+            <div class="cd-section">Music bed <span class="text-muted small">(optional)</span></div>
+            <p class="small text-muted">Plays under the poster card, which has no sound of its own. It can also play quietly under the movie.</p>
+            <div class="form-row">
+                <div class="form-group col-md-6">
+                    <label class="small">Music file</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" ng-model="form.music.file" placeholder="none">
+                        <div class="input-group-append"><button type="button" class="btn btn-outline-secondary" ng-click="checkFile('music')">Check</button></div>
+                    </div>
+                    <small class="text-muted">{{form.check.music}}</small>
+                </div>
+                <div class="form-group col-md-3">
+                    <label class="small">From (seconds into it)</label>
+                    <input type="number" min="0" step="0.01" class="form-control form-control-sm" ng-model="form.music.startS">
+                </div>
+                <div class="form-group col-md-3">
+                    <label class="small">For (seconds, repeated to fill)</label>
+                    <input type="number" min="0" step="0.01" class="form-control form-control-sm" ng-model="form.music.lengthS">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group col-md-6">
+                    <label class="small">Volume under the poster card: {{form.musicPct}}%</label>
+                    <input type="range" min="0" max="150" class="custom-range" ng-model="form.musicPct" ng-change="form.musicPct = +form.musicPct">
+                </div>
+                <div class="form-group col-md-6">
+                    <label class="small">Volume under the movie: {{form.underPct === 0 ? 'off' : form.underPct + '%'}}</label>
+                    <input type="range" min="0" max="100" class="custom-range" ng-model="form.underPct" ng-change="form.underPct = +form.underPct">
+                </div>
+            </div>
+
+            <div class="cd-section">Poster card</div>
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label class="small">Behind the words</label>
+                    <select class="custom-select custom-select-sm" ng-model="form.fallback.background">
+                        <option value="art">the movie's background art</option>
+                        <option value="poster">the movie's poster</option>
+                    </select>
+                </div>
+                <div class="form-group col-md-4">
+                    <label class="small">Blur</label>
+                    <input type="number" min="0" max="40" class="form-control form-control-sm" ng-model="form.fallback.blur">
+                </div>
+                <div class="form-group col-md-4">
+                    <label class="small">Darkened by {{form.darkenPct}}%</label>
+                    <input type="range" min="0" max="90" class="custom-range" ng-model="form.darkenPct" ng-change="form.darkenPct = +form.darkenPct">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label class="small">Loudness (LUFS)</label>
+                    <input type="number" min="-40" max="-5" step="0.5" class="form-control form-control-sm" ng-model="form.loudness">
+                </div>
+            </div>
+
+            <div class="cd-section">Preview</div>
+            <div class="form-row">
+                <div class="form-group col-md-6">
+                    <select class="custom-select custom-select-sm" ng-model="preview.movieKey"
+                        ng-options="m.movieKey as m.label for m in previewMovies()">
+                        <option value="">&mdash; choose a movie &mdash;</option>
+                    </select>
+                </div>
+                <div class="form-group col-md-6">
+                    <button type="button" class="btn btn-sm btn-outline-primary" ng-click="previewForm('frame')" ng-disabled="preview.busy">Preview frame</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" ng-click="previewForm('clip')" ng-disabled="preview.busy">Preview clip</button>
+                    <span class="small text-muted" ng-if="preview.busy">making it&hellip;</span>
+                </div>
+            </div>
+
+            <div class="cd-buttons">
+                <button type="button" class="btn btn-sm btn-primary" ng-click="save()">Save</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="cancel()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- ---------------------------------------------------------------- the preview -->
+        <div class="cd-preview" ng-if="preview.url || preview.error">
+            <div class="small text-danger" ng-if="preview.error">{{preview.error}}</div>
+            <div ng-if="preview.url">
+                <img ng-if="preview.kind === 'frame'" ng-src="{{preview.url}}" alt="A frame of the card">
+                <video ng-if="preview.kind === 'clip'" ng-src="{{preview.url}}" controls autoplay></video>
+                <div class="small text-muted">{{preview.about}} Previews are small; on the air the card is made at the channel's own size.</div>
+            </div>
+        </div>
+    </div>
+</div>

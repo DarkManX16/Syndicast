@@ -37,6 +37,13 @@ const suites = [
     './ffmpeg-qos',
     './bundle-freshness',
     './program-row-heights',
+    './card-templates',
+    './card-moment',
+    './card-render',
+    './transitions-generated',
+    './card-service',
+    './card-player',
+    './card-api',
 ];
 
 (async () => {

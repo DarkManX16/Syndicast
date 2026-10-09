@@ -76,6 +76,7 @@ app.controller('guideCtrl',  require('./controllers/guide'))
 app.controller('playerCtrl',  require('./controllers/player'))
 app.controller('fillerCtrl',  require('./controllers/filler'))
 app.controller('nicknamesCtrl',  require('./controllers/nicknames'))
+app.controller('cardsCtrl',  require('./controllers/cards'))
 app.controller('customShowsCtrl',  require('./controllers/custom-shows'))
 
 app.config(function ($routeProvider) {
@@ -99,6 +100,10 @@ app.config(function ($routeProvider) {
     .when("/nicknames", {
         templateUrl: "views/nicknames.html",
         controller: 'nicknamesCtrl'
+    })
+    .when("/cards", {
+        templateUrl: "views/cards.html",
+        controller: 'cardsCtrl'
     })
     .when("/custom-shows", {
         templateUrl: "views/custom-shows.html",

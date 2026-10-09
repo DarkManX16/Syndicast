@@ -746,7 +746,7 @@
 
                         <h6 style="margin-top: 10px;">Transitions</h6>
                         <small class="text-danger d-block" ng-show="error.transitions && error.tab === 'dayparts'">{{error.transitions}}</small>
-                        <transitions-editor context="dayPart" channel="channel" filler-options="fillerOptions" lists-loaded="fillerOptionsLoaded" kind="day-part"></transitions-editor>
+                        <transitions-editor context="dayPart" channel="channel" filler-options="fillerOptions" lists-loaded="fillerOptionsLoaded" card-templates="cardTemplates" templates-loaded="cardTemplatesLoaded" kind="day-part"></transitions-editor>
 
                         <h6 style="margin-top: 10px;">Starts</h6>
                         <div class="dp-start-row" ng-repeat="start in dayPart.starts">
@@ -846,7 +846,7 @@
 
                         <h6 style="margin-top: 10px;">Transitions</h6>
                         <small class="text-danger d-block" ng-show="error.transitions && error.tab === 'blocks'">{{error.transitions}}</small>
-                        <transitions-editor context="block" channel="channel" filler-options="fillerOptions" lists-loaded="fillerOptionsLoaded" kind="block"></transitions-editor>
+                        <transitions-editor context="block" channel="channel" filler-options="fillerOptions" lists-loaded="fillerOptionsLoaded" card-templates="cardTemplates" templates-loaded="cardTemplatesLoaded" kind="block"></transitions-editor>
 
                         <h6 style="margin-top: 10px;">Airings</h6>
                         <div class="dp-start-row" ng-repeat="airing in block.airings">

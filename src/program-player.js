@@ -20,6 +20,7 @@
 
 let OfflinePlayer = require('./offline-player');
 let PlexPlayer = require('./plex-player');;
+let CardPlayer = require('./card-player');
 const EventEmitter = require('events');
 const helperFuncs = require('./helperFuncs');
 
@@ -52,6 +53,10 @@ class ProgramPlayer {
             console.log("About to play offline stream");
             /* offline */
             this.delegate = new OfflinePlayer(false, context);
+        } else if (typeof(program.generatedFile) === 'string') {
+            console.log("About to play generated card");
+            /* a card Syndicast rendered (card-service.js) */
+            this.delegate = new CardPlayer(context);
         } else {
             console.log("About to play plex stream");
             /* plex */

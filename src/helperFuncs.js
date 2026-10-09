@@ -123,10 +123,24 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
      * A transition step (stage 5), from its break's plan: the clip the plan
      * chose, whole and from its start, never the random start a tune-in gives
      * Flex. It plays like a filler clip and is credited to the list it came
-     * from; its type says what it is.
+     * from; its type says what it is. A generated card is a file of its own,
+     * played with the stream details it was rendered with, from no Plex server.
      */
     if ( (typeof(obj.transition) === 'object') && (obj.transition !== null) ) {
         let clip = obj.transition.clip;
+        if (typeof(clip.generatedFile) === 'string') {
+            return [ {
+                type: 'transition',
+                title: clip.title,
+                key: clip.key,
+                generatedFile: clip.generatedFile,
+                streamStats: clip.streamStats,
+                start: 0,
+                streamDuration: obj.transition.durationMs,
+                duration: clip.duration,
+                beginningOffset: beginningOffset,
+            } ];
+        }
         return [ {
             type: 'transition',
             title: clip.title,

@@ -302,9 +302,11 @@ module.exports = async function run() {
             warningsFor({ transitions: { leaving: { out: [step('a', { keyedOn: 'never' })], in: [] } } }).length === 1);
         suite.check('an unknown kind is warned about',
             warningsFor({ transitions: { leaving: { out: [step('a', { kind: 'video' })], in: [] } } }).length === 1);
-        suite.check('the reserved "later" and "generated" are accepted',
+        suite.check('"later" and a generated card step naming its template are accepted',
             warningsFor({ transitions: { leaving: { out: [step('a', { keyedOn: 'later' }),
-                { id: 'g', kind: 'generated', template: 'up-next', durationMs: 5000 }], in: [] } } }).length === 0);
+                { id: 'g', kind: 'generated', templateId: 'tpl_1', keyedOn: 'later' }], in: [] } } }).length === 0);
+        suite.check('a generated card step that names no template is warned about',
+            warningsFor({ transitions: { leaving: { out: [{ id: 'g', kind: 'generated', keyedOn: 'later' }], in: [] } } }).length === 1);
 
         const lines = [];
         const real = console.error;

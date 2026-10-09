@@ -25,9 +25,14 @@ function safeString(object) {
 }
 
 module.exports = { router: api }
-function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService ) {
+function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService, cardService ) {
     let m3uService = _m3uService;
     const router = express.Router()
+
+    // Generated cards: the Cards page and the step editor's template list (card-api.js).
+    if (cardService != null) {
+        require('./card-api')(router, cardService);
+    }
 
     router.get('/api/version', async (req, res) => {
       try {

@@ -119,6 +119,41 @@
                 <div class="small text-danger" ng-repeat="p in problems()">{{p}}</div>
 
                 <div ng-if="supported()">
+                    <div class="form-group">
+                        <label class="small d-block">What plays</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="tr-kind-{{$id}}" id="tr-kind-{{$id}}-list"
+                                ng-model="form.kind" value="list" ng-change="formChanged('kind')">
+                            <label class="form-check-label small" for="tr-kind-{{$id}}-list">a clip from a list</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="tr-kind-{{$id}}" id="tr-kind-{{$id}}-card"
+                                ng-model="form.kind" value="generated" ng-change="formChanged('kind')">
+                            <label class="form-check-label small" for="tr-kind-{{$id}}-card">a card Syndicast makes for the show (see the <a href="#!/cards">Cards</a> page)</label>
+                        </div>
+                    </div>
+
+                    <div ng-if="form.kind === 'generated'">
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label class="small">Card template</label>
+                                <select class="custom-select custom-select-sm form-control"
+                                    ng-model="form.templateId" ng-change="formChanged('template')"
+                                    ng-options="o.id as o.name for o in templateChoices">
+                                    <option value="">&mdash; choose a template &mdash;</option>
+                                </select>
+                                <small class="text-muted" ng-if="templatesLoaded &amp;&amp; templateChoices.length === 0">No templates yet: make one on the <a href="#!/cards">Cards</a> page.</small>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="small d-block">Which show is the card for?</label>
+                            <p class="small">{{cardWhich[0].label}}</p>
+                            <small class="text-muted d-block">A card is made ahead of time, a week or so before it is needed, so it is ready when the break comes. That is also why a card can only be for the show next time, for now: the show coming up or the show that just ended is known only minutes ahead, so a card for either would need rendering fresh for every single break, which the background renderer cannot keep up with. A list step has no such limit.</small>
+                            <small class="text-muted d-block">To play the card only when no real clip names the show, set &ldquo;Only when&rdquo; below to that clip's step.</small>
+                        </div>
+                    </div>
+
+                    <div ng-if="form.kind === 'list'">
                     <div class="form-row">
                         <div class="form-group col-md-6">
                             <label class="small">Play a clip from</label>
@@ -145,6 +180,7 @@
                                 ng-model="form.which" ng-value="w.id" ng-change="formChanged('which')">
                             <label class="form-check-label small" for="tr-which-{{$id}}-{{w.id}}">{{w.label}}</label>
                         </div>
+                    </div>
                     </div>
 
                     <div class="form-row">

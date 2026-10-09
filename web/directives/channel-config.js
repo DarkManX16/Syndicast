@@ -1112,6 +1112,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     }
                     return (scope.fillerOptionsLoaded === true) ? null : '…';
                 },
+                templateName: (id) => {
+                    let found = (scope.cardTemplates || []).find( (t) => t.id === id );
+                    return (typeof(found) !== 'undefined') ? found.name : null;
+                },
             };
             let flexTagsOn = { version: -1, on: false };
             function refreshFlexTags() {
@@ -1611,6 +1615,15 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     scope.$apply();
                 } catch(err) {
                     console.error("Unable to get filler info", err);
+                }
+                // the generated-card templates a step can play (the Cards page)
+                try {
+                    scope.cardTemplates = await dizquetv.getCardTemplates();
+                    scope.cardTemplatesLoaded = true;
+                    refreshFlexTags();
+                    scope.$apply();
+                } catch(err) {
+                    console.error("Unable to get card templates", err);
                 }
             };
             refreshFillerOptions();
