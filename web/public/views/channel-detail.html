@@ -12,6 +12,7 @@
             <a href="#!/channels" class="btn btn-sm btn-link"><span class="fa fa-arrow-left"></span></a>
             <img ng-if="channel.icon" ng-src="{{channel.icon}}" alt="{{channel.name}}" style="max-height: 32px; vertical-align: middle;"></img>
             Channel {{channel.number}} &middot; {{channel.name}}
+            <a ng-href="#!/channels/{{channel.number}}/catalog" class="btn btn-sm btn-link" style="float: right;">Catalog</a>
         </h5>
 
         <ul class="nav nav-tabs">

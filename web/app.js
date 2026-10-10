@@ -71,6 +71,7 @@ app.directive('randomSlotsScheduleEditor',  require('./directives/random-slots-s
 app.controller('settingsCtrl',  require('./controllers/settings'))
 app.controller('channelsCtrl',  require('./controllers/channels'))
 app.controller('channelDetailCtrl',  require('./controllers/channel-detail'))
+app.controller('channelCatalogCtrl',  require('./controllers/channel-catalog'))
 app.controller('versionCtrl',  require('./controllers/version'))
 app.controller('libraryCtrl',  require('./controllers/library'))
 app.controller('guideCtrl',  require('./controllers/guide'))
@@ -89,6 +90,10 @@ app.config(function ($routeProvider) {
     .when("/channels", {
         templateUrl: "views/channels.html",
         controller: 'channelsCtrl'
+    })
+    .when("/channels/:number/catalog", {
+        templateUrl: "views/channel-catalog.html",
+        controller: 'channelCatalogCtrl'
     })
     .when("/channels/:number", {
         templateUrl: "views/channel-detail.html",

@@ -1,0 +1,100 @@
+<div class='container'>
+    <h5>
+        <a ng-href="#!/channels/{{channelNumber}}" class="btn btn-sm btn-link"><span class="fa fa-arrow-left"></span></a>
+        Channel {{channelNumber}}<span ng-if="channel"> &middot; {{channel.name}}</span> &middot; Catalog
+    </h5>
+    <p class="small text-muted">
+        A show draws on its full catalog once you've reviewed it here; until then it plays the episodes already in the lineup.
+        Episodes you leave out stay out of the rotation on this channel until you restore them.
+    </p>
+
+    <div ng-if="loading" class="text-center">
+        <span class='loader'></span>
+        <span ng-if="loading === 'catalogs'"> Reading {{showCount}} shows' episode lists...</span>
+    </div>
+    <div ng-if="loadError" class="text-danger">Could not load channel {{channelNumber}}: {{loadError}}</div>
+    <div ng-if="saveError" class="alert alert-danger py-1 small">{{saveError}}</div>
+
+    <div ng-if="!loading && !loadError">
+        <div class="alert alert-warning py-1 px-2 small" ng-if="unread.length > 0">
+            Couldn't read <span ng-repeat="u in unread">{{u.name}} ({{u.reason}}){{$last ? '' : ', '}}</span> - try again later.
+        </div>
+
+        <!-- ============= TO REVIEW ========================= -->
+        <h6 style="margin-top: 1em;">To review <span class="text-muted small">- {{rows.length}} {{rows.length === 1 ? 'show' : 'shows'}} with episodes to add, most first</span></h6>
+        <div class="form-inline small" style="margin-bottom: 6px;">
+            Leave out episodes longer than
+            <input type="number" min="1" class="form-control form-control-sm" style="width: 70px; margin: 0 4px;"
+                ng-model="limit.minutes" ng-change="limitChanged()"> minutes
+            <span class="text-muted" style="margin-left: 6px;">(re-applies to episodes you haven't touched)</span>
+        </div>
+        <p class="small text-muted" ng-if="rows.length === 0">Nothing to review: every show already has its whole catalog, or has been reviewed.</p>
+        <div ng-repeat="r in rows" class="card" style="margin-bottom: 4px;">
+            <div class="card-header py-1 px-2" style="cursor: pointer;" ng-click="r.open = !r.open">
+                <span class="fa" ng-class="r.open ? 'fa-caret-down' : 'fa-caret-right'"></span>
+                <b>{{r.name}}</b> - {{r.count}} to add
+                <span class="small text-muted" ng-if="counts(r).out > 0">({{counts(r).out}} left out)</span>
+            </div>
+            <div class="card-body py-1 px-2" ng-if="r.open">
+                <div style="margin-bottom: 4px;">
+                    <button class="btn btn-sm btn-outline-secondary" ng-click="setAll(r, true)">Add all</button>
+                    <button class="btn btn-sm btn-outline-secondary" ng-click="setAll(r, false)">Add none</button>
+                    <button class="btn btn-sm btn-primary" style="float: right;" ng-disabled="saving === r.showId" ng-click="saveReview(r)">
+                        Save review: add {{counts(r).ticked}}, leave out {{counts(r).out}}
+                    </button>
+                </div>
+                <div ng-repeat="s in r.seasons" style="margin-top: 4px;">
+                    <label class="small" style="font-weight: bold; margin-bottom: 0;">
+                        <input type="checkbox" ng-checked="seasonTicked(s)" ng-click="toggleSeason(s)">
+                        {{s.season === 0 ? 'Specials' : 'Season ' + s.season}}
+                    </label>
+                    <div ng-repeat="e in s.items" class="small" style="padding-left: 18px;">
+                        <label style="margin-bottom: 0;">
+                            <input type="checkbox" ng-model="e.ticked" ng-change="touch(e)">
+                            {{e.label}} <span class="text-muted">{{clock(e.program.duration)}}</span>
+                        </label>
+                        <span ng-if="!e.ticked" style="margin-left: 6px;">
+                            <select class="form-control-sm" ng-model="e.reason" ng-change="touch(e)">
+                                <option value="holiday">Holiday: I'll place it myself</option>
+                                <option value="never">Never air</option>
+                            </select>
+                            <select class="form-control-sm" ng-if="e.reason === 'holiday'" ng-model="e.holiday" ng-change="touch(e)"
+                                ng-options="h for h in holidayNames"></select>
+                            <span class="text-muted" ng-if="e.why && !e.touched"> - {{e.why}}</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============= HOLIDAY EPISODES ========================= -->
+        <h6 style="margin-top: 1.5em;">Holiday episodes <span class="text-muted small">- out of the rotation, for you to place when it's time</span></h6>
+        <p class="small text-muted" ng-if="holidays.length === 0">None yet.</p>
+        <div ng-repeat="g in holidays" style="margin-bottom: 8px;">
+            <b>{{g.holiday}}</b>
+            <div ng-repeat="s in g.shows" class="small" style="padding-left: 12px;">
+                <i>{{nameOf(s.showId)}}</i>
+                <div ng-repeat="e in s.entries" style="padding-left: 12px;">
+                    S{{e.season < 10 ? '0' + e.season : e.season}}E{{e.episode < 10 ? '0' + e.episode : e.episode}} {{e.title}}
+                    <span class="text-muted">{{clock(e.duration)}} &middot; {{e.how === 'review' ? 'left out at review' : (e.how === 'deleted' ? 'deleted' : 'new in Plex')}}</span>
+                    <select class="form-control-sm" ng-model="e.holiday" ng-change="changeHoliday(e)" ng-options="h for h in holidayNames"></select>
+                    <button class="btn btn-sm btn-link py-0" ng-click="switchReason(e, 'never')">Never air instead</button>
+                    <button class="btn btn-sm btn-link py-0" ng-click="restore(e.key)">Restore</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============= NEVER AIR ========================= -->
+        <h6 style="margin-top: 1.5em;">Never air</h6>
+        <p class="small text-muted" ng-if="never.length === 0">None yet.</p>
+        <div ng-repeat="s in never" class="small" style="margin-bottom: 6px;">
+            <b>{{nameOf(s.showId)}}</b>
+            <div ng-repeat="e in s.entries" style="padding-left: 12px;">
+                S{{e.season < 10 ? '0' + e.season : e.season}}E{{e.episode < 10 ? '0' + e.episode : e.episode}} {{e.title}}
+                <span class="text-muted">{{clock(e.duration)}} &middot; {{e.how === 'review' ? 'left out at review' : (e.how === 'deleted' ? 'deleted' : 'new in Plex')}}</span>
+                <button class="btn btn-sm btn-link py-0" ng-click="switchReason(e, 'holiday')">Holiday instead</button>
+                <button class="btn btn-sm btn-link py-0" ng-click="restore(e.key)">Restore</button>
+            </div>
+        </div>
+    </div>
+</div>
