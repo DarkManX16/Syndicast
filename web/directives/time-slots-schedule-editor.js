@@ -2,8 +2,9 @@ const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
 const slotProgress = require('../../src/slot-progress');
 const slotRounds = require('../../src/shuffle-rounds');
+const showCatalog = require('../../src/show-catalog');
 
-module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) {
+module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
     const WEEK = 7 * DAY;
     // Thursday-first: a weekly slot's time is ms into the epoch week. See
@@ -479,7 +480,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             scope.orderOptionsFor = (slot) => {
                 if (! orderOptionsByShow.has(slot.showId)) {
                     let series = new Set();
-                    (scope.programs || []).forEach( (p) => {
+                    scope.catalogPool().forEach( (p) => {
                         if (getShowData(p).showId === slot.showId) {
                             series.add(slotRounds.seriesOf(p));
                         }
@@ -499,6 +500,73 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 } );
             }
 
+            /*
+             * Full catalogs (src/show-catalog.js): every show with a slot has its
+             * whole episode list read when the dialog opens; a reviewed show draws
+             * on it, the rest on the lineup's own episodes, and the never-air
+             * list is left out of all of it. Episodes left out here, and what
+             * this run read, go back with the result as catalogOps, saved by the
+             * channel page after Update Channel.
+             */
+            let catalogs = {};
+            let reading = null;
+            let lastRun = null;
+            scope.catalog = { state: showCatalog.emptyState(), channelNumber: null, leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0 };
+            let slottedIds = () => [ ...new Set( (scope.schedule.slots || []).map( (sl) => sl.showId )
+                .filter( (id) => (typeof(id) === 'string') && (id !== 'flex.') && (id !== 'movie.') && ! id.startsWith('redirect.') ) ) ];
+            let lineupItemsOf = (id) => (scope.programs || []).filter( (p) => ! p.isOffline && (getShowData(p).showId === id) );
+            let nameOf = (id) => {
+                let items = lineupItemsOf(id);
+                if (items.length === 0) {
+                    return id.replace(/^(tv|custom)\./, '');
+                }
+                return id.startsWith('custom.') ? items[0].customShowName : items[0].showTitle;
+            };
+            let catalogStateNow = () => showCatalog.applyOps(scope.catalog.state, [ { neverAir: scope.catalog.leftOut } ], Date.now());
+            let runNow = () => showCatalog.poolFor({ lineupPool: scope.programs || [], slotted: slottedIds(), catalogs: catalogs,
+                state: catalogStateNow(), getShowData: getShowData });
+            let refreshCatalogNotes = () => {
+                lastRun = runNow();
+                scope.catalog.fresh = Object.keys(lastRun.fresh).map( (id) => ({
+                    showId: id, name: nameOf(id),
+                    episodes: lastRun.fresh[id].map( (p) => ({ program: p, holiday: showCatalog.holidayOf(p.title),
+                        label: ( (p.season !== undefined) ? 'S' + String(p.season).padStart(2, '0') + 'E' + String(p.episode).padStart(2, '0') + ' ' : '' ) + p.title }) ),
+                }) );
+                scope.catalog.fellBack = lastRun.fellBack.map( (f) => ({ name: nameOf(f.showId), reason: f.reason }) );
+                scope.catalog.toReview = showCatalog.reviewList({ lineupPool: scope.programs || [], catalogs: catalogs,
+                    state: catalogStateNow(), getShowData: getShowData }).length;
+                orderOptionsByShow = new Map();
+                refreshRerunNotes();
+            };
+            let readMissing = () => {
+                let shows = slottedIds().filter( (id) => ! Object.prototype.hasOwnProperty.call(catalogs, id) ).map( (id) => {
+                    let record = scope.catalog.state.shows[id];
+                    let items = lineupItemsOf(id);
+                    return { showId: id, title: items.length ? items[0].showTitle : nameOf(id), lineupItems: items, source: record ? record.source : undefined };
+                } );
+                if (shows.length === 0) {
+                    return Promise.resolve();
+                }
+                scope.catalog.reading = true;
+                scope.catalog.readCount = shows.length;
+                reading = catalogReader.read(shows).then( (got) => {
+                    Object.assign(catalogs, got);
+                } ).catch( (err) => {
+                    shows.forEach( (sh) => { catalogs[sh.showId] = { error: (err && err.message) ? err.message : String(err) }; } );
+                } ).then( () => {
+                    scope.catalog.reading = false;
+                    refreshCatalogNotes();
+                    $timeout();
+                } );
+                return reading;
+            };
+            //The pool notes and menus see: the catalog-built one once read.
+            scope.catalogPool = () => (lastRun !== null) ? lastRun.pool : (scope.programs || []);
+            scope.leaveOutFresh = (program, reason, holiday) => {
+                scope.catalog.leftOut.push( showCatalog.neverAirEntry(program, getShowData, 'new', reason, holiday, Date.now()) );
+                refreshCatalogNotes();
+            };
+
             let doIt = async(fromInstant) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
                 let t0 = new Date().getTime();
@@ -507,6 +575,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                  * moment, so the generator continues each one where it is -
                  * see src/slot-progress.js. Saved with the schedule as scheduleBackup.
                  */
+                if (reading !== null) {
+                    await reading;
+                }
+                await readMissing();
+                let run = runNow();
+                lastRun = run;
                 if (typeof(scope.lineup) === 'function') {
                     let onAir = scope.lineup();
                     scope.schedule.progress = slotProgress.planProgress({
@@ -516,6 +590,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                         openedSchedule: scope.openedSchedule,
                         schedule: scope.schedule,
                         pool: scope.programs,
+                        catalog: run.pool,
                         getShowData: getShowData,
                     });
                 }
@@ -535,10 +610,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                         schedule: scope.schedule,
                         getShowData: getShowData,
                     });
-                    history = h.history;
+                    history = h.history.filter( (a) => ! showCatalog.isNeverAir(catalogStateNow(), a.program) );
                     scope.schedule.progress.history = h.keep;
                 }
-                let res = await dizquetv.calculateTimeSlots(scope.programs, scope.schedule, history );
+                let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history );
                 let t1 = new Date().getTime();
 
                 let w = Math.max(0, 250 - (t1 - t0) );
@@ -548,6 +623,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
                 res.schedule = scope.schedule;
                 delete res.schedule.fake;
+                res.catalogOps = run.complete.map( (id) => ({ review: { showId: id, by: 'complete', source: catalogs[id].source,
+                    specials: id.startsWith('custom.') || showCatalog.specialsAllowed(lineupItemsOf(id)), known: run.known[id], neverAir: [] } }) )
+                    .concat( [ { neverAir: scope.catalog.leftOut.slice() }, { known: run.known } ] );
                 seasonConstraints.clearStartSeasons(res.schedule);
                 return res;
             }
@@ -557,9 +635,14 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             
             //`lineup` returns the channel's programs and startTime as the
             //editor has them, read again when Create Lineup runs.
-            let startDialog = (programs, limit, backup, instant, slotScope, lineup) => {
+            let startDialog = (programs, limit, backup, instant, slotScope, lineup, catalogState) => {
                 scope.limit = limit;
                 scope.programs = programs;
+                catalogs = {};
+                reading = null;
+                lastRun = null;
+                scope.catalog = { state: catalogState || showCatalog.emptyState(), channelNumber: (catalogState && catalogState.channelNumber) || null,
+                    leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0 };
                 orderOptionsByShow = new Map();
                 scope.lineup = lineup;
                 //The schedule the lineup on air was made from, as it was saved,
@@ -610,6 +693,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 refreshRepeats();
                 refreshRerunNotes();
                 applyFilter();
+                if (typeof(catalogState) === 'object' && catalogState !== null) {
+                    readMissing();
+                }
 
                 scope.visible = true;
                 if (instant) {
@@ -716,8 +802,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
             scope.seasonsAvailable = (showId) => {
                 let seasons = {};
-                for (let i = 0; i < scope.programs.length; i++) {
-                    let p = scope.programs[i];
+                let available = scope.catalogPool();
+                for (let i = 0; i < available.length; i++) {
+                    let p = available[i];
                     if (p.type !== 'episode') {
                         continue;
                     }
@@ -749,7 +836,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 (scope.schedule.slots || []).forEach( (slot) => {
                     if (slot.order === 'rerun') {
                         rerunNotes.set(slot, slotProgress.rerunNote({ schedule: scope.schedule,
-                            progress: scope.openProgress, slot: slot, pool: scope.programs || [], getShowData: getShowData }));
+                            progress: scope.openProgress, slot: slot, pool: scope.catalogPool(), getShowData: getShowData }));
                     }
                 } );
             };

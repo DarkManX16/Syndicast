@@ -9,6 +9,9 @@ const Plex = require("./plex.js");
 const buildInfo = require('./build-info');
 
 const timeSlotsService = require('./services/time-slots-service');
+const { readCatalogs } = require('./catalog-reader');
+// The library's Plex code; getNested and getShowKey need nothing of Angular's.
+const libraryPlex = require('../web/services/plex')(null, null, null);
 const randomSlotsService = require('./services/random-slots-service');
 const channelStatusService = require('./services/channel-status-service');
 const throttle = require('./services/throttle');
@@ -253,6 +256,26 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     })
     // A channel's full-catalog state and the ops that change it - see
     // src/show-catalog.js. Channel saves above keep it; only these write it.
+    // Shows' full catalogs, read here in Node with the library's own Plex
+    // code (src/catalog-reader.js) - several at once, which the browser's own
+    // requests to Plex can't do - for the slot editors and the Catalog page.
+    router.post('/api/catalogs/read', async (req, res) => {
+      try {
+        if (! Array.isArray(req.body.shows)) {
+          return res.status(400).send('shows must be a list');
+        }
+        let servers = db['plex-servers'].find();
+        let catalogs = await readCatalogs({
+          shows: req.body.shows, servers,
+          getNested: libraryPlex.getNested, getShowKey: libraryPlex.getShowKey,
+          getShow: async (id) => { let show = await customShowDB.getShow(id); return (show == null) ? null : Object.assign( { id }, show ); },
+        });
+        res.send(catalogs);
+      } catch(err) {
+        console.error(err);
+        res.status(500).send(err.message);
+      }
+    })
     router.get('/api/channel/:number/catalog', async (req, res) => {
       try {
         res.send( await channelService.getCatalog( parseInt(req.params.number, 10) ) );

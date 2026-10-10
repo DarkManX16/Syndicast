@@ -37,6 +37,7 @@ app.service('dizquetv',         require('./services/dizquetv'))
 app.service('resolutionOptions', require('./services/resolution-options'))
 app.service('getShowData', require('./services/get-show-data'))
 app.service('commonProgramTools', require('./services/common-program-tools'))
+app.service('catalogReader', require('./services/show-catalog'))
 app.service('seasonConstraints', require('./services/season-constraints'))
 app.service('namesReview', require('./services/names-review'))
 

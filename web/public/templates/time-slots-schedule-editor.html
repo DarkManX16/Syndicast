@@ -13,6 +13,31 @@
                 </div>
 
                 <div class="modal-body" ng-show='! loading' >
+                    <!-- Full catalogs: see NOTES.md, "Full catalogs, and a never-air list". -->
+                    <div class="small text-muted" ng-show="catalog.reading" style="margin-bottom: 6px;">
+                        <span class='loader'></span> Reading {{catalog.readCount}} shows' episode lists...
+                    </div>
+                    <div class="alert alert-warning py-1 px-2 small" ng-show="catalog.fellBack.length > 0" style="margin-bottom: 6px;">
+                        Couldn't read
+                        <span ng-repeat="f in catalog.fellBack">{{f.name}} ({{f.reason}}){{$last ? '' : ', '}}</span>
+                        - using the episodes already in the lineup.
+                    </div>
+                    <div class="alert alert-info py-1 px-2 small" ng-show="catalog.fresh.length > 0" style="margin-bottom: 6px;">
+                        <b>New in Plex since the last run</b> - they join this lineup unless you leave them out:
+                        <div ng-repeat="show in catalog.fresh" style="margin-top: 3px;">
+                            <b>{{show.name}}</b>
+                            <div ng-repeat="e in show.episodes" style="padding-left: 12px;">
+                                {{e.label}}
+                                <button class='btn btn-sm btn-link py-0' ng-click="leaveOutFresh(e.program, 'holiday', e.holiday || 'Other')"
+                                    title="Out of the rotation - you'll place it yourself">Holiday{{e.holiday ? ' (' + e.holiday + ')' : ''}}</button>
+                                <button class='btn btn-sm btn-link py-0 text-danger' ng-click="leaveOutFresh(e.program, 'never')">Never air</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small" ng-show="catalog.toReview > 0" style="margin-bottom: 6px;">
+                        {{catalog.toReview}} {{catalog.toReview === 1 ? 'show has' : 'shows have'}} episodes to review before they draw on their full catalogs -
+                        <a ng-href="#!/channels/{{catalog.channelNumber}}/catalog" target="_blank">the Catalog page</a>.
+                    </div>
                     <div class="alert alert-info py-1 px-2 small" ng-show="hasScope()" style="margin-bottom: 6px;">
                         {{scopePrefix()}} <b>{{scopeLabel()}}</b>.
                         <button class='btn btn-sm btn-link' style="padding: 0 0 0 6px;"
