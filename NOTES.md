@@ -1458,7 +1458,9 @@ for the full spec, stages and acceptance tests.
       continues from its own place, and Shuffle from the old shuffler's number
       until rounds replace it - see the build record in the Known issues
       entry.*
-- [ ] Shuffle - a round per range, kept by episode, with season settings
+- [x] Shuffle - a round per range, kept by episode, with season settings.
+      *Built Oct 9, 2026 (step 3), multi-part stories kept together - see the
+      build record in the Known issues entry.*
 - [ ] Rerun - a Shuffle of only the episodes the show's Play Next has already
       aired, so a weekend never gets ahead of its weekday strip
 - [ ] Repeat a slot - re-airs whatever a chosen earlier slot aired, the same
@@ -1467,7 +1469,8 @@ for the full spec, stages and acceptance tests.
 - [ ] Ordered shuffle - a series at random, that series' next episode in
       order, for custom shows that join several series
 - [ ] Multi-part stories kept together by every shuffle - part 2 always
-      follows part 1
+      follows part 1. *Shuffle does, since step 3; Rerun and Ordered shuffle
+      will when they are built.*
 
 All six were designed together on Oct 9, 2026 - see "Per-position stored
 progress, and the shuffles built on it" under Known issues for the design and
@@ -3327,9 +3330,9 @@ timestamps.
 ### Per-position stored progress, and the shuffles built on it
 
 Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **steps 1
-and 2 of 7 built Oct 9** - Play Next continues from stored progress, and the
-old shuffler from its carried number; see "Build record" at the end of this
-entry, and the build plan in
+to 3 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
+plays rounds kept by episode, with season settings and multi-part stories;
+see "Build record" at the end of this entry, and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
 candidate count" and "Per-position stored progress, which fixes two things at
@@ -3690,6 +3693,57 @@ channel 1.
   tool reads the main checkout's `launch.json`, whose working folder would have
   let the preview's live bundle rebuild write the live server's bundle.
 - Channel files grow about 2.6% (channel 2, 23.7 to 24.3 MB).
+
+**Step 3, Oct 9, 2026** (64af61b..). Proofs on a fresh copy taken 8:23pm
+Central.
+
+- **What shipped.** `src/multi-part.js` (stories), `src/shuffle-rounds.js`
+  (hash rounds, the half-round rule, carried rounds, the old shuffler's
+  arithmetic kept for carrying over), Shuffle positions playing rounds in both
+  generators, the planner writing round records, season settings for Shuffle
+  slots in the editor ("Start from season" stays Play Next's), and
+  `scripts/progress-audit.js`, which checks a whole saved lineup against the
+  round rules.
+- **Multi-part stories:** 430 stories (1,020 episodes) on channels 1-3, 24
+  parts single. The arc rule - two titles naming an arc beside the part,
+  "(Origins, Part 2)", join only when the arcs match - was added while
+  building: the rule as first measured joined Sonic Underground's Origins
+  Part 2 with Chaos Emerald Crisis Part 3, which is why the count is one under
+  the 431 first recorded.
+- **The old shuffler had a second way of building an order.** Started in
+  generation 0, it shuffled its base list twice, so every later generation
+  came out unlike one built by a shuffler started there: 153 of channel 3's
+  1,172 Shuffle-slot airings are of that kind. Carrying over builds the round
+  whichever way reproduces the airing it starts from: every Shuffle-slot
+  airing on channels 2 (102) and 3 (1,172) carries over from itself.
+- **Channel 3's 18 weekend Shuffles continue exactly** at Monday and Friday
+  (155/155), and each carried round finishes in exactly the saved lineup's
+  order: 994 airings compared, from Monday's regeneration, none different.
+- **The audit**, on Monday's regenerated year of channel 3: 18 positions, 0
+  violations - no story twice in a round, none back within half a round,
+  every story's parts in a row in the position's own rounds. Most weekend
+  Shuffles spend the whole year finishing their carried round at one or two
+  airings a week, so on a copy Boy Meets World's Shuffle also took the 2:30am
+  slot Monday to Friday: its carried round ended, it played one whole round of
+  its own and part of another, five multi-part stories aired with their parts
+  in a row, and nothing came back sooner than 78 stories, against a minimum of
+  74 (half of 148). 0 violations.
+- **A range change mid-round**, on a copy: Kim Possible's weekend Shuffle set
+  to no Season 1 continues the rest of its old round without Season 1 (63 of
+  the 82 left), none of its 106 airings is Season 1, and none of the 63 had
+  aired earlier in the round.
+- **Live**, on the preview: channel 3, Saturday's Kim Possible Shuffle slot
+  set to no Season 1 in the season panel, Create Lineup, Update Channel at
+  8:29pm. The schedule saved the range and 156 records; Kim Possible's no-S1
+  record is the rest of its old round (64); none of its 54 airings is Season
+  1; no airing carries a Shuffle number; the audit finds 0 violations over all
+  19 shuffle positions; regenerating from the saved file continues 156/156.
+  The first attempt ran on a preview started before rounds existed - its
+  generator was still step 2's, and the lineup it saved had Season 1 airings
+  in the no-S1 position and 1,197 Shuffle numbers. A server keeps the code it
+  started with (see "A long-running server keeps serving the build it started
+  with"); rebuilding the bundle only refreshes the editor. The preview was
+  restarted and its copy of channel 3 restored before the run above.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 

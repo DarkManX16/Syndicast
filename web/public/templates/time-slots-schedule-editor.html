@@ -139,20 +139,26 @@
                                 </label>
                             </div>
 
-                            <div class='small' style="margin-bottom: 4px;">
-                                <b>Start from season</b>
-                                <span class='text-muted'>- jumps the position once, then resumes normally.
-                                Earlier seasons stay in rotation.</span>
+                            <div ng-if="slot.order === 'next'">
+                                <div class='small' style="margin-bottom: 4px;">
+                                    <b>Start from season</b>
+                                    <span class='text-muted'>- jumps the position once, then resumes normally.
+                                    Earlier seasons stay in rotation.</span>
+                                </div>
+                                <div>
+                                    <button class='btn btn-sm btn-outline-secondary'
+                                        ng-repeat="s in seasonsAvailable(slot.showId)"
+                                        style="margin-right: 6px;"
+                                        ng-class="{'active': seasonsOf(slot).startSeason === s}"
+                                        ng-click="setStartSeason(slot, s)">S{{s}}</button>
+                                    <button class='btn btn-sm btn-link'
+                                        ng-show="seasonsOf(slot).startSeason !== undefined"
+                                        ng-click="setStartSeason(slot, null)">clear</button>
+                                </div>
                             </div>
-                            <div>
-                                <button class='btn btn-sm btn-outline-secondary'
-                                    ng-repeat="s in seasonsAvailable(slot.showId)"
-                                    style="margin-right: 6px;"
-                                    ng-class="{'active': seasonsOf(slot).startSeason === s}"
-                                    ng-click="setStartSeason(slot, s)">S{{s}}</button>
-                                <button class='btn btn-sm btn-link'
-                                    ng-show="seasonsOf(slot).startSeason !== undefined"
-                                    ng-click="setStartSeason(slot, null)">clear</button>
+                            <div ng-if="slot.order === 'shuffle'" class='small text-muted'>
+                                Shuffle airs every episode of these seasons once a round, and
+                                changing them moves nothing else in the round.
                             </div>
                         </div>
 

@@ -575,20 +575,15 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 return Object.keys(seasons).map( (s) => parseInt(s, 10) ).sort( (a,b) => a - b );
             }
 
+            //Shuffle keeps its rounds by episode, so leaving seasons out of a
+            //Shuffle slot moves nothing else - see src/shuffle-rounds.js.
             scope.canConstrainSeasons = (slot) => {
                 return scope.canShowSlot(slot)
-                    && (slot.order === 'next')
+                    && ( (slot.order === 'next') || (slot.order === 'shuffle') )
                     && (scope.seasonsAvailable(slot.showId).length > 1);
             }
 
             scope.seasonsDisabledReason = (slot) => {
-                if (! scope.canShowSlot(slot)) {
-                    return "";
-                }
-                if (slot.order === 'shuffle') {
-                    return "Season settings apply to Play Next only. Shuffle stores its position "
-                         + "in a way that changes meaning when the episode count changes.";
-                }
                 return "";
             }
 
