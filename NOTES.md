@@ -3728,8 +3728,8 @@ Central.
   airings a week, so on a copy Boy Meets World's Shuffle also took the 2:30am
   slot Monday to Friday: its carried round ended, it played one whole round of
   its own and part of another, five multi-part stories aired with their parts
-  in a row, and nothing came back sooner than 78 stories, against a minimum of
-  74 (half of 148). 0 violations.
+  in a row, and nothing came back sooner than 74 stories, the minimum (half
+  of 148) - 78 before step 4 changed the round hash. 0 violations.
 - **A range change mid-round**, on a copy: Kim Possible's weekend Shuffle set
   to no Season 1 continues the rest of its old round without Season 1 (63 of
   the 82 left), none of its 106 airings is Season 1, and none of the 63 had
