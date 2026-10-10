@@ -1476,6 +1476,10 @@ for the full spec, stages and acceptance tests.
 - [x] Multi-part stories kept together by every shuffle - part 2 always
       follows part 1. *Built with Shuffle, Rerun and Ordered shuffle (steps 3,
       4 and 6), within a series for Ordered shuffle.*
+- [ ] Full catalogs: every slot draws on its show's or custom show's whole
+      episode list, with a per-channel never-air list, a one-time review per
+      show, and a choice when deleting an airing. *Designed Oct 10, 2026 - see
+      "Full catalogs, and a never-air list" under Known issues.*
 
 All six were designed together on Oct 9, 2026 and built Oct 9-10 on the
 `stored-progress` branch, which waits for Ron to merge it into `blocks` - see
@@ -3345,9 +3349,9 @@ kept by episode, with season settings and multi-part stories, Rerun replays
 only what its show's Play Next has aired, Repeat a slot re-airs a chosen
 earlier slot, and Ordered shuffle interleaves a custom show's series; every
 step's proof re-run on the final code (step 7), and the final review's fixes
-in, with Ron's rule for narrowing one slot of a shared Shuffle (Oct 10). "A
-regeneration only draws from what the lineup on air holds", the next entry, is
-designed and being built on its own branch. See "Build record" at the end of
+in, with Ron's rule for narrowing one slot of a shared Shuffle (Oct 10). "Full
+catalogs, and a never-air list", the next entry, is designed and being built on
+its own branch. See "Build record" at the end of
 this entry, and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
@@ -3664,8 +3668,8 @@ disagree.
 
 - The candidates are still the episodes in the lineup the editor loaded, so a
   season no slot plays drops out after a run, as before - and, measured while
-  building step 6, so does every episode a sparse slot didn't reach. See "A
-  regeneration only draws from what the lineup on air holds" below.
+  building step 6, so does every episode a sparse slot didn't reach. See "Full
+  catalogs, and a never-air list" below.
 - Ranges already in step stay in step (Johnny Bravo above).
 - A lineup rearranged by the programming tools still reads, but a position's
   place is wherever its labelled airings were moved to.
@@ -4004,40 +4008,244 @@ shuffles of mostly the same episodes, not one order played twice. Both
 weekend slots narrowed together still carry the rest of the old round (63 of
 82) with none, and every position on channels 1-3 continues exactly.
 
-### A regeneration only draws from what the lineup on air holds
+### Full catalogs, and a never-air list
 
-Found while building Ordered shuffle (Oct 9, 2026), and older than it: the
-Time Slots and Random Slots editors hand the generator
-`removeDuplicates(channel.programs)` - the lineup on air - as the episodes
-it may use. Programs added from the library are in `channel.programs` until
-the first Create Lineup replaces it with a lineup, and after that only what
-that lineup aired is left. A show in a sparse slot loses every episode the
-lineup didn't reach. Measured on the copies of Oct 9:
+Designed Oct 10, 2026 (Opus 5.5) from Ron's brief and his decisions the same
+day; **not built yet**. Replaces "A regeneration only draws from what the
+lineup on air holds", whose finding is the first section below. Branch
+`full-catalog`, from `stored-progress`, so the two merge together; build plan
+in [docs/full-catalog-plan.md](docs/full-catalog-plan.md).
 
-- channel 1: Mobile Suit Gundam Series 45 of 223 items, G Gundam/Gundam
-  Wing/Gundam SEED+Destiny 91 of 198, Ben 10 series 90 of 146, G.I. Joe ('83)
-  45 of 95, Voltron 45 of 124;
-- channel 2: Double Dare Series (Shuffle) 51 of 465, The Penguins of
-  Madagascar 97 of 146, Think Fast 51 of 101, Saved by the Bell/College Years
-  51 of 104, Degrassi 51 of 69;
-- channel 3: Phineas and Ferb 51 of 140, Spider-Man 52 of 102, The Raccoons 51
-  of 63, Care Bears (1986) 51 of 59;
-- and episodes of ordinary shows the same way - channel 2's lineup has no
-  Rugrats S07E01-03, which is why step 2's Rugrats check landed on S07E04.
+#### What was wrong
 
-**What it does:** Double Dare's weekly Play Next airs items 2-52 in the saved
-lineup; regenerated from it, the lineup airs 2-52 and then item 2 again, never
-53. Stored progress keeps each place exactly, but the place can only move
-among what the pool holds, so a big show in a sparse slot loops its first
-year forever after one regeneration. Before stored progress the same thing
-happened through the founder.
+Regenerating Time Slots or Random Slots only draws on episodes already in the
+lineup, so a show in a sparse slot shrinks to a loop: Double Dare has 51 of
+its 465 items in channel 2's lineup, and its weekly Play Next loops items 2-52
+forever. Every source of the generators' pool, traced Oct 10:
 
-**Not fixed - a design decision for Ron.** The pool needs to come from
-somewhere the lineup doesn't thin: custom shows have their full item list in
-the data folder's `custom-shows`; ordinary shows' full episode lists are
-only in Plex, or in a per-channel list of everything ever added, kept beside
-the lineup. Re-adding a show or custom show from the library before Create
-Lineup restores it for that run.
+- **The channel page** hands the slot editors
+  `commonProgramTools.removeDuplicates(scope.channel.programs)` - one copy of
+  each episode in the lineup on air - from six places in
+  `web/directives/channel-config.js`: the Time Slots button and its re-roll,
+  the calendar's slot and day clicks, and the Random Slots button and its
+  re-roll.
+- **The editors** use that list for the Program menu, for stored progress
+  (places, rounds, carried rounds, Rerun notes), for Ordered shuffle's series
+  count, and send it to the server (`POST /api/channel-tools/time-slots` and
+  `random-slots`) as the episodes the generator may use.
+- **The generators** (`time-slots-service.js`, `random-slots-service.js`, via
+  `show-orderers.js`) build every position from that list alone.
+- **`channel.programs`** holds a whole show only between adding it from the
+  library - `plex-library.js` walks show, seasons, episodes; a custom show is
+  copied whole, each item stamped with `customShowId` and `customOrder` - and
+  the first Create Lineup, which replaces it with the lineup. The Library tab
+  (`src/channel-library.js`) is built from the lineup too.
+- **A full catalog exists only** in the data folder's `custom-shows` (custom
+  shows) and in Plex (Plex shows). The daily backups don't hold it: of the 226
+  short shows below, a backup since Sep 27 held all of 19; the rest were
+  thinned before backups began.
+
+Measured on the copy of Oct 9 8:23pm Central, still identical to
+`.dizquetv-dev` at 2:48am Oct 10, reading Plex read-only with the token the
+app stores (sent as a header, never printed or saved):
+
+| Channel | Plex shows short | Regular episodes in lineup / in Plex | Custom shows short | Custom items in lineup / in show |
+|---|---|---|---|---|
+| 1 | 58 of 123 | 7,845 / 9,863 (20% missing) | 5 of 15 | 1,585 / 2,055 |
+| 2 | 107 of 152 | 9,775 / 14,029 (30%) | 5 of 8 | 469 / 1,053 |
+| 3 | 61 of 123 | 6,026 / 6,879 (12%) | 4 of 14 | 713 / 872 |
+
+Almost all of it inside the seasons the slots play. The worst: Double Dare
+51/465, Married... with Children 51/259, Bleach 46/294, Mobile Suit Gundam
+Series 45/223, Naruto 45/219, Beyblade 51/154, Phineas and Ferb 51/140. Also:
+
+- **Whole shows were added.** Channel 2's short shows each hold exactly one
+  year from S2E1 (Married... S2E1-S4E8, Wings S2E1-S4E9): a whole show,
+  started with "Start from season 2", then everything but that first year lost
+  - Season 1 included.
+- **Every aired episode is still in Plex under the same key** - 0 exceptions
+  on channels 1-3 - so stored progress finds every place unchanged.
+- **Each aired episode names its show:** `showIcon` is the show's thumbnail,
+  `/library/metadata/<show>/thumb`. The one without (Good Morning, Mickey!) is
+  found through its episode's own metadata (`grandparentRatingKey`).
+- **Reading every slotted show from Plex takes 2.3-3.9 s a channel** (8 at a
+  time). The request to the server would grow from 9-13 MB to 10-20 MB (the
+  limit is 50).
+- **No custom show was edited since it was added.**
+- **Specials:** Plex holds 81, 67 and 8 for the slotted shows of channels 1-3;
+  the lineups air 11, 6 and 0 of them - ThunderCats 5 of 6, Pete & Pete 3 of 5,
+  The Brak Show 2 of 4, and a few others keep theirs.
+
+#### What Ron decided, Oct 10
+
+1. Episodes he removed by hand must never come back.
+2. A per-channel **never-air list** of episodes; the full catalog always
+   leaves them out, for Plex shows and custom shows.
+3. Before a show starts drawing on its full catalog, a **one-time review**
+   lists exactly which episodes would be added, grouped by season, with
+   checkboxes and add all / add none. Anything he unticks goes on the
+   never-air list. Until a show is reviewed it behaves exactly as today. Only
+   shows with something to add are listed, most missing first.
+4. **Deleting an episode** in the programming list asks: "remove this airing
+   only" or "never air this episode on this channel".
+5. A **page** to see and restore never-air episodes.
+6. **Specials** count only when the lineup already airs one of that show's
+   specials.
+7. **New episodes** added to Plex later join automatically, but the Create
+   Lineup dialog names them, with a one-click "never air" for each.
+
+#### The design
+
+**A show's catalog** is read in the editor with the library's own code -
+`web/services/plex.js`'s `getNested` on `/library/metadata/<show>/allLeaves`,
+so episodes are made exactly as the library makes them (no duration skipped, a
+file holding several episodes listed once, `server` removed and `serverKey`
+set as `plex-library.js`'s `selectItem` does). A custom show's catalog is its
+current item list (`dizquetv.getShow`), stamped as `addCustomShow` stamps it.
+Every item takes the show title the channel already uses, so a show renamed in
+Plex stays matched to its slots. Season 0 counts only for a show whose lineup
+already airs one of its specials - decided once, at its review.
+
+**A show on a channel is either unreviewed or reviewed.**
+
+- *Unreviewed* - every show on every channel saved today. It draws on the
+  lineup's own episodes, exactly as now, less anything on the never-air list.
+- *Reviewed* - it draws on its full catalog, less the never-air list, from
+  every Create Lineup on. Its record keeps where its catalog comes from (the
+  Plex server and show key, or the custom show) and the episodes its catalog
+  held when last read, so newcomers can be named.
+- A show whose catalog has **nothing to add** - every episode already in the
+  lineup or on the never-air list - becomes reviewed the first time Create
+  Lineup reads it, since there is nothing to decide; from then on it takes new
+  episodes too, named as below.
+
+**The review** is on the channel's new Catalog page. It lists every show on
+the channel with something to add - catalog episodes the lineup doesn't hold
+and the never-air list doesn't name - most to add first. Each opens to its
+episodes grouped by season (`S04E09 Title`), with a checkbox per episode and
+per season, and add all / add none. Saving marks the show reviewed: ticked
+episodes join, unticked ones go on the never-air list ("removed at review").
+A show with nothing to add isn't listed.
+
+**The never-air list** is per channel, one entry per file (`server|key`, the
+key stored progress already uses), so an episode never airs on that channel
+through any show - Plex or custom - and comes back only when restored on the
+Catalog page. Each entry keeps the show, season, episode, title, when, and how
+it got there (review, deleted, new in Plex). It binds everything that picks an
+episode: the pool for every slot (movie slots too), a Repeat - whose source
+aired an episode since marked never-air plays the Rerun fallback - and Rerun.
+A Play Next place on a never-air episode moves to the next one, as for any
+episode that has gone.
+
+**Create Lineup.** When the Time Slots or Random Slots dialog opens it reads
+the channel's catalog state and, in the background, the catalogs of every
+show with a slot (8 at a time; 2.3-3.9 s measured, usually done before the
+click).
+The dialog says what it is doing and what it found:
+
+- "New in Plex since the last run" - catalog episodes of a reviewed show it
+  had never seen, by show and season, each with **Never air**, which takes it
+  out of this run at once;
+- shows it couldn't read (Plex off, a show gone, a custom show deleted), which
+  fall back to the lineup's own episodes, as today, for this run - it never
+  blocks Create Lineup;
+- "N shows have episodes to review", linking to the Catalog page.
+
+The pool the generator gets: for a reviewed Plex show, the lineup's own copies
+of the episodes it already airs - so what airs now keeps its exact data - and
+its catalog's other episodes; for a reviewed custom show, its current item
+list in its own order; for every other show, the lineup's own episodes; and
+the never-air list taken out of all of it.
+Stored progress reads places from the lineup as now; a carried round from the
+old shuffler is still rebuilt from the lineup's own list, since that is what
+the old shuffler shuffled, and everything else - new rounds, ranges, notes -
+uses the catalog. Nothing on the server's generators changes.
+
+**Saving.** The catalog state lives in the channel file, as
+`channel.catalog`, but only the new catalog API writes it: a channel save from
+the channel page keeps the stored one whatever the page sends, so an editor
+open in another tab can't undo a review. Changes made while editing a channel
+- a never-air from deleting an airing or from the dialog, each reviewed show's
+catalog as Create Lineup read it, and shows found to have nothing to add - are held with the channel's other
+unsaved changes and sent after Update Channel; Cancel drops them with the
+rest. The Catalog page saves at once. Renaming a Plex server renames its keys
+in the catalog state, as it already does in the lineup.
+
+**Deleting an airing** in the programming list asks, for an episode,
+custom-show item or movie: "Remove this airing only" (as today) or "Never air
+this episode on this channel" - which removes this airing, adds the episode to
+the list, and says how many other airings it still has: the next Create
+Lineup leaves them out. Flex and redirects delete as now; the bulk tools
+(Duplicates, Specials, Show(s), All) don't ask.
+
+**The Catalog page**, `/channels/<n>/catalog`, linked from the channel page
+and the Time Slots dialog: "To review" as above, and "Never air", grouped by
+show, each entry with how it got there and **Restore**. A restored episode of a
+reviewed show joins at the next Create Lineup; of an unreviewed one, when the
+show is reviewed or the library adds it again.
+
+**What it does to Ron's channels:** nothing until a show is reviewed. Then,
+for that show, Play Next carries on from its place through the whole show -
+Double Dare past item 52, Married... with Children past S4E8 and round to
+Season 1 at the end - and Shuffle rounds take in every episode: one that falls
+after a Shuffle's place in this round joins it, the rest wait for the next.
+
+#### Shapes
+
+```js
+channel.catalog = {                         // absent on every channel saved today
+  shows: {
+    "tv.Married... with Children": {
+      reviewedAt: "2026-10-10T15:00:00.000Z",
+      by: "review",                         // or "complete": nothing to add when first read
+      specials: false,                      // season 0 counts (decided at review)
+      source: { plex: "Thats So Disney/Nick Picks", shows: ["112167"] },
+      known: ["Thats So Disney/Nick Picks|/library/metadata/112176", ...],
+    },
+    "custom.5c8285f1-4235-4fe0-99dd-5a6f50092641": {
+      reviewedAt, specials: false, source: { custom: "5c8285f1-..." }, known: [...],
+    },
+  },
+  neverAir: {
+    "Thats So Disney/Nick Picks|/library/metadata/112180": {
+      showId: "tv.Married... with Children", season: 2, episode: 5,
+      title: "...", at: "2026-10-10T15:02:00.000Z", how: "review",  // "review" | "deleted" | "new"
+    },
+  },
+};
+```
+
+```
+GET  /api/channel/:number/catalog          -> channel.catalog, or { shows: {}, neverAir: {} }
+POST /api/channel/:number/catalog  { ops }  -> applied in order, saved once
+  { review:  { showId, source, specials, known, neverAir: [entries] } }
+  { neverAir: [entries] }   { restore: [keys] }   { known: { showId: [keys] } }
+```
+
+`src/show-catalog.js` holds the rules, pure, shared by the editor
+(browserify), the Catalog page, the server's ops and the proof scripts: what a
+review lists, the pool for a run, what's new, and applying ops.
+`web/services/show-catalog.js` does the reading.
+
+#### What this doesn't change
+
+- Channels saved today: no `channel.catalog`, nothing reviewed, and Create
+  Lineup gives the same lineup it gives now, program for program.
+- The server's generators and the channel file's other fields.
+- Movie slots still draw on the lineup's movies - there is no movie catalog -
+  less the never-air list. None of Ron's channels has one.
+- The Library tab still shows the lineup; the Program menu still lists the
+  channel's shows.
+- Swapping episodes, plugging library items in anywhere and Flex adjusting
+  itself stay the 1.0 item they are; the never-air list is only the "never
+  again" half of removing one.
+
+#### Found while designing
+
+- Renaming a Plex server (`fixupAllChannels`) renames every program's
+  `serverKey` but not stored progress's references, which carry the server
+  name too; a place then falls back to matching by order (season and episode,
+  or a custom show's item number). Minor - not fixed here.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 
@@ -4774,7 +4982,7 @@ a copy of the data folder, never on `.dizquetv-dev` itself.
   - `--show <regex>`, `--airings <regex> --days <n>` and `--all` list more.
   - `--add-custom <id>` adds a custom show's whole item list first, as adding
     it from the library does - the lineup alone holds only what it aired (see
-    "A regeneration only draws from what the lineup on air holds").
+    "Full catalogs, and a never-air list").
   - `--today` skips the planner. With no records Play Next falls back to the
     founder rule, as blocks did, but Shuffle starts rounds of its own, so it
     reproduces blocks' Play Next losses and not its Shuffle ones; those need
