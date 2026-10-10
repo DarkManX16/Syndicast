@@ -33,9 +33,8 @@ function shuffle(array, lo, hi, randomOverride ) {
 }
 
 
-function seasonOf(program) {
-    return (typeof(program.season) === 'number') ? program.season : 0;
-}
+const seasonOf = slotProgress.seasonOf;
+const applySeasonExclusions = slotProgress.applySeasonExclusions;
 
 /*
  * A season constraint is { excludeSeasons: [..], startSeason: n }, both
@@ -46,23 +45,10 @@ function seasonOf(program) {
  *
  * Which place a slot uses is its position - show, mode and excluded seasons,
  * see slotProgress.positionKey - so a weekday block advances as a single
- * thread while slots asking for different seasons each keep their own.
+ * thread while slots asking for different seasons each keep their own. The
+ * season filter itself is slotProgress.applySeasonExclusions, shared with the
+ * editor's planner.
  */
-function applySeasonExclusions(sortedPrograms, constraint) {
-    if ( (typeof(constraint) !== 'object') || (constraint === null) ) {
-        return sortedPrograms;
-    }
-    if (! Array.isArray(constraint.excludeSeasons) ) {
-        return sortedPrograms;
-    }
-    let excluded = {};
-    constraint.excludeSeasons.forEach( (s) => { excluded[s] = true; } );
-    let kept = sortedPrograms.filter( (p) => excluded[ seasonOf(p) ] !== true );
-    // Excluding everything would leave the slot with nothing to play, which is
-    // worse than ignoring a constraint the user can see and change.
-    return (kept.length === 0) ? sortedPrograms : kept;
-}
-
 /*
  * Where to resume when a position has no stored place - every channel's first
  * run after stored progress, and Random Slots lineups saved before it.

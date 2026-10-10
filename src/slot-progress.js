@@ -55,6 +55,29 @@ function positionKey(showId, mode, constraint) {
     return JSON.stringify( [ showId, mode, excludedOf(constraint) ] );
 }
 
+function seasonOf(program) {
+    return (typeof(program.season) === 'number') ? program.season : 0;
+}
+
+/*
+ * A position's episodes: its show's, sorted, without the seasons it leaves
+ * out. Excluding everything would leave the slot with nothing to play, which
+ * is worse than ignoring a constraint the user can see and change.
+ */
+function applySeasonExclusions(sortedPrograms, constraint) {
+    let excluded = {};
+    excludedOf(constraint).forEach( (s) => { excluded[s] = true; } );
+    let kept = sortedPrograms.filter( (p) => excluded[ seasonOf(p) ] !== true );
+    return (kept.length === 0) ? sortedPrograms : kept;
+}
+
+function candidatesFor(pool, showId, constraint, getShowData) {
+    let sorted = pool
+        .filter( (p) => ! p.isOffline && (getShowData(p).showId === showId) )
+        .sort( (a, b) => getShowData(a).order - getShowData(b).order );
+    return applySeasonExclusions(sorted, constraint);
+}
+
 /*
  * The label an airing carries: "next|2", "shuffle|1,2|3", "repeat". The show
  * is not in it - getShowData gives that from the program itself.
@@ -322,6 +345,196 @@ function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
     };
 }
 
+/*
+ * Every position's place as Create Lineup runs, as the records the generator
+ * starts from (schedule.progress). In order, the first that applies:
+ *
+ *   1. a seek on one of its slots - season start today;
+ *   2. its first airing on air or ahead in the lineup on air;
+ *   3. its record from the last run, for a position with none ahead;
+ *   4. the place of the position the same slot - same time, show and mode -
+ *      belonged to in the schedule the lineup was made from, moved forward to
+ *      the nearest episode its range allows (Ron, Oct 9);
+ *   5. the first episode of its range, for a position the schedule never had.
+ *
+ * A position the schedule already had but whose place can't be read gets no
+ * record, so the generator falls back to the founder rule - never below what
+ * a regeneration did before stored progress. So do Random Slots positions in
+ * a lineup without labels: their slots have no times to match. Until rounds
+ * replace the old shuffler, a Shuffle position's record is just its number.
+ * Positions no longer used keep a record, refreshed from the lineup when it
+ * still has their airings.
+ */
+function planProgress({ programs, startTime, now, openedSchedule, schedule, pool, getShowData }) {
+    let opened = ( (typeof(openedSchedule) === 'object') && (openedSchedule !== null) ) ? openedSchedule : { slots: [] };
+    let oldRecords = ( (typeof(opened.progress) === 'object') && (opened.progress !== null)
+                       && (typeof(opened.progress.positions) === 'object') && (opened.progress.positions !== null) )
+        ? opened.progress.positions
+        : {};
+    let lastRun = ( (typeof(opened.progress) === 'object') && (opened.progress !== null) )
+        ? Date.parse(opened.progress.asOf)
+        : NaN;
+    let readWith = (Array.isArray(opened.slots) && (opened.slots.length > 0)) ? opened : schedule;
+    let start = (typeof(startTime) === 'number') ? startTime : new Date(startTime).getTime();
+    let places = readPlaces({ programs, startTime: start, now, schedule: readWith, getShowData });
+    let labelled = programs.some( (p) => typeof(p.slotPosition) === 'string' );
+    let total = cycleLength(programs);
+
+    let groupsOf = (sched) => {
+        let groups = new Map();
+        (Array.isArray(sched.slots) ? sched.slots : []).forEach( (slot) => {
+            if ( (typeof(slot.showId) !== 'string') || (slot.showId === 'flex.') || slot.showId.startsWith('redirect.') ) {
+                return;
+            }
+            let constraint = constraintOf(slot, sched);
+            let key = positionKey(slot.showId, slot.order, constraint);
+            if (! groups.has(key) ) {
+                groups.set(key, { showId: slot.showId, mode: slot.order, constraint: constraint, slots: [] });
+            }
+            groups.get(key).slots.push(slot);
+        } );
+        return groups;
+    };
+    let groups = groupsOf(schedule);
+    let oldGroups = groupsOf(opened);
+
+    // Whether a Play Next position went round its range between the last run
+    // and now: its episodes' order going down at any step. Only a lineup made
+    // at the last run says what aired since; a carried-over one doesn't.
+    let wrappedSince = (key, place) => {
+        let prior = oldRecords[key];
+        if ( (typeof(prior) === 'object') && (prior !== null) && (prior.wrapped === true) ) {
+            return true;
+        }
+        if ( ! labelled || isNaN(lastRun) || (lastRun >= now) ) {
+            return false;
+        }
+        if (now - lastRun >= total) {
+            return true;
+        }
+        let orders = [];
+        if ( (typeof(prior) === 'object') && (prior !== null) && (typeof(prior.next) === 'object') ) {
+            orders.push(prior.next.order);
+        }
+        airings({ programs, startTime: start, from: lastRun, to: now, schedule: readWith, getShowData })
+            .filter( (a) => a.key === key )
+            .forEach( (a) => orders.push(getShowData(a.program).order) );
+        orders.push(getShowData(place.program).order);
+        for (let i = 1; i < orders.length; i++) {
+            if (orders[i] < orders[i - 1]) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    let fromPlace = (key, place) => {
+        let mode = JSON.parse(key)[1];
+        if (mode === 'shuffle') {
+            return (typeof(place.legacyShuffleOrder) === 'number') ? { legacyShuffleOrder: place.legacyShuffleOrder } : null;
+        }
+        return { next: ref(place.program, getShowData), wrapped: wrappedSince(key, place) };
+    };
+
+    // Where an old position is now, by the same rules 2 and 3.
+    let placeOfOld = (key) => {
+        if (places.has(key)) {
+            return fromPlace(key, places.get(key));
+        }
+        return oldRecords[key] || null;
+    };
+
+    let nextStartAfterNow = (slot) => {
+        let period = (typeof(schedule.period) === 'number') ? schedule.period : DAY;
+        let local = now - (new Date(now)).getTimezoneOffset() * MINUTE;
+        let into = ( (local % period) + period ) % period;
+        return ( (slot.time - into) % period + period ) % period;
+    };
+
+    let inherited = (key, group) => {
+        let best = null;
+        let bestWait = Infinity;
+        group.slots.forEach( (slot) => {
+            if (typeof(slot.time) !== 'number') {
+                return;
+            }
+            let old = (opened.slots || []).find( (o) => (o.time === slot.time) && (o.showId === slot.showId) );
+            if ( (typeof(old) === 'undefined') || (old.order !== slot.order) ) {
+                return;
+            }
+            let oldKey = positionKey(old.showId, old.order, constraintOf(old, opened));
+            if (oldKey === key) {
+                return;
+            }
+            let oldPlace = placeOfOld(oldKey);
+            if ( (oldPlace === null) || (typeof(oldPlace.next) !== 'object') ) {
+                return;
+            }
+            let wait = nextStartAfterNow(slot);
+            if (wait < bestWait) {
+                bestWait = wait;
+                best = oldPlace;
+            }
+        } );
+        if (best === null) {
+            return null;
+        }
+        let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
+        if (candidates.length === 0) {
+            return null;
+        }
+        return { next: ref(candidates[ resolveRef(best.next, candidates, getShowData) ], getShowData), wrapped: false };
+    };
+
+    let positions = {};
+    Object.keys(oldRecords).forEach( (key) => { positions[key] = oldRecords[key]; } );
+    places.forEach( (place, key) => {
+        if (! groups.has(key) ) {
+            let record = fromPlace(key, place);
+            if (record !== null) {
+                positions[key] = record;
+            }
+        }
+    } );
+
+    groups.forEach( (group, key) => {
+        let record = null;
+        if (places.has(key)) {
+            record = fromPlace(key, places.get(key));
+        }
+        if ( (record === null) && (typeof(oldRecords[key]) === 'object') ) {
+            record = oldRecords[key];
+        }
+        let timed = group.slots.some( (slot) => typeof(slot.time) === 'number' );
+        if ( (record === null) && timed && (group.mode === 'next') ) {
+            record = inherited(key, group);
+        }
+        if ( (record === null) && timed && (group.mode === 'next') && ! oldGroups.has(key) ) {
+            let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
+            if (candidates.length > 0) {
+                record = { next: ref(candidates[0], getShowData), wrapped: false };
+            }
+        }
+        if (group.mode === 'next') {
+            let seek = seekOf(group.slots, schedule, now);
+            if (seek !== null) {
+                let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
+                let found = candidates.find( (p) => seasonOf(p) >= seek ) || candidates[0];
+                if (typeof(found) !== 'undefined') {
+                    record = { next: ref(found, getShowData), wrapped: (record !== null) && (record.wrapped === true) };
+                }
+            }
+        }
+        if (record !== null) {
+            positions[key] = record;
+        } else {
+            delete positions[key];
+        }
+    } );
+
+    return { asOf: new Date(now).toISOString(), positions: positions };
+}
+
 module.exports = {
     MODES: MODES,
     ROUND_MODES: ROUND_MODES,
@@ -337,4 +550,8 @@ module.exports = {
     seekOf: seekOf,
     readPlaces: readPlaces,
     airings: airings,
+    seasonOf: seasonOf,
+    applySeasonExclusions: applySeasonExclusions,
+    candidatesFor: candidatesFor,
+    planProgress: planProgress,
 };

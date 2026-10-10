@@ -243,6 +243,110 @@ module.exports = async function () {
             slotProgress.seekOf([schedule.slots[2]], schedule, at(Mon, 12)) === null);
     }
 
+    suite.log('-- the planner --');
+    {
+        // Johnny Bravo seasons 1-3, ten episodes each, as the editor's pool.
+        const pool = [];
+        for (let s = 1; s <= 3; s++) for (let e = 1; e <= 10; e++) pool.push(episode(JB, s, e));
+        pool.push(...[1, 2, 3].map((e) => episode('Doug', 1, e)));
+        const savedLineup = () => lineup(THU, [
+            [at(Thu, 21), episode(JB, 1, 8)],
+            [at(Fri, 21), episode(JB, 2, 7)],
+            [at(Sat, 21), episode(JB, 2, 8)],
+            [at(Sun, 21), episode(JB, 1, 4)],
+        ]);
+        const NOW = at(Fri, 10);
+        const plan = (schedule, opened, programs) => slotProgress.planProgress({
+            programs: programs || savedLineup(), startTime: THU, now: NOW,
+            openedSchedule: opened || jbSlots(), schedule, pool, getShowData,
+        });
+        const nextOf = (result, key) => {
+            const r = result.positions[key];
+            if (!r || !r.next) return r ? JSON.stringify(r) : 'none';
+            return pool.find((p) => slotProgress.ref(p, getShowData).key === r.next.key).title.replace(JB + ' ', '');
+        };
+        const NO12 = slotProgress.positionKey('tv.' + JB, 'next', { excludeSeasons: [1, 2] });
+        const NO3 = slotProgress.positionKey('tv.' + JB, 'next', { excludeSeasons: [3] });
+        const NO13 = slotProgress.positionKey('tv.' + JB, 'next', { excludeSeasons: [1, 3] });
+
+        const same = plan(jbSlots());
+        suite.check('the lineup sets each place (rule 2)',
+            nextOf(same, ALL) === 'S1E8' && nextOf(same, NO1) === 'S2E7' && nextOf(same, NO2) === 'S1E4'
+                && same.asOf === new Date(NOW).toISOString(),
+            [ALL, NO1, NO2].map((k) => nextOf(same, k)).join(', '));
+
+        const seeking = jbSlots();
+        seeking.slots[1].seasons = { excludeSeasons: [1], startSeason: 3 };
+        suite.check('a seek beats the lineup (rule 1)', nextOf(plan(seeking), NO1) === 'S3E1', nextOf(plan(seeking), NO1));
+
+        // Sunday's no-S2 slots were taken out at an earlier run; its record stayed.
+        const opened = jbSlots();
+        opened.slots = opened.slots.filter((s) => s.time !== slotTime(Sun, 21));
+        opened.progress = { asOf: new Date(NOW - DAY).toISOString(), positions: {
+            [NO2]: { next: slotProgress.ref(episode(JB, 1, 5), getShowData), wrapped: false },
+        } };
+        const withoutSunday = lineup(THU, [[at(Thu, 21), episode(JB, 1, 8)], [at(Fri, 21), episode(JB, 2, 7)]]);
+        suite.check('a range taken out and put back resumes from its record (rule 3)',
+            nextOf(plan(jbSlots(), opened, withoutSunday), NO2) === 'S1E5');
+
+        const narrowed = jbSlots();
+        narrowed.slots[1].seasons = { excludeSeasons: [1, 2] };
+        narrowed.slots[2].seasons = { excludeSeasons: [1, 2] };
+        narrowed.slots[0].seasons = { excludeSeasons: [3] };
+        const n = plan(narrowed);
+        suite.check('narrowing a range keeps the slot\'s place, moved forward (rule 4)',
+            nextOf(n, NO12) === 'S3E1' && nextOf(n, NO3) === 'S1E8', `${nextOf(n, NO12)}, ${nextOf(n, NO3)}`);
+
+        const added = jbSlots();
+        added.slots.push({ time: slotTime(Mon, 21), showId: 'tv.' + JB, order: 'next', seasons: { excludeSeasons: [1, 3] } });
+        suite.check('a brand-new slot starts at the first episode of its range (rule 5)', nextOf(plan(added), NO13) === 'S2E1');
+
+        const doug = { period: WEEK, slots: [{ time: slotTime(Sat, 6), showId: 'tv.Doug', order: 'shuffle' }] };
+        const dougNext = { period: WEEK, slots: [{ time: slotTime(Sat, 6), showId: 'tv.Doug', order: 'next' }] };
+        const dougLineup = lineup(THU, [[at(Sat, 6), episode('Doug', 1, 3, { shuffleOrder: 2 })]]);
+        const modeChange = slotProgress.planProgress({ programs: dougLineup, startTime: THU, now: NOW,
+            openedSchedule: doug, schedule: dougNext, pool, getShowData });
+        suite.check('a mode change starts at the first episode',
+            modeChange.positions[slotProgress.positionKey('tv.Doug', 'next', undefined)].next.key === slotProgress.ref(episode('Doug', 1, 1), getShowData).key);
+        const kept = slotProgress.planProgress({ programs: dougLineup, startTime: THU, now: NOW,
+            openedSchedule: doug, schedule: doug, pool, getShowData });
+        suite.check('a Shuffle position carries the old shuffler\'s number',
+            JSON.stringify(kept.positions[slotProgress.positionKey('tv.Doug', 'shuffle', undefined)]) === '{"legacyShuffleOrder":2}');
+
+        const unused = jbSlots();
+        unused.progress = { asOf: new Date(NOW - DAY).toISOString(), positions: { '["tv.Gone","next",[]]': { next: { key: 'srv|/gone', order: 5 }, wrapped: true } } };
+        const fewer = jbSlots();
+        fewer.slots = fewer.slots.filter((s) => s.time !== slotTime(Sun, 21));
+        const u = plan(fewer, unused);
+        suite.check('an unused position\'s record is kept',
+            JSON.stringify(u.positions['["tv.Gone","next",[]]']) === JSON.stringify(unused.progress.positions['["tv.Gone","next",[]]']));
+        suite.check('...and one taken out now keeps its place from the lineup', nextOf(u, NO2) === 'S1E4');
+
+        // Thursday's slot has no airing ahead in this lineup: the founder rule, not the first episode.
+        const noAiring = lineup(THU, [[at(Fri, 21), episode(JB, 2, 7)], [at(Sat, 21), episode(JB, 2, 8)], [at(Sun, 21), episode(JB, 1, 4)]]);
+        suite.check('a position with no airing ahead gets no record, so the founder rule applies',
+            typeof plan(jbSlots(), jbSlots(), noAiring).positions[ALL] === 'undefined');
+
+        const random = slotProgress.planProgress({ programs: savedLineup(), startTime: THU, now: NOW,
+            openedSchedule: { slots: [{ duration: 30 * MIN, showId: 'tv.' + JB, order: 'next' }] },
+            schedule: { slots: [{ duration: 30 * MIN, showId: 'tv.' + JB, order: 'next' }] }, pool, getShowData });
+        suite.check('Random Slots without labels: no record', Object.keys(random.positions).length === 0);
+
+        // A labelled lineup made at the last run: the strip went from S3E10 to S1E1 since.
+        const sinceLast = { period: WEEK, slots: [Thu, Fri, Sat].map((d) => ({ time: slotTime(d, 21), showId: 'tv.' + JB, order: 'next' })) };
+        sinceLast.progress = { asOf: new Date(THU).toISOString(), positions: { [ALL]: { next: slotProgress.ref(episode(JB, 3, 10), getShowData), wrapped: false } } };
+        const went = lineup(THU, [
+            [at(Thu, 21), episode(JB, 3, 10, { slotPosition: 'next|' })],
+            [at(Fri, 21), episode(JB, 1, 1, { slotPosition: 'next|' })],
+            [at(Sat, 21), episode(JB, 1, 2, { slotPosition: 'next|' })],
+        ]);
+        const wrap = slotProgress.planProgress({ programs: went, startTime: THU, now: at(Sat, 12),
+            openedSchedule: sinceLast, schedule: sinceLast, pool, getShowData });
+        suite.check('a strip that went round since the last run is wrapped',
+            wrap.positions[ALL].wrapped === true && nextOf(wrap, ALL) === 'S1E2');
+        suite.check('...a carried-over strip is not', same.positions[ALL].wrapped === false);
+    }
+
     suite.log('-- references --');
     {
         const custom = (title, order) => ({
