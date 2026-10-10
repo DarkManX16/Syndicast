@@ -1452,9 +1452,12 @@ for the full spec, stages and acceptance tests.
       way to; see the spec's Stage 5. Recorded at step 7, not built.
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
-- [ ] Per-position stored progress, so every slot or range continues where it
+- [x] Per-position stored progress, so every slot or range continues where it
       left off across a regeneration, whichever day it is run and whatever
-      airs first
+      airs first. *Built Oct 9, 2026 (steps 1-2): every Play Next position
+      continues from its own place, and Shuffle from the old shuffler's number
+      until rounds replace it - see the build record in the Known issues
+      entry.*
 - [ ] Shuffle - a round per range, kept by episode, with season settings
 - [ ] Rerun - a Shuffle of only the episodes the show's Play Next has already
       aired, so a weekend never gets ahead of its weekday strip
@@ -3323,8 +3326,10 @@ timestamps.
 
 ### Per-position stored progress, and the shuffles built on it
 
-Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **not built
-yet** - see the build plan in
+Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **steps 1
+and 2 of 7 built Oct 9** - Play Next continues from stored progress, and the
+old shuffler from its carried number; see "Build record" at the end of this
+entry, and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
 candidate count" and "Per-position stored progress, which fixes two things at
@@ -3633,6 +3638,57 @@ disagree.
 - Ranges already in step stay in step (Johnny Bravo above).
 - A lineup rearranged by the programming tools still reads, but a position's
   place is wherever its labelled airings were moved to.
+
+#### Build record
+
+**Steps 1-2, Oct 9, 2026** (`stored-progress` branch, 01b7da4..). Proofs on a
+copy of `.dizquetv-dev` taken Fri Oct 9, 7:40pm Central (re-checked unchanged
+at 7:58pm, and re-copied whole at 8:01pm for the preview), and on Sep 29's
+channel 1.
+
+- **What shipped.** `src/slot-progress.js` (keys, labels, references, reading
+  places, the planner); `show-orderers.js`'s `createPositions` in both
+  generators, which label every airing and copy it clean; the editors read
+  places when Create Lineup runs and send them as `schedule.progress`, saved
+  with the schedule; season start is a seek, not part of a position's key
+  (`season-constraints.js` takes the key from the shared module); and
+  `scripts/progress-check.js`, the before-and-after report used below.
+- **Today's losses, reproduced first.** With the planner off (`--today`),
+  the tool gives NOTES' numbers exactly - Fri 10am channel 1 138/138, Sep 29
+  45/50, channel 2 159/164, channel 3 147/155; Mon 10am channel 3 137/155 -
+  and every airing over three weeks matches a position (3,449 of 3,450 at
+  Friday; the one left is Ron's hand-placed Hey Arnold S05E05, which a
+  position rightly ignores).
+- **Every position continues exactly**, at Fri 10am, Sat 11pm and Mon 10am:
+  channel 1 138/138, channel 2 164/164, channel 3 155/155, Sep 29's channel 1
+  50/50. Johnny Bravo's four ranges stay at S01E28, S02E07, S01E34, S01E34;
+  All That S01E05 and S07E01, Rugrats S01E05 and S06E01, Hey Arnold S01E09,
+  Kenan & Kel S01E05, channel 3's eight weekday strips on their own places,
+  and Monday's 18 weekend Shuffles on their own numbers. Hey Arnold's Friday
+  Shuffle resumes at pick 1, S01E09, not at the hand-placed S05E05.
+- **Nothing changes where nothing was wrong.** Channel 1 regenerated with the
+  planner matches `blocks`' generator program for program (0 of 39,999
+  differ, ignoring the label). With no progress at all, channels 1-3 match it
+  too (0 differ); `blocks` leaked a Shuffle number onto 0, 55 and 598 Play
+  Next airings there, which no longer happens.
+- **Twice in a row**, Friday's output regenerated again at Monday, read from
+  its labels: 138/138, 164/164, 155/155, 50/50.
+- **The slot's old place.** All That's Fri-Sun range narrowed to no S1-7
+  continues at S08E01; Rugrats' Friday range narrowed to no S1-6 goes to
+  S07E04, the first Season 7 episode channel 2's lineup has - S07E01-03 are
+  not in it, the lineup-is-the-pool limit above. Sep 29's no-S2 Johnny Bravo
+  slots taken out at Friday's run kept their record (S01E34), and put back at
+  Monday's resumed there.
+- **Live**, on a preview of the worktree (port 18200, the copy; HDHomeRun
+  discovery turned off in the copy): channel 2, Time Slots, Create Lineup,
+  Update Channel at 8:04pm. The saved file has 164 records and all 17,670
+  airings labelled, no Play Next airing carries a Shuffle number, all 164
+  positions continue from what the old lineup would have aired at 8:04pm, and
+  regenerating from the saved file continues 164/164. No console or server
+  errors. The preview had to be started from the worktree by hand: the preview
+  tool reads the main checkout's `launch.json`, whose working folder would have
+  let the preview's live bundle rebuild write the live server's bundle.
+- Channel files grow about 2.6% (channel 2, 23.7 to 24.3 MB).
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 

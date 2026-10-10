@@ -1,4 +1,6 @@
 
+const slotProgress = require('../../src/slot-progress');
+
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
     const MINUTE = 60*1000;
     const HOUR = 60*MINUTE;
@@ -224,6 +226,23 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
 
             let doIt = async(fromInstant) => {
                 let t0 = new Date().getTime();
+                /*
+                 * Every position's place, read from the lineup on air at this
+                 * moment, so the generator continues each one where it is -
+                 * see src/slot-progress.js. Saved with the schedule as randomScheduleBackup.
+                 */
+                if (typeof(scope.lineup) === 'function') {
+                    let onAir = scope.lineup();
+                    scope.schedule.progress = slotProgress.planProgress({
+                        programs: onAir.programs,
+                        startTime: new Date(onAir.startTime).getTime(),
+                        now: t0,
+                        openedSchedule: scope.openedSchedule,
+                        schedule: scope.schedule,
+                        pool: scope.programs,
+                        getShowData: getShowData,
+                    });
+                }
                 let res = await dizquetv.calculateRandomSlots(scope.programs, scope.schedule  );
                 let t1 = new Date().getTime();
 
@@ -243,9 +262,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
 
 
             
-            let startDialog = (programs, limit, backup, instant) => {
+            //`lineup` returns the channel's programs and startTime as the
+            //editor has them, read again when Create Lineup runs.
+            let startDialog = (programs, limit, backup, instant, lineup) => {
                 scope.limit = limit;
                 scope.programs = programs;
+                scope.lineup = lineup;
+                scope.openedSchedule = (typeof(backup) === 'undefined') ? null : JSON.parse( JSON.stringify(backup) );
 
                 reset();
                 

@@ -13,6 +13,7 @@
  *       [--show <regex>]          list matching positions even when they continue
  *       [--airings <regex> --days <n>]  list matching shows' airings in both lineups
  *       [--all]                   list every position, not only the ones that jump
+ *       [--today]                 skip the planner: regenerate the way blocks did, from the founder rule
  *
  * Reads only the files it is given and writes only --save. Never point it at
  * the live data folder's files with --save.
@@ -47,6 +48,7 @@ function parseArgs(argv) {
         else if (a === '--airings') args.airings = new RegExp(next());
         else if (a === '--days') args.days = Number(next());
         else if (a === '--all') args.all = true;
+        else if (a === '--today') args.today = true;
         else throw new Error('Unknown argument ' + a);
     }
     if (isNaN(args.at)) throw new Error('--at <ISO instant> is required');
@@ -128,6 +130,13 @@ async function main() {
     let schedule = JSON.parse(JSON.stringify(channel.scheduleBackup));
     if (args.edit) {
         require(path.resolve(args.edit))(schedule);
+    }
+    // The editor's doIt: every position's place, read from the lineup on air at this moment.
+    if (! args.today) {
+        schedule.progress = slotProgress.planProgress({
+            programs: channel.programs, startTime: savedStart, now: at,
+            openedSchedule: channel.scheduleBackup, schedule: schedule, pool: pool, getShowData,
+        });
     }
     let res = await generate(pool, schedule, at);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);

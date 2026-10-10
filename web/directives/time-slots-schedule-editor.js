@@ -1,5 +1,6 @@
 const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
+const slotProgress = require('../../src/slot-progress');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) {
     const DAY = 24*60*60*1000;
@@ -395,6 +396,23 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             let doIt = async(fromInstant) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
                 let t0 = new Date().getTime();
+                /*
+                 * Every position's place, read from the lineup on air at this
+                 * moment, so the generator continues each one where it is -
+                 * see src/slot-progress.js. Saved with the schedule as scheduleBackup.
+                 */
+                if (typeof(scope.lineup) === 'function') {
+                    let onAir = scope.lineup();
+                    scope.schedule.progress = slotProgress.planProgress({
+                        programs: onAir.programs,
+                        startTime: new Date(onAir.startTime).getTime(),
+                        now: t0,
+                        openedSchedule: scope.openedSchedule,
+                        schedule: scope.schedule,
+                        pool: scope.programs,
+                        getShowData: getShowData,
+                    });
+                }
                 let res = await dizquetv.calculateTimeSlots(scope.programs, scope.schedule  );
                 let t1 = new Date().getTime();
 
@@ -412,9 +430,15 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
 
             
-            let startDialog = (programs, limit, backup, instant, slotScope) => {
+            //`lineup` returns the channel's programs and startTime as the
+            //editor has them, read again when Create Lineup runs.
+            let startDialog = (programs, limit, backup, instant, slotScope, lineup) => {
                 scope.limit = limit;
                 scope.programs = programs;
+                scope.lineup = lineup;
+                //The schedule the lineup on air was made from, as it was saved,
+                //for reading places by slot and for each slot's old place.
+                scope.openedSchedule = (typeof(backup) === 'undefined') ? null : JSON.parse( JSON.stringify(backup) );
 
                 reset();
                 scope.slotScope = slotScope || null;
