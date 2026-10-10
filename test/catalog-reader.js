@@ -84,5 +84,23 @@ module.exports = async function () {
         await readCatalogs({ shows, servers: [SERVER], getNested: s.getNested, getShowKey: s.getShowKey, getShow: s.getShow, concurrency: 3 });
         suite.check('never runs more than concurrency at once', s.most() === 3, String(s.most()));
     }
+    {
+        // A Plex that never answers: each read gives up, and Create Lineup isn't held.
+        const hang = () => new Promise(() => {});
+        const t0 = Date.now();
+        const out = await readCatalogs({ shows: [{ showId: 'tv.Doug', title: 'Doug', lineupItems: [ep('Doug', 1, 11)] }, { showId: 'custom.cs1', title: 'DD', lineupItems: [] }],
+            servers: [SERVER], getNested: hang, getShowKey: hang, getShow: stubs().getShow, timeoutMs: 40 });
+        suite.check('a read that never answers times out as that show\'s error',
+            /timed out/.test(out['tv.Doug'].error || '') && out['custom.cs1'].items.length === 2 && Date.now() - t0 < 1000, JSON.stringify(out['tv.Doug']));
+    }
+    {
+        // A server that refuses: its other shows fail at once instead of each waiting.
+        let calls = 0;
+        const refuse = async () => { calls++; const e = new Error('connect ECONNREFUSED 127.0.0.1:1'); e.code = 'ECONNREFUSED'; throw e; };
+        const shows = Array.from({ length: 12 }, (_, i) => ({ showId: 'tv.S' + i, title: 'S' + i, lineupItems: [ep('S' + i, 1, 11)] }));
+        const out = await readCatalogs({ shows, servers: [SERVER], getNested: refuse, getShowKey: refuse, getShow: stubs().getShow, concurrency: 1 });
+        suite.check('a server that can\'t be reached fails its other shows at once',
+            calls === 1 && Object.values(out).every((c) => /ECONNREFUSED|unreachable/.test(c.error || '')), `${calls} calls; ${JSON.stringify(out['tv.S5'])}`);
+    }
     return suite;
 };

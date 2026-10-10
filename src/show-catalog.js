@@ -21,9 +21,9 @@ const fileKey = rounds.fileKey;
 // Valentine's.
 const A = "['’]";
 const HOLIDAYS = [
-    { name: 'Christmas', words: new RegExp(`\\b(christmas|xmas|x-mas|santa|noel|yule(tide)?|reindeer|mistletoe|nutcracker)\\b`, 'i') },
-    { name: 'Halloween', words: new RegExp(`\\b(halloween|hallowe${A}en|trick[- ]or[- ]treat\\w*|jack[- ]o${A}?[- ]lanterns?)\\b`, 'i') },
-    { name: 'Thanksgiving', words: new RegExp(`\\b(thanksgiving|pilgrims?|turkey day)\\b`, 'i') },
+    { name: 'Christmas', words: new RegExp(`\\b(christmas|xmas|x-mas|santa|noel|yule(tide)?|reindeer|mistletoe|nutcracker|jingle|deck the (halls|malls?)|north pole|elf|elves|krampus|a \\w+ carol)\\b`, 'i') },
+    { name: 'Halloween', words: new RegExp(`\\b(halloween|hallowe${A}en|trick[- ]or[- ]treat\\w*|jack[- ]o${A}?[- ]lanterns?|great pumpkin|day of the dead|d[i\u00ed]a de (los )?muertos)\\b`, 'i') },
+    { name: 'Thanksgiving', words: new RegExp(`\\b(thanksgiving|pilgrims?|turkey)\\b`, 'i') },
     { name: 'Easter', words: /\beaster\b/i },
     { name: "Valentine's", words: new RegExp(`\\b(valentine(${A}?s)?|cupid)\\b`, 'i') },
     { name: 'New Year', words: new RegExp(`\\bnew year(${A}?s)?\\b`, 'i') },
@@ -33,7 +33,11 @@ const HOLIDAYS = [
     { name: "Mother's Day", words: new RegExp(`\\bmother${A}?s?${A}? day\\b`, 'i') },
     { name: "Father's Day", words: new RegExp(`\\bfather${A}?s?${A}? day\\b`, 'i') },
     { name: "April Fools'", words: new RegExp(`\\bapril fool(${A}?s)?${A}?`, 'i') },
-    { name: 'Groundhog Day', words: /\bgroundhog day\b/i },
+    { name: 'Groundhog Day', words: /\b(groundhog|hog) day\b/i },
+    { name: 'Kwanzaa', words: /\bkwanzaa\b/i },
+    { name: 'Passover', words: /\bpassover\b/i },
+    { name: 'Labor Day', words: /\blabou?r day\b/i },
+    { name: 'Memorial Day', words: /\bmemorial day\b/i },
 ];
 
 function emptyState() {
@@ -125,7 +129,10 @@ function holidayMatch(title) {
             return { name: h.name, word: m[0] };
         }
     }
-    return null;
+    // "Holiday(s)" alone - "Home for the Holidays" - is nearly always the
+    // Christmas season; any named holiday above wins over it.
+    let m = /\bholidays?\b/i.exec(title || '');
+    return (m === null) ? null : { name: 'Christmas', word: m[0] };
 }
 
 function clock(ms) {
@@ -231,7 +238,11 @@ function poolFor({ lineupPool, slotted, catalogs, state, getShowData }) {
         let specials = custom || (record ? (record.specials === true) : specialsAllowed(lineupItems));
         let add = toAdd({ items: c.items, lineupItems, state, specials });
         if (! record) {
-            if (add.length === 0) {
+            // Complete only when the catalog holds every episode the lineup
+            // airs: a read that came back short - Plex lost the show, or
+            // listed nothing - says nothing about what's missing.
+            let held = new Set(known[showId]);
+            if ( (add.length === 0) && (c.items.length > 0) && lineupItems.every( (p) => held.has(fileKey(p)) ) ) {
                 complete.push(showId);
             }
             return;
@@ -260,6 +271,39 @@ function poolFor({ lineupPool, slotted, catalogs, state, getShowData }) {
         return ! (d.hasShow && replaced.has(d.showId));
     } ).concat(additions);
     return { pool, complete, fresh, fellBack, known };
+}
+
+// What to record as seen after a run: every key read, except newcomers the
+// dialog didn't name (a re-roll, Random Slots), which stay new for next time.
+function knownAfter(run, named) {
+    let out = {};
+    Object.keys(run.known || {}).forEach( (showId) => {
+        let unnamed = named ? new Set() : new Set( (run.fresh[showId] || []).map(fileKey) );
+        out[showId] = run.known[showId].filter( (k) => ! unnamed.has(k) );
+    } );
+    return out;
+}
+
+/*
+ * The Catalog page rebuilds its rows after every save; a show's open state
+ * and the choices Ron made on its episodes but hasn't saved carry over.
+ * choices: { showId: { open, episodes: { fileKey: { ticked, touched, reason, holiday } } } }.
+ */
+function carryChoices(choices, rows) {
+    return rows.map( (r) => {
+        let c = (choices || {})[r.showId];
+        r.open = !! (c && c.open);
+        r.choices = {};
+        if (c && c.episodes) {
+            r.seasons.forEach( (s) => s.episodes.forEach( (p) => {
+                let e = c.episodes[fileKey(p)];
+                if (e) {
+                    r.choices[fileKey(p)] = Object.assign({}, e);
+                }
+            } ) );
+        }
+        return r;
+    } );
 }
 
 function applyOps(state, ops, now) {
@@ -334,5 +378,5 @@ module.exports = {
     DEFAULT_LIMIT_MS, HOLIDAYS,
     emptyState, stateOf, showKeysOf, fromPlex, fromCustom, specialsAllowed,
     isNeverAir, withoutNeverAir, neverAirEntry, holidayOf, preUntick,
-    toAdd, reviewList, poolFor, applyOps, byHoliday,
+    toAdd, reviewList, poolFor, applyOps, byHoliday, knownAfter, carryChoices,
 };

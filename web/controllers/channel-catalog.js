@@ -42,13 +42,33 @@ module.exports = function ($scope, $routeParams, $timeout, dizquetv, getShowData
         e.reason = (u === null) ? 'never' : u.reason;
         e.holiday = (u !== null && u.holiday) ? u.holiday : (showCatalog.holidayOf(e.program.title) || 'Christmas');
     };
+    // What Ron has opened and changed but not saved, kept across a rebuild:
+    // a save, a restore or a reason switch must not undo another show's ticks.
+    let unsavedChoices = () => {
+        let choices = {};
+        ($scope.rows || []).forEach( (r) => {
+            let episodes = {};
+            r.seasons.forEach( (s) => (s.items || []).forEach( (e) => {
+                if (e.touched) {
+                    episodes[slotKey(e.program)] = { ticked: e.ticked, touched: true, reason: e.reason, holiday: e.holiday };
+                }
+            } ) );
+            choices[r.showId] = { open: r.open, episodes };
+        } );
+        return choices;
+    };
+    let slotKey = (p) => (p.serverKey || 'unknown') + '|' + (p.key || 'unknown');
     let buildRows = () => {
-        $scope.rows = showCatalog.reviewList({ lineupPool, catalogs, state, getShowData }).map( (r) => {
-            r.open = false;
+        let choices = unsavedChoices();
+        $scope.rows = showCatalog.carryChoices(choices, showCatalog.reviewList({ lineupPool, catalogs, state, getShowData })).map( (r) => {
             r.seasons.forEach( (s) => {
                 s.items = s.episodes.map( (p) => {
                     let e = { program: p, label: label(p), touched: false };
                     applyPreUntick(e);
+                    let kept = r.choices[slotKey(p)];
+                    if (kept) {
+                        Object.assign(e, kept);
+                    }
                     return e;
                 } );
             } );

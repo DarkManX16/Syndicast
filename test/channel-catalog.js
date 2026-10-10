@@ -68,6 +68,16 @@ module.exports = async function run() {
         suite.check('two ops at once both land',
             both.length === 2 && Object.keys(final.neverAir).sort().join() === 'srv|/library/metadata/3,srv|/library/metadata/4', Object.keys(final.neverAir).join());
 
+        // Renumbering: the channel page saves under the new number, then deletes the old one.
+        await service.saveChannel(9, Object.assign(channel(9, 'Seven, renumbered'), { catalogFrom: 7 }), { keepCatalog: true });
+        await service.deleteChannel(7);
+        const moved = await service.getCatalog(9);
+        const movedFile = JSON.parse(fs.readFileSync(path.join(channels, '9.json'), 'utf8'));
+        suite.check('renumbering a channel keeps its catalog',
+            Object.keys(moved.neverAir).length === 2 && !!moved.shows['tv.Futurama'] && movedFile.catalogFrom === undefined, JSON.stringify(moved));
+        await service.saveChannel(7, channel(7, 'Seven'));
+        await service.applyCatalogOps(7, [{ neverAir: [entry(3), entry(4)] }]);
+
         let threw = null;
         try { await service.applyCatalogOps(7, [{ explode: 1 }]); } catch (err) { threw = err; }
         suite.check('a bad op is refused and nothing is saved', threw !== null && Object.keys((await service.getCatalog(7)).neverAir).length === 2);

@@ -17,12 +17,18 @@ class ChannelService extends events.EventEmitter {
 
     async saveChannel(number, channelJson, options) {
 
+        // A renumber saves under the new number with catalogFrom, the old one.
+        let catalogFrom = channelJson.catalogFrom;
+        delete channelJson.catalogFrom;
         let channel = cleanUpChannel(channelJson);
         if ( (typeof(options) === 'object') && (options !== null) && (options.keepCatalog === true) ) {
             // channel.catalog belongs to the catalog ops below: a save from the
             // channel page keeps the stored one, so a page opened before a
             // review can't undo it.
             let stored = await this.getChannel(number);
+            if ( (stored == null) && (typeof(catalogFrom) !== 'undefined') ) {
+                stored = await this.getChannel(catalogFrom);
+            }
             if ( (stored != null) && (typeof(stored.catalog) === 'object') && (stored.catalog !== null) ) {
                 channel.catalog = JSON.parse(JSON.stringify(stored.catalog));
             } else {

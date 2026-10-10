@@ -115,6 +115,35 @@ module.exports = async function () {
             JSON.stringify({ fresh: Object.keys(run.fresh), complete: run.complete }));
     }
 
+    {
+        // A catalog read that came back short - Plex lost the show, or listed nothing - isn't "complete".
+        const run = catalog.poolFor({ lineupPool, slotted, catalogs: { 'tv.Doug': { items: [], source: {} }, 'tv.Wings': { items: [wings[0]], source: {} } }, state: catalog.emptyState(), getShowData });
+        suite.check('a show is complete only when its catalog holds its whole lineup', run.complete.join() === 'tv.Wings', run.complete.join());
+    }
+    {
+        // A re-roll shows no notes: newcomers it didn't name stay new for the next dialog.
+        const state = catalog.applyOps(catalog.emptyState(), [{ review: { showId: 'tv.Wings', source: {}, specials: false, known: wings.slice(0, 4).map(keyOf), neverAir: [] } }], NOW);
+        const run = catalog.poolFor({ lineupPool, slotted, catalogs: { 'tv.Doug': { items: lineupDoug, source: {} }, 'tv.Wings': catalogs['tv.Wings'] }, state, getShowData });
+        const shown = catalog.knownAfter(run, true), unshown = catalog.knownAfter(run, false);
+        suite.check('knownAfter keeps newcomers new when they weren\'t named',
+            shown['tv.Wings'].length === 5 && unshown['tv.Wings'].length === 4 && !unshown['tv.Wings'].includes(keyOf(wings[4])) && unshown['tv.Doug'].length === 2,
+            JSON.stringify({ shown: shown['tv.Wings'].length, unshown: unshown['tv.Wings'].length }));
+    }
+    {
+        // The Catalog page rebuilds its rows after every save; what Ron ticked on other shows survives.
+        const state = catalog.emptyState();
+        const before = catalog.reviewList({ lineupPool, catalogs, state, getShowData });
+        const wingsRow = before.find((r) => r.showId === 'tv.Wings');
+        const choices = { 'tv.Wings': { open: true, episodes: { [keyOf(wings[1])]: { ticked: false, touched: true, reason: 'holiday', holiday: 'Easter' } } } };
+        const after = catalog.reviewList({ lineupPool, catalogs, state, getShowData });
+        const carried = catalog.carryChoices(choices, after);
+        const w = carried.find((r) => r.showId === 'tv.Wings');
+        const e = w.seasons[0].episodes.find((p) => keyOf(p) === keyOf(wings[1]));
+        suite.check('carryChoices keeps a row open and its unsaved choices across a rebuild',
+            wingsRow && w.open === true && w.choices[keyOf(wings[1])].ticked === false && w.choices[keyOf(wings[1])].holiday === 'Easter' && e !== undefined,
+            JSON.stringify(w && w.choices));
+    }
+
     suite.log('-- the list --');
     {
         const ops = [
@@ -150,6 +179,15 @@ module.exports = async function () {
         suite.check('...and not inside other words',
             ['Eastern Promise', 'Cupidity', 'Santana', 'Pilgrimage Road'].map(catalog.holidayOf).every((h) => h === null));
         suite.check('...curly apostrophes too', catalog.holidayOf('Mother’s Day') === "Mother's Day");
+        // Titles from Ron's own review lists that the first words missed (final review, Oct 10).
+        const missed = { 'Turkey Jerky': 'Thanksgiving', "Ed, Edd n Eddy's Jingle Jingle Jangle": 'Christmas', 'Road to the North Pole': 'Christmas',
+            'The Futurama Holiday Spectacular': 'Christmas', 'Deck the Halls': 'Christmas', 'Deck the Malls': 'Christmas', 'For Whom the Jingle Bell Tolls': 'Christmas',
+            'Home for the Holidays': 'Christmas', 'A Rugrats Kwanzaa': 'Kwanzaa', 'Seven Days of Kwanzaa': 'Kwanzaa', 'A London Carol': 'Christmas',
+            "It's the Great Pumpkin, Juniper Lee": 'Halloween', 'Night of The Day of the Dead': 'Halloween', 'Labor Day': 'Labor Day',
+            'The Turkey Who Came to Dinner': 'Thanksgiving', 'Krampus Night': 'Christmas', 'Passover Story': 'Passover', 'Memorial Day': 'Memorial Day' };
+        const got = Object.keys(missed).filter((t) => catalog.holidayOf(t) !== missed[t]).map((t) => `${t} -> ${catalog.holidayOf(t)}`);
+        suite.check('...and the words Ron\'s lists use', got.length === 0, got.join('; '));
+        suite.check('...still not inside other words', ['Elfman Returns', 'Carolina Blues', 'Laborious', 'Deckhand'].map(catalog.holidayOf).every((h) => h === null));
         const xmasLong = episode('Doug', 1, 9, { title: "Doug's Christmas Story", duration: 44 * MIN });
         const long = episode('Doug', 1, 10, { title: 'Doug Takes the Case', duration: 31 * MIN + 20 * 1000 });
         const a = catalog.preUntick(xmasLong, catalog.DEFAULT_LIMIT_MS), b = catalog.preUntick(long, catalog.DEFAULT_LIMIT_MS);

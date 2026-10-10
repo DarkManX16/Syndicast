@@ -610,7 +610,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                         schedule: scope.schedule,
                         getShowData: getShowData,
                     });
-                    history = h.history.filter( (a) => ! showCatalog.isNeverAir(catalogStateNow(), a.program) );
+                    let stateForHistory = catalogStateNow();
+                    history = h.history.filter( (a) => ! showCatalog.isNeverAir(stateForHistory, a.program) );
                     scope.schedule.progress.history = h.keep;
                 }
                 let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history );
@@ -625,7 +626,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 delete res.schedule.fake;
                 res.catalogOps = run.complete.map( (id) => ({ review: { showId: id, by: 'complete', source: catalogs[id].source,
                     specials: id.startsWith('custom.') || showCatalog.specialsAllowed(lineupItemsOf(id)), known: run.known[id], neverAir: [] } }) )
-                    .concat( [ { neverAir: scope.catalog.leftOut.slice() }, { known: run.known } ] );
+                    .concat( [ { neverAir: scope.catalog.leftOut.slice() }, { known: showCatalog.knownAfter(run, scope.catalog.named) } ] );
                 seasonConstraints.clearStartSeasons(res.schedule);
                 return res;
             }
@@ -641,8 +642,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 catalogs = {};
                 reading = null;
                 lastRun = null;
+                //A re-roll shows no notes, so its newcomers stay new for next time.
                 scope.catalog = { state: catalogState || showCatalog.emptyState(), channelNumber: (catalogState && catalogState.channelNumber) || null,
-                    leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0 };
+                    leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0, named: ! instant };
                 orderOptionsByShow = new Map();
                 scope.lineup = lineup;
                 //The schedule the lineup on air was made from, as it was saved,

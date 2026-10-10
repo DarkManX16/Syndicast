@@ -280,7 +280,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 seasonConstraints.clearStartSeasons(res.schedule);
                 res.catalogOps = run.complete.map( (id) => ({ review: { showId: id, by: 'complete', source: catalogs[id].source,
                     specials: id.startsWith('custom.') || showCatalog.specialsAllowed( (scope.programs || []).filter( (p) => getShowData(p).showId === id ) ),
-                    known: run.known[id], neverAir: [] } }) ).concat( [ { known: run.known } ] );
+                    known: run.known[id], neverAir: [] } }) ).concat( [ { known: showCatalog.knownAfter(run, false) } ] );
                 return res;
             }
 
