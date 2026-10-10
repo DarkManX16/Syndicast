@@ -116,6 +116,26 @@ function ref(program, getShowData) {
 }
 
 /*
+ * Where a reference sits in a position's candidates, sorted by order: the
+ * same file when it is still there, wherever the custom show or range has
+ * moved it; otherwise the first episode at or after its order, which is the
+ * next one along; past the end, the first, as a Play Next position wraps.
+ */
+function resolveRef(refValue, sortedCandidates, getShowData) {
+    for (let i = 0; i < sortedCandidates.length; i++) {
+        if (ref(sortedCandidates[i], getShowData).key === refValue.key) {
+            return i;
+        }
+    }
+    for (let i = 0; i < sortedCandidates.length; i++) {
+        if (getShowData(sortedCandidates[i]).order >= refValue.order) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+/*
  * The generator's own arithmetic for which slot covers an instant -
  * localMsIntoPeriod and findSlot in time-slots-service.js, which
  * test/dst-fall-back.js lifts to check this agrees with through a
@@ -248,6 +268,7 @@ module.exports = {
     label: label,
     parseLabel: parseLabel,
     ref: ref,
+    resolveRef: resolveRef,
     slotAt: slotAt,
     slotFinder: slotFinder,
     readPlaces: readPlaces,

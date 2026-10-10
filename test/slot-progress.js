@@ -200,6 +200,30 @@ module.exports = async function () {
             titleOf(place) === `${JB} S4E2` && place.round === 3 && place.legacyShuffleOrder === null);
     }
 
+    suite.log('-- references --');
+    {
+        const custom = (title, order) => ({
+            type: 'episode', showTitle: 'Tom and Jerry', title, season: 1, episode: order + 1,
+            customShowId: 'tj', customShowName: 'Tom & Jerry', customOrder: order,
+            duration: 7 * MIN, serverKey: 'srv', key: '/tj/' + title,
+        });
+        const before = ['Puss Gets the Boot', 'The Midnight Snack', 'The Night Before Christmas', 'Fraidy Cat']
+            .map((title, i) => custom(title, i));
+        const place = slotProgress.ref(before[2], getShowData);
+        // An item inserted at the front of the custom show moves every order on by one.
+        const after = [custom('Dog Trouble', 0)].concat(before.map((p, i) => custom(p.title, i + 1)));
+        const index = slotProgress.resolveRef(place, after, getShowData);
+        suite.check('a reference resolves by key', after[index].title === 'The Night Before Christmas' && index === 3,
+            `${index}: ${after[index] && after[index].title}`);
+
+        const seasons = [episode(JB, 1, 1), episode(JB, 1, 3), episode(JB, 2, 1)];
+        const gone = { key: `srv|/e/${JB}/1/2`, order: 1000002 };
+        suite.check('a gone episode resolves to the next one',
+            slotProgress.resolveRef(gone, seasons, getShowData) === 1);
+        suite.check('past the end wraps to the first',
+            slotProgress.resolveRef({ key: 'srv|/gone', order: 9000001 }, seasons, getShowData) === 0);
+    }
+
     suite.log('-- slotAt --');
     {
         const schedule = jbSlots();
