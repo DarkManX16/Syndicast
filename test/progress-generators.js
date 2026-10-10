@@ -12,6 +12,7 @@ const { MIN, HOUR, DAY, Suite } = require('./support');
 const timeSlotsService = require('../src/services/time-slots-service');
 const randomSlotsService = require('../src/services/random-slots-service');
 const slotProgress = require('../src/slot-progress');
+const rounds = require('../src/shuffle-rounds');
 const getShowData = require('../src/services/get-show-data')();
 
 const WEEK = 7 * DAY;
@@ -114,8 +115,9 @@ module.exports = async function () {
             nextAirings.filter((a) => typeof a.program.shuffleOrder !== 'undefined').length + ' carry one');
 
         const shuffleAirings = shows.filter((a) => /^shuffle\|/.test(a.program.slotPosition));
-        suite.check('...Shuffle airings still carry the old shuffler\'s number',
-            shuffleAirings.length > 0 && shuffleAirings.every((a) => typeof a.program.shuffleOrder === 'number'));
+        suite.check('...Shuffle airings carry their round, and no number',
+            shuffleAirings.length > 0 && shuffleAirings.every((a) => typeof a.program.shuffleOrder === 'undefined'
+                && typeof slotProgress.parseLabel(a.program.slotPosition).round === 'number'));
 
         suite.check('...and each airing is its own copy',
             new Set(res.programs.filter((p) => !p.isOffline)).size === res.programs.filter((p) => !p.isOffline).length);
@@ -160,8 +162,16 @@ module.exports = async function () {
         };
         const shuffled = withStarts(await generate(jbPool(), legacy, NOW))
             .filter((a) => /^shuffle\|/.test(a.program.slotPosition || '') && a.start >= NOW);
-        suite.check('a Shuffle record starts the old shuffler at its number',
-            shuffled.length > 0 && shuffled[0].program.shuffleOrder === 5, shuffled.length ? String(shuffled[0].program.shuffleOrder) : 'none');
+        const oldRound = rounds.legacyRound(seasons('Hey Arnold!', 2, 10), 'tv.Hey Arnold!', 0);
+        suite.check('a carried Shuffle number finishes the old round first',
+            shuffled.length >= 15 && shuffled.slice(0, 15).map((a) => a.program.title).join() === oldRound.slice(5).map((p) => p.title).join(),
+            shuffled.slice(0, 3).map((a) => a.program.title).join() + ' vs ' + oldRound.slice(5, 8).map((p) => p.title).join());
+
+        const ranged = jbSchedule();
+        ranged.slots.find((s) => s.order === 'shuffle').seasons = { excludeSeasons: [1] };
+        const rangedAirings = withStarts(await generate(jbPool(), ranged, NOW)).filter((a) => /^shuffle\|/.test(a.program.slotPosition || ''));
+        suite.check('season settings apply to Shuffle',
+            rangedAirings.length > 10 && rangedAirings.every((a) => a.program.season === 2 && a.program.slotPosition.startsWith('shuffle|1|')));
     }
 
     suite.log('-- random slots --');

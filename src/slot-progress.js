@@ -14,6 +14,9 @@
  * built on it".
  */
 
+const rounds = require('./shuffle-rounds');
+const multiPart = require('./multi-part');
+
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
 
@@ -133,9 +136,7 @@ function parseLabel(text) {
  * index into them would not.
  */
 function ref(program, getShowData) {
-    let server = (typeof(program.serverKey) === 'undefined') ? 'unknown' : program.serverKey;
-    let key = (typeof(program.key) === 'undefined') ? 'unknown' : program.key;
-    return { key: server + '|' + key, order: getShowData(program).order };
+    return { key: rounds.fileKey(program), order: getShowData(program).order };
 }
 
 /*
@@ -428,12 +429,100 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         return false;
     };
 
+    let isRecord = (value) => (typeof(value) === 'object') && (value !== null);
+
+    // A position's candidates as its rounds see them: stories, with movies
+    // outside custom shows left single.
+    let storiesFor = (showId, constraint) => {
+        let candidates = candidatesFor(pool, showId, constraint, getShowData);
+        return (showId === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
+    };
+
+    // The deferred stories of `round`, from the record of the last run: its
+    // own when the round is the same, else the later half of each round since,
+    // rebuilt in order - the generator laid those rounds out from that record.
+    let deferredFor = (key, stories, prior, round) => {
+        if ( ! isRecord(prior) || (typeof(prior.round) !== 'number') || (prior.round > round) || (round - prior.round > 1000) ) {
+            return new Set();
+        }
+        if (prior.round === round) {
+            return Array.isArray(prior.queue) ? new Set() : new Set(prior.deferred || []);
+        }
+        let later = Array.isArray(prior.queue)
+            ? new Set(prior.laterHalf || [])
+            : rounds.laterHalfOf( rounds.roundOrder({ seed: key, round: prior.round, stories: stories, laterHalf: new Set(prior.deferred || []) }) );
+        for (let r = prior.round + 1; r < round; r++) {
+            later = rounds.laterHalfOf( rounds.roundOrder({ seed: key, round: r, stories: stories, laterHalf: later }) );
+        }
+        return later;
+    };
+
+    /*
+     * A shuffle-family position's record from its place. An airing of the old
+     * shuffler carries its number: the rest of that round is reproduced over
+     * the show's whole sorted list, since the old shuffler ignored seasons. A
+     * labelled airing gives its round; inside a carried round, the rest of the
+     * queue from it.
+     */
+    let roundRecord = (key, place) => {
+        let [ showId, , excluded ] = JSON.parse(key);
+        if (typeof(place.legacyShuffleOrder) === 'number') {
+            return rounds.legacyCarry(candidatesFor(pool, showId, undefined, getShowData), showId,
+                place.legacyShuffleOrder, (p) => getShowData(p).order, place.program);
+        }
+        if (typeof(place.round) !== 'number') {
+            return null;
+        }
+        let prior = oldRecords[key];
+        let here = rounds.fileKey(place.program);
+        if ( isRecord(prior) && Array.isArray(prior.queue) && (prior.round === place.round) ) {
+            let i = prior.queue.findIndex( (r) => r.key === here );
+            if (i !== -1) {
+                return { round: place.round, queue: prior.queue.slice(i), laterHalf: (prior.laterHalf || []).slice() };
+            }
+        }
+        let stories = storiesFor(showId, { excludeSeasons: excluded });
+        return {
+            round: place.round,
+            next: ref(place.program, getShowData),
+            deferred: [ ...deferredFor(key, stories, prior, place.round) ],
+        };
+    };
+
     let fromPlace = (key, place) => {
         let mode = JSON.parse(key)[1];
-        if (mode === 'shuffle') {
-            return (typeof(place.legacyShuffleOrder) === 'number') ? { legacyShuffleOrder: place.legacyShuffleOrder } : null;
+        if (ROUND_MODES.indexOf(mode) !== -1) {
+            return roundRecord(key, place);
         }
         return { next: ref(place.program, getShowData), wrapped: wrappedSince(key, place) };
+    };
+
+    // The rest of an old shuffle-family position's round, in its order, as
+    // episode references, with the later half that goes last after it.
+    let restOfRound = (oldKey, record) => {
+        if (Array.isArray(record.queue)) {
+            return { refs: record.queue, laterHalf: record.laterHalf || [] };
+        }
+        if (typeof(record.round) !== 'number') {
+            return null;
+        }
+        let [ showId, , excluded ] = JSON.parse(oldKey);
+        let order = rounds.roundOrder({ seed: oldKey, round: record.round,
+            stories: storiesFor(showId, { excludeSeasons: excluded }), laterHalf: new Set(record.deferred || []) });
+        let start = 0;
+        let part = 0;
+        if (isRecord(record.next)) {
+            let i = order.findIndex( (story) => story.some( (p) => rounds.fileKey(p) === record.next.key ) );
+            if (i !== -1) {
+                start = i;
+                part = order[i].findIndex( (p) => rounds.fileKey(p) === record.next.key );
+            }
+        }
+        let refs = [];
+        order.slice(start).forEach( (story, j) => {
+            story.slice( (j === 0) ? part : 0 ).forEach( (p) => refs.push( ref(p, getShowData) ) );
+        } );
+        return { refs: refs, laterHalf: [ ...rounds.laterHalfOf(order) ] };
     };
 
     // Where an old position is now, by the same rules 2 and 3.
@@ -467,13 +556,13 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
                 return;
             }
             let oldPlace = placeOfOld(oldKey);
-            if ( (oldPlace === null) || (typeof(oldPlace.next) !== 'object') ) {
+            if ( ! isRecord(oldPlace) || ( ! isRecord(oldPlace.next) && ! Array.isArray(oldPlace.queue) ) ) {
                 return;
             }
             let wait = nextStartAfterNow(slot);
             if (wait < bestWait) {
                 bestWait = wait;
-                best = oldPlace;
+                best = { key: oldKey, record: oldPlace };
             }
         } );
         if (best === null) {
@@ -483,7 +572,23 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         if (candidates.length === 0) {
             return null;
         }
-        return { next: ref(candidates[ resolveRef(best.next, candidates, getShowData) ], getShowData), wrapped: false };
+        if (ROUND_MODES.indexOf(group.mode) !== -1) {
+            // The rest of the old round, without what the new range leaves out.
+            let rest = restOfRound(best.key, best.record);
+            if (rest === null) {
+                return null;
+            }
+            let inRange = new Set( candidates.map( (p) => rounds.fileKey(p) ) );
+            return {
+                round: (typeof(best.record.round) === 'number') ? best.record.round : 0,
+                queue: rest.refs.filter( (r) => inRange.has(r.key) ),
+                laterHalf: rest.laterHalf.filter( (k) => inRange.has(k) ),
+            };
+        }
+        if (! isRecord(best.record.next) ) {
+            return null;
+        }
+        return { next: ref(candidates[ resolveRef(best.record.next, candidates, getShowData) ], getShowData), wrapped: false };
     };
 
     let positions = {};
@@ -506,13 +611,14 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
             record = oldRecords[key];
         }
         let timed = group.slots.some( (slot) => typeof(slot.time) === 'number' );
-        if ( (record === null) && timed && (group.mode === 'next') ) {
+        let rounded = ROUND_MODES.indexOf(group.mode) !== -1;
+        if ( (record === null) && timed && ( (group.mode === 'next') || rounded ) ) {
             record = inherited(key, group);
         }
-        if ( (record === null) && timed && (group.mode === 'next') && ! oldGroups.has(key) ) {
+        if ( (record === null) && timed && ( (group.mode === 'next') || rounded ) && ! oldGroups.has(key) ) {
             let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
             if (candidates.length > 0) {
-                record = { next: ref(candidates[0], getShowData), wrapped: false };
+                record = rounded ? { round: 0, deferred: [] } : { next: ref(candidates[0], getShowData), wrapped: false };
             }
         }
         if (group.mode === 'next') {

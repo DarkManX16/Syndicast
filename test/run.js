@@ -47,6 +47,7 @@ const suites = [
     './slot-progress',
     './progress-generators',
     './multi-part',
+    './shuffle-rounds',
 ];
 
 (async () => {

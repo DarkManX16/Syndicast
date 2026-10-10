@@ -10,6 +10,8 @@
  */
 const { MIN, HOUR, DAY, Suite } = require('./support');
 const slotProgress = require('../src/slot-progress');
+const rounds = require('../src/shuffle-rounds');
+const multiPart = require('../src/multi-part');
 const getShowData = require('../src/services/get-show-data')();
 
 const WEEK = 7 * DAY;
@@ -308,10 +310,56 @@ module.exports = async function () {
             openedSchedule: doug, schedule: dougNext, pool, getShowData });
         suite.check('a mode change starts at the first episode',
             modeChange.positions[slotProgress.positionKey('tv.Doug', 'next', undefined)].next.key === slotProgress.ref(episode('Doug', 1, 1), getShowData).key);
+        const DOUG = slotProgress.positionKey('tv.Doug', 'shuffle', undefined);
+        const dougSorted = [1, 2, 3].map((e) => episode('Doug', 1, e));
         const kept = slotProgress.planProgress({ programs: dougLineup, startTime: THU, now: NOW,
-            openedSchedule: doug, schedule: doug, pool, getShowData });
-        suite.check('a Shuffle position carries the old shuffler\'s number',
-            JSON.stringify(kept.positions[slotProgress.positionKey('tv.Doug', 'shuffle', undefined)]) === '{"legacyShuffleOrder":2}');
+            openedSchedule: doug, schedule: doug, pool, getShowData }).positions[DOUG];
+        const oldRound = rounds.legacyRound(dougSorted, 'tv.Doug', 0);
+        suite.check('a Shuffle position\'s old number becomes the rest of its round',
+            kept && kept.round === 0 && kept.queue.map((r) => r.key).join() === oldRound.slice(2).map((p) => slotProgress.ref(p, getShowData).key).join()
+                && kept.laterHalf.length === 1 && kept.laterHalf[0] === slotProgress.ref(oldRound[2], getShowData).key,
+            JSON.stringify(kept));
+
+        // A labelled lineup: the place's round, and the deferred stories of that round.
+        const dougStories = multiPart.stories(dougSorted);
+        const labelledDoug = lineup(THU, [[at(Sat, 6), episode('Doug', 1, 2, { slotPosition: 'shuffle||4' })]]);
+        const asOfDoug = (record) => Object.assign({}, doug, { progress: { asOf: new Date(NOW - DAY).toISOString(), positions: { [DOUG]: record } } });
+        const k3 = slotProgress.ref(episode('Doug', 1, 3), getShowData).key;
+        const same4 = slotProgress.planProgress({ programs: labelledDoug, startTime: THU, now: NOW,
+            openedSchedule: asOfDoug({ round: 4, next: slotProgress.ref(episode('Doug', 1, 1), getShowData), deferred: [k3] }), schedule: doug, pool, getShowData }).positions[DOUG];
+        suite.check('a labelled Shuffle place gives its round, next and deferred',
+            same4.round === 4 && same4.next.key === slotProgress.ref(episode('Doug', 1, 2), getShowData).key && same4.deferred.join() === k3,
+            JSON.stringify(same4));
+        const chained = slotProgress.planProgress({ programs: labelledDoug, startTime: THU, now: NOW,
+            openedSchedule: asOfDoug({ round: 2, next: slotProgress.ref(episode('Doug', 1, 1), getShowData), deferred: [] }), schedule: doug, pool, getShowData }).positions[DOUG];
+        const r2 = rounds.roundOrder({ seed: DOUG, round: 2, stories: dougStories, laterHalf: new Set() });
+        const r3 = rounds.roundOrder({ seed: DOUG, round: 3, stories: dougStories, laterHalf: rounds.laterHalfOf(r2) });
+        suite.check('...and rounds that passed in the lineup chain their later halves',
+            chained.round === 4 && chained.deferred.join() === [...rounds.laterHalfOf(r3)].join(), JSON.stringify(chained));
+        const queued = slotProgress.planProgress({ programs: labelledDoug, startTime: THU, now: NOW,
+            openedSchedule: asOfDoug({ round: 4, queue: [3, 2, 1].map((e) => slotProgress.ref(episode('Doug', 1, e), getShowData)), laterHalf: [k3] }), schedule: doug, pool, getShowData }).positions[DOUG];
+        suite.check('...a place inside a carried round keeps the rest of it',
+            queued.round === 4 && queued.queue.map((r) => r.key).join() === [2, 1].map((e) => slotProgress.ref(episode('Doug', 1, e), getShowData).key).join()
+                && queued.laterHalf.join() === k3, JSON.stringify(queued));
+
+        // Saturday's Shuffle slot gets a range: the rest of its old round, minus what the range leaves out.
+        const twoSeasons = pool.concat([1, 2].map((e) => episode('Doug', 2, e)));
+        const dougTwo = { period: WEEK, slots: [{ time: slotTime(Sat, 6), showId: 'tv.Doug', order: 'shuffle' }] };
+        const dougRanged = { period: WEEK, slots: [{ time: slotTime(Sat, 6), showId: 'tv.Doug', order: 'shuffle', seasons: { excludeSeasons: [2] } }] };
+        const allDoug = multiPart.stories([1, 2, 3].map((e) => episode('Doug', 1, e)).concat([1, 2].map((e) => episode('Doug', 2, e))));
+        const oldOrder = rounds.roundOrder({ seed: DOUG, round: 4, stories: allDoug, laterHalf: new Set() });
+        const placeStory = oldOrder[1];
+        const rangeChange = slotProgress.planProgress({ programs: lineup(THU, [[at(Sat, 6), Object.assign({}, placeStory[0], { slotPosition: 'shuffle||4' })]]),
+            startTime: THU, now: NOW, openedSchedule: dougTwo, schedule: dougRanged, pool: twoSeasons, getShowData })
+            .positions[slotProgress.positionKey('tv.Doug', 'shuffle', { excludeSeasons: [2] })];
+        const expectedQueue = oldOrder.slice(1).map((s) => s[0]).filter((p) => p.season === 1).map((p) => slotProgress.ref(p, getShowData).key);
+        suite.check('a Shuffle slot\'s range change carries the rest of its old round',
+            rangeChange && rangeChange.queue.map((r) => r.key).join() === expectedQueue.join(), JSON.stringify(rangeChange));
+
+        const newShuffle = slotProgress.planProgress({ programs: savedLineup(), startTime: THU, now: NOW,
+            openedSchedule: jbSlots(), schedule: { period: WEEK, slots: jbSlots().slots.concat([{ time: slotTime(Mon, 6), showId: 'tv.Doug', order: 'shuffle' }]) }, pool, getShowData });
+        suite.check('a new Shuffle position starts its first round',
+            JSON.stringify(newShuffle.positions[DOUG]) === JSON.stringify({ round: 0, deferred: [] }));
 
         const unused = jbSlots();
         unused.progress = { asOf: new Date(NOW - DAY).toISOString(), positions: { '["tv.Gone","next",[]]': { next: { key: 'srv|/gone', order: 5 }, wrapped: true } } };

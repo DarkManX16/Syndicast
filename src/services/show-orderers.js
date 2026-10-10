@@ -1,8 +1,7 @@
-const random = require('../helperFuncs').random;
 const getShowData = require("./get-show-data")();
 const slotProgress = require('../slot-progress');
-const randomJS = require("random-js");
-const Random = randomJS.Random;
+const rounds = require('../shuffle-rounds');
+const multiPart = require('../multi-part');
 
 
 
@@ -12,36 +11,14 @@ const Random = randomJS.Random;
  * of episodes
  *
  **/
-function shuffle(array, lo, hi, randomOverride ) {
-    let r = randomOverride;
-    if (typeof(r) === 'undefined') {
-        r = random;
-    }
-    if (typeof(lo) === 'undefined') {
-        lo = 0;
-        hi = array.length;
-    }
-    let currentIndex = hi, temporaryValue, randomIndex
-    while (lo !== currentIndex) {
-        randomIndex =  r.integer(lo, currentIndex-1);
-        currentIndex -= 1
-        temporaryValue = array[currentIndex]
-        array[currentIndex] = array[randomIndex]
-        array[randomIndex] = temporaryValue
-    }
-    return array
-}
-
 
 const seasonOf = slotProgress.seasonOf;
 const applySeasonExclusions = slotProgress.applySeasonExclusions;
 
 /*
  * A season constraint is { excludeSeasons: [..], startSeason: n }, both
- * optional, and it comes from a slot rather than from a show. Only "Play Next"
- * honours it so far: the old shuffler seeds its permutation over the candidate
- * count and stores the resulting position on each program, so changing that
- * count silently changes what a saved position means.
+ * optional, and it comes from a slot rather than from a show. Every mode
+ * honours the exclusions; startSeason is a seek, for Play Next.
  *
  * Which place a slot uses is its position - show, mode and excluded seasons,
  * see slotProgress.positionKey - so a weekday block advances as a single
@@ -137,87 +114,33 @@ function playNext(show, constraint, record) {
 }
 
 /*
- * The old shuffler, unchanged but for where it starts: a stored number when
- * the position has one, else the founder's, as before. Its permutation is
- * seeded over the candidate count, so the number means nothing once that count
- * changes; rounds kept by episode replace it.
+ * A Shuffle position: rounds of its stories, from its record - see
+ * shuffle-rounds.js. A record written while the old shuffler still ran holds
+ * just its number; that becomes the rest of the old round, played first.
  */
-function oldShuffler(show, constraint, record) {
-    if (typeof(show.programs) === 'undefined') {
-        throw Error(show.id + " has no programs?")
+function shuffled(show, mode, constraint, record, key) {
+    let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
+    let stories = (show.id === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
+    let start = record;
+    if ( (typeof(record) === 'object') && (record !== null) && (typeof(record.legacyShuffleOrder) === 'number') ) {
+        start = rounds.legacyCarry(sortedPrograms(show), show.id, record.legacyShuffleOrder, (p) => getShowData(p).order);
     }
-
-    let sorted = sortedPrograms(show);
-    let n = sorted.length;
-
-    let splitPrograms = [];
-    let randomPrograms = [];
-
-    for (let i = 0; i < n; i++) {
-        splitPrograms.push( sorted[i] );
-        randomPrograms.push( {} );
-    }
-
-    let showId = getShowData(show.programs[0]).showId;
-
-    let position = ( (typeof(record) === 'object') && (record !== null) && (typeof(record.legacyShuffleOrder) === 'number') )
-        ? record.legacyShuffleOrder
-        : show.founder.shuffleOrder;
-    if (typeof(position) === 'undefined') {
-        position = 0;
-    }
-
-    let localRandom = null;
-
-    let initGeneration = (generation) => {
-        let seed = [];
-        for (let i = 0 ; i < show.showId.length; i++) {
-            seed.push( showId.charCodeAt(i) );
-        }
-        seed.push(generation);
-
-        localRandom = new Random( randomJS.MersenneTwister19937.seedWithArray(seed) )
-
-        if (generation == 0) {
-            shuffle( splitPrograms, 0, n , localRandom );
-        }
-        for (let i = 0; i < n; i++) {
-            randomPrograms[i] = splitPrograms[i];
-        }
-        let a = Math.floor(n / 2);
-        shuffle( randomPrograms, 0, a,  localRandom );
-        shuffle( randomPrograms, a, n,  localRandom );
-    };
-    initGeneration(0);
-    let generation = Math.floor( position / n );
-    initGeneration( generation );
-
+    let player = rounds.player({ seed: key, stories: stories, record: start });
     return {
-        mode: 'shuffle',
-        current : () => {
-            let prog = JSON.parse(
-                JSON.stringify(randomPrograms[position % n] )
-            );
-            delete prog.slotPosition;
-            prog.shuffleOrder = position;
-            prog.slotPosition = slotProgress.label('shuffle', constraint, Math.floor(position / n));
-            return prog;
+        mode: mode,
+        current: () => {
+            let c = player.current();
+            return (c === null) ? null : labelled(c.program, slotProgress.label(mode, constraint, c.round));
         },
-
-        next: () => {
-            position++;
-            if (position % n == 0) {
-                let generation = Math.floor( position / n );
-                initGeneration( generation );
-            }
-        },
+        next: () => player.next(),
     };
 }
 
 /*
  * The positions of one generator run. Each starts from its record in
  * schedule.progress - written by the editor when Create Lineup runs, from the
- * lineup on air - and, with none, from the founder rule as before.
+ * lineup on air - and, with none, a Play Next position from the founder rule
+ * as before, a Shuffle one from the start of its first round.
  *
  * `shows` is the services' list: each with its `id`, `programs` and `founder`.
  */
@@ -238,7 +161,7 @@ function createPositions({ shows, schedule }) {
                 let show = byId.get(slot.showId);
                 let record = records[key];
                 positions.set(key, (slot.order === 'shuffle')
-                    ? oldShuffler(show, constraint, record)
+                    ? shuffled(show, slot.order, constraint, record, key)
                     : playNext(show, constraint, record) );
             }
             return positions.get(key);
