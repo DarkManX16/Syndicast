@@ -251,6 +251,27 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
        res.status(500).send("error");
       }
     })
+    // A channel's full-catalog state and the ops that change it - see
+    // src/show-catalog.js. Channel saves above keep it; only these write it.
+    router.get('/api/channel/:number/catalog', async (req, res) => {
+      try {
+        res.send( await channelService.getCatalog( parseInt(req.params.number, 10) ) );
+      } catch(err) {
+        console.error(err);
+        res.status(404).send(err.message);
+      }
+    })
+    router.post('/api/channel/:number/catalog', async (req, res) => {
+      try {
+        if (! Array.isArray(req.body.ops)) {
+          return res.status(400).send('ops must be a list');
+        }
+        res.send( await channelService.applyCatalogOps( parseInt(req.params.number, 10), req.body.ops ) );
+      } catch(err) {
+        console.error(err);
+        res.status(400).send(err.message);
+      }
+    })
     router.get('/api/channel/:number', async (req, res) => {
       try {
         let number = parseInt(req.params.number, 10);
@@ -379,7 +400,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     // we urgently need an actual channel service
     router.post('/api/channel', async (req, res) => {
       try {
-        await channelService.saveChannel( req.body.number, req.body );
+        await channelService.saveChannel( req.body.number, req.body, { keepCatalog: true } );
         res.send( { number: req.body.number} )
       } catch(err) {
         console.error(err);
@@ -388,7 +409,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     })
     router.put('/api/channel', async (req, res) => {
       try {
-        await channelService.saveChannel( req.body.number, req.body );
+        await channelService.saveChannel( req.body.number, req.body, { keepCatalog: true } );
         res.send( { number: req.body.number} )
       } catch(err) {
         console.error(err);

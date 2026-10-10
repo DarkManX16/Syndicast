@@ -1,5 +1,6 @@
 const events = require('events')
 const channelCache = require("../channel-cache");
+const showCatalog = require("../show-catalog");
 
 class ChannelService extends events.EventEmitter {
 
@@ -7,6 +8,7 @@ class ChannelService extends events.EventEmitter {
         super();
         this.channelDB = channelDB;
         this.onDemandService = null;
+        this.catalogQueue = new Map();
     }
 
     setOnDemandService(onDemandService) {
@@ -14,8 +16,19 @@ class ChannelService extends events.EventEmitter {
     }
 
     async saveChannel(number, channelJson, options) {
-        
+
         let channel = cleanUpChannel(channelJson);
+        if ( (typeof(options) === 'object') && (options !== null) && (options.keepCatalog === true) ) {
+            // channel.catalog belongs to the catalog ops below: a save from the
+            // channel page keeps the stored one, so a page opened before a
+            // review can't undo it.
+            let stored = await this.getChannel(number);
+            if ( (stored != null) && (typeof(stored.catalog) === 'object') && (stored.catalog !== null) ) {
+                channel.catalog = JSON.parse(JSON.stringify(stored.catalog));
+            } else {
+                delete channel.catalog;
+            }
+        }
         let ignoreOnDemand = true;
         if (
             (this.onDemandService != null)
@@ -29,6 +42,34 @@ class ChannelService extends events.EventEmitter {
         await channelDB.saveChannel( number, channel );
 
         this.emit('channel-update', { channelNumber: number,  channel: channel, ignoreOnDemand: ignoreOnDemand} );
+    }
+
+    // The channel's full-catalog state - see src/show-catalog.js.
+    async getCatalog(number) {
+        let channel = await this.getChannel(number);
+        if (channel == null) {
+            throw new Error('No channel ' + number);
+        }
+        return showCatalog.stateOf(channel);
+    }
+
+    // Ops on a channel's catalog state, applied in order and saved once; one
+    // channel's ops run one call at a time, so two at once both land.
+    async applyCatalogOps(number, ops) {
+        let key = String(number);
+        let previous = this.catalogQueue.get(key) || Promise.resolve();
+        let run = previous.catch( () => {} ).then( async () => {
+            let channel = await this.getChannel(number);
+            if (channel == null) {
+                throw new Error('No channel ' + number);
+            }
+            let copy = JSON.parse(JSON.stringify(channel));
+            copy.catalog = showCatalog.applyOps(showCatalog.stateOf(copy), ops, Date.now());
+            await this.saveChannel(number, copy);
+            return copy.catalog;
+        } );
+        this.catalogQueue.set(key, run);
+        return run;
     }
 
     async deleteChannel(number) {

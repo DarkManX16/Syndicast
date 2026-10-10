@@ -53,6 +53,7 @@ const suites = [
     './progress-ordered',
     './show-catalog',
     './catalog-reader',
+    './channel-catalog',
 ];
 
 (async () => {
