@@ -1482,10 +1482,11 @@ for the full spec, stages and acceptance tests.
 - [x] Multi-part stories kept together by every shuffle - part 2 always
       follows part 1. *Built with Shuffle, Rerun and Ordered shuffle (steps 3,
       4 and 6), within a series for Ordered shuffle.*
-- [ ] Full catalogs: every slot draws on its show's or custom show's whole
+- [x] Full catalogs: every slot draws on its show's or custom show's whole
       episode list, with a per-channel never-air list, a one-time review per
-      show, and a choice when deleting an airing. *Designed Oct 10, 2026 - see
-      "Full catalogs, and a never-air list" under Known issues.*
+      show, and a choice when deleting an airing. *Designed and built Oct 10,
+      2026 on the `full-catalog` branch - see "Full catalogs, and a never-air
+      list" under Known issues.*
 
 All six were designed together on Oct 9, 2026 and built Oct 9-10 on the
 `stored-progress` branch, which waits for Ron to merge it into `blocks` - see
@@ -3146,11 +3147,11 @@ be built:
       all seven steps, each proven on copies of Ron's data; merged into
       `blocks` when Ron says. Channels saved before it carry over on their
       first regeneration, with nothing to migrate.
-- [ ] Full catalogs and the never-air list: every slot draws on its show's or
+- [x] Full catalogs and the never-air list: every slot draws on its show's or
       custom show's whole episode list once reviewed, and episodes Ron left
       out - holidays he places himself, and ones never to air - stay out
-      (Opus 5.5). On the `full-catalog` branch, on top of `stored-progress`,
-      so the two merge together. See "Full catalogs, and a never-air list"
+      (Opus 5.5). **Built Oct 10, 2026** on the `full-catalog` branch, on top
+      of `stored-progress`, so the two merge together when Ron says. See "Full catalogs, and a never-air list"
       under Known issues and [docs/full-catalog-plan.md](docs/full-catalog-plan.md).
 - [ ] Episode start: start a show or custom show at a specific episode, not
       just a season (Opus 5.5 designs, Sonnet 5 builds). See its Scheduling
@@ -4023,7 +4024,8 @@ weekend slots narrowed together still carry the rest of the old round (63 of
 ### Full catalogs, and a never-air list
 
 Designed Oct 10, 2026 (Opus 5.5) from Ron's brief and his decisions the same
-day; **not built yet**. Replaces "A regeneration only draws from what the
+day; **built the same day** on the `full-catalog` branch, unmerged until Ron
+says - see "Build record" at the end of this entry. Replaces "A regeneration only draws from what the
 lineup on air holds", whose finding is the first section below. Branch
 `full-catalog`, from `stored-progress`, so the two merge together; build plan
 in [docs/full-catalog-plan.md](docs/full-catalog-plan.md).
@@ -4125,7 +4127,10 @@ specials, mainly ones longer than 30 minutes):
 
 #### The design
 
-**A show's catalog** is read in the editor with the library's own code -
+**A show's catalog** is read with the library's own code - on the server
+(`POST /api/catalogs/read`), where several shows read at once, which the
+browser's own Plex requests can't (channel 2's 160 shows: 35 s in the browser,
+about 10 s through the server) -
 `web/services/plex.js`'s `getNested` on `/library/metadata/<show>/allLeaves`,
 so episodes are made exactly as the library makes them (no duration skipped, a
 file holding several episodes listed once, `server` removed and `serverKey`
@@ -4215,8 +4220,8 @@ open in another tab can't undo a review. Changes made while editing a channel
 - a never-air from deleting an airing or from the dialog, each reviewed show's
 catalog as Create Lineup read it, and shows found to have nothing to add - are held with the channel's other
 unsaved changes and sent after Update Channel; Cancel drops them with the
-rest. The Catalog page saves at once. Renaming a Plex server renames its keys
-in the catalog state, as it already does in the lineup.
+rest. The Catalog page saves at once. (There is no renaming a Plex server:
+editing one keeps its name, so the keys never need changing.)
 
 **Deleting an airing** in the programming list asks, for an episode,
 custom-show item or movie: "Remove this airing only" (as today), "Holiday:
@@ -4278,7 +4283,9 @@ POST /api/channel/:number/catalog  { ops }  -> applied in order, saved once
 `src/show-catalog.js` holds the rules, pure, shared by the editor
 (browserify), the Catalog page, the server's ops and the proof scripts: what a
 review lists, the pool for a run, what's new, and applying ops.
-`web/services/show-catalog.js` does the reading.
+`src/catalog-reader.js` does the reading, with its I/O passed in; the server's
+`/api/catalogs/read` and `scripts/catalog-snapshot.js` run it in Node, and
+`web/services/show-catalog.js` (the `catalogReader` service) asks the server.
 
 #### What this doesn't change
 
@@ -4293,12 +4300,67 @@ review lists, the pool for a run, what's new, and applying ops.
   itself stay the 1.0 item they are; the never-air list is only the "never
   again" half of removing one.
 
-#### Found while designing
+#### Build record
 
-- Renaming a Plex server (`fixupAllChannels`) renames every program's
-  `serverKey` but not stored progress's references, which carry the server
-  name too; a place then falls back to matching by order (season and episode,
-  or a custom show's item number). Minor - not fixed here.
+**Oct 10, 2026** (`full-catalog`, b03f5d5..). Proofs on the copy of Oct 9
+8:23pm Central, identical to `.dizquetv-dev` at 6:54am Oct 10 (channels,
+custom shows, filler, aliases), with a fresh Plex snapshot taken then. Suite
+1906/1906.
+
+- **What shipped.** `src/show-catalog.js` (the rules, both reasons, the holiday
+  words), `src/catalog-reader.js` and `/api/catalogs/read`, `channel.catalog`
+  with `GET/POST /api/channel/:n/catalog` and saves that keep it, the planner's
+  `catalog`, the Time Slots dialog's reading and notes, the delete prompt, the
+  Catalog page, and `scripts/catalog-snapshot.js` and `progress-check
+  --catalog` for proofs. Random Slots draws on the same pool without Time
+  Slots' notes - no channel of Ron's uses it.
+- **The catalogs.** Every show on channels 1-3 read, 0 errors; all 26,436
+  lineup episodes found in them, field for field equal but for 68 titles Plex
+  has since renamed and 5 channel 3 Recess episodes whose files Plex has
+  replaced (.mp4 to .mkv) - the lineup's copies of those 5 still point at the
+  old files, before and after this. Review lists: channel 1 58 Plex and 5
+  custom shows, channel 2 104 and 5 (Double Dare 414 to add, Married... 207),
+  channel 3 59 and 4 - a few under the investigation's counts, which included
+  the second half of each file holding two episodes; the library adds such a
+  file once, and so does the catalog.
+- **Exactly as today until reviewed.** With nothing reviewed, all twelve
+  regenerations - channels 1-3 and Sep 29's channel 1, at Friday, Saturday and
+  Monday - are identical program for program to today's.
+- **Everything reviewed, everything ticked.** All twelve continue exactly
+  (138/164/155/50), and again from their output; channel 3's 18 carried rounds
+  are identical through their ends (994 airings); pools grow from 9,442 to
+  11,727 (channel 1), 10,250 to 14,677 (2), 6,744 to 7,750 (3). Double Dare goes
+  on to item 53 where today it goes back to item 2. 140 shows air more distinct
+  episodes in a year; three air fewer, all distinct - Big Time Rush, the
+  Fairly OddParents and Shaun the Sheep - because their catalogs add hour-long
+  specials that take two slots, which the 30-minute pre-untick leaves out at
+  review. The audit finds one return under half a round (Lizzie McGuire, 31
+  stories where half is 32): the old shuffler's round had 63 episodes, the
+  catalog 65 - once, where a carried round grows.
+- **Never air.** Ten episodes on channel 2 (three Play Next places, two
+  Shuffle nexts, five from the year) air 0 times, against 14 without the list;
+  the three places move to the next episode. Specials air only for the four
+  shows whose lineup already aired one.
+- **Pre-untick.** The holiday words match 290 episodes to add across the three
+  channels; read through, none is a false match. The 30-minute limit
+  pre-unticks 376 in 43 shows - every one of Charmed's 121 and Dawson's Creek's
+  78, hour-long shows, where Add all is the answer.
+- **Live, on the preview copy's channel 2:** the dialog read 160 shows and said
+  108 wait for review; Create Lineup with Married... with Children reviewed
+  saved its review and marked 51 complete shows reviewed, and a run near the
+  year's end took Married... on from S4E8 to S4E9 instead of back to S2E1; a
+  newcomer (S11E10, made new by taking it out of the review's list) was named
+  and left out with one click; with Plex unreachable the dialog named the 49
+  shows and Create Lineup went ahead on the lineup's episodes; the delete
+  prompt's three choices did what they say, its count was right, and Cancel
+  saved nothing; the Catalog page pre-unticked The King of Queens' three
+  holiday episodes with their reasons, re-ticked long episodes when the limit
+  rose, saved the review, listed the holidays under Christmas and Valentine's,
+  and restored an episode that the next run then drew on.
+- **Found:** Married... with Children's lineup held S2E1-S4E8 except S2E13 "You
+  Better Watch Out", its Christmas episode - almost certainly one Ron deleted.
+  No holiday word is in the title, so the review won't pre-untick it: an
+  episode like this is the review's reason for being.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 
@@ -5059,6 +5121,20 @@ a copy of the data folder, never on `.dizquetv-dev` itself.
 - A preview server keeps the code it started with: restart it after a change
   to server code before a live check, or the check runs the old generator (the
   first step 3 live check did).
+
+### Full catalogs on a copy: `catalog-snapshot` and `progress-check --catalog`
+
+`node scripts/catalog-snapshot.js --data <copy> --plex <plex-servers.json> --out
+<file> [--channels 1,2,3] [--custom-shows <dir>]` reads every show's full
+catalog the way the editor does (the library's Plex code, read-only GETs) into
+one file; it carries icon URLs with the Plex token, as channel files do, so it
+stays beside the copies and is never committed. `progress-check --catalog
+<file>` then builds the pool as Create Lineup does, with the channel's own
+catalog state, `--review <regex|all>` reviewing shows first (everything
+ticked) and `--never-air <keys.json>` adding to the list; `--save` keeps the
+state, so `--from` the output is the next run. Program-for-program identity
+with and without `--catalog` is the check that an unreviewed channel is
+untouched.
 
 ### createLineup can be exercised directly
 

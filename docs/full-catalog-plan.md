@@ -59,7 +59,7 @@
   - `applyOps(state, ops, now) -> state` - ops `{ review }`, `{ neverAir }`, `{ restore }`, `{ known }`, `{ reason }` exactly as the spec's Shapes; unknown ops throw.
   - `byHoliday(state) -> [{ holiday, shows: [{ showId, entries }] }]` - holiday entries grouped, holidays in `HOLIDAYS` order.
 
-- [ ] **Step 1: Write the failing tests** in `test/show-catalog.js`, fixtures built like `test/slot-progress.js`'s `episode()` with `showIcon` set:
+- [x] **Step 1: Write the failing tests** in `test/show-catalog.js`, fixtures built like `test/slot-progress.js`'s `episode()` with `showIcon` set:
   - `showKeysOf reads the show key from showIcon` (and none from a program without one)
   - `fromPlex copies items as the library adds them, with the channel's show title` - `server` absent, `serverKey` the server's name, `showTitle` the given title even when the item's differs
   - `fromCustom stamps items as addCustomShow does`
@@ -75,10 +75,10 @@
   - `preUntick: a holiday title before length; longer than the limit; neither`
   - `byHoliday groups holiday entries by holiday, then show`
 
-- [ ] **Step 2:** `node -e "require('./test/show-catalog')().then(s=>console.log(s.failures))"` - Expected: fails on the missing module.
-- [ ] **Step 3:** Implement `src/show-catalog.js`.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5:** Commit `Catalog: the rules for full catalogs and a never-air list`.
+- [x] **Step 2:** `node -e "require('./test/show-catalog')().then(s=>console.log(s.failures))"` - Expected: fails on the missing module.
+- [x] **Step 3:** Implement `src/show-catalog.js`.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5:** Commit `Catalog: the rules for full catalogs and a never-air list`.
 
 ### Task 2: Reading catalogs, and a snapshot on the copies
 
@@ -93,12 +93,12 @@
   - `readCatalogs({ shows, servers, getNested, getShowKey, getShow, concurrency }) -> Promise<{ [showId]: catalog }>` - `shows: [{ showId, title, lineupItems, source }]`; a Plex show's keys from `source`, else `showKeysOf(lineupItems)`, else `getShowKey` on its first episode; `getNested(server, { key: '/library/metadata/<k>/allLeaves' }, false, errors)` per key, items of several keys joined; a custom show via `getShow(id)`; `concurrency` default 8; a failure becomes that show's `{ error }`, never a rejection.
   - `node scripts/catalog-snapshot.js --data <copy> --plex <plex-servers.json> --out <file> [--channels 1,2,3]` - every show on each channel, `getNested` from `web/services/plex.js` called in Node (its factory doesn't need Angular for it), custom shows from `<copy>/custom-shows`; writes `{ "<n>": { showId: catalog } }` and prints counts and the time taken.
 
-- [ ] **Step 1: Write the failing tests**, stubs for the I/O: `reads a Plex show by its showIcon key`, `...by its episode when showIcon has none`, `joins two Plex shows of one title`, `reads a custom show`, `a failed read is that show's error and the rest still read`, `never runs more than concurrency at once`.
-- [ ] **Step 2:** run them - Expected: fail, module missing.
-- [ ] **Step 3:** Implement `readCatalogs`, `getShowKey` and the snapshot script.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the copies.** `scripts/catalog-snapshot.js` on the proof copy: every show on channels 1-3 read, 0 errors, time per channel. For each episode the lineup holds, the snapshot's copy against the lineup's, field for field on `title, key, ratingKey, type, duration, file, plexFile, showTitle, season, episode, serverKey` - Expected: 0 differences, or each one explained. `reviewList` over the snapshot - Expected: the investigation's counts (226 short Plex shows, 14 custom; Double Dare 414 to add, Married... with Children 208). `preUntick` over every episode to add: counts by holiday with every matched title listed for a read-through (a false match goes back into `HOLIDAYS` as a fix, ruled in the ledger), and the long ones counted per show - so an hour-long show whose every episode is over 30 minutes is visible before Ron meets it.
-- [ ] **Step 6:** Commit `Catalog: reading a show's catalog with the library's own code`.
+- [x] **Step 1: Write the failing tests**, stubs for the I/O: `reads a Plex show by its showIcon key`, `...by its episode when showIcon has none`, `joins two Plex shows of one title`, `reads a custom show`, `a failed read is that show's error and the rest still read`, `never runs more than concurrency at once`.
+- [x] **Step 2:** run them - Expected: fail, module missing.
+- [x] **Step 3:** Implement `readCatalogs`, `getShowKey` and the snapshot script.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5: Proof on the copies.** `scripts/catalog-snapshot.js` on the proof copy: every show on channels 1-3 read, 0 errors, time per channel. For each episode the lineup holds, the snapshot's copy against the lineup's, field for field on `title, key, ratingKey, type, duration, file, plexFile, showTitle, season, episode, serverKey` - Expected: 0 differences, or each one explained. `reviewList` over the snapshot - Expected: the investigation's counts (226 short Plex shows, 14 custom; Double Dare 414 to add, Married... with Children 208). `preUntick` over every episode to add: counts by holiday with every matched title listed for a read-through (a false match goes back into `HOLIDAYS` as a fix, ruled in the ledger), and the long ones counted per show - so an hour-long show whose every episode is over 30 minutes is visible before Ron meets it.
+- [x] **Step 6:** Commit `Catalog: reading a show's catalog with the library's own code`.
 
 ## Step 2 - Regeneration from full catalogs (scripts only)
 
@@ -114,16 +114,16 @@
   - `rerunNote({ ..., pool })` is passed the catalog pool by its callers; no signature change.
   - `progress-check` gains `--catalog <snapshot> --review <regex|all> [--never-air <keys.json>]`: state built with `applyOps` - each matching show reviewed with everything ticked, `specials` by `specialsAllowed`, `known` its snapshot keys - then `poolFor`, and the history filtered with `withoutNeverAir`, as the editor will.
 
-- [ ] **Step 1: Write the failing tests:** in `test/slot-progress.js`, `a carried round is rebuilt from the lineup's list, not the catalog` (a fixture whose catalog adds stories: the queue equals the one from the lineup alone) and `a new round covers the catalog`; in `test/progress-repeat.js`, `a Repeat whose source aired a never-air episode plays a Rerun` (history filtered as the editor filters it) and, in `test/slot-progress.js`, `a Play Next place on a never-air episode moves to the next`.
-- [ ] **Step 2:** run them - Expected: the first fails (one pool for both); the others fail on `catalog` being ignored.
-- [ ] **Step 3:** Implement.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the copies**, Fri 10am, Sat 11pm and Mon 10am, channels 1-3 and Sep 29's channel 1:
+- [x] **Step 1: Write the failing tests:** in `test/slot-progress.js`, `a carried round is rebuilt from the lineup's list, not the catalog` (a fixture whose catalog adds stories: the queue equals the one from the lineup alone) and `a new round covers the catalog`; in `test/progress-repeat.js`, `a Repeat whose source aired a never-air episode plays a Rerun` (history filtered as the editor filters it) and, in `test/slot-progress.js`, `a Play Next place on a never-air episode moves to the next`.
+- [x] **Step 2:** run them - Expected: the first fails (one pool for both); the others fail on `catalog` being ignored.
+- [x] **Step 3:** Implement.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5: Proof on the copies**, Fri 10am, Sat 11pm and Mon 10am, channels 1-3 and Sep 29's channel 1:
   - nothing reviewed (`--catalog` without `--review`): the regenerated lineup equals the one without `--catalog`, program for program - Expected: identical on all four;
   - `--review all`: every position continues exactly (138/164/155/50); channel 3's 18 carried rounds identical through their ends; `progress-audit` 0 violations; regenerated again from the output, continues exactly;
   - per short show, distinct episodes aired in the year, before against after - Expected: Double Dare past item 52, Married... with Children past S4E8, every short show more;
   - `--never-air` with ten sampled keys (a Play Next place, a Shuffle's next, a Repeat source among them): 0 airings of any in the year; specials air only for shows whose lineup aired one.
-- [ ] **Step 6:** Commit `Catalog: the planner and progress-check draw on full catalogs`.
+- [x] **Step 6:** Commit `Catalog: the planner and progress-check draw on full catalogs`.
 
 ## Step 3 - The catalog state on the server
 
@@ -142,12 +142,12 @@
   - `fixupAllChannels` renames a renamed server's name in `catalog.neverAir` keys, every `known` key and `source.plex`.
   - `web/services/dizquetv.js`: `getChannelCatalog(number)`, `applyChannelCatalogOps(number, ops)`.
 
-- [ ] **Step 1: Write the failing tests:** `ops are applied and saved`, `a channel save keeps the stored catalog whatever it sends`, `the other writers keep it` (filler and on-demand saves of the stored channel), `a renamed Plex server renames its catalog keys`, `a channel with no catalog reads as empty`.
-- [ ] **Step 2:** run - Expected: fail.
-- [ ] **Step 3:** Implement.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the preview copy**, preview restarted with this code: a `review` and a `neverAir` op through `POST` on channel 2, the file holds them; a channel save sent with the catalog stripped leaves it intact; the other channels' files unchanged.
-- [ ] **Step 6:** Commit `Catalog: the channel's catalog state and its API`.
+- [x] **Step 1: Write the failing tests:** `ops are applied and saved`, `a channel save keeps the stored catalog whatever it sends`, `the other writers keep it` (filler and on-demand saves of the stored channel), `a renamed Plex server renames its catalog keys`, `a channel with no catalog reads as empty`.
+- [x] **Step 2:** run - Expected: fail.
+- [x] **Step 3:** Implement.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5: Proof on the preview copy**, preview restarted with this code: a `review` and a `neverAir` op through `POST` on channel 2, the file holds them; a channel save sent with the catalog stripped leaves it intact; the other channels' files unchanged.
+- [x] **Step 6:** Commit `Catalog: the channel's catalog state and its API`.
 
 ## Step 4 - Create Lineup on full catalogs
 
@@ -166,12 +166,12 @@
   - `channel-config.js`: loads the state when a channel opens (`getChannelCatalog`), queues every result's `catalogOps`, sends the queue with `applyChannelCatalogOps` after a successful save, and drops it on Cancel.
   - Dialog notes, above the slot list: "Reading N shows' episode lists..." until done; "New in Plex since the last run" by show and season, each episode with **Holiday** (pre-chosen for a likely holiday title) and **Never air**; "Couldn't read: <show> (<reason>) - using the episodes already in the lineup"; "N shows have episodes to review" linking to `#!/channels/<n>/catalog`.
 
-- [ ] **Step 1: Build and live-check on the preview** (no directive harness; each finding reproduced in the browser, fixed and re-checked there):
+- [x] **Step 1: Build and live-check on the preview** (no directive harness; each finding reproduced in the browser, fixed and re-checked there):
   - Married... with Children reviewed on the preview copy by API op; Time Slots on channel 2, Create Lineup, Update Channel: the notes appear, the saved lineup airs it past S4E8 within the year, `progress-check --from` the saved file continues exactly, its `known` saved; a second Create Lineup continues exactly.
   - Plex unreachable (the preview copy's server URI pointed at a closed port, preview restarted): the dialog names every show it couldn't read, the lineup is today's for them, nothing blocks.
   - One key removed from Married...'s `known` by op: the dialog names it as new; **Never air** takes it out of the run; after Update Channel the list has it with `how: "new"` and the lineup doesn't air it.
-- [ ] **Step 2:** `npm test` - Expected: all pass.
-- [ ] **Step 3:** Commit `Catalog: Create Lineup reads each show's catalog and names what's new`.
+- [x] **Step 2:** `npm test` - Expected: all pass.
+- [x] **Step 3:** Commit `Catalog: Create Lineup reads each show's catalog and names what's new`.
 
 ## Step 5 - Deleting an airing
 
@@ -184,9 +184,9 @@
 - Consumes: Task 1's `neverAirEntry`; Task 5's queue.
 - Produces: for a program with a show (episode, custom-show item, movie), the trash button opens a small dialog - title, `S04E09` where it has one, the three choices ("Holiday: I'll place it myself" with a holiday picker pre-set by `holidayOf`), and "It airs N more times in this lineup; the next Create Lineup leaves them out" for the last two. Flex and redirects delete at once as today; the bulk tools don't ask.
 
-- [ ] **Step 1: Build and live-check on the preview:** delete one Married... airing with "Never air" and one Christmas episode with "Holiday": the dialog's count matches the lineup, the airings go, after Update Channel the list holds both (`how: "deleted"`, their reasons), the next Create Lineup airs it 0 times; "Remove this airing only" behaves exactly as today and the list is unchanged; Cancel on the channel drops both the deletion and the list entry.
-- [ ] **Step 2:** `npm test` - Expected: all pass.
-- [ ] **Step 3:** Commit `Catalog: deleting an airing asks whether to never air it again`.
+- [x] **Step 1: Build and live-check on the preview:** delete one Married... airing with "Never air" and one Christmas episode with "Holiday": the dialog's count matches the lineup, the airings go, after Update Channel the list holds both (`how: "deleted"`, their reasons), the next Create Lineup airs it 0 times; "Remove this airing only" behaves exactly as today and the list is unchanged; Cancel on the channel drops both the deletion and the list entry.
+- [x] **Step 2:** `npm test` - Expected: all pass.
+- [x] **Step 3:** Commit `Catalog: deleting an airing asks whether to never air it again`.
 
 ## Step 6 - The Catalog page
 
@@ -205,9 +205,9 @@
   - **Never air** - by show, each entry with its episode, when and how, a reason switch (posts `reason`) and **Restore**, which posts `restore`;
   - a line for shows it couldn't read.
 
-- [ ] **Step 1: Build and live-check on the preview:** channel 2's page lists every short show and no complete one, Double Dare first (414), pre-unticked episodes showing why; the limit set to 45 minutes re-ticks the ones under it; review Married... with a holiday episode left as Holiday and one more unticked as Never air: both on the list with their reasons (`how: "review"`), the holiday one under its holiday, the show no longer listed; Create Lineup on channel 2: the two air 0 times, the rest of Married... joins; restore one: it airs after the next Create Lineup.
-- [ ] **Step 2:** `npm test` - Expected: all pass.
-- [ ] **Step 3:** Commit `Catalog: the Catalog page - review shows, restore never-air episodes`.
+- [x] **Step 1: Build and live-check on the preview:** channel 2's page lists every short show and no complete one, Double Dare first (414), pre-unticked episodes showing why; the limit set to 45 minutes re-ticks the ones under it; review Married... with a holiday episode left as Holiday and one more unticked as Never air: both on the list with their reasons (`how: "review"`), the holiday one under its holiday, the show no longer listed; Create Lineup on channel 2: the two air 0 times, the rest of Married... joins; restore one: it airs after the next Create Lineup.
+- [x] **Step 2:** `npm test` - Expected: all pass.
+- [x] **Step 3:** Commit `Catalog: the Catalog page - review shows, restore never-air episodes`.
 
 ## Step 7 - Record, re-prove, preview
 
@@ -216,8 +216,8 @@
 **Files:**
 - Modify: `NOTES.md` (the Known issues entry's status and a build record; the Scheduling roadmap line; a Testing notes line for `catalog-snapshot` and `progress-check --catalog`), this plan (boxes ticked)
 
-- [ ] **Step 1:** Re-copy the data, diff, take a fresh snapshot, re-run every task's proof on it; state the snapshot time.
-- [ ] **Step 2:** Write the NOTES changes.
-- [ ] **Step 3:** Commit `Docs: record full catalogs and the never-air list`.
+- [x] **Step 1:** Re-copy the data, diff, take a fresh snapshot, re-run every task's proof on it; state the snapshot time.
+- [x] **Step 2:** Write the NOTES changes.
+- [x] **Step 3:** Commit `Docs: record full catalogs and the never-air list`.
 
 After Task 8: one fresh whole-branch review on the most capable model, one fix pass, then the preview for Ron - his own look in the browser, on a copy - before anything merges. `full-catalog` merges after `stored-progress`, when Ron says.
