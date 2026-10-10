@@ -173,6 +173,32 @@ function slotAt(schedule, instant) {
 }
 
 /*
+ * A position's season start, when one of its slots asks for one: a one-time
+ * move of the position's place. If its slots ask for different seasons, the
+ * one whose slot next starts after `now` wins - the seek that would take
+ * effect first.
+ */
+function seekOf(slots, schedule, now) {
+    let period = (typeof(schedule.period) === 'number') ? schedule.period : DAY;
+    let local = now - (new Date(now)).getTimezoneOffset() * MINUTE;
+    let into = ( (local % period) + period ) % period;
+    let best = null;
+    let bestWait = Infinity;
+    slots.forEach( (slot) => {
+        if ( (typeof(slot.seasons) !== 'object') || (slot.seasons === null)
+             || (typeof(slot.seasons.startSeason) !== 'number') ) {
+            return;
+        }
+        let wait = ( (slot.time - into) % period + period ) % period;
+        if (wait < bestWait) {
+            bestWait = wait;
+            best = slot.seasons.startSeason;
+        }
+    } );
+    return best;
+}
+
+/*
  * Each position's place: its first airing on air at `now` or after, walking
  * the lineup's cycle once from the airing on air. The airing on air counts as
  * not yet aired, so nothing is skipped.
@@ -308,6 +334,7 @@ module.exports = {
     resolveRef: resolveRef,
     slotAt: slotAt,
     slotFinder: slotFinder,
+    seekOf: seekOf,
     readPlaces: readPlaces,
     airings: airings,
 };

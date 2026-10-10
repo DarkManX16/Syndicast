@@ -17,7 +17,7 @@ const WEEK = 7 * DAY;
 const THU = new Date('2026-10-08T00:00:00').getTime();
 const at = (day, hour, minute) => THU + day * DAY + hour * HOUR + (minute || 0) * MIN;
 const slotTime = (day, hour, minute) => day * DAY + hour * HOUR + (minute || 0) * MIN;
-const [Thu, Fri, Sat, Sun] = [0, 1, 2, 3];
+const [Thu, Fri, Sat, Sun, Mon, Tue] = [0, 1, 2, 3, 4, 5];
 
 function episode(show, season, n, extra) {
     return Object.assign({
@@ -216,6 +216,31 @@ module.exports = async function () {
             .get(slotProgress.positionKey('tv.' + JB, 'shuffle', undefined));
         suite.check('a labelled Shuffle airing keeps its old number',
             titleOf(kept) === `${JB} S4E2` && kept.legacyShuffleOrder === 12);
+    }
+
+    suite.log('-- season start is a seek --');
+    {
+        const seasonConstraints = require('../web/services/season-constraints')();
+        const a = { time: slotTime(Mon, 9), showId: 'tv.A', order: 'next', seasons: { excludeSeasons: [1], startSeason: 2 } };
+        const b = { time: slotTime(Tue, 9), showId: 'tv.A', order: 'next', seasons: { excludeSeasons: [1], startSeason: 3 } };
+        suite.check('slots with one range and different seeks share a position',
+            seasonConstraints.sharingPosition([a, b], a) === 2 && seasonConstraints.sameRange(a, b));
+        const seeking = { time: slotTime(Mon, 9), showId: 'tv.A', order: 'next', seasons: { excludeSeasons: [], startSeason: 3 } };
+        seasonConstraints.tidy(seeking);
+        suite.check('...and a slot that only seeks keeps its seek',
+            seeking.seasons && seeking.seasons.startSeason === 3 && seasonConstraints.isConstrained(seeking));
+        const none = { time: slotTime(Mon, 9), showId: 'tv.A', order: 'next', seasons: { excludeSeasons: [] } };
+        seasonConstraints.tidy(none);
+        suite.check('...while one asking for nothing is tidied away', typeof none.seasons === 'undefined');
+
+        const schedule = { period: WEEK, slots: [a, b, { time: slotTime(Sat, 9), showId: 'tv.A', order: 'next', seasons: { excludeSeasons: [1] } }] };
+        // From Monday noon, Tuesday's slot airs before next Monday's.
+        suite.check('seekOf picks the slot airing first from now',
+            slotProgress.seekOf(schedule.slots, schedule, at(Mon, 12)) === 3
+                && slotProgress.seekOf(schedule.slots, schedule, at(Sun, 12)) === 2,
+            `${slotProgress.seekOf(schedule.slots, schedule, at(Mon, 12))}, ${slotProgress.seekOf(schedule.slots, schedule, at(Sun, 12))}`);
+        suite.check('...and is null when no slot seeks',
+            slotProgress.seekOf([schedule.slots[2]], schedule, at(Mon, 12)) === null);
     }
 
     suite.log('-- references --');
