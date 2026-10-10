@@ -49,11 +49,15 @@
   - `fromCustom(show) -> program[]` - `show.content` stamped as `addCustomShow` stamps it (`customShowId`, `customShowName`, `customOrder = index`).
   - `specialsAllowed(lineupItems) -> boolean` - any season-0 episode among a Plex show's lineup items.
   - `isNeverAir(state, program) -> boolean`; `withoutNeverAir(programs, state) -> program[]`.
-  - `neverAirEntry(program, getShowData, how, now) -> { key, entry }` - `entry = { showId, season, episode, title, at, how }`, `how` one of `"review" | "deleted" | "new"`.
+  - `neverAirEntry(program, getShowData, how, reason, holiday, now) -> { key, entry }` - `entry = { showId, season, episode, title, duration, at, how, reason, holiday }`; `how` one of `"review" | "deleted" | "new"`, `reason` `"holiday" | "never"`, `holiday` a name or absent.
+  - `HOLIDAYS` - `[{ name, words: RegExp }]` in the spec's order (Christmas first); `holidayOf(title) -> string|null` - the first holiday whose words match, case-insensitive, as whole words.
+  - `preUntick(program, limitMs) -> { reason: "holiday", holiday, why } | { reason: "never", why } | null` - a holiday title first, then `duration > limitMs`; `why` is the text the page shows ("Christmas in the title", "31:20, longer than 30:00").
+  - `DEFAULT_LIMIT_MS = 30 * 60 * 1000`.
   - `toAdd({ items, lineupItems, state, specials }) -> program[]` - catalog items whose file key the lineup doesn't hold and the list doesn't name; season 0 dropped unless `specials`.
   - `reviewList({ lineupPool, catalogs, state, getShowData }) -> [{ showId, name, count, seasons: [{ season, episodes: program[] }] }]` - unreviewed shows with `count > 0` only, `count` descending.
   - `poolFor({ lineupPool, slotted, catalogs, state, getShowData }) -> { pool, complete, fresh, fellBack, known }` - `slotted` is the showIds with a slot; `pool` as the spec's "Create Lineup" paragraph; `complete` the unreviewed showIds whose catalog had nothing to add (they join the pool from their catalog, identical episodes); `fresh: { showId: program[] }` catalog episodes of reviewed shows not in `known`, the lineup or the list (these are in `pool`); `fellBack: [{ showId, reason }]`; `known: { showId: string[] }` every file key each read catalog held.
-  - `applyOps(state, ops, now) -> state` - ops `{ review }`, `{ neverAir }`, `{ restore }`, `{ known }` exactly as the spec's Shapes; unknown ops throw.
+  - `applyOps(state, ops, now) -> state` - ops `{ review }`, `{ neverAir }`, `{ restore }`, `{ known }`, `{ reason }` exactly as the spec's Shapes; unknown ops throw.
+  - `byHoliday(state) -> [{ holiday, shows: [{ showId, entries }] }]` - holiday entries grouped, holidays in `HOLIDAYS` order.
 
 - [ ] **Step 1: Write the failing tests** in `test/show-catalog.js`, fixtures built like `test/slot-progress.js`'s `episode()` with `showIcon` set:
   - `showKeysOf reads the show key from showIcon` (and none from a program without one)
@@ -66,7 +70,10 @@
   - `poolFor takes a reviewed custom show's current list and order` (a fixture reordered since the lineup; `customOrder` follows the custom show)
   - `poolFor falls back to the lineup for a show it couldn't read, and names it`
   - `poolFor names new episodes of reviewed shows, and marks complete shows` 
-  - `applyOps: review, never air, restore and known, in order; an unknown op throws`
+  - `applyOps: review, never air, restore, known and reason, in order; an unknown op throws`
+  - `holidayOf finds each holiday by its words` ("A Rugrats Chanukah" -> Hanukkah, "Santa Claws" -> Christmas, "The Trick-or-Treaters" -> Halloween) and `...not inside other words` ("Eastern Promise", "Cupidity" -> null)
+  - `preUntick: a holiday title before length; longer than the limit; neither`
+  - `byHoliday groups holiday entries by holiday, then show`
 
 - [ ] **Step 2:** `node -e "require('./test/show-catalog')().then(s=>console.log(s.failures))"` - Expected: fails on the missing module.
 - [ ] **Step 3:** Implement `src/show-catalog.js`.
@@ -90,7 +97,7 @@
 - [ ] **Step 2:** run them - Expected: fail, module missing.
 - [ ] **Step 3:** Implement `readCatalogs`, `getShowKey` and the snapshot script.
 - [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the copies.** `scripts/catalog-snapshot.js` on the proof copy: every show on channels 1-3 read, 0 errors, time per channel. For each episode the lineup holds, the snapshot's copy against the lineup's, field for field on `title, key, ratingKey, type, duration, file, plexFile, showTitle, season, episode, serverKey` - Expected: 0 differences, or each one explained. `reviewList` over the snapshot - Expected: the investigation's counts (226 short Plex shows, 14 custom; Double Dare 414 to add, Married... with Children 208).
+- [ ] **Step 5: Proof on the copies.** `scripts/catalog-snapshot.js` on the proof copy: every show on channels 1-3 read, 0 errors, time per channel. For each episode the lineup holds, the snapshot's copy against the lineup's, field for field on `title, key, ratingKey, type, duration, file, plexFile, showTitle, season, episode, serverKey` - Expected: 0 differences, or each one explained. `reviewList` over the snapshot - Expected: the investigation's counts (226 short Plex shows, 14 custom; Double Dare 414 to add, Married... with Children 208). `preUntick` over every episode to add: counts by holiday with every matched title listed for a read-through (a false match goes back into `HOLIDAYS` as a fix, ruled in the ledger), and the long ones counted per show - so an hour-long show whose every episode is over 30 minutes is visible before Ron meets it.
 - [ ] **Step 6:** Commit `Catalog: reading a show's catalog with the library's own code`.
 
 ## Step 2 - Regeneration from full catalogs (scripts only)
@@ -155,9 +162,9 @@
 - Produces:
   - Angular service `showCatalog.read(shows) -> Promise<catalogs>` - `readCatalogs` with `plex.getNested`, `plex.getShowKey`, `dizquetv.getShow`, `dizquetv.getPlexServers()`.
   - `startDialog(programs, limit, backup, instant, slotScope, lineup, catalogState)` (Time Slots; Random Slots takes `catalogState` last too) - the stored state with the channel page's queued ops applied. The read starts at open for every slotted show; Create Lineup awaits it, then `poolFor`, `planProgress({ pool: lineup pool, catalog: result pool })`, history through `withoutNeverAir`, and `calculateTimeSlots(result pool, ...)`.
-  - The result carries `catalogOps`: `{ known }` for each read catalog, `{ review: { by: 'complete', ... } }` for each `complete` show, `{ neverAir }` for each one-click Never air.
+  - The result carries `catalogOps`: `{ known }` for each read catalog, `{ review: { by: 'complete', ... } }` for each `complete` show, `{ neverAir }` for each one-click Holiday or Never air.
   - `channel-config.js`: loads the state when a channel opens (`getChannelCatalog`), queues every result's `catalogOps`, sends the queue with `applyChannelCatalogOps` after a successful save, and drops it on Cancel.
-  - Dialog notes, above the slot list: "Reading N shows' episode lists..." until done; "New in Plex since the last run" by show and season, each episode with **Never air**; "Couldn't read: <show> (<reason>) - using the episodes already in the lineup"; "N shows have episodes to review" linking to `#!/channels/<n>/catalog`.
+  - Dialog notes, above the slot list: "Reading N shows' episode lists..." until done; "New in Plex since the last run" by show and season, each episode with **Holiday** (pre-chosen for a likely holiday title) and **Never air**; "Couldn't read: <show> (<reason>) - using the episodes already in the lineup"; "N shows have episodes to review" linking to `#!/channels/<n>/catalog`.
 
 - [ ] **Step 1: Build and live-check on the preview** (no directive harness; each finding reproduced in the browser, fixed and re-checked there):
   - Married... with Children reviewed on the preview copy by API op; Time Slots on channel 2, Create Lineup, Update Channel: the notes appear, the saved lineup airs it past S4E8 within the year, `progress-check --from` the saved file continues exactly, its `known` saved; a second Create Lineup continues exactly.
@@ -168,22 +175,22 @@
 
 ## Step 5 - Deleting an airing
 
-### Task 6: "Remove this airing only" or "Never air this episode on this channel"
+### Task 6: "Remove this airing only", "Holiday" or "Never air this episode on this channel"
 
 **Files:**
 - Modify: `web/directives/channel-config.js` (`removeItem`), `web/public/templates/channel-config.html`
 
 **Interfaces:**
 - Consumes: Task 1's `neverAirEntry`; Task 5's queue.
-- Produces: for a program with a show (episode, custom-show item, movie), the trash button opens a small dialog - title, `S04E09` where it has one, the two choices, and "It airs N more times in this lineup; the next Create Lineup leaves them out" for the second. Flex and redirects delete at once as today; the bulk tools don't ask.
+- Produces: for a program with a show (episode, custom-show item, movie), the trash button opens a small dialog - title, `S04E09` where it has one, the three choices ("Holiday: I'll place it myself" with a holiday picker pre-set by `holidayOf`), and "It airs N more times in this lineup; the next Create Lineup leaves them out" for the last two. Flex and redirects delete at once as today; the bulk tools don't ask.
 
-- [ ] **Step 1: Build and live-check on the preview:** delete one Married... airing with "Never air": the dialog's count matches the lineup, the airing goes, after Update Channel the list holds it (`how: "deleted"`), the next Create Lineup airs it 0 times; "Remove this airing only" behaves exactly as today and the list is unchanged; Cancel on the channel drops both the deletion and the list entry.
+- [ ] **Step 1: Build and live-check on the preview:** delete one Married... airing with "Never air" and one Christmas episode with "Holiday": the dialog's count matches the lineup, the airings go, after Update Channel the list holds both (`how: "deleted"`, their reasons), the next Create Lineup airs it 0 times; "Remove this airing only" behaves exactly as today and the list is unchanged; Cancel on the channel drops both the deletion and the list entry.
 - [ ] **Step 2:** `npm test` - Expected: all pass.
 - [ ] **Step 3:** Commit `Catalog: deleting an airing asks whether to never air it again`.
 
 ## Step 6 - The Catalog page
 
-### Task 7: Review shows, see and restore never-air episodes
+### Task 7: Review shows, find holiday episodes, restore left-out ones
 
 **Files:**
 - Create: `web/controllers/channel-catalog.js`, `web/public/views/channel-catalog.html`
@@ -192,11 +199,13 @@
 **Interfaces:**
 - Consumes: Tasks 1, 2, 4, 5's service.
 - Produces: the page reads the channel, its state and every show's catalog, then shows
-  - **To review** - `reviewList`, each show with its count; opened, its seasons with a checkbox per season and per episode (`S04E09 Title`), all ticked to start, **Add all** / **Add none**, and **Save review**, which posts one `review` op - `by: "review"`, `specials: specialsAllowed(lineupItems)`, the `source` the read used, `known` every key the catalog held, unticked episodes as `neverAir` with `how: "review"` - then refreshes;
-  - **Never air** - by show, each entry with its episode, when and how, and **Restore**, which posts `restore`;
+  - a length limit field (minutes, `DEFAULT_LIMIT_MS` to start) that re-applies `preUntick` to episodes not yet touched;
+  - **To review** - `reviewList`, each show with its count; opened, its seasons with a checkbox per season and per episode (`S04E09 Title 22:30`), ticked except where `preUntick` says otherwise, each pre-unticked one showing its `why`; an unticked episode has a reason picker (Holiday with its holiday, or Never air); **Add all** / **Add none**, and **Save review**, which posts one `review` op - `by: "review"`, `specials: specialsAllowed(lineupItems)`, the `source` the read used, `known` every key the catalog held, unticked episodes as `neverAir` with `how: "review"` - then refreshes;
+  - **Holiday episodes** - `byHoliday`, each entry with its episode, length, when and how, a reason switch and **Restore**;
+  - **Never air** - by show, each entry with its episode, when and how, a reason switch (posts `reason`) and **Restore**, which posts `restore`;
   - a line for shows it couldn't read.
 
-- [ ] **Step 1: Build and live-check on the preview:** channel 2's page lists every short show and no complete one, Double Dare first (414); review Married... unticking two episodes: both on the list (`how: "review"`), the show no longer listed; Create Lineup on channel 2: the two air 0 times, the rest of Married... joins; restore one: it airs after the next Create Lineup.
+- [ ] **Step 1: Build and live-check on the preview:** channel 2's page lists every short show and no complete one, Double Dare first (414), pre-unticked episodes showing why; the limit set to 45 minutes re-ticks the ones under it; review Married... with a holiday episode left as Holiday and one more unticked as Never air: both on the list with their reasons (`how: "review"`), the holiday one under its holiday, the show no longer listed; Create Lineup on channel 2: the two air 0 times, the rest of Married... joins; restore one: it airs after the next Create Lineup.
 - [ ] **Step 2:** `npm test` - Expected: all pass.
 - [ ] **Step 3:** Commit `Catalog: the Catalog page - review shows, restore never-air episodes`.
 

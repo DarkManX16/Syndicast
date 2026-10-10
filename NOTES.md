@@ -1411,6 +1411,12 @@ for the full spec, stages and acceptance tests.
       "DCOM Horse Sense promo (tomorrow)") air only when that's true on the
       schedule; a "tomorrow" promo plays only on the day before that program
       actually airs. Builds on the `later` key.
+- [ ] Seasonal episodes air themselves in their season (after 1.0)
+
+      Episodes left out as "Holiday: I'll place it myself" (see "Full
+      catalogs, and a never-air list" under Known issues) place themselves in
+      their holiday's season, with the same date logic as date-aware promos,
+      instead of Ron placing them by hand each year. Added Oct 10, 2026.
 
 ### Scheduling
 
@@ -3140,6 +3146,12 @@ be built:
       all seven steps, each proven on copies of Ron's data; merged into
       `blocks` when Ron says. Channels saved before it carry over on their
       first regeneration, with nothing to migrate.
+- [ ] Full catalogs and the never-air list: every slot draws on its show's or
+      custom show's whole episode list once reviewed, and episodes Ron left
+      out - holidays he places himself, and ones never to air - stay out
+      (Opus 5.5). On the `full-catalog` branch, on top of `stored-progress`,
+      so the two merge together. See "Full catalogs, and a never-air list"
+      under Known issues and [docs/full-catalog-plan.md](docs/full-catalog-plan.md).
 - [ ] Episode start: start a show or custom show at a specific episode, not
       just a season (Opus 5.5 designs, Sonnet 5 builds). See its Scheduling
       roadmap line above.
@@ -4094,6 +4106,23 @@ Series 45/223, Naruto 45/219, Beyblade 51/154, Phineas and Ferb 51/140. Also:
 7. **New episodes** added to Plex later join automatically, but the Create
    Lineup dialog names them, with a one-click "never air" for each.
 
+And, the same day, after reading the design (the episodes he deleted were
+mostly holiday episodes, which he places himself when their time comes, and
+specials, mainly ones longer than 30 minutes):
+
+8. Each left-out episode has a **reason**: "Holiday: I'll place it myself" or
+   "Never air". Both stay out of the rotation. The Catalog page shows holiday
+   episodes in their own section, grouped by holiday (Christmas, Halloween,
+   Thanksgiving, Easter, Valentine's and so on), to find them when it's time.
+9. The review **pre-unticks** likely holiday episodes by title (Christmas,
+   Halloween, Thanksgiving, Easter, Valentine, Santa, New Year and similar),
+   marked Holiday, and episodes longer than 30 minutes, the limit adjustable
+   on the page; it shows why each was pre-unticked, and nothing is saved until
+   he confirms.
+10. After 1.0, beside date-aware promos: "Seasonal episodes air themselves in
+    their season", with the same date logic.
+11. On the 1.0 must list, right after stored progress.
+
 #### The design
 
 **A show's catalog** is read in the editor with the library's own code -
@@ -4122,16 +4151,33 @@ already airs one of its specials - decided once, at its review.
 **The review** is on the channel's new Catalog page. It lists every show on
 the channel with something to add - catalog episodes the lineup doesn't hold
 and the never-air list doesn't name - most to add first. Each opens to its
-episodes grouped by season (`S04E09 Title`), with a checkbox per episode and
-per season, and add all / add none. Saving marks the show reviewed: ticked
-episodes join, unticked ones go on the never-air list ("removed at review").
+episodes grouped by season (`S04E09 Title 22:30`), with a checkbox per
+episode and per season, and add all / add none. Two kinds start unticked, each
+saying why:
+
+- **a likely holiday**, by a word in its title - Christmas (also Xmas, Santa,
+  Noel, Yule, reindeer, mistletoe, nutcracker), Halloween (trick or treat,
+  jack-o'-lantern), Thanksgiving (pilgrim, turkey day), Easter, Valentine's
+  (Valentine, Cupid), New Year, Hanukkah, St. Patrick's (leprechaun), Fourth of
+  July (Independence Day), Mother's Day, Father's Day, April Fools', Groundhog
+  Day - marked Holiday, with its holiday;
+- **longer than the limit** - 30 minutes to start, set on the page - marked
+  Never air.
+
+An unticked episode keeps a reason Ron can switch - "Holiday: I'll place it
+myself" (with its holiday, which he can change) or "Never air". Saving marks
+the show reviewed: ticked episodes join, unticked ones go on the list with
+their reasons. Nothing is saved before that click.
 A show with nothing to add isn't listed.
 
 **The never-air list** is per channel, one entry per file (`server|key`, the
-key stored progress already uses), so an episode never airs on that channel
-through any show - Plex or custom - and comes back only when restored on the
-Catalog page. Each entry keeps the show, season, episode, title, when, and how
-it got there (review, deleted, new in Plex). It binds everything that picks an
+key stored progress already uses), so an episode stays out of that channel's
+rotation through any show - Plex or custom - until restored on the Catalog
+page. Each entry has its reason - `holiday` (with the holiday) or `never` -
+and keeps the show, season, episode, title, length, when, and how it got
+there (review, deleted, new in Plex). Holiday episodes are only out of the
+rotation: Ron still places them by hand, and a slot or tool he uses to do it
+is untouched by the list. It binds everything that picks an
 episode: the pool for every slot (movie slots too), a Repeat - whose source
 aired an episode since marked never-air plays the Rerun fallback - and Rerun.
 A Play Next place on a never-air episode moves to the next one, as for any
@@ -4144,8 +4190,9 @@ click).
 The dialog says what it is doing and what it found:
 
 - "New in Plex since the last run" - catalog episodes of a reviewed show it
-  had never seen, by show and season, each with **Never air**, which takes it
-  out of this run at once;
+  had never seen, by show and season, each with **Holiday** and **Never
+  air**, which take it out of this run at once (Holiday pre-chosen for a
+  likely holiday title);
 - shows it couldn't read (Plex off, a show gone, a custom show deleted), which
   fall back to the lineup's own episodes, as today, for this run - it never
   blocks Create Lineup;
@@ -4172,15 +4219,18 @@ rest. The Catalog page saves at once. Renaming a Plex server renames its keys
 in the catalog state, as it already does in the lineup.
 
 **Deleting an airing** in the programming list asks, for an episode,
-custom-show item or movie: "Remove this airing only" (as today) or "Never air
-this episode on this channel" - which removes this airing, adds the episode to
-the list, and says how many other airings it still has: the next Create
-Lineup leaves them out. Flex and redirects delete as now; the bulk tools
+custom-show item or movie: "Remove this airing only" (as today), "Holiday:
+I'll place it myself" (the holiday guessed from its title, changeable) or
+"Never air this episode on this channel". Either of the last two removes this
+airing, adds the episode to the list, and says how many other airings it
+still has: the next Create Lineup leaves them out. Flex and redirects delete as now; the bulk tools
 (Duplicates, Specials, Show(s), All) don't ask.
 
 **The Catalog page**, `/channels/<n>/catalog`, linked from the channel page
-and the Time Slots dialog: "To review" as above, and "Never air", grouped by
-show, each entry with how it got there and **Restore**. A restored episode of a
+and the Time Slots dialog: "To review" as above; "Holiday episodes", grouped by
+holiday and then show, each with its length - for finding them when it's time
+to place them; and "Never air", grouped by show. Every entry shows how it got
+there, can switch reason, and has **Restore**. A restored episode of a
 reviewed show joins at the next Create Lineup; of an unreviewed one, when the
 show is reviewed or the library adds it again.
 
@@ -4209,7 +4259,9 @@ channel.catalog = {                         // absent on every channel saved tod
   neverAir: {
     "Thats So Disney/Nick Picks|/library/metadata/112180": {
       showId: "tv.Married... with Children", season: 2, episode: 5,
-      title: "...", at: "2026-10-10T15:02:00.000Z", how: "review",  // "review" | "deleted" | "new"
+      title: "...", duration: 1414464, at: "2026-10-10T15:02:00.000Z",
+      how: "review",                        // "review" | "deleted" | "new"
+      reason: "holiday", holiday: "Christmas",   // or reason: "never"
     },
   },
 };
@@ -4220,6 +4272,7 @@ GET  /api/channel/:number/catalog          -> channel.catalog, or { shows: {}, n
 POST /api/channel/:number/catalog  { ops }  -> applied in order, saved once
   { review:  { showId, source, specials, known, neverAir: [entries] } }
   { neverAir: [entries] }   { restore: [keys] }   { known: { showId: [keys] } }
+  { reason: { key, reason, holiday } }
 ```
 
 `src/show-catalog.js` holds the rules, pure, shared by the editor
