@@ -4361,6 +4361,19 @@ custom shows, filler, aliases), with a fresh Plex snapshot taken then. Suite
   Better Watch Out", its Christmas episode - almost certainly one Ron deleted.
   No holiday word is in the title, so the review won't pre-untick it: an
   episode like this is the review's reason for being.
+- **The final review** (Opus 5.5, fresh) found four things that would have
+  cost Ron decisions he had made, all fixed with a test that failed first,
+  suite 1914/1914: renumbering a channel dropped its catalog (it now moves with
+  the channel); a catalog read had no time limit, so a sleeping Plex could hold
+  Create Lineup for minutes (15 s a request, 90 s a read, and an unreachable
+  server fails its other shows at once); the holiday words missed real ones in
+  Ron's lists - Deck the Halls, Talking Turkey, Home for the Holidays, Kwanzaa,
+  the Great Pumpkin, Labor Day (added; a bare "holiday" means Christmas only
+  when nothing named matches, and a few titles like "A Roman Holiday" now start
+  unticked); and the Catalog page undid unsaved ticks whenever anything was
+  saved (open rows and touched episodes now carry over). Also fixed: a re-roll
+  marked newcomers it never named as seen, and a short Plex read could mark a
+  show complete.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 
