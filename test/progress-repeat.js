@@ -142,6 +142,45 @@ module.exports = async function () {
             fallback.length === 1 && /^rerun\|/.test(fallback[0].program.slotPosition), fallback.map((a) => a.program.slotPosition).join());
     }
 
+    suite.log('-- Create Lineup twice in a row --');
+    {
+        // Friday 10am, then 10:30 and 11: Saturday's source, Thursday 6:30pm,
+        // aired in the lineup the first run replaced, and the later runs' lineup
+        // on air starts at 10am - so each run keeps it for the next.
+        const withDoug = () => {
+            const s = raven();
+            s.slots.push({ time: slotTime(Thu, 20), showId: 'tv.Doug', order: 'next' }, { time: slotTime(Thu, 20, 30), showId: 'flex.', order: 'next' });
+            s.slots.sort((a, b) => a.time - b.time);
+            return s;
+        };
+        const pool = episodes('Raven', 20).concat(episodes('Doug', 20));
+        const run = async (onAir, opened, now) => {
+            const schedule = withDoug();
+            const startTime = Date.parse(onAir.startTime);
+            schedule.progress = slotProgress.planProgress({ programs: onAir.programs, startTime, now,
+                openedSchedule: opened, schedule, pool, getShowData });
+            const h = slotProgress.repeatHistory({ programs: onAir.programs, startTime, now, spanMs: WEEK + HOUR,
+                opened, schedule, getShowData });
+            schedule.progress.history = h.keep;
+            return { res: await generate(pool, schedule, now, h.history), schedule: JSON.parse(JSON.stringify(schedule)) };
+        };
+        const thursday = { res: await generate(pool, withDoug(), NOW),
+            schedule: Object.assign(withDoug(), { progress: { asOf: new Date(NOW).toISOString(), positions: {} } }) };
+        const first = await run(thursday.res, thursday.schedule, at(Fri, 10));
+        const second = await run(first.res, first.schedule, at(Fri, 10, 30));
+        const third = await run(second.res, second.schedule, at(Fri, 11));
+        const saturday = (r) => inSlot(withStarts(r.res), at(Sat, 18, 30)).map((a) => `${a.program.title} ${a.program.slotPosition}`).join('+');
+        suite.check('Create Lineup three times in a row keeps Saturday repeating Thursday',
+            [first, second, third].every((r) => saturday(r) === 'Raven S1E1 repeat'), [first, second, third].map(saturday).join(' / '));
+        suite.check('...which the lineup on air alone no longer holds',
+            slotProgress.recentAirings({ programs: first.res.programs, startTime: Date.parse(first.res.startTime), now: at(Fri, 10, 30),
+                spanMs: WEEK + HOUR, since: at(Fri, 10) }).length === 0);
+        const kept = second.schedule.progress.history;
+        suite.check('...keeping only the airings of shows a Repeat repeats',
+            kept.some((a) => a.start === at(Thu, 18, 30)) && kept.every((a) => a.program.showTitle === 'Raven'),
+            kept.map((a) => a.program.title).join());
+    }
+
     suite.log('-- reading the lineup on air before now --');
     {
         // A lineup saved Friday 3am, rotated: Thursday is at the end of its cycle.

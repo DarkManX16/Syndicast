@@ -100,11 +100,20 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     let l = scope.schedule.slots.length;
                     for (let i = 0; i < l; i++) {
                         let t = scope.schedule.slots[i].time;
+                        //A Repeat on every day repeats the slot as far back as before.
+                        let daily = { time: t, repeatOf: scope.schedule.slots[i].repeatOf };
+                        let moveRepeat = (s) => {
+                            if ( (s.order === 'repeat') && (typeof(daily.repeatOf) === 'number') ) {
+                                s.repeatOf = slotProgress.movedRepeatOf(daily, s.time, DAY, WEEK);
+                            }
+                        };
                         scope.schedule.slots[i].time = t % DAY;
+                        moveRepeat(scope.schedule.slots[i]);
                         for (let j = 1; j < 7; j++) {
                             //clone the slot for every day of the week
                             let c = JSON.parse( angular.toJson(scope.schedule.slots[i]) );
                             c.time += j * DAY;
+                            moveRepeat(c);
                             scope.schedule.slots.push(c);
                         }
                     }
@@ -117,6 +126,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                         let t = slot.time % DAY;
                         if (seen[t] !== true) {
                             seen[t] = true;
+                            if ( (slot.order === 'repeat') && (typeof(slot.repeatOf) === 'number') ) {
+                                slot.repeatOf = slotProgress.movedRepeatOf(slot, t, WEEK, DAY);
+                            }
                             newSlots.push(slot);
                         }
                     }
@@ -507,20 +519,24 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                         getShowData: getShowData,
                     });
                 }
-                //What the lineup on air aired in the last period, for Repeat slots
-                //whose source aired before the new lineup begins.
+                //What aired in the last period, for Repeat slots whose source
+                //aired before the new lineup begins: from the lineup on air, and
+                //from before it from what the last run kept, which this run keeps
+                //again for the next.
                 let history = [];
                 if (typeof(scope.lineup) === 'function') {
                     let onAir = scope.lineup();
-                    let asOf = (scope.openedSchedule && scope.openedSchedule.progress)
-                        ? Date.parse(scope.openedSchedule.progress.asOf) : undefined;
-                    history = slotProgress.recentAirings({
+                    let h = slotProgress.repeatHistory({
                         programs: onAir.programs,
                         startTime: new Date(onAir.startTime).getTime(),
                         now: t0,
                         spanMs: (scope.schedule.period || DAY) + 60 * 60 * 1000,
-                        since: asOf,
+                        opened: scope.openedSchedule,
+                        schedule: scope.schedule,
+                        getShowData: getShowData,
                     });
+                    history = h.history;
+                    scope.schedule.progress.history = h.keep;
                 }
                 let res = await dizquetv.calculateTimeSlots(scope.programs, scope.schedule, history );
                 let t1 = new Date().getTime();

@@ -395,6 +395,28 @@ module.exports = async function () {
         suite.check('...a carried-over strip is not', same.positions[ALL].wrapped === false);
     }
 
+    suite.log('-- the planner reads what aired since the last run once --');
+    {
+        // 24 Play Next positions and a lineup made 20 days ago: each position's
+        // airings since then come from one walk of the lineup, not one each.
+        const shows = Array.from({ length: 24 }, (_, h) => 'Show' + h);
+        const pool = [];
+        shows.forEach((s) => { for (let e = 1; e <= 40; e++) pool.push(episode(s, 1, e, { duration: HOUR })); });
+        const schedule = { period: DAY, slots: shows.map((s, h) => ({ time: h * HOUR, showId: 'tv.' + s, order: 'next' })) };
+        const programs = [];
+        for (let d = 0; d < 30; d++) shows.forEach((s) => programs.push(episode(s, 1, d + 1, { duration: HOUR, slotPosition: 'next|' })));
+        const onAir = new Set(programs);
+        let reads = 0;
+        const counting = (p) => { if (onAir.has(p)) reads++; return getShowData(p); };
+        const opened = Object.assign(JSON.parse(JSON.stringify(schedule)), { progress: { asOf: new Date(THU).toISOString(), positions: {} } });
+        const result = slotProgress.planProgress({ programs, startTime: THU, now: THU + 20 * DAY + 30 * MIN,
+            openedSchedule: opened, schedule, pool, getShowData: counting });
+        suite.check('the planner reads the lineup since the last run once, not once per position',
+            reads <= 4 * programs.length && Object.keys(result.positions).length === 24
+                && result.positions[slotProgress.positionKey('tv.Show3', 'next', undefined)].next.key === 'srv|/e/Show3/1/21',
+            `${reads} reads of a ${programs.length}-airing lineup`);
+    }
+
     suite.log('-- Rerun records --');
     {
         const kp = [1, 2, 3, 4, 5].map((e) => episode('Kim Possible', 1, e));
@@ -475,6 +497,33 @@ module.exports = async function () {
         slotProgress.followRetime(moved, thu.time, slotTime(Thu, 19));
         suite.check('retiming a source moves its repeats with it',
             moved.slots[2].repeatOf === slotTime(Thu, 19) && moved.slots[3].repeatOf === fri.time);
+
+        // Daily to weekly clones every slot onto seven days, as the editor does:
+        // each day's "1am repeats 9pm" repeats the 9pm four hours before it.
+        const daily = { period: DAY, slots: [
+            { time: 21 * HOUR, showId: 'tv.Pooh', order: 'next' },
+            { time: HOUR, showId: 'tv.Pooh', order: 'repeat', repeatOf: 21 * HOUR },
+        ] };
+        const weekly = { period: WEEK, slots: [] };
+        daily.slots.forEach((s) => {
+            for (let j = 0; j < 7; j++) {
+                const c = Object.assign({}, s, { time: s.time + j * DAY });
+                if (c.order === 'repeat') c.repeatOf = slotProgress.movedRepeatOf(s, c.time, DAY, WEEK);
+                weekly.slots.push(c);
+            }
+        });
+        const backs = weekly.slots.filter((r) => r.order === 'repeat').map((r) => {
+            if (slotProgress.repeatProblem(weekly, r) !== null) return 'problem';
+            const source = weekly.slots.find((s) => s.time === r.repeatOf);
+            return slotProgress.repeatSources(weekly, r).find((x) => x.slot === source).back / HOUR;
+        });
+        suite.check('daily to weekly: every day\'s 1am repeats the 9pm before it', backs.join() === '4,4,4,4,4,4,4', backs.join());
+        suite.check('weekly to daily: Friday 1am repeating Thursday 9pm becomes 1am repeating 9pm',
+            slotProgress.movedRepeatOf({ time: slotTime(Fri, 1), repeatOf: slotTime(Thu, 21) }, HOUR, WEEK, DAY) === 21 * HOUR);
+        const farBack = { time: 10 * HOUR, showId: 'tv.Doug', order: 'repeat' };
+        farBack.repeatOf = slotProgress.movedRepeatOf({ time: slotTime(Thu, 10), repeatOf: slotTime(Sat, 10) }, farBack.time, WEEK, DAY);
+        suite.check('...and one further back than a day asks for a new source',
+            /gone/.test(slotProgress.repeatProblem({ period: DAY, slots: [farBack] }, farBack) || ''));
     }
 
     suite.log('-- references --');

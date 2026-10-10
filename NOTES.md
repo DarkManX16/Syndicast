@@ -3344,9 +3344,10 @@ Ron says** - Play Next continues from stored progress, Shuffle plays rounds
 kept by episode, with season settings and multi-part stories, Rerun replays
 only what its show's Play Next has aired, Repeat a slot re-airs a chosen
 earlier slot, and Ordered shuffle interleaves a custom show's series; every
-step's proof re-run on the final code (step 7). One thing found while
-building is Ron's to decide: "A regeneration only draws from what the lineup
-on air holds", the next entry. See "Build record" at the end of this entry,
+step's proof re-run on the final code (step 7), and the final review's fixes
+in. Two things are Ron's to decide: "A regeneration only draws from what the
+lineup on air holds", the next entry, and narrowing one slot of a shared
+Shuffle, under "Open: narrowing one slot of a shared Shuffle" below. See "Build record" at the end of this entry,
 and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
@@ -3568,9 +3569,13 @@ Next.
   "Mother Dearest" and Sunday Oct 11 Friday's S01E02 "Test of Friendship", then
   S01E03 and S01E04 the next weekend, where the lineup has random Shuffle picks
   (S02E03, S04E16, S03E35, S01E14); each Thursday and Friday occurrence airs
-  exactly one episode. A source that aired before the lineup on air was
-  generated isn't known - before that lineup's `progress.asOf` it is the
-  generator's opening flex - and falls back as below. Repeat airings are
+  exactly one episode. Before the lineup on air was generated - its
+  `progress.asOf` - that lineup holds the generator's opening flex, so each
+  run keeps the period it read, for the shows Repeats repeat, in
+  `progress.history`, and the next run reads back through that: running
+  Create Lineup twice in a row keeps the weekend's repeats (found by the final
+  review, fixed with step 7). A source older than both isn't known and falls
+  back as below. Repeat airings are
   labelled `repeat`, so they never move a position - a repeat carrying its
   source's label would make that strip look one episode behind. Time Slots
   only; the editor keeps `repeatOf` in step when the source is retimed and
@@ -3623,6 +3628,9 @@ schedule.progress = {
     '["tv.Kim Possible","shuffle",[]]': { round: 2, next: { key, order } },
     '["tv.Doug","shuffle",[]]':        { round: 0, queue: [ { key, order } ] },  // a carried round
   },
+  // what aired in the period before asOf, of every show a Repeat repeats,
+  // for the next run's Repeats (repeatHistory)
+  history: [ { start: 1791325800000, program: { ... } } ],
 };
 
 // slots
@@ -3925,6 +3933,66 @@ written at 4:18am), so the copy is current - and on Sep 29's channel 1. Suite
 - **Live checks** weren't repeated. Each ran on the preview with its own
   step's code; what later steps changed under them - the round hash in step 4
   above all - is what the scripted proofs above re-measure.
+
+**The final review, Oct 10, 2026** (7279f2b..). A fresh review of the whole
+branch (Opus 5.5) re-ran the headline proofs (all exact) and found four
+things worth fixing; three are fixed, each with a test that failed first,
+suite 1867/1867.
+
+- **Create Lineup twice in a row lost the weekend's repeats.** The second
+  run's history started at the first run's `asOf`, so Saturday's source,
+  Thursday 6:30pm, was gone and Saturday became a Rerun - S01E02 then aired
+  Friday, Saturday and Sunday. Now each run keeps what it read for the shows
+  Repeats repeat (`repeatHistory`, `progress.history`). On the copy, That's
+  So Raven regenerated at 10am, 10:30 and 11am Friday: Saturday repeats
+  "Mother Dearest" every time, 0 mismatches. Live on the preview, Ron's
+  channel 3 with the two weekend Repeats, Create Lineup and Update Channel
+  twice at 12:46 and 12:47am Saturday: the first run kept Thursday's and
+  Friday's airings, and the second, both sources now before the last run,
+  still repeats "Mother Dearest" and "Test of Friendship"; 102 occurrences
+  equal their source and 2 come from the kept history, 0 mismatches, no
+  errors. That history is genuine: channel 3's lineup was generated Wednesday
+  Oct 7 at 2:48am and only re-saved Friday at 4:18am, so Thursday's airing is
+  in its cycle.
+- **Changing a schedule from daily to weekly moved its Repeats' sources.**
+  The clones kept `repeatOf` as it was, so a daily "1am repeats 9pm" became
+  seven Repeats of Thursday's 9pm, six of them the wrong evening, unflagged.
+  Now each keeps its distance back (`movedRepeatOf`): every day's 1am repeats
+  the 9pm four hours before it; going back to daily keeps a distance a day can
+  hold and marks one it can't ("gone - choose another").
+- **The planner slowed with time since the last run** - every Play Next and
+  Rerun position walked the whole lineup since then, twice per regeneration in
+  the browser: channel 1 took 265 ms at 30 days, 886 at 120, 2,313 at 250.
+  One walk now serves every position: 22, 26 and 47 ms. The January Rerun
+  regeneration is identical program for program (37,253) and record for
+  record, and every position on the four copies still continues exactly.
+- **Narrowing one slot of a shared Shuffle** is the fourth, and Ron's to
+  decide - the next section.
+- **At merge, rebuild the bundle and restart the server together.** An old
+  server's generator has no case for the Rerun, Repeat and Ordered shuffle
+  slots a new editor sends - it picks nothing and Create Lineup fails with an
+  error (found by the review, checked in blocks' code) - and a server keeps the
+  code it started with (see "A long-running server keeps serving the build it started
+  with"). The server on port 18000 is Ron's to restart.
+
+#### Open: narrowing one slot of a shared Shuffle
+
+Kim Possible's Saturday 3:30pm and Sunday 6pm Shuffles are one position. Set
+Saturday alone to no Season 1 and, by rule 4 as decided, the new no-S1
+position takes the rest of the old round without Season 1 - while Sunday,
+still in the old position, plays that same round. The two then air the same
+episodes in the same order days apart all year. Measured on the copy,
+regenerated at Monday Oct 12: 39 of the 106 Kim Possible airings repeat an
+episode the other position aired in the previous 120 days, 7 within 30 -
+S04E04 on Saturday Oct 17 and again on Sunday Oct 18 - where the unsplit
+lineup, or both slots narrowed together, has none. `progress-audit` checks each position on
+its own, so it doesn't see it. Play Next does the same - both ranges step
+through the same episodes from the same place - which is what two ranges of
+one show sharing seasons already do, but a Shuffle is meant to look random.
+
+**Recommended:** a Shuffle-family position inherits the old round only when no
+slot still uses the old position; when the old one carries on, the new one
+starts a round of its own. Not built: rule 4 is Ron's decision as written.
 
 ### A regeneration only draws from what the lineup on air holds
 

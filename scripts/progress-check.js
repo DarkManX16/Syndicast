@@ -152,13 +152,17 @@ async function main() {
             openedSchedule: channel.scheduleBackup, schedule: schedule, pool: pool, getShowData,
         });
     }
-    // and, as the editor does, what the lineup on air aired in the last period, for Repeat slots.
-    let opened = channel.scheduleBackup || {};
-    let history = slotProgress.recentAirings({
+    // and, as the editor does, what aired in the last period, for Repeat slots:
+    // from the lineup on air and what the last run kept, kept again for the next.
+    let h = slotProgress.repeatHistory({
         programs: channel.programs, startTime: savedStart, now: at,
         spanMs: (schedule.period || DAY) + 60 * MIN,
-        since: opened.progress ? Date.parse(opened.progress.asOf) : undefined,
+        opened: channel.scheduleBackup, schedule, getShowData,
     });
+    let history = h.history;
+    if (schedule.progress) {
+        schedule.progress.history = h.keep;
+    }
     let res = await generate(pool, schedule, at, history);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
     seasonConstraints.clearStartSeasons(schedule);

@@ -401,6 +401,24 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
     let labelled = programs.some( (p) => typeof(p.slotPosition) === 'string' );
     let total = cycleLength(programs);
 
+    // Each position's airings between the last run and now, from one walk of
+    // the lineup for every position - a lineup months old is tens of
+    // thousands of airings.
+    let sinceRun = null;
+    let airedSinceRun = (key) => {
+        if (sinceRun === null) {
+            sinceRun = new Map();
+            airings({ programs, startTime: start, from: lastRun, to: now, schedule: readWith, getShowData })
+                .forEach( (a) => {
+                    if (! sinceRun.has(a.key)) {
+                        sinceRun.set(a.key, []);
+                    }
+                    sinceRun.get(a.key).push(a);
+                } );
+        }
+        return sinceRun.get(key) || [];
+    };
+
     let groupsOf = (sched) => {
         let groups = new Map();
         (Array.isArray(sched.slots) ? sched.slots : []).forEach( (slot) => {
@@ -437,9 +455,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         if ( (typeof(prior) === 'object') && (prior !== null) && (typeof(prior.next) === 'object') ) {
             orders.push(prior.next.order);
         }
-        airings({ programs, startTime: start, from: lastRun, to: now, schedule: readWith, getShowData })
-            .filter( (a) => a.key === key )
-            .forEach( (a) => orders.push(getShowData(a.program).order) );
+        airedSinceRun(key).forEach( (a) => orders.push(getShowData(a.program).order) );
         orders.push(getShowData(place.program).order);
         for (let i = 1; i < orders.length; i++) {
             if (orders[i] < orders[i - 1]) {
@@ -531,8 +547,8 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
 
         let airedIn = new Map();
         if ( labelled && ! isNaN(lastRun) && (lastRun < now) ) {
-            airings({ programs, startTime: start, from: lastRun, to: now, schedule: readWith, getShowData })
-                .filter( (a) => (a.key === key) && (a.start + a.program.duration <= now) )
+            airedSinceRun(key)
+                .filter( (a) => a.start + a.program.duration <= now )
                 .forEach( (a) => {
                     let found = storyOf.get(rounds.fileKey(a.program));
                     let round = parseLabel(a.program.slotPosition).round;
@@ -806,6 +822,60 @@ function followRetime(schedule, oldTime, newTime) {
     } );
 }
 
+/*
+ * A Repeat's source when the schedule's period changes and the Repeat lands
+ * at `newTime`: the slot as far back from it as before, so a daily "1am
+ * repeats 9pm" cloned onto seven days repeats the 9pm before each. A distance
+ * the new period can't hold - two days back, in a daily schedule - points the
+ * Repeat at itself, which repeatProblem reports.
+ */
+function movedRepeatOf(repeat, newTime, fromPeriod, toPeriod) {
+    let back = ( (repeat.time - repeat.repeatOf) % fromPeriod + fromPeriod ) % fromPeriod;
+    if (back === 0) {
+        back = fromPeriod;
+    }
+    if (back >= toPeriod) {
+        return newTime;
+    }
+    return ( (newTime - back) % toPeriod + toPeriod ) % toPeriod;
+}
+
+/*
+ * What Repeat slots may draw on at a regeneration: what aired in the last
+ * `spanMs`. The lineup on air holds it back to the moment it was made
+ * (recentAirings); before that it was in the lineup the last run replaced, so
+ * the last run kept it in its progress, `history`. `keep` is what this run
+ * keeps for the next - the airings of every show a Repeat in `schedule`
+ * repeats - so running Create Lineup again soon after still finds them.
+ */
+function repeatHistory({ programs, startTime, now, spanMs, opened, schedule, getShowData }) {
+    let progress = ( (typeof(opened) === 'object') && (opened !== null) && (typeof(opened.progress) === 'object') )
+        ? opened.progress : null;
+    let since = (progress !== null) ? Date.parse(progress.asOf) : NaN;
+    let history = [];
+    if ( (progress !== null) && Array.isArray(progress.history) && ! isNaN(since) ) {
+        history = progress.history.filter( (a) => (typeof(a) === 'object') && (a !== null)
+            && (typeof(a.start) === 'number') && (a.start >= now - spanMs) && (a.start < since)
+            && (typeof(a.program) === 'object') && (a.program !== null) );
+    }
+    history = history.concat( recentAirings({ programs, startTime, now, spanMs, since: isNaN(since) ? undefined : since }) );
+    history.sort( (a, b) => a.start - b.start );
+
+    let slots = ( (typeof(schedule) === 'object') && (schedule !== null) && Array.isArray(schedule.slots) ) ? schedule.slots : [];
+    let sources = new Set();
+    slots.forEach( (r) => {
+        if (r.order !== 'repeat') {
+            return;
+        }
+        let source = slots.find( (s) => (s !== r) && (s.time === r.repeatOf) );
+        if (typeof(source) !== 'undefined') {
+            sources.add(source.showId);
+        }
+    } );
+    let keep = history.filter( (a) => ! a.program.isOffline && sources.has(getShowData(a.program).showId) );
+    return { history, keep };
+}
+
 module.exports = {
     MODES: MODES,
     ROUND_MODES: ROUND_MODES,
@@ -830,4 +900,6 @@ module.exports = {
     repeatSources: repeatSources,
     repeatProblem: repeatProblem,
     followRetime: followRetime,
+    movedRepeatOf: movedRepeatOf,
+    repeatHistory: repeatHistory,
 };
