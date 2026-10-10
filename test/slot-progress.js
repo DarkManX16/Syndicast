@@ -356,6 +356,28 @@ module.exports = async function () {
         suite.check('a Shuffle slot\'s range change carries the rest of its old round',
             rangeChange && rangeChange.queue.map((r) => r.key).join() === expectedQueue.join(), JSON.stringify(rangeChange));
 
+        // Saturday and Sunday share one Shuffle; only Saturday gets the range. Sunday
+        // still plays the old round, so Saturday starts a round of its own rather
+        // than the same rest of it (Ron, Oct 10).
+        const dougWeekend = { period: WEEK, slots: [
+            { time: slotTime(Sat, 6), showId: 'tv.Doug', order: 'shuffle' },
+            { time: slotTime(Sun, 6), showId: 'tv.Doug', order: 'shuffle' },
+        ] };
+        const satRanged = JSON.parse(JSON.stringify(dougWeekend));
+        satRanged.slots[0].seasons = { excludeSeasons: [2] };
+        const split = slotProgress.planProgress({ programs: lineup(THU, [[at(Sat, 6), Object.assign({}, placeStory[0], { slotPosition: 'shuffle||4' })]]),
+            startTime: THU, now: NOW, openedSchedule: dougWeekend, schedule: satRanged, pool: twoSeasons, getShowData });
+        suite.check('narrowing one slot of a shared Shuffle starts a round of its own',
+            JSON.stringify(split.positions[slotProgress.positionKey('tv.Doug', 'shuffle', { excludeSeasons: [2] })]) === JSON.stringify({ round: 0, deferred: [] })
+                && split.positions[DOUG] && split.positions[DOUG].round === 4,
+            JSON.stringify(split.positions));
+        const rerunWeekend = JSON.parse(JSON.stringify(dougWeekend).replace(/"shuffle"/g, '"rerun"'));
+        const rerunRanged = JSON.parse(JSON.stringify(satRanged).replace(/"shuffle"/g, '"rerun"'));
+        const rerunSplit = slotProgress.planProgress({ programs: lineup(THU, [[at(Sat, 6), Object.assign({}, placeStory[0], { slotPosition: 'rerun||4' })]]),
+            startTime: THU, now: NOW, openedSchedule: rerunWeekend, schedule: rerunRanged, pool: twoSeasons, getShowData })
+            .positions[slotProgress.positionKey('tv.Doug', 'rerun', { excludeSeasons: [2] })];
+        suite.check('...and so does a Rerun', !rerunSplit || (rerunSplit.round === 0 && !Array.isArray(rerunSplit.queue)), JSON.stringify(rerunSplit));
+
         const newShuffle = slotProgress.planProgress({ programs: savedLineup(), startTime: THU, now: NOW,
             openedSchedule: jbSlots(), schedule: { period: WEEK, slots: jbSlots().slots.concat([{ time: slotTime(Mon, 6), showId: 'tv.Doug', order: 'shuffle' }]) }, pool, getShowData });
         suite.check('a new Shuffle position starts its first round',

@@ -653,6 +653,12 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
             if (oldKey === key) {
                 return;
             }
+            // A round goes to a narrowed slot only when no slot still plays it:
+            // two positions finishing one round would air the same episodes days
+            // apart (Ron, Oct 10). Play Next keeps its place either way.
+            if ( (ROUND_MODES.indexOf(group.mode) !== -1) && groups.has(oldKey) ) {
+                return;
+            }
             let oldPlace = placeOfOld(oldKey);
             if ( ! isRecord(oldPlace) || ( ! isRecord(oldPlace.next) && ! Array.isArray(oldPlace.queue) ) ) {
                 return;

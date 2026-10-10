@@ -3345,10 +3345,10 @@ kept by episode, with season settings and multi-part stories, Rerun replays
 only what its show's Play Next has aired, Repeat a slot re-airs a chosen
 earlier slot, and Ordered shuffle interleaves a custom show's series; every
 step's proof re-run on the final code (step 7), and the final review's fixes
-in. Two things are Ron's to decide: "A regeneration only draws from what the
-lineup on air holds", the next entry, and narrowing one slot of a shared
-Shuffle, under "Open: narrowing one slot of a shared Shuffle" below. See "Build record" at the end of this entry,
-and the build plan in
+in, with Ron's rule for narrowing one slot of a shared Shuffle (Oct 10). "A
+regeneration only draws from what the lineup on air holds", the next entry, is
+designed and being built on its own branch. See "Build record" at the end of
+this entry, and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
 candidate count" and "Per-position stored progress, which fixes two things at
@@ -3480,7 +3480,9 @@ from the lineup it has loaded. In order, the first that applies:
    takes the place of the position the same slot - same time, same show -
    belonged to in the schedule the lineup was made from, moved forward to the
    nearest episode the new range allows; for the shuffle family the rest of the
-   old round, with what the new range excludes taken out. If its slots came
+   old round, with what the new range excludes taken out - but only when no
+   slot still plays the old position; otherwise a round of its own (Ron, Oct
+   10: two positions finishing one round air the same episodes days apart). If its slots came
    from several old positions, the one airing first from now wins. Not across
    a change of mode.
 5. **Otherwise the first episode of its range**, or a fresh round.
@@ -3966,8 +3968,8 @@ suite 1867/1867.
   One walk now serves every position: 22, 26 and 47 ms. The January Rerun
   regeneration is identical program for program (37,253) and record for
   record, and every position on the four copies still continues exactly.
-- **Narrowing one slot of a shared Shuffle** is the fourth, and Ron's to
-  decide - the next section.
+- **Narrowing one slot of a shared Shuffle** was the fourth - Ron's to decide,
+  decided and built Oct 10; see the next section.
 - **At merge, rebuild the bundle and restart the server together.** An old
   server's generator has no case for the Rerun, Repeat and Ordered shuffle
   slots a new editor sends - it picks nothing and Create Lineup fails with an
@@ -3975,7 +3977,7 @@ suite 1867/1867.
   code it started with (see "A long-running server keeps serving the build it started
   with"). The server on port 18000 is Ron's to restart.
 
-#### Open: narrowing one slot of a shared Shuffle
+#### Narrowing one slot of a shared Shuffle
 
 Kim Possible's Saturday 3:30pm and Sunday 6pm Shuffles are one position. Set
 Saturday alone to no Season 1 and, by rule 4 as decided, the new no-S1
@@ -3990,9 +3992,17 @@ its own, so it doesn't see it. Play Next does the same - both ranges step
 through the same episodes from the same place - which is what two ranges of
 one show sharing seasons already do, but a Shuffle is meant to look random.
 
-**Recommended:** a Shuffle-family position inherits the old round only when no
-slot still uses the old position; when the old one carries on, the new one
-starts a round of its own. Not built: rule 4 is Ron's decision as written.
+**Ron's rule, Oct 10, built:** a narrowed Shuffle or Rerun slot inherits the
+old round only when no slot still plays the old position; when the old one
+carries on, the new one starts a round of its own. Play Next is unchanged.
+Tested ("narrowing one slot of a shared Shuffle starts a round of its own",
+"...and so does a Rerun"), suite 1869/1869. On the copy, Saturday narrowed
+alone: the no-S1 position starts round 0 of its own and Sunday finishes the
+old round; 17 of the 104 airings repeat an episode the other slot aired in the
+previous 120 days (was 39), 8 within 30 (was 7) - now chance, two independent
+shuffles of mostly the same episodes, not one order played twice. Both
+weekend slots narrowed together still carry the rest of the old round (63 of
+82) with none, and every position on channels 1-3 continues exactly.
 
 ### A regeneration only draws from what the lineup on air holds
 
