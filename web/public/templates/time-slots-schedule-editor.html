@@ -93,6 +93,11 @@
                             </button>
                         </div>
 
+                        <div class='col-md-12 small text-info' ng-if="slot.order === 'rerun' && rerunNoteOf(slot)"
+                             style="margin-top: -8px; margin-bottom: 8px;">
+                            <i class='fa fa-info-circle'></i> {{ rerunNoteOf(slot) }}
+                        </div>
+
                         <div class='col-md-12' ng-if="openSeasonEditor === slot && canConstrainSeasons(slot)"
                              style="background: rgba(0,0,0,.04); padding: 8px; margin-bottom: 8px;">
                             <div ng-if="isWeekly()" style="margin-bottom: 8px;">
@@ -159,6 +164,10 @@
                             <div ng-if="slot.order === 'shuffle'" class='small text-muted'>
                                 Shuffle airs every episode of these seasons once a round, and
                                 changing them moves nothing else in the round.
+                            </div>
+                            <div ng-if="slot.order === 'rerun'" class='small text-muted'>
+                                Rerun airs, once a round, the episodes of these seasons that this
+                                show's Play Next has already aired.
                             </div>
                         </div>
 

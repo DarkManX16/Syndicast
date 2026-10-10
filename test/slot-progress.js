@@ -395,6 +395,57 @@ module.exports = async function () {
         suite.check('...a carried-over strip is not', same.positions[ALL].wrapped === false);
     }
 
+    suite.log('-- Rerun records --');
+    {
+        const kp = [1, 2, 3, 4, 5].map((e) => episode('Kim Possible', 1, e));
+        const RERUN = slotProgress.positionKey('tv.Kim Possible', 'rerun', undefined);
+        const sched = { period: WEEK, slots: [
+            { time: slotTime(Sat, 15, 30), showId: 'tv.Kim Possible', order: 'rerun' },
+            { time: slotTime(Sun, 18), showId: 'tv.Kim Possible', order: 'rerun' },
+        ] };
+        const k = (e) => slotProgress.ref(kp[e - 1], getShowData).key;
+        const lab = (e, r) => Object.assign({}, kp[e - 1], { slotPosition: 'rerun||' + r });
+        // Made at Friday's run; Saturday and Sunday aired round 2's S1E1 and S1E2.
+        const made = lineup(THU, [[at(Sat, 15, 30), lab(1, 2)], [at(Sun, 18), lab(2, 2)], [at(Sat, 15, 30) + WEEK - 1, lab(3, 2)]]);
+        const opened = Object.assign({}, sched, { progress: { asOf: new Date(at(Fri, 12)).toISOString(), positions: {
+            [RERUN]: { round: 2, next: slotProgress.ref(kp[0], getShowData), deferred: [k(5)], aired: [k(4)] },
+        } } });
+        const r = slotProgress.planProgress({ programs: made, startTime: THU, now: at(Mon, 12), openedSchedule: opened,
+            schedule: sched, pool: kp, getShowData }).positions[RERUN];
+        suite.check('a Rerun record keeps what aired this round',
+            r.round === 2 && r.next.key === k(3) && r.aired.join() === [k(4), k(1), k(2)].join() && r.deferred.join() === k(5),
+            JSON.stringify(r));
+
+        // Round 3 began on Sunday: round 2 ended with S1E4, S1E1; its later half goes last.
+        const next = lineup(THU, [[at(Sat, 15, 30), lab(1, 2)], [at(Sun, 18), lab(2, 3)], [at(Sat, 15, 30) + WEEK - 1, lab(3, 3)]]);
+        const r3 = slotProgress.planProgress({ programs: next, startTime: THU, now: at(Mon, 12), openedSchedule: opened,
+            schedule: sched, pool: kp, getShowData }).positions[RERUN];
+        suite.check('...and the later half of what aired goes last in the next round',
+            r3.round === 3 && r3.aired.join() === k(2) && r3.deferred.join() === k(1), JSON.stringify(r3));
+    }
+
+    suite.log('-- the Rerun note --');
+    {
+        const kp = [];
+        for (let s = 1; s <= 2; s++) for (let e = 1; e <= 4; e++) kp.push(episode('Kim Possible', s, e));
+        const rerun = { time: slotTime(Sat, 15, 30), showId: 'tv.Kim Possible', order: 'rerun' };
+        const rerunS2 = { time: slotTime(Sun, 18), showId: 'tv.Kim Possible', order: 'rerun', seasons: { excludeSeasons: [1] } };
+        const strip = { time: slotTime(Thu, 16, 30), showId: 'tv.Kim Possible', order: 'next' };
+        const STRIP_KEY = slotProgress.positionKey('tv.Kim Possible', 'next', undefined);
+        const note = (slots, positions, slot) => slotProgress.rerunNote({ schedule: { period: WEEK, slots },
+            progress: { positions: positions || {} }, slot, pool: kp, getShowData });
+        suite.check('no Play Next: the Rerun says it plays as a Shuffle, and why',
+            /no Play Next/.test(note([rerun], {}, rerun) || ''), note([rerun], {}, rerun));
+        suite.check('a strip that hasn\'t aired anything: it says so',
+            /hasn't aired/.test(note([rerun, strip], { [STRIP_KEY]: { next: slotProgress.ref(kp[0], getShowData), wrapped: false } }, rerun) || ''));
+        suite.check('...nor anything in the Rerun\'s seasons',
+            /hasn't aired/.test(note([rerunS2, strip], { [STRIP_KEY]: { next: slotProgress.ref(kp[2], getShowData), wrapped: false } }, rerunS2) || ''));
+        suite.check('a strip that has aired some: no note',
+            note([rerun, strip], { [STRIP_KEY]: { next: slotProgress.ref(kp[2], getShowData), wrapped: false } }, rerun) === null);
+        suite.check('...nor once it has gone round',
+            note([rerunS2, strip], { [STRIP_KEY]: { next: slotProgress.ref(kp[0], getShowData), wrapped: true } }, rerunS2) === null);
+    }
+
     suite.log('-- references --');
     {
         const custom = (title, order) => ({

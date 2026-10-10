@@ -164,7 +164,7 @@ module.exports = async( programs, schedule  ) => {
                 duration: remaining,
                 channel: show.channel,
             }
-        } else if ( (slot.order === 'shuffle') || (slot.order === 'next') ) {
+        } else if (positions.plays(slot.order)) {
             return positions.forSlot(slot).current();
         }
     }
@@ -173,7 +173,7 @@ module.exports = async( programs, schedule  ) => {
         if ( (slot.showId === "flex.") || (slot.showId.startsWith("redirect.") ) ) {
             return;
         }
-        if ( (slot.order === 'shuffle') || (slot.order === 'next') ) {
+        if (positions.plays(slot.order)) {
             return positions.forSlot(slot).next();
         }
     }

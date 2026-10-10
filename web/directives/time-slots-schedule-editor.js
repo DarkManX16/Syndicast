@@ -385,6 +385,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             scope.orderOptions = [
                 { id: "next", description: "Play Next" },
                 { id: "shuffle", description: "Shuffle" },
+                { id: "rerun", description: "Rerun" },
             ];
 
             let doWait = (millis) => {
@@ -464,6 +465,22 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 if (scope.hadBackup) {
                     loadBackup(backup);
                 }
+                //Where each position is as the dialog opens, for the notes
+                //under Rerun slots; Create Lineup reads it again.
+                scope.openProgress = null;
+                if (typeof(lineup) === 'function') {
+                    let onAir = lineup();
+                    scope.openProgress = slotProgress.planProgress({
+                        programs: onAir.programs,
+                        startTime: new Date(onAir.startTime).getTime(),
+                        now: Date.now(),
+                        openedSchedule: scope.openedSchedule,
+                        schedule: scope.schedule,
+                        pool: scope.programs,
+                        getShowData: getShowData,
+                    });
+                }
+                refreshRerunNotes();
                 applyFilter();
 
                 scope.visible = true;
@@ -579,9 +596,27 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             //Shuffle slot moves nothing else - see src/shuffle-rounds.js.
             scope.canConstrainSeasons = (slot) => {
                 return scope.canShowSlot(slot)
-                    && ( (slot.order === 'next') || (slot.order === 'shuffle') )
+                    && ( (slot.order === 'next') || (slot.order === 'shuffle') || (slot.order === 'rerun') )
                     && (scope.seasonsAvailable(slot.showId).length > 1);
             }
+
+            /*
+             * Why a Rerun slot will play as a Shuffle for now, if it will - no
+             * Play Next for its show, or none of its seasons aired yet. Worked
+             * out on opening and after each edit rather than on every digest,
+             * keyed by the slot object so nothing is added to the schedule.
+             */
+            let rerunNotes = new Map();
+            let refreshRerunNotes = () => {
+                rerunNotes = new Map();
+                (scope.schedule.slots || []).forEach( (slot) => {
+                    if (slot.order === 'rerun') {
+                        rerunNotes.set(slot, slotProgress.rerunNote({ schedule: scope.schedule,
+                            progress: scope.openProgress, slot: slot, pool: scope.programs || [], getShowData: getShowData }));
+                    }
+                } );
+            };
+            scope.rerunNoteOf = (slot) => rerunNotes.get(slot) || null;
 
             scope.seasonsDisabledReason = (slot) => {
                 return "";
@@ -784,6 +819,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
             scope.refreshSlots = () => {
                 scope.badTimes = false;
+                refreshRerunNotes();
                 applyFilter();
                 //"Bubble sort ought to be enough for anybody"
                 for (let i = 0; i < scope.schedule.slots.length; i++) {

@@ -41,6 +41,25 @@ module.exports = async function () {
     suite.check('hash32 is FNV-1a', rounds.hash32('') === 2166136261 && rounds.hash32('a') === 0xe40c292c,
         rounds.hash32('a').toString(16));
 
+    // Plex keys run in sequence ("/library/metadata/113716"), so a hash that
+    // follows the last characters would hand back roughly the files' order.
+    {
+        const files = [];
+        for (let i = 0; i < 60; i++) {
+            files.push({ type: 'episode', showTitle: 'KP', title: 'KP ' + i, season: 1, episode: i + 1, duration: 22 * MIN,
+                serverKey: 'Thats So Disney/Nick Picks', key: '/library/metadata/' + (113700 + i) });
+        }
+        const order = rounds.roundOrder({ seed: '["tv.Kim Possible","shuffle",[]]', round: 3, stories: files.map((p) => [p]), laterHalf: new Set() })
+            .map((s) => s[0].episode - 1);
+        let d2 = 0;
+        order.forEach((fileIndex, rank) => { d2 += (rank - fileIndex) ** 2; });
+        const rho = 1 - 6 * d2 / (60 * (60 * 60 - 1));
+        let neighbours = 0;
+        for (let j = 1; j < order.length; j++) if (Math.abs(order[j] - order[j - 1]) === 1) neighbours++;
+        suite.check('a round\'s order doesn\'t follow the files\' order', Math.abs(rho) < 0.3 && neighbours <= 6,
+            `rank correlation ${rho.toFixed(2)}, ${neighbours} neighbours side by side`);
+    }
+
     suite.log('-- rounds --');
     {
         const stories = multiPart.stories(many('Doug', 2, 10));
@@ -104,6 +123,36 @@ module.exports = async function () {
             if (a.title === 'Deadomutt (1)') together = together && aired[i + 1].title === 'Deadomutt (2)';
         });
         suite.check('a story\'s parts are consecutive airings of the position', together && aired.length === 28);
+    }
+
+    {
+        // Only four of twenty may air, as for a Rerun whose strip has aired four.
+        const programs = many('KP', 1, 20);
+        const allowed = new Set(programs.slice(0, 4).map(keyOf));
+        let tooSoon = 0;
+        let outside = 0;
+        let aired = null;
+        for (let s = 0; s < 50; s++) {
+            const p = rounds.player({ seed: 'R' + s, stories: multiPart.stories(programs), record: { round: 0 },
+                eligible: (story) => allowed.has(keyOf(story[0])), deferAired: true });
+            const seq = play(p, 40);
+            if (s === 0) aired = seq;
+            const last = new Map();
+            seq.forEach((a, i) => {
+                if (!allowed.has(a.key)) outside++;
+                if (last.has(a.key) && i - last.get(a.key) - 1 < 2) tooSoon++;
+                last.set(a.key, i);
+            });
+        }
+        suite.check('with deferAired, nothing comes back within half of what its round aired',
+            outside === 0 && tooSoon === 0, `over 50 seeds: ${tooSoon} too soon, ${outside} not allowed`);
+
+        const resumed = play(rounds.player({ seed: 'R0', stories: multiPart.stories(programs),
+            record: { round: aired[2].round, next: refOf(programs.find((x) => keyOf(x) === aired[2].key)), deferred: [], aired: [aired[0].key, aired[1].key] },
+            eligible: (story) => allowed.has(keyOf(story[0])), deferAired: true }), 6);
+        suite.check('...and a record\'s aired list carries on into the round after',
+            resumed.map((a) => a.key).join() === aired.slice(2, 8).map((a) => a.key).join(),
+            resumed.map((a) => a.title).join() + ' vs ' + aired.slice(2, 8).map((a) => a.title).join());
     }
 
     suite.log('-- carried rounds --');

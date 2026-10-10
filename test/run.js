@@ -48,6 +48,7 @@ const suites = [
     './progress-generators',
     './multi-part',
     './shuffle-rounds',
+    './progress-rerun',
 ];
 
 (async () => {

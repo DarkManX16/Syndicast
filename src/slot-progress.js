@@ -489,8 +489,66 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         };
     };
 
+    /*
+     * A Rerun's record also says what it has aired this round, since what
+     * goes last in its next round is the later half of what it actually aired
+     * (it passes over what its strip hasn't reached). Rebuilt from the record
+     * of the last run and the position's airings in the lineup since: a story
+     * counts once its last part has aired.
+     */
+    let rerunRecord = (key, place) => {
+        let [ showId, , excluded ] = JSON.parse(key);
+        let prior = oldRecords[key];
+        let stories = storiesFor(showId, { excludeSeasons: excluded });
+        let storyOf = new Map();
+        stories.forEach( (story) => story.forEach( (p, part) => storyOf.set(rounds.fileKey(p), { story: story, last: part === story.length - 1 }) ) );
+        let byKey = new Map();
+        stories.forEach( (story) => byKey.set(rounds.storyKey(story), story) );
+
+        let airedIn = new Map();
+        if ( labelled && ! isNaN(lastRun) && (lastRun < now) ) {
+            airings({ programs, startTime: start, from: lastRun, to: now, schedule: readWith, getShowData })
+                .filter( (a) => (a.key === key) && (a.start + a.program.duration <= now) )
+                .forEach( (a) => {
+                    let found = storyOf.get(rounds.fileKey(a.program));
+                    let round = parseLabel(a.program.slotPosition).round;
+                    if ( (typeof(found) === 'undefined') || ! found.last ) {
+                        return;
+                    }
+                    if (! airedIn.has(round)) {
+                        airedIn.set(round, []);
+                    }
+                    airedIn.get(round).push(rounds.storyKey(found.story));
+                } );
+        }
+        let listOf = (r) => {
+            let list = (airedIn.get(r) || []).slice();
+            if ( isRecord(prior) && (prior.round === r) && Array.isArray(prior.aired) ) {
+                list = prior.aired.concat(list);
+            }
+            return list;
+        };
+        let laterHalfOfKeys = (keys) => rounds.laterHalfOf( keys.map( (k) => byKey.get(k) ).filter( (st) => typeof(st) !== 'undefined' ) );
+
+        let round = place.round;
+        let deferred;
+        if ( isRecord(prior) && (prior.round === round) ) {
+            deferred = new Set(prior.deferred || []);
+        } else {
+            let from = ( isRecord(prior) && (typeof(prior.round) === 'number') && (prior.round < round) ) ? prior.round : round - 1;
+            deferred = new Set();
+            for (let r = from; r < round; r++) {
+                deferred = laterHalfOfKeys(listOf(r));
+            }
+        }
+        return { round: round, next: ref(place.program, getShowData), deferred: [ ...deferred ], aired: listOf(round) };
+    };
+
     let fromPlace = (key, place) => {
         let mode = JSON.parse(key)[1];
+        if ( (mode === 'rerun') && (typeof(place.round) === 'number') && ! ( isRecord(oldRecords[key]) && Array.isArray(oldRecords[key].queue) && (oldRecords[key].round === place.round) ) ) {
+            return rerunRecord(key, place);
+        }
         if (ROUND_MODES.indexOf(mode) !== -1) {
             return roundRecord(key, place);
         }
@@ -641,6 +699,43 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
     return { asOf: new Date(now).toISOString(), positions: positions };
 }
 
+/*
+ * What the editor says under a Rerun slot that will play as a Shuffle for
+ * now, or null when it reruns as asked. `progress` is the planner's answer
+ * for the lineup on air: its records say where each of the show's Play Next
+ * positions is. The generator decides the same way, as it goes - see
+ * createPositions in show-orderers.js.
+ */
+function rerunNote({ schedule, progress, slot, pool, getShowData }) {
+    let showId = slot.showId;
+    let records = ( (typeof(progress) === 'object') && (progress !== null) && (typeof(progress.positions) === 'object') )
+        ? progress.positions
+        : {};
+    let any = (Array.isArray(schedule.slots) ? schedule.slots : [])
+        .some( (s) => (s.showId === showId) && (s.order === 'next') );
+    let aired = new Set();
+    Object.keys(records).forEach( (key) => {
+        let [ sid, mode, excluded ] = JSON.parse(key);
+        let record = records[key];
+        if ( (sid !== showId) || (mode !== 'next') || (typeof(record) !== 'object') || (record === null) || (typeof(record.next) !== 'object') ) {
+            return;
+        }
+        any = true;
+        let candidates = candidatesFor(pool, showId, { excludeSeasons: excluded }, getShowData);
+        let place = resolveRef(record.next, candidates, getShowData);
+        (record.wrapped === true ? candidates : candidates.slice(0, place)).forEach( (p) => aired.add(rounds.fileKey(p)) );
+    } );
+    if (! any) {
+        return "Plays as a Shuffle: this show has no Play Next slot, so there is nothing for a Rerun to stay behind.";
+    }
+    let range = candidatesFor(pool, showId, constraintOf(slot, schedule), getShowData);
+    if (! range.some( (p) => aired.has(rounds.fileKey(p)) ) ) {
+        return "Plays as a Shuffle for now: this show's Play Next hasn't aired any of these seasons yet. "
+             + "Once it has, this slot reruns only episodes it has aired.";
+    }
+    return null;
+}
+
 module.exports = {
     MODES: MODES,
     ROUND_MODES: ROUND_MODES,
@@ -660,4 +755,5 @@ module.exports = {
     applySeasonExclusions: applySeasonExclusions,
     candidatesFor: candidatesFor,
     planProgress: planProgress,
+    rerunNote: rerunNote,
 };

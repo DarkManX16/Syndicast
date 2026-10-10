@@ -1461,16 +1461,17 @@ for the full spec, stages and acceptance tests.
 - [x] Shuffle - a round per range, kept by episode, with season settings.
       *Built Oct 9, 2026 (step 3), multi-part stories kept together - see the
       build record in the Known issues entry.*
-- [ ] Rerun - a Shuffle of only the episodes the show's Play Next has already
-      aired, so a weekend never gets ahead of its weekday strip
+- [x] Rerun - a Shuffle of only the episodes the show's Play Next has already
+      aired, so a weekend never gets ahead of its weekday strip. *Built Oct 9,
+      2026 (step 4) - see the build record in the Known issues entry.*
 - [ ] Repeat a slot - re-airs whatever a chosen earlier slot aired, the same
       day (9pm's episode again at 1am) or another day of the week (Saturday's
       That's So Raven repeats Thursday's)
 - [ ] Ordered shuffle - a series at random, that series' next episode in
       order, for custom shows that join several series
 - [ ] Multi-part stories kept together by every shuffle - part 2 always
-      follows part 1. *Shuffle does, since step 3; Rerun and Ordered shuffle
-      will when they are built.*
+      follows part 1. *Shuffle and Rerun do, since steps 3 and 4; Ordered
+      shuffle will when it is built.*
 
 All six were designed together on Oct 9, 2026 - see "Per-position stored
 progress, and the shuffles built on it" under Known issues for the design and
@@ -3330,8 +3331,9 @@ timestamps.
 ### Per-position stored progress, and the shuffles built on it
 
 Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **steps 1
-to 3 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
-plays rounds kept by episode, with season settings and multi-part stories;
+to 4 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
+plays rounds kept by episode, with season settings and multi-part stories,
+and Rerun replays only what its show's Play Next has aired;
 see "Build record" at the end of this entry, and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
@@ -3744,6 +3746,47 @@ Central.
   started with (see "A long-running server keeps serving the build it started
   with"); rebuilding the bundle only refreshes the editor. The preview was
   restarted and its copy of channel 3 restored before the run above.
+
+**Step 4, Oct 9, 2026** (33d070e..). Proofs on the fresh copy of 8:23pm
+Central.
+
+- **What shipped.** Rerun positions in both generators: Shuffle's rounds over
+  the slot's range, passing over any story not every part of which the show's
+  Play Next has aired - asked afresh at each pick from the live Play Next
+  positions and the records of ones no longer in the schedule. With nothing of
+  its range aired, or no Play Next at all, it plays as a Shuffle (Ron's
+  fallback), and the editor says why under the slot. The Time Slots editor
+  offers Rerun, with season settings.
+- **Two defects found and fixed while building it.** The round hash first
+  ordered by FNV-1a alone, which follows a key's last characters: Plex keys
+  run in sequence, so a round came out close to the files' own order (rank
+  correlation 0.8), Shuffle's included - murmur3's 32-bit finaliser on top
+  brings it to -0.07. And what goes last in a Rerun's next round is now the
+  later half of what it actually aired, as the design says, rather than of its
+  round's whole order: with a pool smaller than the show, the two differ, and
+  over 50 seeds the first let a story return too soon 97 times. A Rerun's
+  record therefore also carries what it has aired this round.
+- **On a copy of channel 3 with Kim Possible's, Lizzie McGuire's, Even
+  Stevens' and The Proud Family's weekend Shuffles set to Rerun**, regenerated
+  Monday Oct 12 for a year: no Rerun airing is ahead of its strip (0 of 409),
+  and the pools grow through the year - Kim Possible 4 to 84 episodes, Lizzie
+  McGuire 4 to 63, The Proud Family 4 to 50, Even Stevens 24 to 63. The audit
+  finds 0 violations over all 18 shuffle-family positions, a Rerun's round
+  measured by what it aired. Regenerated again from that output at Jan 11,
+  2027: every position continues exactly (155/155), and every Play Next and
+  Rerun position airs exactly what the October lineup had from then on - 141
+  positions, 13,369 airings, none different.
+- **Live**, on the preview restarted with this code: the editor offers Rerun;
+  Kim Possible's Saturday slot set to Rerun with only Season 4 shows "Plays as
+  a Shuffle for now: this show's Play Next hasn't aired any of these seasons
+  yet" under the slot, and no note with all seasons. Saved with Yin Yang Yo!'s
+  only slot also switched from Play Next to Rerun: 157 records, Kim Possible's
+  Rerun 0 ahead of its strip (pool 2 to 84 episodes), 0 violations over 20
+  positions, no console or server errors. Yin Yang Yo! has a single episode in
+  channel 3's lineup, so its Rerun - with its old strip's record saying
+  nothing has aired - plays that one episode as a Shuffle every week. The
+  "no Play Next" wording is pinned by test/slot-progress.js: every show on
+  channel 3 has Play Next history, kept in records after its slots go.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 

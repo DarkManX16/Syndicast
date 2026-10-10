@@ -103,6 +103,9 @@ function playNext(show, constraint, record) {
         candidates: () => candidates,
         place: () => position,
         wrapped: () => wrapped,
+        // The episodes this position has aired: every one before its place,
+        // or its whole range once it has gone round.
+        passed: () => (wrapped ? candidates : candidates.slice(0, position)).map( (p) => rounds.fileKey(p) ),
         current: () => labelled(candidates[position], text),
         next: () => {
             position = (position + 1) % candidates.length;
@@ -118,14 +121,18 @@ function playNext(show, constraint, record) {
  * shuffle-rounds.js. A record written while the old shuffler still ran holds
  * just its number; that becomes the rest of the old round, played first.
  */
-function shuffled(show, mode, constraint, record, key) {
+function shuffled(show, mode, constraint, record, key, eligible) {
+    // A Rerun passes over stories, so the later half of what it actually
+    // aired goes last in its next round - see shuffle-rounds' player.
+    let deferAired = (mode === 'rerun');
     let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
     let stories = (show.id === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
     let start = record;
     if ( (typeof(record) === 'object') && (record !== null) && (typeof(record.legacyShuffleOrder) === 'number') ) {
         start = rounds.legacyCarry(sortedPrograms(show), show.id, record.legacyShuffleOrder, (p) => getShowData(p).order);
     }
-    let player = rounds.player({ seed: key, stories: stories, record: start });
+    let player = rounds.player({ seed: key, stories: stories, record: start, deferAired: deferAired,
+        eligible: (typeof(eligible) === 'function') ? (story) => eligible(story, stories) : undefined });
     return {
         mode: mode,
         current: () => {
@@ -153,19 +160,77 @@ function createPositions({ shows, schedule }) {
         ? schedule.progress.positions
         : {};
     let positions = new Map();
-    return {
-        forSlot: (slot) => {
-            let constraint = slotProgress.constraintOf(slot, schedule);
-            let key = slotProgress.positionKey(slot.showId, slot.order, constraint);
-            if (! positions.has(key) ) {
-                let show = byId.get(slot.showId);
-                let record = records[key];
-                positions.set(key, (slot.order === 'shuffle')
-                    ? shuffled(show, slot.order, constraint, record, key)
-                    : playNext(show, constraint, record) );
+    let slots = ( (typeof(schedule) === 'object') && (schedule !== null) && Array.isArray(schedule.slots) ) ? schedule.slots : [];
+
+    let forSlot = (slot) => {
+        let constraint = slotProgress.constraintOf(slot, schedule);
+        let key = slotProgress.positionKey(slot.showId, slot.order, constraint);
+        if (! positions.has(key) ) {
+            let show = byId.get(slot.showId);
+            let record = records[key];
+            if (slot.order === 'next') {
+                positions.set(key, playNext(show, constraint, record));
+            } else if (slot.order === 'rerun') {
+                positions.set(key, shuffled(show, slot.order, constraint, record, key, rerunEligible(slot.showId)));
+            } else {
+                positions.set(key, shuffled(show, slot.order, constraint, record, key));
             }
-            return positions.get(key);
-        },
+        }
+        return positions.get(key);
+    };
+
+    /*
+     * What a show's Play Next has aired, as far as this run has got: every
+     * Play Next position of the show in the schedule, as the run advances it,
+     * and the records of ones no longer in the schedule. `any` says whether
+     * the show has a Play Next at all.
+     */
+    let airedFor = (showId) => {
+        let aired = new Set();
+        let any = false;
+        slots.forEach( (slot) => {
+            if ( (slot.showId === showId) && (slot.order === 'next') ) {
+                any = true;
+                forSlot(slot).passed().forEach( (k) => aired.add(k) );
+            }
+        } );
+        Object.keys(records).forEach( (key) => {
+            let parsed = JSON.parse(key);
+            if ( (parsed[0] !== showId) || (parsed[1] !== 'next') || positions.has(key) ) {
+                return;
+            }
+            let record = records[key];
+            if ( (typeof(record) !== 'object') || (record === null) || (typeof(record.next) !== 'object') ) {
+                return;
+            }
+            any = true;
+            let candidates = applySeasonExclusions(sortedPrograms(byId.get(showId)), { excludeSeasons: parsed[2] });
+            let place = slotProgress.resolveRef(record.next, candidates, getShowData);
+            (record.wrapped === true ? candidates : candidates.slice(0, place)).forEach( (p) => aired.add(rounds.fileKey(p)) );
+        } );
+        return { any: any, aired: aired };
+    };
+
+    /*
+     * A Rerun may pick a story once every part of it has aired on its show's
+     * Play Next. With nothing of its range aired yet, or no Play Next at all,
+     * it plays as a Shuffle over its range (Ron, Oct 9): a slot of Flex is
+     * worse than an early episode.
+     */
+    let rerunEligible = (showId) => (story, stories) => {
+        let found = airedFor(showId);
+        let inAired = (st) => st.every( (p) => found.aired.has(rounds.fileKey(p)) );
+        if ( ! found.any || ! stories.some(inAired) ) {
+            return true;
+        }
+        return inAired(story);
+    };
+
+    return {
+        forSlot: forSlot,
+        airedFor: airedFor,
+        // The slot modes a position plays.
+        plays: (order) => [ 'next', 'shuffle', 'rerun', 'ordered' ].indexOf(order) !== -1,
     };
 }
 
