@@ -122,6 +122,14 @@ module.exports = async function () {
         suite.check('now is the click, not programs[0]',
             titleOf(read(rotated, at(Fri, 21), at(Fri, 22, 30), jbSlots()).get(NO1)) === `${JB} S2E8`);
 
+        const window = slotProgress.airings({
+            programs, startTime: THU, from: at(Fri, 10), to: at(Sun, 23), schedule: jbSlots(), getShowData,
+        });
+        suite.check('airings lists each airing in a window with its position',
+            JSON.stringify(window.map((a) => [titleOf(a), a.start, a.key])) === JSON.stringify([
+                [`${JB} S2E7`, at(Fri, 21), NO1], [`${JB} S2E8`, at(Sat, 21), NO1], [`${JB} S1E34`, at(Sun, 21), NO2],
+            ]), JSON.stringify(window.map((a) => [titleOf(a), a.key])));
+
         const once = read(programs, THU, at(Fri, 10) + WEEK, jbSlots());
         const twice = read(programs, THU, at(Fri, 10) + 2 * WEEK, jbSlots());
         suite.check('a looped lineup reads the cycle',

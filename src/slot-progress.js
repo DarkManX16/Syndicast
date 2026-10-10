@@ -186,40 +186,73 @@ function slotAt(schedule, instant) {
  */
 function readPlaces({ programs, startTime, now, schedule, getShowData }) {
     let places = new Map();
-    let n = programs.length;
+    let total = cycleLength(programs);
+    if (! (total > 0) ) {
+        return places;
+    }
+    let found = airings({ programs, startTime, from: now, to: now + total, schedule, getShowData });
+    for (let i = 0; i < found.length; i++) {
+        let a = found[i];
+        if ( (a.key !== null) && ! places.has(a.key) ) {
+            places.set(a.key, {
+                program: a.program,
+                start: a.start,
+                round: a.round,
+                legacyShuffleOrder: a.legacyShuffleOrder,
+            });
+        }
+    }
+    return places;
+}
+
+function cycleLength(programs) {
     let total = 0;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < programs.length; i++) {
         total += programs[i].duration;
     }
+    return total;
+}
+
+/*
+ * Every airing on air at any point in [from, to), in order, with the
+ * position it counts for - `key` is null for one that counts for none: Flex,
+ * a hand-placed airing, a repeat, another show sitting in a slot. The lineup
+ * loops, so the window may start or run anywhere in its cycle.
+ */
+function airings({ programs, startTime, from, to, schedule, getShowData }) {
+    let out = [];
+    let n = programs.length;
+    let total = cycleLength(programs);
     if ( (n === 0) || ! (total > 0) ) {
-        return places;
+        return out;
     }
     let labelled = programs.some( (p) => typeof(p.slotPosition) === 'string' );
     let findSlot = slotFinder(schedule || {});
 
     let start = (typeof(startTime) === 'number') ? startTime : new Date(startTime).getTime();
-    let into = ( ( (now - start) % total ) + total ) % total;
+    let into = ( ( (from - start) % total ) + total ) % total;
     let index = 0;
-    let t = now - into;
-    while (t + programs[index].duration <= now) {
+    let t = from - into;
+    while (t + programs[index].duration <= from) {
         t += programs[index].duration;
         index++;
     }
-
-    for (let step = 0; step < n; step++) {
-        let program = programs[ (index + step) % n ];
-        let found = placeOf(program, t, labelled, findSlot, schedule, getShowData);
-        if ( (found !== null) && ! places.has(found.key) ) {
-            places.set(found.key, {
-                program: program,
+    while (t < to) {
+        let program = programs[index];
+        if (! program.isOffline) {
+            let found = placeOf(program, t, labelled, findSlot, schedule, getShowData);
+            out.push({
                 start: t,
-                round: found.round,
-                legacyShuffleOrder: found.legacyShuffleOrder,
+                program: program,
+                key: (found === null) ? null : found.key,
+                round: (found === null) ? null : found.round,
+                legacyShuffleOrder: (found === null) ? null : found.legacyShuffleOrder,
             });
         }
         t += program.duration;
+        index = (index + 1) % n;
     }
-    return places;
+    return out;
 }
 
 function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
@@ -272,4 +305,5 @@ module.exports = {
     slotAt: slotAt,
     slotFinder: slotFinder,
     readPlaces: readPlaces,
+    airings: airings,
 };
