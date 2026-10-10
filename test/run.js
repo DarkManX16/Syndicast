@@ -49,6 +49,7 @@ const suites = [
     './multi-part',
     './shuffle-rounds',
     './progress-rerun',
+    './progress-repeat',
 ];
 
 (async () => {

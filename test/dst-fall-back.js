@@ -469,6 +469,30 @@ async function checks() {
     suite.check('slotAt agrees with the generator through the fall-back hour',
         slotDisagreements.length === 0, slotDisagreements.slice(0, 3).join(' | '));
 
+    // A 1:00am Repeat of Saturday's 9pm: 1:00 comes round twice, and both times
+    // it repeats the same Saturday evening.
+    const repeatShow = [];
+    for (let e = 1; e <= 8; e++) {
+        repeatShow.push({ type: 'episode', showTitle: 'Nine', title: `Nine e${e}`, season: 1, episode: e,
+            key: `/k/nine/${e}`, serverKey: 'srv', duration: 22 * MIN });
+    }
+    const satNine = 2 * DAY + 21 * HOUR, sunOne = 3 * DAY + 1 * HOUR;
+    const repeatSchedule = { period: WEEK, lateness: 0, maxDays: 14, flexPreference: 'distribute', pad: 5 * MIN, slots: [
+        { time: satNine, showId: 'tv.Nine', order: 'next' },
+        { time: satNine + 30 * MIN, showId: 'flex.', order: 'next' },
+        { time: sunOne, showId: 'tv.Nine', order: 'repeat', repeatOf: satNine },
+        { time: sunOne + 30 * MIN, showId: 'flex.', order: 'next' },
+    ] };
+    const repeated = await generate(repeatShow, repeatSchedule, Z('2026-10-28T17:00:00Z'));
+    let tr = Date.parse(repeated.startTime);
+    const repeatAirings = repeated.programs.map( (pr) => { const a = { start: tr, program: pr }; tr += pr.duration; return a; } )
+        .filter( (a) => ! a.program.isOffline );
+    const titleAt = (iso) => (repeatAirings.find( (a) => a.start === Z(iso) ) || { program: { title: 'nothing' } }).program.title;
+    const saturday = titleAt('2026-11-01T02:00:00Z');
+    suite.check('On the fall-back night a 1:00 repeat airs twice, the same episode',
+        saturday !== 'nothing' && titleAt('2026-11-01T06:00:00Z') === saturday && titleAt('2026-11-01T07:00:00Z') === saturday,
+        `Sat 9pm ${saturday}; 1:00 CDT ${titleAt('2026-11-01T06:00:00Z')}; 1:00 CST ${titleAt('2026-11-01T07:00:00Z')}`);
+
     return suite;
 }
 

@@ -5,6 +5,7 @@ const getShowData = require("./get-show-data")();
 const random = require('../helperFuncs').random;
 const throttle = require('./throttle');
 const orderers = require("./show-orderers");
+const slotProgress = require('../slot-progress');
 
 const MINUTE = 60*1000;
 const DAY = 24*60*MINUTE;
@@ -67,7 +68,12 @@ function addProgramToShow(show, program) {
     }
 }
 
-module.exports = async( programs, schedule  ) => {
+/*
+ * `history`, optional, is what the lineup on air aired before now -
+ * [{ start, program }] - for a Repeat slot whose source aired before this
+ * lineup begins.
+ */
+module.exports = async( programs, schedule, history ) => {
     if (! Array.isArray(programs) ) {
         return { userError: 'Expected a programs array' };
     }
@@ -146,6 +152,70 @@ module.exports = async( programs, schedule  ) => {
      */
     let positions = null;
 
+    /*
+     * Repeat a slot: re-airs whatever a chosen earlier slot aired - the
+     * episodes of its show that started inside the source slot's latest
+     * occurrence before this one, the same day or up to a period back - from
+     * this lineup, or from `history` when that occurrence was before it.
+     * Labelled 'repeat', so a repeat never moves its source's position. A
+     * source that aired nothing - Flex, or before the lineup on air existed -
+     * plays a Rerun of the same show (Ron, Oct 9). One occurrence at a time:
+     * `occurrenceStart` is set by the loop below before each slot it fills.
+     */
+    let aired = [];
+    let occurrenceStart = null;
+    let repeatState = new Map();
+
+    function sourceAirings(slot, start) {
+        let source = s.find( (x) => (x.time === slot.repeatOf) && (x.order !== 'repeat') );
+        if (typeof(source) === 'undefined') {
+            return [];
+        }
+        let index = s.indexOf(source);
+        let length = ( (index === s.length - 1) ? s[0].time + schedule.period : s[index + 1].time ) - source.time;
+        let back = ( (localMsIntoPeriod(start) - source.time) % schedule.period + schedule.period ) % schedule.period;
+        if (back === 0) {
+            back = schedule.period;
+        }
+        // In real time, a daylight-saving change in between moves it an hour.
+        let from = start - back;
+        for (let shift of [ 0, -60 * MINUTE, 60 * MINUTE ]) {
+            if (localMsIntoPeriod(start - back + shift) === source.time) {
+                from = start - back + shift;
+                break;
+            }
+        }
+        let inWindow = (a) => (a.start >= from) && (a.start < from + length)
+            && ! a.program.isOffline && (getShowData(a.program).showId === source.showId);
+        let before = (Array.isArray(history) ? history : []).filter( (a) => (a.start < ts) && inWindow(a) );
+        let after = aired.filter( (a) => (a.start >= ts) && inWindow(a) );
+        return before.concat(after).sort( (a, b) => a.start - b.start ).map( (a) => a.program );
+    }
+
+    function repeatFor(slot) {
+        let state = repeatState.get(slot.time);
+        if ( (typeof(state) === 'undefined') || (state.start !== occurrenceStart) ) {
+            state = { start: occurrenceStart, list: sourceAirings(slot, occurrenceStart), index: 0 };
+            repeatState.set(slot.time, state);
+        }
+        if (state.list.length === 0) {
+            let fallback = positions.forSlot({ time: slot.time, showId: slot.showId, order: 'rerun' });
+            return { current: () => fallback.current(), next: () => fallback.next() };
+        }
+        return {
+            current: () => {
+                if (state.index >= state.list.length) {
+                    return null;
+                }
+                let copy = Object.assign( {}, state.list[state.index] );
+                delete copy.shuffleOrder;
+                copy.slotPosition = slotProgress.label('repeat');
+                return copy;
+            },
+            next: () => { state.index++; },
+        };
+    }
+
     function getNextForSlot(slot, remaining) {
         //remaining doesn't restrict what next show is picked. It is only used
         //for shows with flexible length (flex and redirects)
@@ -164,6 +234,8 @@ module.exports = async( programs, schedule  ) => {
                 duration: remaining,
                 channel: show.channel,
             }
+        } else if (slot.order === 'repeat') {
+            return repeatFor(slot).current();
         } else if (positions.plays(slot.order)) {
             return positions.forSlot(slot).current();
         }
@@ -172,6 +244,9 @@ module.exports = async( programs, schedule  ) => {
     function advanceSlot(slot) {
         if ( (slot.showId === "flex.") || (slot.showId.startsWith("redirect.") ) ) {
             return;
+        }
+        if (slot.order === 'repeat') {
+            return repeatFor(slot).next();
         }
         if (positions.plays(slot.order)) {
             return positions.forSlot(slot).next();
@@ -291,6 +366,9 @@ module.exports = async( programs, schedule  ) => {
         if ( item.isOffline && (item.type !== 'redirect') ) {
             pushFlex(item.duration);
         } else {
+            if (! item.isOffline) {
+                aired.push({ start: t, program: item });
+            }
             p.push(item);
             t += item.duration;
         }
@@ -316,6 +394,7 @@ module.exports = async( programs, schedule  ) => {
         let dayTime = found.dayTime;
         let remaining = found.remaining;
         let late = found.late;
+        occurrenceStart = t - late;
 
         /*
          * remaining is the wall-clock distance to the next slot boundary, but t
@@ -360,6 +439,10 @@ module.exports = async( programs, schedule  ) => {
         }
 
         let item = getNextForSlot(slot, remaining);
+        if (item === null) {
+            // A repeat whose source occurrence is used up: Flex for the rest.
+            item = { isOffline: true, duration: remaining };
+        }
 
         if (late >= schedule.lateness + constants.SLACK ) {
             //it's late.
@@ -389,7 +472,7 @@ module.exports = async( programs, schedule  ) => {
 
         while(true) {
             let item2 = getNextForSlot(slot, remaining);
-            if (total + item2.duration > remaining) {
+            if ( (item2 === null) || (total + item2.duration > remaining) ) {
                 break;
             }
             let padded2 = makePadded(item2);

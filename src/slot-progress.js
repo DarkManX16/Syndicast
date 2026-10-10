@@ -305,6 +305,26 @@ function airings({ programs, startTime, from, to, schedule, getShowData }) {
     return out;
 }
 
+/*
+ * What the lineup on air aired in [now - spanMs, now): every airing that
+ * started then, read back round the lineup's loop, none before `since` - the
+ * moment that lineup was made, when it's known, since before it the cycle
+ * holds the generator's opening Flex and, further back, its own far end. A
+ * Repeat whose source aired before a regeneration reads it from here.
+ */
+function recentAirings({ programs, startTime, now, spanMs, since }) {
+    let from = now - spanMs;
+    if ( (typeof(since) === 'number') && ! isNaN(since) && (since > from) ) {
+        from = since;
+    }
+    if (from >= now) {
+        return [];
+    }
+    return airings({ programs, startTime, from, to: now, schedule: {}, getShowData: () => ({ hasShow: false }) })
+        .filter( (a) => (a.start >= from) && (a.start < now) )
+        .map( (a) => ({ start: a.start, program: a.program }) );
+}
+
 function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
     if (program.isOffline) {
         return null;
@@ -756,4 +776,5 @@ module.exports = {
     candidatesFor: candidatesFor,
     planProgress: planProgress,
     rerunNote: rerunNote,
+    recentAirings: recentAirings,
 };
