@@ -756,6 +756,48 @@ function rerunNote({ schedule, progress, slot, pool, getShowData }) {
     return null;
 }
 
+/*
+ * Repeat a slot, for the editor. A Repeat's possible sources are every other
+ * slot that isn't itself a Repeat - a slot repeating itself, or two repeating
+ * each other, would replay one episode forever - each with how far back the
+ * occurrence it would repeat is: the same day, or up to a period earlier.
+ */
+function repeatSources(schedule, repeat) {
+    let period = (typeof(schedule.period) === 'number') ? schedule.period : DAY;
+    return (schedule.slots || [])
+        .filter( (s) => (s !== repeat) && (s.order !== 'repeat') && (typeof(s.showId) === 'string')
+                         && (s.showId !== 'flex.') && ! s.showId.startsWith('redirect.') )
+        .map( (s) => {
+            let back = ( (repeat.time - s.time) % period + period ) % period;
+            return { slot: s, back: (back === 0) ? period : back };
+        } )
+        .sort( (a, b) => a.back - b.back );
+}
+
+// Why a Repeat can't generate as it is, or null.
+function repeatProblem(schedule, repeat) {
+    if (typeof(repeat.repeatOf) !== 'number') {
+        return "Choose the slot this repeats.";
+    }
+    let source = (schedule.slots || []).find( (s) => (s !== repeat) && (s.time === repeat.repeatOf) );
+    if (typeof(source) === 'undefined') {
+        return "The slot this repeated is gone - choose another.";
+    }
+    if (source.order === 'repeat') {
+        return "The slot this repeats is itself a Repeat - choose another.";
+    }
+    return null;
+}
+
+// A slot moved from `oldTime` to `newTime`: Repeats of it follow.
+function followRetime(schedule, oldTime, newTime) {
+    (schedule.slots || []).forEach( (s) => {
+        if ( (s.order === 'repeat') && (s.repeatOf === oldTime) ) {
+            s.repeatOf = newTime;
+        }
+    } );
+}
+
 module.exports = {
     MODES: MODES,
     ROUND_MODES: ROUND_MODES,
@@ -777,4 +819,7 @@ module.exports = {
     planProgress: planProgress,
     rerunNote: rerunNote,
     recentAirings: recentAirings,
+    repeatSources: repeatSources,
+    repeatProblem: repeatProblem,
+    followRetime: followRetime,
 };

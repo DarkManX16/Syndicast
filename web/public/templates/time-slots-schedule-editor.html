@@ -93,6 +93,21 @@
                             </button>
                         </div>
 
+                        <div class='col-md-12' ng-if="slot.order === 'repeat'" style="margin-top: -8px; margin-bottom: 8px;">
+                            <div class='form-inline'>
+                                <label class='small' for="repeatOf{{$index}}" style="margin-right: 8px;">Repeats</label>
+                                <select id="repeatOf{{$index}}" class="custom-select custom-select-sm"
+                                    ng-model="slot.repeatOf"
+                                    ng-options="o.time as o.label for o in repeatSourcesOf(slot)"
+                                    ng-change="chooseRepeatSource(slot)">
+                                    <option value="">- choose the slot to repeat -</option>
+                                </select>
+                            </div>
+                            <div class='small text-danger' ng-if="repeatProblemOf(slot)">
+                                <i class='fa fa-exclamation-triangle'></i> {{ repeatProblemOf(slot) }}
+                            </div>
+                        </div>
+
                         <div class='col-md-12 small text-info' ng-if="slot.order === 'rerun' && rerunNoteOf(slot)"
                              style="margin-top: -8px; margin-bottom: 8px;">
                             <i class='fa fa-info-circle'></i> {{ rerunNoteOf(slot) }}

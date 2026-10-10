@@ -5,6 +5,7 @@
  *     every story once;
  *   - no story comes back within half a round of its last airing;
  *   - a Rerun never airs an episode before its show's Play Next has;
+ *   - a Repeat airs exactly what its source slot last aired;
  *   - a story's parts air in a row and in order (from the first round the
  *     lineup's own rounds began: a round carried over from before finishes in
  *     its old order).
@@ -190,6 +191,54 @@ function audit(channel, showFilter) {
         } );
         return { ahead, fallback, firstPool: pools[0], lastPool: pools[pools.length - 1] };
     }
+
+    /*
+     * Repeat a slot: each occurrence must air exactly the episodes its source
+     * slot's latest occurrence before it aired, in order (as many as fit). An
+     * occurrence whose source aired before this lineup was made came from the
+     * lineup on air then, which this file doesn't hold: counted, not checked.
+     */
+    let period = schedule.period || 24 * 60 * 60 * 1000;
+    let localMs = (u) => { let l = u - new Date(u).getTimezoneOffset() * 60000; return ((l % period) + period) % period; };
+    let sorted = (schedule.slots || []).slice().sort( (a, b) => a.time - b.time );
+    let lengthOf = (slot) => { let i = sorted.indexOf(slot); return ((i === sorted.length - 1) ? sorted[0].time + period : sorted[i + 1].time) - slot.time; };
+    let asOf = (schedule.progress && schedule.progress.asOf) ? Date.parse(schedule.progress.asOf) : -Infinity;
+    let groups = [];
+    all.filter( (a) => a.program.slotPosition === 'repeat' ).forEach( (a) => {
+        let slot = slotProgress.slotAt(schedule, a.start);
+        let last = groups[groups.length - 1];
+        if (last && (last.slot === slot) && (a.start - last.first < lengthOf(slot))) {
+            last.list.push(a);
+        } else {
+            groups.push({ slot, first: a.start, list: [ a ] });
+        }
+    } );
+    let repeats = { occurrences: groups.length, matched: 0, fromHistory: 0, mismatches: [] };
+    groups.forEach( (g) => {
+        let source = sorted.find( (s) => (s.time === g.slot.repeatOf) && (s.order !== 'repeat') );
+        if (! source) {
+            repeats.mismatches.push(`${when(g.first)}: no source slot`);
+            return;
+        }
+        let back = ((localMs(g.first) - source.time) % period + period) % period || period;
+        let u = g.first - back;
+        for (let shift of [ 0, -3600000, 3600000 ]) {
+            if (localMs(g.first - back + shift) === source.time) { u = g.first - back + shift; break; }
+        }
+        if (u < asOf) {
+            repeats.fromHistory++;
+            return;
+        }
+        let src = all.filter( (a) => (a.start >= u) && (a.start < u + lengthOf(source)) && (getShowData(a.program).showId === source.showId) )
+            .map( (a) => rounds.fileKey(a.program) );
+        let rep = g.list.map( (a) => rounds.fileKey(a.program) );
+        if ( (rep.length > 0) && rep.every( (k, i) => src[i] === k ) ) {
+            repeats.matched++;
+        } else {
+            repeats.mismatches.push(`${when(g.first)} ${g.list.map( (a) => a.program.title ).join(' + ')}: source ${when(u)} aired ${src.length} other`);
+        }
+    } );
+    report.repeats = repeats;
     return report;
 }
 
@@ -206,6 +255,12 @@ function main() {
             + (r.rerun ? `; Rerun: ${r.rerun.ahead.length} ahead of its Play Next, ${r.rerun.fallback} as a Shuffle, pool ${r.rerun.firstPool} -> ${r.rerun.lastPool} episodes` : ''));
         r.violations.slice(0, 5).forEach( (v) => console.log('       ' + v) );
     } );
+    let r = report.repeats;
+    if (r.occurrences > 0) {
+        bad += r.mismatches.length;
+        console.log(`Repeat a slot: ${r.occurrences} occurrences, ${r.matched} equal their source, ${r.fromHistory} from the lineup on air before (not in this file), ${r.mismatches.length} mismatches`);
+        r.mismatches.slice(0, 5).forEach( (m) => console.log('       ' + m) );
+    }
     console.log(`${report.length} shuffle-family positions, ${bad} violations`);
     process.exitCode = bad === 0 ? 0 : 1;
 }

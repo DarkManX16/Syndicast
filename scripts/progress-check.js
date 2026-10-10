@@ -85,7 +85,7 @@ function rotate(programs, startTime, at) {
 }
 
 // test/dst-fall-back.js's generate: the real generator with `new Date()` frozen.
-async function generate(programs, schedule, at) {
+async function generate(programs, schedule, at, history) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(at); else super(...a); }
@@ -93,7 +93,7 @@ async function generate(programs, schedule, at) {
     }
     global.Date = FrozenDate;
     try {
-        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)));
+        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history);
     } finally {
         global.Date = RealDate;
     }
@@ -122,7 +122,8 @@ async function main() {
         programs: channel.programs, startTime: savedStart, from: at, to: at + horizon,
         schedule: channel.scheduleBackup, getShowData,
     });
-    let unmatched = before.filter( (a) => a.key === null );
+    let repeats = before.filter( (a) => a.program.slotPosition === 'repeat' ).length;
+    let unmatched = before.filter( (a) => (a.key === null) && (a.program.slotPosition !== 'repeat') );
 
     // The editor's path: rotate, removeDuplicates, edit, generate.
     let rotated = rotate(channel.programs, savedStart, at);
@@ -138,7 +139,14 @@ async function main() {
             openedSchedule: channel.scheduleBackup, schedule: schedule, pool: pool, getShowData,
         });
     }
-    let res = await generate(pool, schedule, at);
+    // and, as the editor does, what the lineup on air aired in the last period, for Repeat slots.
+    let opened = channel.scheduleBackup || {};
+    let history = slotProgress.recentAirings({
+        programs: channel.programs, startTime: savedStart, now: at,
+        spanMs: (schedule.period || DAY) + 60 * MIN,
+        since: opened.progress ? Date.parse(opened.progress.asOf) : undefined,
+    });
+    let res = await generate(pool, schedule, at, history);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
     seasonConstraints.clearStartSeasons(schedule);
 
@@ -167,7 +175,7 @@ async function main() {
         lines.push(`        regenerated next:  ${as.map( (x) => episodeOf(x.program) ).join(', ') || '-'}`);
     }
     console.log(`${channel.number} ${channel.name} | at ${when(at)} | from ${file}`);
-    console.log(`saved lineup, next three weeks: ${before.length} airings, ${before.length - unmatched.length} matched to a position`
+    console.log(`saved lineup, next three weeks: ${before.length} airings, ${before.length - unmatched.length - repeats} matched to a position` + (repeats ? `, ${repeats} repeats` : '')
         + (unmatched.length ? ` (unmatched: ${unmatched.slice(0, 5).map( (x) => when(x.start) + ' ' + (x.program.showTitle || x.program.title) + ' ' + episodeOf(x.program) ).join('; ')})` : ''));
     console.log(`continue exactly: ${same} of ${keys.length}`);
     lines.forEach( (l) => console.log(l) );

@@ -1464,9 +1464,10 @@ for the full spec, stages and acceptance tests.
 - [x] Rerun - a Shuffle of only the episodes the show's Play Next has already
       aired, so a weekend never gets ahead of its weekday strip. *Built Oct 9,
       2026 (step 4) - see the build record in the Known issues entry.*
-- [ ] Repeat a slot - re-airs whatever a chosen earlier slot aired, the same
+- [x] Repeat a slot - re-airs whatever a chosen earlier slot aired, the same
       day (9pm's episode again at 1am) or another day of the week (Saturday's
-      That's So Raven repeats Thursday's)
+      That's So Raven repeats Thursday's). *Built Oct 9, 2026 (step 5) - see the
+      build record in the Known issues entry.*
 - [ ] Ordered shuffle - a series at random, that series' next episode in
       order, for custom shows that join several series
 - [ ] Multi-part stories kept together by every shuffle - part 2 always
@@ -3331,9 +3332,10 @@ timestamps.
 ### Per-position stored progress, and the shuffles built on it
 
 Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **steps 1
-to 4 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
+to 5 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
 plays rounds kept by episode, with season settings and multi-part stories,
-and Rerun replays only what its show's Play Next has aired;
+Rerun replays only what its show's Play Next has aired, and Repeat a slot
+re-airs a chosen earlier slot;
 see "Build record" at the end of this entry, and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
@@ -3787,6 +3789,51 @@ Central.
   nothing has aired - plays that one episode as a Shuffle every week. The
   "no Play Next" wording is pinned by test/slot-progress.js: every show on
   channel 3 has Play Next history, kept in records after its slots go.
+
+**Step 5, Oct 9, 2026** (3adb5d4..). Proofs on the fresh copy of 8:23pm
+Central.
+
+- **What shipped.** Repeat slots in Time Slots: a slot names its source by
+  time, takes its show, and re-airs the episodes that started in the source's
+  latest occurrence before it - found by wall-clock time, so the Nov 1 change
+  in between moves nothing - labelled `repeat`, so it never moves a position.
+  A source that aired before the new lineup comes from the lineup on air: the
+  editor passes the last period of it (`slotProgress.recentAirings`, read back
+  round the loop, never from before that lineup was made). A source with
+  nothing in it plays a Rerun of the show. In the editor: "Repeat a slot" in
+  the Order menu, a picker listing every slot that isn't itself a Repeat with
+  how far back it is ("Thursday 6:30pm That's So Raven - 2 days earlier",
+  "earlier the same day, 30 minutes before"), retiming a source moves its
+  Repeats with it, and a Repeat with no source - or one gone or turned into a
+  Repeat - is marked at once and holds up Create Lineup, saying why.
+  `progress-audit` checks every Repeat occurrence against its source.
+- **Channel 3's That's So Raven**, Saturday 6:30pm repeating Thursday 6:30pm
+  and Sunday 5:00pm repeating Friday 6:00pm, regenerated at Fri Oct 9 10am:
+  Saturday Oct 10 airs S01E01 "Mother Dearest" - Thursday Oct 8's, read from
+  the lineup on air round its loop - and Sunday Oct 11 S01E02 "Test of
+  Friendship", Friday's from the new lineup, then S01E03 and S01E04 the next
+  weekend, as previewed above. Over the year, 103 of 104 Repeat occurrences
+  equal their source and the 104th is that first Saturday: 0 mismatches.
+  Regenerated again from that output at Monday Oct 12, the Thursday-Friday
+  strip continues exactly (S01E03 next, 154/154 positions) and all 102 Repeat
+  occurrences equal their source.
+- **Same day, channel 1:** Friday 1:00am repeating Thursday 9:00pm (Pokémon):
+  45 of 45 occurrences equal their source; 138/138 positions continue.
+- **The fall-back night:** a 1:00am Repeat of Saturday's 9pm airs at 1:00 CDT
+  and again at 1:00 CST, both times Saturday's episode
+  (test/dst-fall-back.js).
+- **Live**, on the preview restarted with this code: That's So Raven's
+  weekend slots set to Repeat through the picker and saved at 11:45pm - the
+  first weekend from history ("Mother Dearest", "Test of Friendship"), 102 of
+  the other occurrences equal their source, 0 mismatches, no errors.
+  Retiming Thursday to 6:15pm moved Saturday's source to "Thursday 6:15pm";
+  deleting Thursday marked Saturday "The slot this repeated is gone - choose
+  another" and Create Lineup was refused with that reason. Three editor bugs
+  found that way and fixed: deleting a slot didn't refresh its Repeats until
+  Create Lineup; a gone source dropped out of the picker, so the select cleared
+  the slot and the message changed to "Choose the slot this repeats"; and a
+  reopened schedule drew its Repeat pickers before their options existed, so
+  saved sources showed blank - and could have been cleared - until an edit.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 

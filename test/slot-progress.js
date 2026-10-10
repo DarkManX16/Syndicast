@@ -446,6 +446,37 @@ module.exports = async function () {
             note([rerunS2, strip], { [STRIP_KEY]: { next: slotProgress.ref(kp[0], getShowData), wrapped: true } }, rerunS2) === null);
     }
 
+    suite.log('-- Repeat a slot, in the editor --');
+    {
+        const thu = { time: slotTime(Thu, 18, 30), showId: "tv.That's So Raven", order: 'next' };
+        const fri = { time: slotTime(Fri, 18), showId: "tv.That's So Raven", order: 'next' };
+        const sat = { time: slotTime(Sat, 18, 30), showId: "tv.That's So Raven", order: 'repeat', repeatOf: thu.time };
+        const sun = { time: slotTime(Sun, 17), showId: "tv.That's So Raven", order: 'repeat', repeatOf: fri.time };
+        const late = { time: slotTime(Fri, 1), showId: 'tv.Pooh', order: 'next' };
+        const schedule = { period: WEEK, slots: [thu, fri, sat, sun, late] };
+        const sources = slotProgress.repeatSources(schedule, sat);
+        suite.check('the sources are every slot that isn\'t a Repeat, with how far back each is',
+            sources.length === 3 && !sources.some((x) => x.slot.order === 'repeat')
+                && sources.find((x) => x.slot === thu).back === 2 * DAY
+                && sources.find((x) => x.slot === late).back === DAY + 17 * HOUR + 30 * MIN,
+            JSON.stringify(sources.map((x) => [x.slot.time, x.back / HOUR])));
+        suite.check('...a source later in the week is last week\'s',
+            slotProgress.repeatSources(schedule, { time: slotTime(Thu, 10), order: 'repeat' }).find((x) => x.slot === sun) === undefined
+                && slotProgress.repeatSources(schedule, { time: slotTime(Thu, 10), order: 'repeat' }).find((x) => x.slot === fri).back === 6 * DAY - 8 * HOUR);
+        suite.check('a Repeat with a source has no problem', slotProgress.repeatProblem(schedule, sat) === null);
+        suite.check('...one without a source must choose one',
+            /Choose/.test(slotProgress.repeatProblem(schedule, { time: slotTime(Mon, 9), order: 'repeat' }) || ''));
+        suite.check('...one whose source is gone says so',
+            /gone/.test(slotProgress.repeatProblem(schedule, { time: slotTime(Mon, 9), order: 'repeat', repeatOf: slotTime(Mon, 3) }) || ''));
+        suite.check('...and one whose source is itself a Repeat',
+            /itself a Repeat/.test(slotProgress.repeatProblem(schedule, { time: slotTime(Mon, 9), order: 'repeat', repeatOf: sat.time }) || ''));
+
+        const moved = JSON.parse(JSON.stringify(schedule));
+        slotProgress.followRetime(moved, thu.time, slotTime(Thu, 19));
+        suite.check('retiming a source moves its repeats with it',
+            moved.slots[2].repeatOf === slotTime(Thu, 19) && moved.slots[3].repeatOf === fri.time);
+    }
+
     suite.log('-- references --');
     {
         const custom = (title, order) => ({
