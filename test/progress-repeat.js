@@ -136,6 +136,14 @@ module.exports = async function () {
         const aired = withStarts(await generate(episodes('Raven', 20), raven(), at(Fri, 10), history));
         suite.check('the first repeat after a regeneration comes from history',
             inSlot(aired, at(Sat, 18, 30)).map((a) => a.program.title).join() === 'Raven S1E1');
+        // Thursday's episode since marked never air: the editor filters it out of history.
+        const showCatalog = require('../src/show-catalog');
+        const marked = showCatalog.applyOps(showCatalog.emptyState(), [{ neverAir: [showCatalog.neverAirEntry(history[0].program, getShowData, 'deleted', 'never', undefined, at(Fri, 9))] }], at(Fri, 9));
+        const filtered = history.filter((a) => showCatalog.withoutNeverAir([a.program], marked).length === 1);
+        const leftOut = inSlot(withStarts(await generate(showCatalog.withoutNeverAir(episodes('Raven', 20), marked), raven(), at(Fri, 10), filtered)), at(Sat, 18, 30));
+        suite.check('a Repeat whose source aired a never-air episode plays a Rerun',
+            leftOut.length === 1 && /^rerun\|/.test(leftOut[0].program.slotPosition) && leftOut[0].program.title !== 'Raven S1E1',
+            leftOut.map((a) => a.program.title + ' ' + a.program.slotPosition).join());
         const none = withStarts(await generate(episodes('Raven', 20), raven(), at(Fri, 10), []));
         const fallback = inSlot(none, at(Sat, 18, 30));
         suite.check('nothing in the source plays a Rerun',

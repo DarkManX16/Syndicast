@@ -6,6 +6,7 @@
  *
  * Usage:
  *   node scripts/catalog-snapshot.js --data <copy> --plex <plex-servers.json> --out <file> [--channels 1,2,3]
+ *       [--custom-shows <dir>]   custom shows from this folder instead of <copy>/custom-shows
  *
  * Plex is only read (GET). The snapshot's program objects carry icon URLs with
  * the Plex token, exactly as channel files do: keep it beside the copies and
@@ -26,6 +27,7 @@ function parseArgs(argv) {
         if (a === '--data') args.data = next();
         else if (a === '--plex') args.plex = next();
         else if (a === '--out') args.out = next();
+        else if (a === '--custom-shows') args.customShows = next();
         else if (a === '--channels') args.channels = next().split(',').map(Number);
         else throw new Error('Unknown argument ' + a);
     }
@@ -37,7 +39,7 @@ async function main() {
     let args = parseArgs(process.argv.slice(2));
     let servers = JSON.parse(fs.readFileSync(args.plex, 'utf8'));
     let getShow = async (id) => {
-        let f = path.join(args.data, 'custom-shows', id + '.json');
+        let f = path.join(args.customShows || path.join(args.data, 'custom-shows'), id + '.json');
         return fs.existsSync(f) ? Object.assign({ id }, JSON.parse(fs.readFileSync(f, 'utf8'))) : null;
     };
     let out = {};

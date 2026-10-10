@@ -386,7 +386,11 @@ function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
  * Positions no longer used keep a record, refreshed from the lineup when it
  * still has their airings.
  */
-function planProgress({ programs, startTime, now, openedSchedule, schedule, pool, getShowData }) {
+function planProgress({ programs, startTime, now, openedSchedule, schedule, pool, catalog, getShowData }) {
+    // Every candidate list comes from the full catalog when the editor has one
+    // (see src/show-catalog.js); a round the old shuffler started is rebuilt
+    // from the lineup's own list, the one that shuffler shuffled.
+    let candidatePool = Array.isArray(catalog) ? catalog : pool;
     let opened = ( (typeof(openedSchedule) === 'object') && (openedSchedule !== null) ) ? openedSchedule : { slots: [] };
     let oldRecords = ( (typeof(opened.progress) === 'object') && (opened.progress !== null)
                        && (typeof(opened.progress.positions) === 'object') && (opened.progress.positions !== null) )
@@ -470,7 +474,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
     // A position's candidates as its rounds see them: stories, with movies
     // outside custom shows left single.
     let storiesFor = (showId, constraint, mode) => {
-        let candidates = candidatesFor(pool, showId, constraint, getShowData);
+        let candidates = candidatesFor(candidatePool, showId, constraint, getShowData);
         if (mode === 'ordered') {
             // Grouped series by series, as the generator's Ordered shuffle does.
             return rounds.seriesStories(candidates).all;
@@ -672,7 +676,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         if (best === null) {
             return null;
         }
-        let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
+        let candidates = candidatesFor(candidatePool, group.showId, group.constraint, getShowData);
         if (candidates.length === 0) {
             return null;
         }
@@ -724,7 +728,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
             record = inherited(key, group);
         }
         if ( (record === null) && timed && ( (group.mode === 'next') || rounded ) && ! oldGroups.has(key) ) {
-            let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
+            let candidates = candidatesFor(candidatePool, group.showId, group.constraint, getShowData);
             if (candidates.length > 0) {
                 record = rounded ? { round: 0, deferred: [] } : { next: ref(candidates[0], getShowData), wrapped: false };
             }
@@ -732,7 +736,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         if (group.mode === 'next') {
             let seek = seekOf(group.slots, schedule, now);
             if (seek !== null) {
-                let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
+                let candidates = candidatesFor(candidatePool, group.showId, group.constraint, getShowData);
                 let found = candidates.find( (p) => seasonOf(p) >= seek ) || candidates[0];
                 if (typeof(found) !== 'undefined') {
                     record = { next: ref(found, getShowData), wrapped: (record !== null) && (record.wrapped === true) };
