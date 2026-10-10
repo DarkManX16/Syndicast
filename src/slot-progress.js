@@ -268,10 +268,14 @@ function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
         if ( (parsed === null) || (parsed.mode === 'repeat') ) {
             return null;
         }
+        // The old shuffler labels its airings and still numbers them; nothing
+        // else leaves a number on a labelled airing, so one here is its.
         return {
             key: positionKey(show.showId, parsed.mode, { excludeSeasons: parsed.excluded }),
             round: parsed.round,
-            legacyShuffleOrder: null,
+            legacyShuffleOrder: ( (parsed.mode === 'shuffle') && (typeof(program.shuffleOrder) === 'number') )
+                ? program.shuffleOrder
+                : null,
         };
     }
     let slot = findSlot(start);

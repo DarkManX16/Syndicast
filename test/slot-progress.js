@@ -206,6 +206,16 @@ module.exports = async function () {
             .get(slotProgress.positionKey('tv.' + JB, 'shuffle', { excludeSeasons: [2, 1] }));
         suite.check('a label gives the position and its round, whatever the schedule says now',
             titleOf(place) === `${JB} S4E2` && place.round === 3 && place.legacyShuffleOrder === null);
+
+        // Until rounds replace the old shuffler, its airings carry a label and
+        // its number, and the next run needs the number.
+        const oldShuffler = lineup(THU, [
+            [at(Fri, 21), episode(JB, 4, 2, { slotPosition: 'shuffle||0', shuffleOrder: 12 })],
+        ]);
+        const kept = read(oldShuffler, THU, at(Thu, 22), { period: WEEK, slots: [] })
+            .get(slotProgress.positionKey('tv.' + JB, 'shuffle', undefined));
+        suite.check('a labelled Shuffle airing keeps its old number',
+            titleOf(kept) === `${JB} S4E2` && kept.legacyShuffleOrder === 12);
     }
 
     suite.log('-- references --');
