@@ -52,6 +52,7 @@ const suites = [
     './progress-repeat',
     './progress-ordered',
     './show-catalog',
+    './catalog-reader',
 ];
 
 (async () => {

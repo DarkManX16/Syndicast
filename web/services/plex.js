@@ -165,6 +165,14 @@ module.exports = function ($http, $window, $interval) {
             const meta = (typeof res.Metadata !== 'undefined') ? res.Metadata[0] : undefined;
             return (meta && typeof meta.librarySectionTitle !== 'undefined') ? meta.librarySectionTitle : undefined;
         },
+        // The Plex show an episode belongs to, for reading its full catalog
+        // when the episode's showIcon doesn't name it.
+        getShowKey: async (server, ratingKey) => {
+            var client = new Plex(server)
+            const res = await client.Get(`/library/metadata/${ratingKey}`)
+            const meta = (typeof res.Metadata !== 'undefined') ? res.Metadata[0] : undefined;
+            return (meta && typeof meta.grandparentRatingKey !== 'undefined') ? String(meta.grandparentRatingKey) : undefined;
+        },
         getStreams: async (server, key) => {
             var client = new Plex(server)
             return client.Get(key).then((res) => {
