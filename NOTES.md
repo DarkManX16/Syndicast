@@ -1421,9 +1421,10 @@ for the full spec, stages and acceptance tests.
       just a season
 
       Extends the existing per-slot season start (the ticked line above),
-      and once stored progress is built, is a seek on a position's stored
-      place like season start - see "Per-position stored progress, and the
-      shuffles built on it" under Known issues.
+      and, now that stored progress is built, is a seek on a position's
+      stored place like season start (`seekOf` in `src/slot-progress.js`) -
+      see "Per-position stored progress, and the shuffles built on it" under
+      Known issues.
       Opus 5.5 designs, Sonnet 5 builds. Our stamp: pick the starting
       episode by title from a list of that season's episodes (or the custom
       show's items), and preview the date and time it will first air in that
@@ -1455,9 +1456,10 @@ for the full spec, stages and acceptance tests.
 - [x] Per-position stored progress, so every slot or range continues where it
       left off across a regeneration, whichever day it is run and whatever
       airs first. *Built Oct 9, 2026 (steps 1-2): every Play Next position
-      continues from its own place, and Shuffle from the old shuffler's number
-      until rounds replace it - see the build record in the Known issues
-      entry.*
+      continues from its own place, and every Shuffle position too, from the
+      old shuffler's number until step 3's rounds replaced it - see the build
+      record in the Known issues entry. Every step's proof re-run on the final
+      code Oct 10 (step 7).*
 - [x] Shuffle - a round per range, kept by episode, with season settings.
       *Built Oct 9, 2026 (step 3), multi-part stories kept together - see the
       build record in the Known issues entry.*
@@ -1475,9 +1477,10 @@ for the full spec, stages and acceptance tests.
       follows part 1. *Built with Shuffle, Rerun and Ordered shuffle (steps 3,
       4 and 6), within a series for Ordered shuffle.*
 
-All six were designed together on Oct 9, 2026 - see "Per-position stored
-progress, and the shuffles built on it" under Known issues for the design and
-the measurements behind it, and
+All six were designed together on Oct 9, 2026 and built Oct 9-10 on the
+`stored-progress` branch, which waits for Ron to merge it into `blocks` - see
+"Per-position stored progress, and the shuffles built on it" under Known
+issues for the design, the measurements behind it and the build record, and
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md) for the build
 order. Orderers stopped being keyed by show when per-slot seasons shipped, but
 a show still had one founder, so only one of its ranges could resume exactly;
@@ -3123,13 +3126,16 @@ be built:
       movie, a card Syndicast renders itself stands in. See "Generated Next
       Time cards for Cartoon Theatre" under Blocks system above and
       docs/blocks-spec.md, Stage 5, "Generated cards". **Built Oct 9, 2026.**
-- [ ] Per-position stored progress, then shuffle, rerun, repeat a slot and
+- [x] Per-position stored progress, then shuffle, rerun, repeat a slot and
       ordered shuffle, with multi-part stories kept together (Opus 5.5 · Xhigh
       throughout - see "Work that stays on Opus 5 end to end" in the Model
       guide below). Designed Oct 9, 2026: see "Per-position stored progress,
       and the shuffles built on it" under Known issues, and
       [docs/stored-progress-plan.md](docs/stored-progress-plan.md) for the
-      build order.
+      build order. **Built Oct 9-10, 2026** on the `stored-progress` branch,
+      all seven steps, each proven on copies of Ron's data; merged into
+      `blocks` when Ron says. Channels saved before it carry over on their
+      first regeneration, with nothing to migrate.
 - [ ] Episode start: start a show or custom show at a specific episode, not
       just a season (Opus 5.5 designs, Sonnet 5 builds). See its Scheduling
       roadmap line above.
@@ -3211,10 +3217,10 @@ from Sep 27, 2026 come round again in the same order.
 The cycle is a whole number of weeks and both ends fall in daylight time, so
 if it did loop the slots would still be on their clock times - the problem
 is the dead stretch and the reruns, not the schedule. Regenerating any time
-before Aug 3 continues each show from where it has got to, with one caveat until
-per-position stored progress is built: a show with several ranges, or with
-both Play Next and Shuffle slots, resumes only its first-airing one exactly
-(see that entry below). A lineup
+before Aug 3 continues each show from where it has got to - every slot and
+range exactly, since per-position stored progress was built (see that entry
+below; before it, a show with several ranges, or with both Play Next and
+Shuffle slots, resumed only its first-airing one exactly). A lineup
 generated in winter and looping in summer, or the other way round, would
 also be an hour off after the loop; regenerating inside the cycle avoids
 that too.
@@ -3332,12 +3338,16 @@ timestamps.
 
 ### Per-position stored progress, and the shuffles built on it
 
-Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **steps 1
-to 6 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
-plays rounds kept by episode, with season settings and multi-part stories,
-Rerun replays only what its show's Play Next has aired, Repeat a slot re-airs
-a chosen earlier slot, and Ordered shuffle interleaves a custom show's series;
-see "Build record" at the end of this entry, and the build plan in
+Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **all
+seven steps built Oct 9-10, on the `stored-progress` branch, unmerged until
+Ron says** - Play Next continues from stored progress, Shuffle plays rounds
+kept by episode, with season settings and multi-part stories, Rerun replays
+only what its show's Play Next has aired, Repeat a slot re-airs a chosen
+earlier slot, and Ordered shuffle interleaves a custom show's series; every
+step's proof re-run on the final code (step 7). One thing found while
+building is Ron's to decide: "A regeneration only draws from what the lineup
+on air holds", the next entry. See "Build record" at the end of this entry,
+and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
 candidate count" and "Per-position stored progress, which fixes two things at
@@ -3869,6 +3879,52 @@ Central.
   Bravo's; all nine Tom & Jerry slots saved as Ordered shuffle through it -
   995 airings, three whole rounds of exactly 164/48/1/14, 0 violations, no
   console or server errors.
+
+**Step 7, Oct 10, 2026** (d67c6e1..). Every step's proof again, with the
+final code, on the proof copy of Oct 9 8:23pm Central - diffed against
+`.dizquetv-dev` at 11:59pm Central and identical (its channel files were last
+written at 4:18am), so the copy is current - and on Sep 29's channel 1. Suite
+1860/1860.
+
+- **Steps 1-2.** Every position continues exactly at Fri 10am, Sat 11pm and
+  Mon 10am - channel 1 138/138, channel 2 164/164, channel 3 155/155, Sep 29's
+  channel 1 50/50 - and again from each regenerated file. All That's range
+  moved to no S1-7 starts at S08E01, Rugrats' to no S1-6 at S07E04 (the pool's
+  first Season 7 episode), and Johnny Bravo's no-S2 slots taken out of Sep 29's
+  channel 1 and put back start at S01E34.
+- **`--today` no longer reproduces step 1's "before" numbers for Shuffle
+  slots.** With no records, this code's Shuffle positions start rounds of
+  their own instead of carrying the old shuffler's numbers on, so channels 2
+  and 3 lose different positions (Fri 10am 158/164 and 129/155) from the ones
+  blocks lost (159 and 147). Play Next falls back to blocks' founder rule
+  either way. The table under "What a regeneration lost" was measured on
+  blocks' generator and stands; the tool's usage now says what `--today` is.
+- **Step 3.** Channel 3's 18 carried rounds are identical to the saved lineup
+  through their ends (994 airings), and the audit of Monday's year finds 0
+  violations in 18 positions. Boy Meets World's daily copy: five multi-part
+  stories in a row in its own rounds, closest return 74 stories, the minimum.
+  Kim Possible's no-S1 range: its queue is exactly the rest of its old round
+  without Season 1 (63 of 82), in the same order; 0 of its 105 airings is
+  Season 1.
+- **Step 4.** The four weekend Reruns: 0 airings ahead of their strip, pools
+  Kim Possible 4 -> 84, Lizzie McGuire 4 -> 63, The Proud Family 4 -> 50, Even
+  Stevens 24 -> 63, 0 violations. Regenerated Jan 11 from that output: 155/155,
+  and 141 Play Next and Rerun positions identical airing for airing (13,369
+  airings) to where the October lineup's last ten days begin, which are flex
+  - Ron's own lineups of Oct 9, made by blocks, end the same way, in 4 to 10
+  days of flex.
+- **Step 5.** That's So Raven: Sat Oct 10 repeats Thursday's "Mother Dearest",
+  from the lineup on air, and Sun Oct 11 Friday's "Test of Friendship"; 103 of
+  104 occurrences equal their source and the other is the one from history, 0
+  mismatches; Monday's regeneration 154/154 and 102/102 equal. Channel 1's Fri
+  1am repeat of Thu 9pm: 45/45 equal, 138/138.
+- **Step 6.** Tom & Jerry: three whole rounds of exactly 164/48/1/14, 0
+  violations, and the 707 airings regenerated Jan 11 identical. Double Dare:
+  the four series interleave, each in list order, 17/14/11/10 airings against
+  an expected 20.8/13.2/10.5/7.5.
+- **Live checks** weren't repeated. Each ran on the preview with its own
+  step's code; what later steps changed under them - the round hash in step 4
+  above all - is what the scripted proofs above re-measure.
 
 ### A regeneration only draws from what the lineup on air holds
 
@@ -4618,6 +4674,52 @@ makes and removes its own under the OS temp directory, and is the only one that
 touches a disk at all - and there is no test runner dependency to install: it is
 plain Node, in keeping with the rest of the project having none either. Each file also runs standalone, e.g. `node
 test/blocks-acceptance.js`, while developing just that piece.
+
+### Checking a regeneration on a copy: `progress-check` and `progress-audit`
+
+Two scripts prove a scheduling change on real data without a browser or a
+server; every stored-progress proof under Known issues was made with them.
+Both read only the files they are given and write only `--save`: run them on
+a copy of the data folder, never on `.dizquetv-dev` itself.
+
+- `node scripts/progress-check.js --data <copy> --channel <n> --at <ISO>` runs
+  the editor's Create Lineup path directly - the lineup rotated to `--at` as
+  the editor rotates it, `removeDuplicates`, the planner (the records the
+  editor would send), the Repeat history, and the real Time Slots generator
+  with `Date` frozen at `--at` - then compares, per position, the saved
+  lineup's next episodes over three weeks with the regenerated one's:
+  `continue exactly: N of M`, listing the positions that jump.
+  - `--edit <module.js>` changes the schedule first, as an edit in the dialog
+    would: a module exporting `(schedule) => void`.
+  - `--save <out.json>` writes the regenerated channel and `--from <out.json>`
+    reads one back - how "twice in a row" and "three months in" are run.
+  - `--show <regex>`, `--airings <regex> --days <n>` and `--all` list more.
+  - `--add-custom <id>` adds a custom show's whole item list first, as adding
+    it from the library does - the lineup alone holds only what it aired (see
+    "A regeneration only draws from what the lineup on air holds").
+  - `--today` skips the planner. With no records Play Next falls back to the
+    founder rule, as blocks did, but Shuffle starts rounds of its own, so it
+    reproduces blocks' Play Next losses and not its Shuffle ones; those need
+    blocks' code (`git show blocks:<file>` into a scratch directory).
+- `node scripts/progress-audit.js --channel <saved.json> [--show <regex>]`
+  checks a whole saved lineup against the shuffle rules, for every Shuffle,
+  Rerun and Ordered shuffle position: each whole round has each story once;
+  nothing comes back within half a round (for a Rerun, half of what it aired;
+  Ordered shuffle makes no such promise); a multi-part story's parts air in a
+  row; a Rerun is never ahead of its strip; each Ordered shuffle series airs
+  in list order. It also checks every Repeat a slot occurrence against its
+  source. `audit()` is exported for other scripts.
+- A round carried over from the old shuffler finishes in the old order, so the
+  audit doesn't measure the gap between two parts of one story inside it. A
+  whole round needs both its ends inside the lineup, so a big show in a weekly
+  slot (Double Dare's 465 items) shows its shares in a year, not its rounds.
+- Comparing two lineups airing for airing - a regeneration three months in
+  against the first - is a few lines over `slotProgress.airings` grouped by
+  position, and isn't committed. Compare up to where the shorter list ends: a
+  year's lineup ends in days of flex, blocks' lineups as much as these.
+- A preview server keeps the code it started with: restart it after a change
+  to server code before a live check, or the check runs the old generator (the
+  first step 3 live check did).
 
 ### createLineup can be exercised directly
 

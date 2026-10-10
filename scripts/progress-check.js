@@ -13,7 +13,9 @@
  *       [--show <regex>]          list matching positions even when they continue
  *       [--airings <regex> --days <n>]  list matching shows' airings in both lineups
  *       [--all]                   list every position, not only the ones that jump
- *       [--today]                 skip the planner: regenerate the way blocks did, from the founder rule
+ *       [--today]                 skip the planner: no records, so Play Next falls back to the founder
+ *                                 rule as blocks did; Shuffle starts rounds of its own, so blocks'
+ *                                 Shuffle losses need blocks' code
  *       [--add-custom <id>]       add a custom show's items to the programs first, as the library's
  *                                 "add custom show" does (the lineup alone holds only what it aired)
  *

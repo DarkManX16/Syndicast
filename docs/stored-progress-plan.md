@@ -52,7 +52,7 @@
   - `slotAt(schedule, instant) -> slot|null` - the generator's `localMsIntoPeriod` + `findSlot` arithmetic.
   - `readPlaces({ programs, startTime, now, schedule, getShowData }) -> Map<positionKey, { program, start, round, legacyShuffleOrder }>` - per position, its first airing on air at `now` or after, walking from `startTime` and round the cycle once. A labelled airing gives its position from `parseLabel` plus the show; an unlabelled one is matched with `slotAt` and counts only if the slot's show is the airing's show (`legacyShuffleOrder` from its `shuffleOrder`, and a Shuffle-slot airing *without* one is treated as hand-placed and skipped); a `repeat` label never counts.
 
-- [ ] **Step 1: Write the failing tests** in `test/slot-progress.js`, with fixtures built like `test/channel-library.js`'s `episode()` and a weekly schedule:
+- [x] **Step 1: Write the failing tests** in `test/slot-progress.js`, with fixtures built like `test/channel-library.js`'s `episode()` and a weekly schedule:
   - `positionKey ignores startSeason`: `positionKey('tv.A','next',{excludeSeasons:[2,1],startSeason:3}) === '["tv.A","next",[1,2]]'`.
   - `label round-trips`: `parseLabel(label('shuffle',{excludeSeasons:[1]},4))` deep-equals `{mode:'shuffle',excluded:[1],round:4}`; `parseLabel('next|')` gives `excluded: []`, `round: null`.
   - `two ranges of one show read separately`: a lineup with Johnny Bravo all-seasons Thu, no-S1 Fri, no-S2 Sun slots; `readPlaces` at a Friday returns three keys with three different programs.
@@ -61,11 +61,11 @@
   - `now is the click, not programs[0]`: same lineup, `now` an hour later than the rotation point - the place moves past the airings in that hour.
   - `a looped lineup reads the cycle`: `now` two cycles after `startTime` reads the same as `now` one cycle earlier plus nothing else.
   - `old lineups are read by slot`: no labels anywhere; every airing's position equals the slot covering its start; a Shuffle-slot airing with `shuffleOrder: 7` gives `legacyShuffleOrder: 7`; a repeat-labelled airing is ignored.
-- [ ] **Step 2:** Add to `test/dst-fall-back.js`: `slotAt agrees with the generator through the fall-back hour` - for every minute from Sun Nov 1 05:00Z to 09:00Z, `slotAt(schedule, t)` equals the slot found by `liftSource('src/services/time-slots-service.js','localMsIntoPeriod')` plus a lifted `findSlot` over the same slots.
-- [ ] **Step 3:** Run `npm test` - the new checks FAIL (module missing).
-- [ ] **Step 4:** Implement the interfaces above in `src/slot-progress.js`.
-- [ ] **Step 5:** Run `npm test` - all pass.
-- [ ] **Step 6:** Commit: `Progress: read each position's place from a lineup, by label or by slot`.
+- [x] **Step 2:** Add to `test/dst-fall-back.js`: `slotAt agrees with the generator through the fall-back hour` - for every minute from Sun Nov 1 05:00Z to 09:00Z, `slotAt(schedule, t)` equals the slot found by `liftSource('src/services/time-slots-service.js','localMsIntoPeriod')` plus a lifted `findSlot` over the same slots.
+- [x] **Step 3:** Run `npm test` - the new checks FAIL (module missing).
+- [x] **Step 4:** Implement the interfaces above in `src/slot-progress.js`.
+- [x] **Step 5:** Run `npm test` - all pass.
+- [x] **Step 6:** Commit: `Progress: read each position's place from a lineup, by label or by slot`.
 
 ### Task 2: References that survive a changing pool
 
@@ -75,9 +75,9 @@
 **Interfaces:**
 - Produces: `resolveRef(refValue, sortedCandidates, getShowData) -> index` - the candidate whose file key matches; else the first whose order is at or after `refValue.order`; else 0 (wrap).
 
-- [ ] **Step 1: Failing tests:** `a reference resolves by key` (custom show with an item inserted before the place - index moves, item stays the same); `a gone episode resolves to the next one` (key absent, order between two candidates - the later one); `past the end wraps to the first`.
-- [ ] **Step 2:** `npm test` - FAIL. **Step 3:** implement. **Step 4:** `npm test` - pass.
-- [ ] **Step 5:** Commit: `Progress: references by file key, falling back to order`.
+- [x] **Step 1: Failing tests:** `a reference resolves by key` (custom show with an item inserted before the place - index moves, item stays the same); `a gone episode resolves to the next one` (key absent, order between two candidates - the later one); `past the end wraps to the first`.
+- [x] **Step 2:** `npm test` - FAIL. **Step 3:** implement. **Step 4:** `npm test` - pass.
+- [x] **Step 5:** Commit: `Progress: references by file key, falling back to order`.
 
 ### Task 3: The proof tool
 
@@ -88,11 +88,11 @@
 - Consumes: `readPlaces`, `slotAt`; the real `src/services/time-slots-service.js`; `web/services/get-show-data.js` and `web/services/common-program-tools.js` (`require(...)(getShowData)`) for `removeDuplicates`.
 - Produces: `node scripts/progress-check.js --data <dir> --channel <n> --at <ISO> [--edit <module.js>] [--from <channel.json>] [--save <out.json>] [--airings <regex> --days <n>] [--show <regex>]`. It drives the editor's path - rotate at `--at` the way `adjustStartTimeToCurrentProgram` does, `removeDuplicates`, the planner once Task 6 exists, the real generator with `Date` frozen at `--at` (as `test/dst-fall-back.js`'s `generate`) - and prints, per position, the saved lineup's next four episodes against the regenerated one's, then `continue exactly: X of Y`. `--edit` exports `(schedule) => void` applied to the schedule before generating; `--save` writes the regenerated channel so a second run can start from it.
 
-- [ ] **Step 1:** Write the script (an extension of the session's scratch harness, using the real `removeDuplicates`).
-- [ ] **Step 2: Proof, real data, behaviour unchanged.** On fresh copies, at Fri Oct 9 10:00am, Mon Oct 12 10:00am and Sat Oct 10 11:00pm Central, for channels 1, 2, 3 and Sep 29's channel 1:
+- [x] **Step 1:** Write the script (an extension of the session's scratch harness, using the real `removeDuplicates`).
+- [x] **Step 2: Proof, real data, behaviour unchanged.** On fresh copies, at Fri Oct 9 10:00am, Mon Oct 12 10:00am and Sat Oct 10 11:00pm Central, for channels 1, 2, 3 and Sep 29's channel 1:
   - `readPlaces` matches every airing of the next three weeks to a slot of its own show (3,450 of 3,450 at Friday, as measured);
   - the "today" numbers reproduce NOTES' table exactly: ch 1 138/138, Sep 29 45/50, ch 2 159/164, ch 3 147/155 Friday and 137/155 Monday, with the same before/after episodes.
-- [ ] **Step 3:** Commit: `Progress: scripts/progress-check.js, the before-and-after report for a regeneration`.
+- [x] **Step 3:** Commit: `Progress: scripts/progress-check.js, the before-and-after report for a regeneration`.
 
 ---
 
@@ -109,13 +109,13 @@
 - Consumes: `constraintOf`, `positionKey`, `label`, `resolveRef`.
 - Produces: `createPositions({ shows, schedule, getShowData }) -> { forSlot(slot) -> { current() -> program|null, next() } }`, `shows` being the services' existing show list (`show.programs`, `show.founder`). A Play Next position starts at `schedule.progress.positions[key].next` (via `resolveRef` over its sorted, range-filtered candidates); a position with no record uses today's founder rule; a record carrying `legacyShuffleOrder` starts the old shuffler there instead of at `founder.shuffleOrder`. `current()` returns a fresh copy with `shuffleOrder` and `slotPosition` removed, then `slotPosition = label(...)` set (the old shuffler still sets its own `shuffleOrder`). A Play Next record gains `wrapped: true` once its position passes the end of its range (kept for Rerun; nothing reads it yet).
 
-- [ ] **Step 1: Failing tests** (fixtures, the real services, `Date` frozen):
+- [x] **Step 1: Failing tests** (fixtures, the real services, `Date` frozen):
   - `every airing carries its position`: all non-flex programs have a `slotPosition` that `parseLabel` reads and that matches their slot.
   - `Play Next airings never carry a Shuffle number`: a show with a Play Next and a Shuffle slot, input programs carrying `shuffleOrder` - no Play Next airing has `shuffleOrder`.
   - `a record sets the place`: progress record `next` = S1E5 for the no-S2 range - that position's first airing is S1E5; the all-seasons range with record S2E3 starts at S2E3, whichever airs first.
   - `no record, no progress: as today`: the same lineup with `schedule.progress` absent is identical (field for field, ignoring `slotPosition`) to the output of `git show blocks:src/services/time-slots-service.js` run on the same input (loaded from a temp file, as NOTES' "Comparing a filler change" describes).
-- [ ] **Step 2:** `npm test` - FAIL. **Step 3:** implement; replace both services' `constraintForSlot` with `constraintOf`. **Step 4:** `npm test` - pass.
-- [ ] **Step 5:** Commit: `Progress: generators start each position from its record and label every airing`.
+- [x] **Step 2:** `npm test` - FAIL. **Step 3:** implement; replace both services' `constraintForSlot` with `constraintOf`. **Step 4:** `npm test` - pass.
+- [x] **Step 5:** Commit: `Progress: generators start each position from its record and label every airing`.
 
 ### Task 5: Season start becomes a seek; one key for editor and generator
 
@@ -127,8 +127,8 @@
 **Interfaces:**
 - Produces: `seekOf(slots, schedule, now) -> number|null` in `src/slot-progress.js` - among a position's slots that carry a `startSeason`, the one whose next occurrence after `now` (by `slotAt` arithmetic) comes first.
 
-- [ ] **Step 1: Failing tests:** `slots with one range and different seeks share a position` (`sharingPosition` counts both); `seekOf picks the slot airing first from now`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass. **Step 5:** Commit: `Progress: season start is a seek on a position, not part of its key`.
+- [x] **Step 1: Failing tests:** `slots with one range and different seeks share a position` (`sharingPosition` counts both); `seekOf picks the slot airing first from now`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass. **Step 5:** Commit: `Progress: season start is a seek on a position, not part of its key`.
 
 ### Task 6: The planner - rule precedence and the slot's old place
 
@@ -138,8 +138,8 @@
 **Interfaces:**
 - Produces: `planProgress({ programs, startTime, now, openedSchedule, schedule, pool, getShowData }) -> { asOf, positions }` for every position in `schedule`, by the spec's five rules in order: a seek (`seekOf`, first episode of that season); `readPlaces` on air or ahead; `openedSchedule.progress.positions[key]`; the slot's old place (same `time` and `showId` in `openedSchedule`, same mode, moved forward with `resolveRef` into the new range; several old positions - the one airing first from `now` wins); otherwise the first episode of the range. Unused positions' records from `openedSchedule.progress` are carried into the result unchanged. Unlabelled Random Slots lineups (no `time` on slots) produce no record for that position, so the generator's founder rule applies.
 
-- [ ] **Step 1: Failing tests:** one per rule, each where the rule above it does not apply, plus `a seek beats the lineup`, `a range taken out and put back resumes from its record`, `narrowing a range keeps the slot's place, moved forward`, `a mode change starts at the first episode`, `an unused position's record is kept`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass. **Step 5:** Commit: `Progress: the planner, five rules in order`.
+- [x] **Step 1: Failing tests:** one per rule, each where the rule above it does not apply, plus `a seek beats the lineup`, `a range taken out and put back resumes from its record`, `narrowing a range keeps the slot's place, moved forward`, `a mode change starts at the first episode`, `an unused position's record is kept`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass. **Step 5:** Commit: `Progress: the planner, five rules in order`.
 
 ### Task 7: The editor sends and saves progress
 
@@ -149,15 +149,15 @@
 - Modify: `web/directives/channel-config.js` (the five `startDialog` calls pass `() => ({ programs: scope.channel.programs, startTime: scope.channel.startTime })`)
 - Modify: `scripts/progress-check.js` (calls `planProgress` as the editor does)
 
-- [ ] **Step 1:** Implement; `npm run build` in the worktree; `test/bundle-freshness.js` passes.
-- [ ] **Step 2: Proof, real data** (`progress-check` at the three moments, every channel copy):
+- [x] **Step 1:** Implement; `npm run build` in the worktree; `test/bundle-freshness.js` passes.
+- [x] **Step 2: Proof, real data** (`progress-check` at the three moments, every channel copy):
   - Every Play Next position continues exactly: ch 1 138/138, Sep 29 50/50 (Johnny Bravo S01E28, S02E07, S01E34, S01E34), ch 2 All That S01E05, Rugrats S01E05, Hey Arnold S01E09, Kenan & Kel S01E05; ch 3's eight weekday strips; Monday's 18 weekend Shuffles continue exactly through `legacyShuffleOrder`.
   - Hey Arnold's Friday Shuffle resumes at pick 1 (S1E9), not at Ron's hand-placed S5E5 - hand edits never move a position.
   - Channel 1 as saved regenerates field for field the same as `blocks`' generator, ignoring `slotPosition`: nothing changes where nothing was wrong.
   - Twice in a row: Friday's output saved, then regenerated from it at Monday - every position continues exactly, now read from labels.
   - The slot's old place, on copies with `--edit`: Rugrats' Friday range changed from no S1-5 to no S1-6 goes to S07E01; All That's Fri-Sun range narrowed to no S1-7 continues at the first S8 episode at or after its place; Sep 29's no-S2 Johnny Bravo slots removed in one run and restored in the next resume at S01E34 from the record.
-- [ ] **Step 3: Live check** on the preview (port 18200): open channel 2, Time Slots, Create Lineup, Update Channel; `progress-check --from` the saved file shows `progress` with 164 positions and every airing labelled; no console errors.
-- [ ] **Step 4:** Commit: `Progress: the editor reads places at Create Lineup and saves them with the schedule`; record step 2 in NOTES.md (what shipped, the measurements, snapshot time).
+- [x] **Step 3: Live check** on the preview (port 18200): open channel 2, Time Slots, Create Lineup, Update Channel; `progress-check --from` the saved file shows `progress` with 164 positions and every airing labelled; no console errors.
+- [x] **Step 4:** Commit: `Progress: the editor reads places at Create Lineup and saves them with the schedule`; record step 2 in NOTES.md (what shipped, the measurements, snapshot time).
 
 ---
 
@@ -171,10 +171,10 @@
 **Interfaces:**
 - Produces: `partOf(title) -> { base, n } | null` (markers `(2)`, `(II)`, `Part 2`, `Part Two`, `Pt. 2`, n 1-6); `stories(sortedPrograms) -> program[][]` - every program in exactly one story; part n (n >= 2) joins the one before it when that is part n-1, or for part 2 when that has the same title unmarked.
 
-- [ ] **Step 1: Failing tests** with Ron's real titles as fixtures: `Deadomutt (1)/(2)` join; `Stewie Kills Lois (1)` + `Lois Kills Stewie (2)` join; `Judging Omi (1)`, `Saving Omi (2)`, `Finding Omi (3)` make one story of three; `Secret Origins`, `Secret Origins (2)`, `Secret Origins (3)` make one; `Escape to the House of Mummies Part II` after `Assassinanny 911` stays single; `The Thirteen Ghosts (1975)` is not a part; Sonic Underground's interleaved `(Chaos Emerald Crisis, Part 2)` / `(Origins, Part 2)` stay single.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass.
-- [ ] **Step 5: Proof, real data:** across channels 1-3, 431 stories, 1,022 episodes, 24 parts single - the list printed matches NOTES'.
-- [ ] **Step 6:** Commit: `Progress: multi-part stories from part markers and order`.
+- [x] **Step 1: Failing tests** with Ron's real titles as fixtures: `Deadomutt (1)/(2)` join; `Stewie Kills Lois (1)` + `Lois Kills Stewie (2)` join; `Judging Omi (1)`, `Saving Omi (2)`, `Finding Omi (3)` make one story of three; `Secret Origins`, `Secret Origins (2)`, `Secret Origins (3)` make one; `Escape to the House of Mummies Part II` after `Assassinanny 911` stays single; `The Thirteen Ghosts (1975)` is not a part; Sonic Underground's interleaved `(Chaos Emerald Crisis, Part 2)` / `(Origins, Part 2)` stay single.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass.
+- [x] **Step 5: Proof, real data:** across channels 1-3, 431 stories, 1,022 episodes, 24 parts single - the list printed matches NOTES'.
+- [x] **Step 6:** Commit: `Progress: multi-part stories from part markers and order`.
 
 ### Task 9: The shuffle family's rounds
 
@@ -187,8 +187,8 @@
 - A shuffle record is `{ round, next }` or `{ round, queue }`. `queue` is played in order first (a carried round), filtered to the current range; then rounds continue from `round + 1` with `laterHalf` taken from the queue's last half. In steady state the place is `next`'s story; everything before it in the round's order counts as aired this round. Labels are `label(mode, constraint, round)`.
 - `planProgress`: for a `legacyShuffleOrder` place, `queue` = the rest of that round in the old permutation, reproduced by the old shuffler's arithmetic copied into `src/shuffle-rounds.js` as `legacyRemaining(sortedPrograms, showId, position)`; for a slot's old place in the shuffle family, `queue` = the rest of the old position's round in its order, minus what the new range excludes.
 
-- [ ] **Step 1: Failing tests:** `each round airs every story once`; `none back within half a round` over 20 rounds; `adding an episode leaves the rest of the round in place` (order of the other stories unchanged; the new one airs this round only if its hash is ahead of the place); `excluding a season mid-round reshows nothing early`; `a story's parts are consecutive airings of the position`; `legacyRemaining reproduces the old shuffler` (positions 0..3n against `git show blocks:src/services/show-orderers.js`'s `getShowShuffler`); `a carried queue plays first, in order`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass. **Step 5:** Commit: `Progress: Shuffle by rounds of episodes, stable when the pool changes`.
+- [x] **Step 1: Failing tests:** `each round airs every story once`; `none back within half a round` over 20 rounds; `adding an episode leaves the rest of the round in place` (order of the other stories unchanged; the new one airs this round only if its hash is ahead of the place); `excluding a season mid-round reshows nothing early`; `a story's parts are consecutive airings of the position`; `legacyRemaining reproduces the old shuffler` (positions 0..3n against `git show blocks:src/services/show-orderers.js`'s `getShowShuffler`); `a carried queue plays first, in order`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass. **Step 5:** Commit: `Progress: Shuffle by rounds of episodes, stable when the pool changes`.
 
 ### Task 10: Seasons on Shuffle slots, and the round audit
 
@@ -196,13 +196,13 @@
 - Modify: `web/directives/time-slots-schedule-editor.js` (`canConstrainSeasons` allows `shuffle`; `seasonsDisabledReason` drops the Shuffle text)
 - Create: `scripts/progress-audit.js` - `node scripts/progress-audit.js --channel <saved.json>` checks a whole lineup: per shuffle-family position, each round has each story once, no story back within half a round, every story's parts consecutive and in order; prints violations and counts.
 
-- [ ] **Step 1:** Implement; `npm run build`; `npm test` passes.
-- [ ] **Step 2: Proof, real data:**
+- [x] **Step 1:** Implement; `npm run build`; `npm test` passes.
+- [x] **Step 2: Proof, real data:**
   - Channel 3 at Monday and Friday: all 18 weekend Shuffles continue exactly, and the carried round finishes in the saved lineup's order (next airings compared until each round ends).
   - `progress-audit` on channel 3 regenerated for a year: 0 violations; the multi-part stories in its shuffled shows (from the 13) air whole once new rounds begin.
   - Kim Possible's Saturday and Sunday Shuffle set to no S1 on a copy mid-round: no S1 airing; no story from earlier in the round reshown before it ends.
-- [ ] **Step 3: Live check:** the Seasons button is enabled on a Shuffle slot, the range saves, Create Lineup and Update Channel succeed.
-- [ ] **Step 4:** Commit: `Progress: season settings for Shuffle slots, and scripts/progress-audit.js`; record step 3 in NOTES.md.
+- [x] **Step 3: Live check:** the Seasons button is enabled on a Shuffle slot, the range saves, Create Lineup and Update Channel succeed.
+- [x] **Step 4:** Commit: `Progress: season settings for Shuffle slots, and scripts/progress-audit.js`; record step 3 in NOTES.md.
 
 ---
 
@@ -219,11 +219,11 @@
 **Interfaces:**
 - Produces: `registry.airedFor(showId) -> Set<fileKey>` - union over the show's live Play Next positions of every candidate before each one's current place (the whole range once `wrapped`), plus the same for `progress` records of the show's Play Next positions not in the schedule. A Rerun position draws stories wholly inside that set and inside its own range, in Shuffle's rounds; the set is asked afresh at each pick, so it grows as the strips advance. Fallbacks (Ron, Oct 9): nothing aired yet - plays as a Shuffle over its range, and the editor shows why under the slot; no Play Next for the show anywhere - plays as a Shuffle over its range.
 
-- [ ] **Step 1: Failing tests:** `a Rerun never airs an episode its show's Play Next hasn't passed` over a generated year; `the pool grows as the strip advances`; `a story is rerun only once every part has aired`; `a strip that has gone round makes its whole range eligible`; `nothing aired yet plays as a Shuffle`; `no Play Next plays as a Shuffle`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass; `npm run build`.
-- [ ] **Step 5: Proof, real data:** a copy of channel 3 with the weekend Shuffle slots of Kim Possible, Lizzie McGuire, Even Stevens and The Proud Family set to Rerun, generated for a year: `progress-audit` reports 0 Rerun airings ahead of their strip, and each show's pool size at the first and last weekend; regenerated again three months in from the saved output, every Play Next and Rerun position continues exactly.
-- [ ] **Step 6: Live check:** Rerun offered; the note shows, with its reason, on a show with no Play Next.
-- [ ] **Step 7:** Commit: `Progress: Rerun, a Shuffle of what Play Next has already aired`; record step 4 in NOTES.md.
+- [x] **Step 1: Failing tests:** `a Rerun never airs an episode its show's Play Next hasn't passed` over a generated year; `the pool grows as the strip advances`; `a story is rerun only once every part has aired`; `a strip that has gone round makes its whole range eligible`; `nothing aired yet plays as a Shuffle`; `no Play Next plays as a Shuffle`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass; `npm run build`.
+- [x] **Step 5: Proof, real data:** a copy of channel 3 with the weekend Shuffle slots of Kim Possible, Lizzie McGuire, Even Stevens and The Proud Family set to Rerun, generated for a year: `progress-audit` reports 0 Rerun airings ahead of their strip, and each show's pool size at the first and last weekend; regenerated again three months in from the saved output, every Play Next and Rerun position continues exactly.
+- [x] **Step 6: Live check:** Rerun offered; the note shows, with its reason, on a show with no Play Next.
+- [x] **Step 7:** Commit: `Progress: Rerun, a Shuffle of what Play Next has already aired`; record step 4 in NOTES.md.
 
 ---
 
@@ -239,9 +239,9 @@
 **Interfaces:**
 - A repeat slot: `{ time, showId, order: 'repeat', repeatOf }`, `repeatOf` the source slot's `time`, `showId` the source's. Its occurrence at `t` re-airs the programs of `showId` that started inside the source slot's latest occurrence before `t` - found by local wall-clock time, at most one period plus an hour back - from the lineup being built, else from `history`; each copied with `slotPosition = 'repeat'`. A source occurrence with nothing in it (Flex, or before `since`) plays a Rerun of the same show (Ron, Oct 9).
 
-- [ ] **Step 1: Failing tests:** `a repeat re-airs its source's episodes`; `Saturday repeats Thursday, Sunday repeats Friday` (a weekly fixture shaped like channel 3's That's So Raven: Thu 18:30 and Fri 18:00 Play Next, Sat 18:30 and Sun 17:00 Repeat); `a same-day repeat: 9pm again at 1am`; `a source after the repeat in the week repeats last week's` (Thursday repeating Saturday plays the Saturday five days earlier); `two episodes in the source, two in the repeat, as many as fit`; `the first repeat after a regeneration comes from history, read back round the loop`; `a repeat never moves its source's position` (regenerate two days later - the source's Play Next continues exactly); `on the fall-back night a 1:00 repeat airs twice, the same episodes`; `nothing in the source plays a Rerun`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass.
-- [ ] **Step 5:** Commit: `Progress: Repeat a slot re-airs what a chosen earlier slot aired`.
+- [x] **Step 1: Failing tests:** `a repeat re-airs its source's episodes`; `Saturday repeats Thursday, Sunday repeats Friday` (a weekly fixture shaped like channel 3's That's So Raven: Thu 18:30 and Fri 18:00 Play Next, Sat 18:30 and Sun 17:00 Repeat); `a same-day repeat: 9pm again at 1am`; `a source after the repeat in the week repeats last week's` (Thursday repeating Saturday plays the Saturday five days earlier); `two episodes in the source, two in the repeat, as many as fit`; `the first repeat after a regeneration comes from history, read back round the loop`; `a repeat never moves its source's position` (regenerate two days later - the source's Play Next continues exactly); `on the fall-back night a 1:00 repeat airs twice, the same episodes`; `nothing in the source plays a Rerun`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass.
+- [x] **Step 5:** Commit: `Progress: Repeat a slot re-airs what a chosen earlier slot aired`.
 
 ### Task 13: Repeat in the editor
 
@@ -249,14 +249,14 @@
 - Modify: `web/directives/time-slots-schedule-editor.js`, `web/public/templates/time-slots-schedule-editor.html` (`orderOptions` gains `{ id: 'repeat', description: 'Repeat a slot' }`; a Repeat slot shows a source picker listing every slot that isn't itself a Repeat, each with the occurrence it will repeat ("Thu 6:30pm, two days earlier"), and takes the source's show; retiming a source moves its repeats' `repeatOf`; a repeat whose source is gone or has become a Repeat is marked and blocks Create Lineup, saying why), `web/directives/time-slots-time-editor.js` if the retime path needs it
 - Modify: `scripts/progress-audit.js` (every repeat airing equals its source occurrence's airings)
 
-- [ ] **Step 1:** Implement; `npm run build`; `npm test` passes.
-- [ ] **Step 2: Proof, real data - channel 3's That's So Raven.** A copy of channel 3 with Saturday 6:30pm set to Repeat of Thursday 6:30pm and Sunday 5:00pm to Repeat of Friday 6:00pm, regenerated at Fri Oct 9 10:00am:
+- [x] **Step 1:** Implement; `npm run build`; `npm test` passes.
+- [x] **Step 2: Proof, real data - channel 3's That's So Raven.** A copy of channel 3 with Saturday 6:30pm set to Repeat of Thursday 6:30pm and Sunday 5:00pm to Repeat of Friday 6:00pm, regenerated at Fri Oct 9 10:00am:
   - Saturday Oct 10 airs S01E01 "Mother Dearest" (Thursday Oct 8's, from the lineup on air, read back round its loop) and Sunday Oct 11 airs S01E02 "Test of Friendship" (Friday Oct 9's, from the new lineup), as previewed in NOTES;
   - `progress-audit` over the whole lineup: every Saturday equals that week's Thursday and every Sunday that week's Friday, 0 mismatches;
   - regenerated again from the saved output at Mon Oct 12 10:00am: the Thursday/Friday Play Next strip continues exactly (S01E03 next), and the repeats still match.
   - A same-day check on a copy of channel 1: one 1:00am slot set to Repeat of the previous evening's 9:00pm, 0 mismatches across the lineup.
-- [ ] **Step 3: Live check:** the picker lists That's So Raven's Thursday and Friday slots with the occurrence each would repeat; retiming Thursday 6:30pm moves Saturday's source with it; deleting it marks Saturday and Create Lineup is refused with the reason.
-- [ ] **Step 4:** Commit: `Progress: the Repeat a slot source picker`; record step 5 in NOTES.md.
+- [x] **Step 3: Live check:** the picker lists That's So Raven's Thursday and Friday slots with the occurrence each would repeat; retiming Thursday 6:30pm moves Saturday's source with it; deleting it marks Saturday and Create Lineup is refused with the reason.
+- [x] **Step 4:** Commit: `Progress: the Repeat a slot source picker`; record step 5 in NOTES.md.
 
 ---
 
@@ -272,11 +272,11 @@
 **Interfaces:**
 - Produces: `seriesOf(program) -> string` - the item's `showTitle`, else its title. A round is `roundOrder` over all stories; the k-th story of series S in that order plays S's k-th story in custom-show list order. Record `{ round, next }`, as Shuffle; the place in the round is found from `next`'s series and its index within it. Default to confirm with Ron: shares by series size (every item once per round), not equal per series.
 
-- [ ] **Step 1: Failing tests:** `each series plays in list order`; `every item once per round`; `per-round counts equal series sizes`; `a series' multi-part story stays together`; `a regeneration mid-round continues`.
-- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass; `npm run build`.
-- [ ] **Step 5: Proof, real data:** copies with channel 1's Tom & Jerry slots (four series, 164/49/14 items with the stray single-item one) and channel 2's Double Dare Series (Shuffle) slot (186/118/94/67) set to Ordered shuffle, generated for a year: `progress-audit` reports 0 violations and per-round series counts; regenerated mid-round, continues exactly.
-- [ ] **Step 6: Live check:** Ordered shuffle offered for Tom & Jerry, not for Johnny Bravo.
-- [ ] **Step 7:** Commit: `Progress: Ordered shuffle, a series at random and its next episode`; record step 6 in NOTES.md.
+- [x] **Step 1: Failing tests:** `each series plays in list order`; `every item once per round`; `per-round counts equal series sizes`; `a series' multi-part story stays together`; `a regeneration mid-round continues`.
+- [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass; `npm run build`.
+- [x] **Step 5: Proof, real data:** copies with channel 1's Tom & Jerry slots (four series, 164/49/14 items with the stray single-item one) and channel 2's Double Dare Series (Shuffle) slot (186/118/94/67) set to Ordered shuffle, generated for a year: `progress-audit` reports 0 violations and per-round series counts; regenerated mid-round, continues exactly.
+- [x] **Step 6: Live check:** Ordered shuffle offered for Tom & Jerry, not for Johnny Bravo.
+- [x] **Step 7:** Commit: `Progress: Ordered shuffle, a series at random and its next episode`; record step 6 in NOTES.md.
 
 ---
 
@@ -287,6 +287,6 @@
 **Files:**
 - Modify: `NOTES.md` (tick the six Scheduling roadmap lines with what actually shipped; the 1.0 must-list line; the Known issues entry's status line; a Testing notes entry for `progress-check` and `progress-audit`), `docs/stored-progress-plan.md` (boxes ticked)
 
-- [ ] **Step 1:** Re-copy the data, diff, re-run every step's proof on the fresh copy, state the snapshot time.
-- [ ] **Step 2:** Write the NOTES changes.
-- [ ] **Step 3:** Commit: `Docs: record stored progress, shuffle, rerun, repeat a slot and ordered shuffle`. The branch stays unmerged until Ron says to merge it into `blocks`.
+- [x] **Step 1:** Re-copy the data, diff, re-run every step's proof on the fresh copy, state the snapshot time.
+- [x] **Step 2:** Write the NOTES changes.
+- [x] **Step 3:** Commit: `Docs: record stored progress, shuffle, rerun, repeat a slot and ordered shuffle`. The branch stays unmerged until Ron says to merge it into `blocks`.
