@@ -3,6 +3,7 @@ const slotWeek = require('../../src/slot-week');
 const transitions = require('../../src/transitions');
 const transitionsEditor = require('../../src/transitions-editor');
 const showCatalog = require('../../src/show-catalog');
+const slotRounds = require('../../src/shuffle-rounds');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
     return {
@@ -1375,9 +1376,45 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return Math.floor( scope.maxSize / (scope.channel.programs.length) );
                 }
             }
+            /*
+             * Deleting an episode, custom-show item or movie asks which is meant:
+             * this airing only, as before, or out of the channel's rotation for
+             * good - a holiday Ron places himself, or never air (the never-air
+             * list, src/show-catalog.js; queued and saved after Update Channel).
+             * Flex and redirects go at once, as before.
+             */
+            scope.holidayNames = showCatalog.HOLIDAYS.map( (h) => h.name ).concat(['Other']);
+            scope.deletePrompt = null;
             scope.removeItem = (x) => {
+                let program = scope.channel.programs[x];
+                if ( (typeof(program) === 'undefined') || program.isOffline || ! getShowData(program).hasShow ) {
+                    scope.channel.programs.splice(x, 1)
+                    updateChannelDuration()
+                    return;
+                }
+                let key = slotRounds.fileKey(program);
+                let others = scope.channel.programs.filter( (p, i) => (i !== x) && ! p.isOffline && (slotRounds.fileKey(p) === key) ).length;
+                let label = commonProgramTools.getProgramDisplayTitle(program);
+                scope.deletePrompt = { index: x, program: program, label: label, others: others,
+                    holiday: showCatalog.holidayOf(program.title) || 'Christmas' };
+            }
+            scope.finishDelete = (choice) => {
+                let prompt = scope.deletePrompt;
+                scope.deletePrompt = null;
+                if ( (prompt === null) || (choice === null) ) {
+                    return;
+                }
+                // The row the prompt was opened for, even if the list moved meanwhile.
+                let x = (scope.channel.programs[prompt.index] === prompt.program) ? prompt.index : scope.channel.programs.indexOf(prompt.program);
+                if (x === -1) {
+                    return;
+                }
                 scope.channel.programs.splice(x, 1)
                 updateChannelDuration()
+                if (choice !== 'only') {
+                    queueCatalogOps([ { neverAir: [ showCatalog.neverAirEntry(prompt.program, getShowData, 'deleted', choice,
+                        (choice === 'holiday') ? prompt.holiday : undefined, Date.now()) ] } ]);
+                }
             }
             scope.knownChannels = [
                 { id: -1, description: "# Channel #"},
