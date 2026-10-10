@@ -44,6 +44,7 @@ const suites = [
     './card-service',
     './card-player',
     './card-api',
+    './slot-progress',
 ];
 
 (async () => {
