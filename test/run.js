@@ -50,6 +50,7 @@ const suites = [
     './shuffle-rounds',
     './progress-rerun',
     './progress-repeat',
+    './progress-ordered',
 ];
 
 (async () => {

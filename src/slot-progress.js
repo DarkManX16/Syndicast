@@ -453,8 +453,12 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
 
     // A position's candidates as its rounds see them: stories, with movies
     // outside custom shows left single.
-    let storiesFor = (showId, constraint) => {
+    let storiesFor = (showId, constraint, mode) => {
         let candidates = candidatesFor(pool, showId, constraint, getShowData);
+        if (mode === 'ordered') {
+            // Grouped series by series, as the generator's Ordered shuffle does.
+            return rounds.seriesStories(candidates).all;
+        }
         return (showId === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
     };
 
@@ -485,7 +489,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
      * queue from it.
      */
     let roundRecord = (key, place) => {
-        let [ showId, , excluded ] = JSON.parse(key);
+        let [ showId, mode, excluded ] = JSON.parse(key);
         if (typeof(place.legacyShuffleOrder) === 'number') {
             return rounds.legacyCarry(candidatesFor(pool, showId, undefined, getShowData), showId,
                 place.legacyShuffleOrder, (p) => getShowData(p).order, place.program);
@@ -501,7 +505,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
                 return { round: place.round, queue: prior.queue.slice(i), laterHalf: (prior.laterHalf || []).slice() };
             }
         }
-        let stories = storiesFor(showId, { excludeSeasons: excluded });
+        let stories = storiesFor(showId, { excludeSeasons: excluded }, mode);
         return {
             round: place.round,
             next: ref(place.program, getShowData),
@@ -648,6 +652,10 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         }
         let candidates = candidatesFor(pool, group.showId, group.constraint, getShowData);
         if (candidates.length === 0) {
+            return null;
+        }
+        if (group.mode === 'ordered') {
+            // A changed range starts an Ordered shuffle's rounds afresh.
             return null;
         }
         if (ROUND_MODES.indexOf(group.mode) !== -1) {

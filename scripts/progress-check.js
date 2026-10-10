@@ -14,6 +14,8 @@
  *       [--airings <regex> --days <n>]  list matching shows' airings in both lineups
  *       [--all]                   list every position, not only the ones that jump
  *       [--today]                 skip the planner: regenerate the way blocks did, from the founder rule
+ *       [--add-custom <id>]       add a custom show's items to the programs first, as the library's
+ *                                 "add custom show" does (the lineup alone holds only what it aired)
  *
  * Reads only the files it is given and writes only --save. Never point it at
  * the live data folder's files with --save.
@@ -49,6 +51,7 @@ function parseArgs(argv) {
         else if (a === '--days') args.days = Number(next());
         else if (a === '--all') args.all = true;
         else if (a === '--today') args.today = true;
+        else if (a === '--add-custom') args.addCustom = next();
         else throw new Error('Unknown argument ' + a);
     }
     if (isNaN(args.at)) throw new Error('--at <ISO instant> is required');
@@ -126,6 +129,14 @@ async function main() {
     let unmatched = before.filter( (a) => (a.key === null) && (a.program.slotPosition !== 'repeat') );
 
     // The editor's path: rotate, removeDuplicates, edit, generate.
+    // The library's "add custom show": its items in list order, appended to the programs.
+    if (args.addCustom) {
+        let show = JSON.parse(fs.readFileSync(path.join(args.data || path.dirname(path.dirname(file)), 'custom-shows', args.addCustom + '.json'), 'utf8'));
+        show.content.forEach( (item, i) => {
+            channel.programs.push(Object.assign({}, item, { customShowId: args.addCustom, customShowName: show.name, customOrder: i }));
+        } );
+        console.log('added ' + show.content.length + ' items of ' + show.name);
+    }
     let rotated = rotate(channel.programs, savedStart, at);
     let pool = commonProgramTools.removeDuplicates(rotated.programs);
     let schedule = JSON.parse(JSON.stringify(channel.scheduleBackup));

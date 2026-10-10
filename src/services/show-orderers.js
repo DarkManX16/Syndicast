@@ -144,6 +144,23 @@ function shuffled(show, mode, constraint, record, key, eligible) {
 }
 
 /*
+ * An Ordered shuffle position: a series at random, and that series' next
+ * episode in order - see shuffle-rounds' orderedPlayer.
+ */
+function ordered(show, constraint, record, key) {
+    let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
+    let player = rounds.orderedPlayer({ seed: key, sortedPrograms: candidates, record: record });
+    return {
+        mode: 'ordered',
+        current: () => {
+            let c = player.current();
+            return (c === null) ? null : labelled(c.program, slotProgress.label('ordered', constraint, c.round));
+        },
+        next: () => player.next(),
+    };
+}
+
+/*
  * The positions of one generator run. Each starts from its record in
  * schedule.progress - written by the editor when Create Lineup runs, from the
  * lineup on air - and, with none, a Play Next position from the founder rule
@@ -172,6 +189,8 @@ function createPositions({ shows, schedule }) {
                 positions.set(key, playNext(show, constraint, record));
             } else if (slot.order === 'rerun') {
                 positions.set(key, shuffled(show, slot.order, constraint, record, key, rerunEligible(slot.showId)));
+            } else if (slot.order === 'ordered') {
+                positions.set(key, ordered(show, constraint, record, key));
             } else {
                 positions.set(key, shuffled(show, slot.order, constraint, record, key));
             }

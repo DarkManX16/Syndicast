@@ -1,6 +1,7 @@
 const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
 const slotProgress = require('../../src/slot-progress');
+const slotRounds = require('../../src/shuffle-rounds');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) {
     const DAY = 24*60*60*1000;
@@ -456,6 +457,30 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 { id: "repeat", description: "Repeat a slot" },
             ];
 
+            /*
+             * The Order menu for one slot: Ordered shuffle only for a show whose
+             * items join two or more series (a custom show like Tom & Jerry),
+             * saying how many. One array per show, kept while the dialog is open,
+             * so the select sees the same options on every digest.
+             */
+            let orderOptionsByShow = new Map();
+            scope.orderOptionsFor = (slot) => {
+                if (! orderOptionsByShow.has(slot.showId)) {
+                    let series = new Set();
+                    (scope.programs || []).forEach( (p) => {
+                        if (getShowData(p).showId === slot.showId) {
+                            series.add(slotRounds.seriesOf(p));
+                        }
+                    } );
+                    let options = scope.orderOptions.slice();
+                    if (series.size >= 2) {
+                        options.push({ id: "ordered", description: "Ordered shuffle (" + series.size + " series)" });
+                    }
+                    orderOptionsByShow.set(slot.showId, options);
+                }
+                return orderOptionsByShow.get(slot.showId);
+            };
+
             let doWait = (millis) => {
                 return new Promise( (resolve) => {
                     $timeout( resolve, millis );
@@ -519,6 +544,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             let startDialog = (programs, limit, backup, instant, slotScope, lineup) => {
                 scope.limit = limit;
                 scope.programs = programs;
+                orderOptionsByShow = new Map();
                 scope.lineup = lineup;
                 //The schedule the lineup on air was made from, as it was saved,
                 //for reading places by slot and for each slot's old place.
@@ -691,7 +717,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             //Shuffle slot moves nothing else - see src/shuffle-rounds.js.
             scope.canConstrainSeasons = (slot) => {
                 return scope.canShowSlot(slot)
-                    && ( (slot.order === 'next') || (slot.order === 'shuffle') || (slot.order === 'rerun') )
+                    && ( (slot.order === 'next') || (slot.order === 'shuffle') || (slot.order === 'rerun') || (slot.order === 'ordered') )
                     && (scope.seasonsAvailable(slot.showId).length > 1);
             }
 

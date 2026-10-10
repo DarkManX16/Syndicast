@@ -18,6 +18,7 @@
  * built on it".
  */
 const randomJS = require('random-js');
+const multiPart = require('./multi-part');
 
 function fileKey(program) {
     let server = (typeof(program.serverKey) === 'undefined') ? 'unknown' : program.serverKey;
@@ -311,7 +312,102 @@ function player({ seed, stories, record, eligible, deferAired }) {
     };
 }
 
+/*
+ * Ordered shuffle - a series at random, and that series' next episode in
+ * order - for custom shows that join several series. A series is an item's
+ * show title, else its title; its order is the custom show's list order.
+ */
+function seriesOf(program) {
+    return (typeof(program.showTitle) === 'string' && program.showTitle !== '') ? program.showTitle : program.title;
+}
+
+// A position's stories, series by series: each series' items in list order,
+// grouped into stories, so a multi-part story never spans two series.
+function seriesStories(sortedPrograms) {
+    let bySeries = new Map();
+    sortedPrograms.forEach( (p) => {
+        let s = seriesOf(p);
+        if (! bySeries.has(s)) {
+            bySeries.set(s, []);
+        }
+        bySeries.get(s).push(p);
+    } );
+    let series = new Map();
+    let all = [];
+    bySeries.forEach( (list, s) => {
+        let stories = multiPart.stories(list);
+        series.set(s, stories);
+        all.push( ...stories );
+    } );
+    return { all: all, series: series };
+}
+
+/*
+ * A round is Shuffle's hash order over every story of every series; the k-th
+ * slot that falls to a series plays that series' k-th story. So each round is
+ * a random interleaving of the series, each in its own order, every item once,
+ * and a series airs in proportion to its size (Ron, Oct 9). The record is
+ * Shuffle's - { round, next, deferred } - and what goes last in the next
+ * round is the later half of the hash order, as for Shuffle, so the planner
+ * rebuilds it the same way.
+ */
+function orderedPlayer({ seed, sortedPrograms, record }) {
+    let grouped = seriesStories(sortedPrograms);
+    let seriesOfStory = new Map();
+    grouped.series.forEach( (list, s) => list.forEach( (story) => seriesOfStory.set(story, s) ) );
+
+    let round = 0;
+    let base = [];
+    let emitted = [];
+    let index = 0;
+    let part = 0;
+    let build = (r, laterHalf) => {
+        round = r;
+        base = roundOrder({ seed: seed, round: r, stories: grouped.all, laterHalf: laterHalf });
+        let count = new Map();
+        emitted = base.map( (story) => {
+            let s = seriesOfStory.get(story);
+            let k = count.get(s) || 0;
+            count.set(s, k + 1);
+            return grouped.series.get(s)[k];
+        } );
+        index = 0;
+        part = 0;
+    };
+
+    let rec = ( (typeof(record) === 'object') && (record !== null) ) ? record : {};
+    build( (typeof(rec.round) === 'number') ? rec.round : 0, new Set(rec.deferred || []) );
+    if ( (typeof(rec.next) === 'object') && (rec.next !== null) ) {
+        let at = emitted.findIndex( (story) => story.some( (p) => fileKey(p) === rec.next.key ) );
+        if (at !== -1) {
+            index = at;
+            part = emitted[at].findIndex( (p) => fileKey(p) === rec.next.key );
+        }
+    }
+
+    return {
+        current: () => (emitted.length === 0) ? null : { program: emitted[index][part], round: round },
+        next: () => {
+            if (emitted.length === 0) {
+                return;
+            }
+            part++;
+            if (part < emitted[index].length) {
+                return;
+            }
+            part = 0;
+            index++;
+            if (index >= emitted.length) {
+                build(round + 1, laterHalfOf(base));
+            }
+        },
+    };
+}
+
 module.exports = {
+    seriesOf: seriesOf,
+    seriesStories: seriesStories,
+    orderedPlayer: orderedPlayer,
     fileKey: fileKey,
     hash32: hash32,
     orderHash: orderHash,

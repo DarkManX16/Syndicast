@@ -66,7 +66,7 @@
                             <label ng-if="$index==0" for="showOrder{{$index}}"  ng-show="canShowSlot(slot)" >Order</label>
                             <select
                                 id="showOrder{{$index}}" class="custom-select form-control"
-                                ng-model="slot.order" ng-options="o.id as o.description for o in orderOptions"
+                                ng-model="slot.order" ng-options="o.id as o.description for o in orderOptionsFor(slot)"
                                 ng-change="refreshSlots()"
                                 ng-show="canShowSlot(slot)"
                                 ng-disabled="slot.showId == 'movie.'"
@@ -179,6 +179,10 @@
                             <div ng-if="slot.order === 'shuffle'" class='small text-muted'>
                                 Shuffle airs every episode of these seasons once a round, and
                                 changing them moves nothing else in the round.
+                            </div>
+                            <div ng-if="slot.order === 'ordered'" class='small text-muted'>
+                                Ordered shuffle picks a series at random and plays that series' next
+                                episode, every item once a round.
                             </div>
                             <div ng-if="slot.order === 'rerun'" class='small text-muted'>
                                 Rerun airs, once a round, the episodes of these seasons that this

@@ -1468,11 +1468,12 @@ for the full spec, stages and acceptance tests.
       day (9pm's episode again at 1am) or another day of the week (Saturday's
       That's So Raven repeats Thursday's). *Built Oct 9, 2026 (step 5) - see the
       build record in the Known issues entry.*
-- [ ] Ordered shuffle - a series at random, that series' next episode in
-      order, for custom shows that join several series
-- [ ] Multi-part stories kept together by every shuffle - part 2 always
-      follows part 1. *Shuffle and Rerun do, since steps 3 and 4; Ordered
-      shuffle will when it is built.*
+- [x] Ordered shuffle - a series at random, that series' next episode in
+      order, for custom shows that join several series. *Built Oct 9, 2026
+      (step 6) - see the build record in the Known issues entry.*
+- [x] Multi-part stories kept together by every shuffle - part 2 always
+      follows part 1. *Built with Shuffle, Rerun and Ordered shuffle (steps 3,
+      4 and 6), within a series for Ordered shuffle.*
 
 All six were designed together on Oct 9, 2026 - see "Per-position stored
 progress, and the shuffles built on it" under Known issues for the design and
@@ -3332,10 +3333,10 @@ timestamps.
 ### Per-position stored progress, and the shuffles built on it
 
 Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **steps 1
-to 5 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
+to 6 of 7 built Oct 9** - Play Next continues from stored progress, Shuffle
 plays rounds kept by episode, with season settings and multi-part stories,
-Rerun replays only what its show's Play Next has aired, and Repeat a slot
-re-airs a chosen earlier slot;
+Rerun replays only what its show's Play Next has aired, Repeat a slot re-airs
+a chosen earlier slot, and Ordered shuffle interleaves a custom show's series;
 see "Build record" at the end of this entry, and the build plan in
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
 earlier entries, "Shuffle progress is stored, and it is seeded over the
@@ -3642,7 +3643,9 @@ disagree.
 #### What this doesn't change
 
 - The candidates are still the episodes in the lineup the editor loaded, so a
-  season no slot plays drops out after a run, as before.
+  season no slot plays drops out after a run, as before - and, measured while
+  building step 6, so does every episode a sparse slot didn't reach. See "A
+  regeneration only draws from what the lineup on air holds" below.
 - Ranges already in step stay in step (Johnny Bravo above).
 - A lineup rearranged by the programming tools still reads, but a position's
   place is wherever its labelled airings were moved to.
@@ -3834,6 +3837,73 @@ Central.
   the slot and the message changed to "Choose the slot this repeats"; and a
   reopened schedule drew its Repeat pickers before their options existed, so
   saved sources showed blank - and could have been cleared - until an edit.
+
+**Step 6, Oct 9, 2026** (e51f0d1..). Proofs on the fresh copy of 8:23pm
+Central.
+
+- **What shipped.** Ordered shuffle positions in both generators: a round is
+  Shuffle's hash order over the stories of every series - a series being an
+  item's show title, its order the custom show's list, its multi-part stories
+  grouped within it - and the k-th slot falling to a series plays that
+  series' k-th story. The record is Shuffle's. The Time Slots editor offers
+  "Ordered shuffle (N series)" only for a show whose items join two or more
+  series; `progress-audit` checks each series' list order and each whole
+  round's counts. A range change starts its rounds afresh rather than
+  carrying the old round.
+- **Channel 1's Tom & Jerry**, its nine slots set to Ordered shuffle on a copy
+  and generated for a year: 990 airings in five rounds, three of them whole,
+  each whole round airing exactly the four series' sizes - Tom and Jerry 164,
+  The New Tom & Jerry Show 48, the stray "The New Tom & Jerry Show 15 - Cosmic
+  Cat and Meteor Mouse (1975)" 1, The Tom and Jerry Comedy Show 14 - each in
+  list order; 0 violations. Regenerated three months in from that output: the
+  707 Tom & Jerry airings to the lineup's end are identical.
+- **Channel 2's Double Dare Series (Shuffle)**, one weekly slot: its 465 items
+  would take about nine years to air one round, so a year shows the shares,
+  not whole rounds. With the custom show's items added on the copy (see the
+  next entry for why the lineup alone doesn't hold them), the four series
+  interleave at random and each stays in list order; their airings over the
+  year (17, 14, 11 and 10) track their sizes (an expected 20.8, 13.2, 10.5
+  and 7.5 of 52).
+- **Live**, on the preview restarted with this code: the Order menu offers
+  "Ordered shuffle (4 series)" on Tom & Jerry's slots and not on Johnny
+  Bravo's; all nine Tom & Jerry slots saved as Ordered shuffle through it -
+  995 airings, three whole rounds of exactly 164/48/1/14, 0 violations, no
+  console or server errors.
+
+### A regeneration only draws from what the lineup on air holds
+
+Found while building Ordered shuffle (Oct 9, 2026), and older than it: the
+Time Slots and Random Slots editors hand the generator
+`removeDuplicates(channel.programs)` - the lineup on air - as the episodes
+it may use. Programs added from the library are in `channel.programs` until
+the first Create Lineup replaces it with a lineup, and after that only what
+that lineup aired is left. A show in a sparse slot loses every episode the
+lineup didn't reach. Measured on the copies of Oct 9:
+
+- channel 1: Mobile Suit Gundam Series 45 of 223 items, G Gundam/Gundam
+  Wing/Gundam SEED+Destiny 91 of 198, Ben 10 series 90 of 146, G.I. Joe ('83)
+  45 of 95, Voltron 45 of 124;
+- channel 2: Double Dare Series (Shuffle) 51 of 465, The Penguins of
+  Madagascar 97 of 146, Think Fast 51 of 101, Saved by the Bell/College Years
+  51 of 104, Degrassi 51 of 69;
+- channel 3: Phineas and Ferb 51 of 140, Spider-Man 52 of 102, The Raccoons 51
+  of 63, Care Bears (1986) 51 of 59;
+- and episodes of ordinary shows the same way - channel 2's lineup has no
+  Rugrats S07E01-03, which is why step 2's Rugrats check landed on S07E04.
+
+**What it does:** Double Dare's weekly Play Next airs items 2-52 in the saved
+lineup; regenerated from it, the lineup airs 2-52 and then item 2 again, never
+53. Stored progress keeps each place exactly, but the place can only move
+among what the pool holds, so a big show in a sparse slot loops its first
+year forever after one regeneration. Before stored progress the same thing
+happened through the founder.
+
+**Not fixed - a design decision for Ron.** The pool needs to come from
+somewhere the lineup doesn't thin: custom shows have their full item list in
+the data folder's `custom-shows`; ordinary shows' full episode lists are
+only in Plex, or in a per-channel list of everything ever added, kept beside
+the lineup. Re-adding a show or custom show from the library before Create
+Lineup restores it for that run.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 

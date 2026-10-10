@@ -60,7 +60,9 @@ function audit(channel, showFilter) {
         if (showFilter && ! showFilter.test(key)) return;
         let [ showId, , excluded ] = JSON.parse(key);
         let candidates = slotProgress.candidatesFor(pool, showId, { excludeSeasons: excluded }, getShowData);
-        let stories = (showId === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
+        let isOrdered = JSON.parse(key)[1] === 'ordered';
+        let stories = isOrdered ? rounds.seriesStories(candidates).all
+            : (showId === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
         let storyOf = new Map();
         stories.forEach( (story) => story.forEach( (p, part) => storyOf.set(rounds.fileKey(p), { key: rounds.storyKey(story), part, size: story.length }) ) );
         let half = Math.floor(stories.length / 2);
@@ -126,7 +128,9 @@ function audit(channel, showFilter) {
                 // the round the story last aired in.
                 let earlier = seq[last.get(x.key)].round;
                 let limit = isRerun ? Math.floor(new Set(byRound.get(earlier).map( (y) => y.entry )).size / 2) : half;
-                if ( (gap < limit) && ! (isRerun && (x.round === earlier)) ) {
+                // Ordered shuffle replays each series in order every round, so it
+                // makes no half-round promise; its own checks are below.
+                if ( (gap < limit) && ! (isRerun && (x.round === earlier)) && ! isOrdered ) {
                     violations.push(`${when(x.start)} ${x.title}: back after ${gap} stories, under half a round (${limit})`);
                 }
             }
@@ -142,11 +146,47 @@ function audit(channel, showFilter) {
             if ( s && (s.size > 1) && (round !== carried) ) multiAired.add(s.key + '|' + round);
         } );
         let rerun = (JSON.parse(key)[1] === 'rerun') ? rerunCheck(key, list, candidates) : null;
+        let orderedCounts = null;
+        if (isOrdered) {
+            /*
+             * Each round, each series' stories air in its list order with
+             * none skipped (from its first in a whole round), and a whole
+             * round airs every series' items exactly once.
+             */
+            let grouped = rounds.seriesStories(candidates);
+            let indexOf = new Map();
+            grouped.series.forEach( (list, s) => list.forEach( (story, i) => indexOf.set(rounds.storyKey(story), { s, i }) ) );
+            orderedCounts = [];
+            roundNumbers.forEach( (r, n) => {
+                let perSeries = new Map();
+                byRound.get(r).forEach( (x) => {
+                    let at = indexOf.get(x.key);
+                    if (! at) return;
+                    if (! perSeries.has(at.s)) perSeries.set(at.s, []);
+                    perSeries.get(at.s).push(at.i);
+                } );
+                let whole = (n > 0) && (n < roundNumbers.length - 1);
+                perSeries.forEach( (idx, s) => {
+                    let ok = idx.every( (v, j) => (j === 0) ? (! whole || v === 0) : v === idx[j - 1] + 1 );
+                    if (! ok) violations.push(`round ${r}: ${s} out of list order (${idx.slice(0, 8).join(',')})`);
+                } );
+                if (whole) {
+                    grouped.series.forEach( (list, s) => {
+                        let items = list.reduce( (a, st) => a + st.length, 0 );
+                        let aired = list.filter( (st, i) => (perSeries.get(s) || []).includes(i) ).reduce( (a, st) => a + st.length, 0 );
+                        if (aired !== items) violations.push(`round ${r}: ${s} aired ${aired} of ${items} items`);
+                    } );
+                    if (orderedCounts.length < 1) {
+                        orderedCounts.push([ ...grouped.series.entries() ].map( ([ s, list ]) => s + ' ' + list.reduce( (a, st) => a + st.length, 0 ) ).join(', '));
+                    }
+                }
+            } );
+        }
         if (rerun !== null) {
             rerun.ahead.forEach( (v) => violations.push(v) );
         }
         report.push({ key, airings: list.length, stories: stories.length, multi, multiAired: multiAired.size, rounds: roundNumbers.length, whole,
-            closest: (closest === Infinity) ? null : closest, carried, rerun, violations });
+            closest: (closest === Infinity) ? null : closest, carried, rerun, orderedCounts, violations });
     } );
 
     /*
@@ -252,7 +292,8 @@ function main() {
         console.log(`${r.violations.length ? 'FAIL' : 'ok  '} ${r.key}: ${r.airings} airings, ${r.stories} stories (${r.multi} multi-part), `
             + `${r.multiAired} multi-part airings in its own rounds, ${r.rounds} rounds (${r.whole} whole), closest return ${r.closest === null ? '-' : r.closest} stories`
             + (r.carried !== null ? `, carried round ${r.carried}` : '')
-            + (r.rerun ? `; Rerun: ${r.rerun.ahead.length} ahead of its Play Next, ${r.rerun.fallback} as a Shuffle, pool ${r.rerun.firstPool} -> ${r.rerun.lastPool} episodes` : ''));
+            + (r.rerun ? `; Rerun: ${r.rerun.ahead.length} ahead of its Play Next, ${r.rerun.fallback} as a Shuffle, pool ${r.rerun.firstPool} -> ${r.rerun.lastPool} episodes` : '')
+            + ( (r.orderedCounts && r.orderedCounts.length) ? `; each whole round: ${r.orderedCounts[0]}` : ''));
         r.violations.slice(0, 5).forEach( (v) => console.log('       ' + v) );
     } );
     let r = report.repeats;
