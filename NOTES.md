@@ -3571,10 +3571,11 @@ Next.
   without a marker. Markers: `(2)`, `(II)`, `Part 2`, `Part Two`, `Pt. 2`.
   Titles are not compared otherwise: "Stewie Kills Lois (1)" is followed by
   "Lois Kills Stewie (2)", Xiaolin Showdown by "Judging Omi (1)", "Saving Omi
-  (2)", "Finding Omi (3)". A story is picked as one, and its parts are that
-  position's next airings until it is done; Rerun takes a story only once every
-  part has aired. Across all three channels the rule finds 431 stories (1,022
-  episodes; Harvey Birdman's "Deadomutt (1)" and "(2)" among them, and Attack
+  (2)", "Finding Omi (3)". The one exception is an arc a title names beside its
+  part, "(Origins, Part 2)": two such titles join only when they name the same
+  arc. A story is picked as one, and its parts are that position's next airings
+  until it is done; Rerun takes a story only once every part has aired. Across
+  all three channels the rule finds 430 stories (1,020 episodes; Harvey Birdman's "Deadomutt (1)" and "(2)" among them, and Attack
   on Titan's nine-part "The Struggle for Trost"), 13 of them in shows with a
   Shuffle slot today. 24 parts stay single, as now: crossovers whose other
   parts belong to another show ("That's So Suite Life of Hannah Montana

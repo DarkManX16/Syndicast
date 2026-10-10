@@ -46,6 +46,7 @@ const suites = [
     './card-api',
     './slot-progress',
     './progress-generators',
+    './multi-part',
 ];
 
 (async () => {
