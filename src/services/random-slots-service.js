@@ -101,24 +101,13 @@ module.exports = async( programs, schedule  ) => {
     let shows = [];
 
     /*
-     * Season settings belong to the slot, so two slots naming the same show can
-     * run different ranges of it. Slots asking for the same seasons still share
-     * an episode position - see constraintKey in show-orderers.
-     *
-     * Schedules written before this carried one entry per show in
-     * schedule.showConstraints. Those are still read, so a channel saved under
-     * the old shape keeps working without a migration step.
+     * Each slot plays from its position - show, mode and seasons - which starts
+     * from its record in schedule.progress, or the founder rule without one.
+     * Season settings belong to the slot (slotProgress.constraintOf, which
+     * still reads a schedule's old per-show showConstraints). Created once the
+     * programs are loaded, since the founder rule needs each show's founder.
      */
-    function constraintForSlot(slot) {
-        if ( (typeof(slot.seasons) === 'object') && (slot.seasons !== null) ) {
-            return slot.seasons;
-        }
-        if ( (typeof(schedule.showConstraints) !== 'object')
-             || (schedule.showConstraints === null) ) {
-            return undefined;
-        }
-        return schedule.showConstraints[slot.showId];
-    }
+    let positions = null;
 
     function getNextForSlot(slot, remaining) {
         //remaining doesn't restrict what next show is picked. It is only used
@@ -137,10 +126,8 @@ module.exports = async( programs, schedule  ) => {
                 duration: remaining,
                 channel: show.channel,
             }
-        } else if (slot.order === 'shuffle') {
-            return orderers.getShowShuffler(show).current();
-        } else if (slot.order === 'next') {
-            return orderers.getShowOrderer(show, constraintForSlot(slot)).current();
+        } else if (positions.plays(slot.order)) {
+            return positions.forSlot(slot).current();
         }
     }
     
@@ -148,11 +135,8 @@ module.exports = async( programs, schedule  ) => {
         if ( (slot.showId === "flex.") || (slot.showId.startsWith("redirect") ) ) {
             return;
         }
-        let show = shows[ showsById[slot.showId] ];
-        if (slot.order === 'shuffle') {
-            return orderers.getShowShuffler(show).next();
-        } else if (slot.order === 'next') {
-            return orderers.getShowOrderer(show, constraintForSlot(slot)).next();
+        if (positions.plays(slot.order)) {
+            return positions.forSlot(slot).next();
         }
     }
 
@@ -191,6 +175,7 @@ module.exports = async( programs, schedule  ) => {
             addProgramToShow( show, p );
         }
     }
+    positions = orderers.createPositions({ shows: shows, schedule: schedule });
 
     let s = schedule.slots;
     let ts = (new Date() ).getTime();

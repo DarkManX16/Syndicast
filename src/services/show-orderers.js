@@ -1,7 +1,7 @@
-const random = require('../helperFuncs').random;
 const getShowData = require("./get-show-data")();
-const randomJS = require("random-js");
-const Random = randomJS.Random;
+const slotProgress = require('../slot-progress');
+const rounds = require('../shuffle-rounds');
+const multiPart = require('../multi-part');
 
 
 
@@ -11,88 +11,27 @@ const Random = randomJS.Random;
  * of episodes
  *
  **/
-function shuffle(array, lo, hi, randomOverride ) {
-    let r = randomOverride;
-    if (typeof(r) === 'undefined') {
-        r = random;
-    }
-    if (typeof(lo) === 'undefined') {
-        lo = 0;
-        hi = array.length;
-    }
-    let currentIndex = hi, temporaryValue, randomIndex
-    while (lo !== currentIndex) {
-        randomIndex =  r.integer(lo, currentIndex-1);
-        currentIndex -= 1
-        temporaryValue = array[currentIndex]
-        array[currentIndex] = array[randomIndex]
-        array[randomIndex] = temporaryValue
-    }
-    return array
-}
 
-
-function seasonOf(program) {
-    return (typeof(program.season) === 'number') ? program.season : 0;
-}
+const seasonOf = slotProgress.seasonOf;
+const applySeasonExclusions = slotProgress.applySeasonExclusions;
 
 /*
  * A season constraint is { excludeSeasons: [..], startSeason: n }, both
- * optional, and it comes from a slot rather than from a show. Only "Play Next"
- * honours it: shuffle seeds its permutation over the candidate count and stores
- * the resulting position on each program, so changing that count silently
- * changes what a saved position means.
- */
-
-/*
- * Which episode position a slot uses. Slots naming the same show and asking for
- * the same seasons share one position, so a weekday block advances as a single
- * thread; slots asking for different seasons each get their own. The key is
- * derived from the constraint rather than from the slot, so it survives slots
- * being reordered, retimed or deleted.
+ * optional, and it comes from a slot rather than from a show. Every mode
+ * honours the exclusions; startSeason is a seek, for Play Next.
  *
- * startSeason is part of the key. It is a one-off seek, and two slots seeking
- * different places are asking for different positions - leaving it out would
- * hand both of them whichever seek happened to be applied first.
- *
- * A constraint that asks for nothing keys the same as no constraint at all, so
- * an empty one cannot split a position that would otherwise be shared.
+ * Which place a slot uses is its position - show, mode and excluded seasons,
+ * see slotProgress.positionKey - so a weekday block advances as a single
+ * thread while slots asking for different seasons each keep their own. The
+ * season filter itself is slotProgress.applySeasonExclusions, shared with the
+ * editor's planner.
  */
-function constraintKey(constraint) {
-    if ( (typeof(constraint) !== 'object') || (constraint === null) ) {
-        return "";
-    }
-    let excluded = Array.isArray(constraint.excludeSeasons)
-        ? constraint.excludeSeasons.slice().sort( (a,b) => a - b )
-        : [];
-    let start = (typeof(constraint.startSeason) === 'number')
-        ? constraint.startSeason
-        : null;
-    if ( (excluded.length === 0) && (start === null) ) {
-        return "";
-    }
-    return JSON.stringify( [ excluded, start ] );
-}
-
-function applySeasonExclusions(sortedPrograms, constraint) {
-    if ( (typeof(constraint) !== 'object') || (constraint === null) ) {
-        return sortedPrograms;
-    }
-    if (! Array.isArray(constraint.excludeSeasons) ) {
-        return sortedPrograms;
-    }
-    let excluded = {};
-    constraint.excludeSeasons.forEach( (s) => { excluded[s] = true; } );
-    let kept = sortedPrograms.filter( (p) => excluded[ seasonOf(p) ] !== true );
-    // Excluding everything would leave the slot with nothing to play, which is
-    // worse than ignoring a constraint the user can see and change.
-    return (kept.length === 0) ? sortedPrograms : kept;
-}
-
 /*
- * Where to resume. startSeason is a one-off seek rather than a filter, so it
- * chooses a position and then the caller forgets it; earlier seasons stay
- * reachable on later passes.
+ * Where to resume when a position has no stored place - every channel's first
+ * run after stored progress, and Random Slots lineups saved before it.
+ * startSeason is a one-off seek rather than a filter, so it chooses a position
+ * and then the caller forgets it; earlier seasons stay reachable on later
+ * passes.
  */
 function resumePosition(candidates, founder, constraint) {
     if ( (typeof(constraint) === 'object') && (constraint !== null)
@@ -114,10 +53,10 @@ function resumePosition(candidates, founder, constraint) {
         }
     }
     // The founder is not in this candidate list. There is one founder per show
-    // but a show can now carry several positions, so at most one of them can
-    // match it - every other one lands here and resumes at the nearest episode
-    // its own seasons allow. Wrap deliberately rather than letting a scan fall
-    // off the end onto the finale.
+    // but a show can carry several positions, so at most one of them can match
+    // it - every other one lands here and resumes at the nearest episode its
+    // own seasons allow. Wrap deliberately rather than letting a scan fall off
+    // the end onto the finale.
     for (let i = 0; i < candidates.length; i++) {
         if ( getShowData(candidates[i]).order > founderOrder ) {
             return i;
@@ -126,118 +65,194 @@ function resumePosition(candidates, founder, constraint) {
     return 0;
 }
 
-function getShowOrderer(show, constraint) {
-    let key = constraintKey(constraint);
-    if (typeof(show.orderers) === 'undefined') {
-        show.orderers = {};
-    }
-    if (typeof(show.orderers[key]) === 'undefined') {
-
-        let sortedPrograms = JSON.parse( JSON.stringify(show.programs) );
-        sortedPrograms.sort((a, b) => {
-            let showA = getShowData(a);
-            let showB = getShowData(b);
-            return showA.order - showB.order;
-        });
-
-        let candidates = applySeasonExclusions(sortedPrograms, constraint);
-        let position = resumePosition(candidates, show.founder, constraint);
-
-        show.orderers[key] = {
-
-            current : () => {
-                return candidates[position];
-            },
-
-            next: () => {
-                position = (position + 1) % candidates.length;
-            },
-
-        }
-    }
-    return show.orderers[key];
+function sortedPrograms(show) {
+    let sorted = JSON.parse( JSON.stringify(show.programs) );
+    sorted.sort((a, b) => {
+        let showA = getShowData(a);
+        let showB = getShowData(b);
+        return showA.order - showB.order;
+    });
+    return sorted;
 }
 
+/*
+ * The airing a position emits: its own copy, so a later edit to one airing can
+ * never reach another, carrying its position's label and nothing a previous
+ * lineup left on the program - in particular no Shuffle number on a Play Next
+ * airing, which used to ride along from the old lineup and found the next
+ * run's Shuffle at the wrong place.
+ */
+function labelled(program, text) {
+    let copy = Object.assign( {}, program );
+    delete copy.shuffleOrder;
+    copy.slotPosition = text;
+    return copy;
+}
 
-function getShowShuffler(show) {
-    if (typeof(show.shuffler) === 'undefined') {
-        if (typeof(show.programs) === 'undefined') {
-            throw Error(show.id + " has no programs?")
-        }
-
-        let sortedPrograms = JSON.parse( JSON.stringify(show.programs) );
-        sortedPrograms.sort((a, b) => {
-            let showA = getShowData(a);
-            let showB = getShowData(b);
-            return showA.order - showB.order;
-        });
-        let n = sortedPrograms.length;
-
-        let splitPrograms = [];
-        let randomPrograms = [];
-
-        for (let i = 0; i < n; i++) {
-            splitPrograms.push( sortedPrograms[i] );
-            randomPrograms.push( {} );
-        }
-
-     
-        let showId = getShowData(show.programs[0]).showId;
-
-        let position = show.founder.shuffleOrder;
-        if (typeof(position) === 'undefined') {
-            position = 0;
-        }
-
-        let localRandom = null;
-
-        let initGeneration = (generation) => {
-            let seed = [];
-            for (let i = 0 ; i < show.showId.length; i++) {
-                seed.push( showId.charCodeAt(i) );
+function playNext(show, constraint, record) {
+    let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
+    let position = ( (typeof(record) === 'object') && (record !== null) && (typeof(record.next) === 'object') )
+        ? slotProgress.resolveRef(record.next, candidates, getShowData)
+        : resumePosition(candidates, show.founder, constraint);
+    // Whether the position has gone round its range, for Rerun: everything it
+    // covers has aired once it has.
+    let wrapped = (typeof(record) === 'object') && (record !== null) && (record.wrapped === true);
+    let text = slotProgress.label('next', constraint);
+    return {
+        mode: 'next',
+        candidates: () => candidates,
+        place: () => position,
+        wrapped: () => wrapped,
+        // The episodes this position has aired: every one before its place,
+        // or its whole range once it has gone round.
+        passed: () => (wrapped ? candidates : candidates.slice(0, position)).map( (p) => rounds.fileKey(p) ),
+        current: () => labelled(candidates[position], text),
+        next: () => {
+            position = (position + 1) % candidates.length;
+            if (position === 0) {
+                wrapped = true;
             }
-            seed.push(generation);
+        },
+    };
+}
 
-            localRandom = new Random( randomJS.MersenneTwister19937.seedWithArray(seed) )
-
-            if (generation == 0) {
-                shuffle( splitPrograms, 0, n , localRandom );
-            }
-            for (let i = 0; i < n; i++) {
-                randomPrograms[i] = splitPrograms[i];
-            }
-            let a = Math.floor(n / 2);
-            shuffle( randomPrograms, 0, a,  localRandom );
-            shuffle( randomPrograms, a, n,  localRandom );
-        };
-        initGeneration(0);
-        let generation = Math.floor( position / n );
-        initGeneration( generation );
-        
-        show.shuffler  = {
-
-            current : () => {
-                let prog = JSON.parse(
-                    JSON.stringify(randomPrograms[position % n] )
-                );
-                prog.shuffleOrder = position;
-                return prog;
-            },
-
-            next: () => {
-                position++;
-                if (position % n == 0) {
-                    let generation = Math.floor( position / n );
-                    initGeneration( generation );
-                }
-            },
-
-        }
+/*
+ * A Shuffle position: rounds of its stories, from its record - see
+ * shuffle-rounds.js. A record written while the old shuffler still ran holds
+ * just its number; that becomes the rest of the old round, played first.
+ */
+function shuffled(show, mode, constraint, record, key, eligible) {
+    // A Rerun passes over stories, so the later half of what it actually
+    // aired goes last in its next round - see shuffle-rounds' player.
+    let deferAired = (mode === 'rerun');
+    let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
+    let stories = (show.id === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
+    let start = record;
+    if ( (typeof(record) === 'object') && (record !== null) && (typeof(record.legacyShuffleOrder) === 'number') ) {
+        start = rounds.legacyCarry(sortedPrograms(show), show.id, record.legacyShuffleOrder, (p) => getShowData(p).order);
     }
-    return show.shuffler;
+    let player = rounds.player({ seed: key, stories: stories, record: start, deferAired: deferAired,
+        eligible: (typeof(eligible) === 'function') ? (story) => eligible(story, stories) : undefined });
+    return {
+        mode: mode,
+        current: () => {
+            let c = player.current();
+            return (c === null) ? null : labelled(c.program, slotProgress.label(mode, constraint, c.round));
+        },
+        next: () => player.next(),
+    };
+}
+
+/*
+ * An Ordered shuffle position: a series at random, and that series' next
+ * episode in order - see shuffle-rounds' orderedPlayer.
+ */
+function ordered(show, constraint, record, key) {
+    let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
+    let player = rounds.orderedPlayer({ seed: key, sortedPrograms: candidates, record: record });
+    return {
+        mode: 'ordered',
+        current: () => {
+            let c = player.current();
+            return (c === null) ? null : labelled(c.program, slotProgress.label('ordered', constraint, c.round));
+        },
+        next: () => player.next(),
+    };
+}
+
+/*
+ * The positions of one generator run. Each starts from its record in
+ * schedule.progress - written by the editor when Create Lineup runs, from the
+ * lineup on air - and, with none, a Play Next position from the founder rule
+ * as before, a Shuffle one from the start of its first round.
+ *
+ * `shows` is the services' list: each with its `id`, `programs` and `founder`.
+ */
+function createPositions({ shows, schedule }) {
+    let byId = new Map();
+    shows.forEach( (show) => byId.set(show.id, show) );
+    let records = ( (typeof(schedule) === 'object') && (schedule !== null)
+                    && (typeof(schedule.progress) === 'object') && (schedule.progress !== null)
+                    && (typeof(schedule.progress.positions) === 'object') && (schedule.progress.positions !== null) )
+        ? schedule.progress.positions
+        : {};
+    let positions = new Map();
+    let slots = ( (typeof(schedule) === 'object') && (schedule !== null) && Array.isArray(schedule.slots) ) ? schedule.slots : [];
+
+    let forSlot = (slot) => {
+        let constraint = slotProgress.constraintOf(slot, schedule);
+        let key = slotProgress.positionKey(slot.showId, slot.order, constraint);
+        if (! positions.has(key) ) {
+            let show = byId.get(slot.showId);
+            let record = records[key];
+            if (slot.order === 'next') {
+                positions.set(key, playNext(show, constraint, record));
+            } else if (slot.order === 'rerun') {
+                positions.set(key, shuffled(show, slot.order, constraint, record, key, rerunEligible(slot.showId)));
+            } else if (slot.order === 'ordered') {
+                positions.set(key, ordered(show, constraint, record, key));
+            } else {
+                positions.set(key, shuffled(show, slot.order, constraint, record, key));
+            }
+        }
+        return positions.get(key);
+    };
+
+    /*
+     * What a show's Play Next has aired, as far as this run has got: every
+     * Play Next position of the show in the schedule, as the run advances it,
+     * and the records of ones no longer in the schedule. `any` says whether
+     * the show has a Play Next at all.
+     */
+    let airedFor = (showId) => {
+        let aired = new Set();
+        let any = false;
+        slots.forEach( (slot) => {
+            if ( (slot.showId === showId) && (slot.order === 'next') ) {
+                any = true;
+                forSlot(slot).passed().forEach( (k) => aired.add(k) );
+            }
+        } );
+        Object.keys(records).forEach( (key) => {
+            let parsed = JSON.parse(key);
+            if ( (parsed[0] !== showId) || (parsed[1] !== 'next') || positions.has(key) ) {
+                return;
+            }
+            let record = records[key];
+            if ( (typeof(record) !== 'object') || (record === null) || (typeof(record.next) !== 'object') ) {
+                return;
+            }
+            any = true;
+            let candidates = applySeasonExclusions(sortedPrograms(byId.get(showId)), { excludeSeasons: parsed[2] });
+            let place = slotProgress.resolveRef(record.next, candidates, getShowData);
+            (record.wrapped === true ? candidates : candidates.slice(0, place)).forEach( (p) => aired.add(rounds.fileKey(p)) );
+        } );
+        return { any: any, aired: aired };
+    };
+
+    /*
+     * A Rerun may pick a story once every part of it has aired on its show's
+     * Play Next. With nothing of its range aired yet, or no Play Next at all,
+     * it plays as a Shuffle over its range (Ron, Oct 9): a slot of Flex is
+     * worse than an early episode.
+     */
+    let rerunEligible = (showId) => (story, stories) => {
+        let found = airedFor(showId);
+        let inAired = (st) => st.every( (p) => found.aired.has(rounds.fileKey(p)) );
+        if ( ! found.any || ! stories.some(inAired) ) {
+            return true;
+        }
+        return inAired(story);
+    };
+
+    return {
+        forSlot: forSlot,
+        airedFor: airedFor,
+        // The slot modes a position plays.
+        plays: (order) => [ 'next', 'shuffle', 'rerun', 'ordered' ].indexOf(order) !== -1,
+    };
 }
 
 module.exports = {
-    getShowOrderer : getShowOrderer,
-    getShowShuffler: getShowShuffler,
+    createPositions : createPositions,
 }

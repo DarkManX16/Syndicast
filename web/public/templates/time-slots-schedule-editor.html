@@ -66,7 +66,7 @@
                             <label ng-if="$index==0" for="showOrder{{$index}}"  ng-show="canShowSlot(slot)" >Order</label>
                             <select
                                 id="showOrder{{$index}}" class="custom-select form-control"
-                                ng-model="slot.order" ng-options="o.id as o.description for o in orderOptions"
+                                ng-model="slot.order" ng-options="o.id as o.description for o in orderOptionsFor(slot)"
                                 ng-change="refreshSlots()"
                                 ng-show="canShowSlot(slot)"
                                 ng-disabled="slot.showId == 'movie.'"
@@ -91,6 +91,26 @@
                             <button id='delete{{$index}}' class='btn btn-link form-control' ng-click='deleteSlot(slot)' >
                                 <i class='text-danger fa fa-trash-alt'></i>
                             </button>
+                        </div>
+
+                        <div class='col-md-12' ng-if="slot.order === 'repeat'" style="margin-top: -8px; margin-bottom: 8px;">
+                            <div class='form-inline'>
+                                <label class='small' for="repeatOf{{$index}}" style="margin-right: 8px;">Repeats</label>
+                                <select id="repeatOf{{$index}}" class="custom-select custom-select-sm"
+                                    ng-model="slot.repeatOf"
+                                    ng-options="o.time as o.label for o in repeatSourcesOf(slot)"
+                                    ng-change="chooseRepeatSource(slot)">
+                                    <option value="">- choose the slot to repeat -</option>
+                                </select>
+                            </div>
+                            <div class='small text-danger' ng-if="repeatProblemOf(slot)">
+                                <i class='fa fa-exclamation-triangle'></i> {{ repeatProblemOf(slot) }}
+                            </div>
+                        </div>
+
+                        <div class='col-md-12 small text-info' ng-if="slot.order === 'rerun' && rerunNoteOf(slot)"
+                             style="margin-top: -8px; margin-bottom: 8px;">
+                            <i class='fa fa-info-circle'></i> {{ rerunNoteOf(slot) }}
                         </div>
 
                         <div class='col-md-12' ng-if="openSeasonEditor === slot && canConstrainSeasons(slot)"
@@ -139,20 +159,34 @@
                                 </label>
                             </div>
 
-                            <div class='small' style="margin-bottom: 4px;">
-                                <b>Start from season</b>
-                                <span class='text-muted'>- jumps the position once, then resumes normally.
-                                Earlier seasons stay in rotation.</span>
+                            <div ng-if="slot.order === 'next'">
+                                <div class='small' style="margin-bottom: 4px;">
+                                    <b>Start from season</b>
+                                    <span class='text-muted'>- jumps the position once, then resumes normally.
+                                    Earlier seasons stay in rotation.</span>
+                                </div>
+                                <div>
+                                    <button class='btn btn-sm btn-outline-secondary'
+                                        ng-repeat="s in seasonsAvailable(slot.showId)"
+                                        style="margin-right: 6px;"
+                                        ng-class="{'active': seasonsOf(slot).startSeason === s}"
+                                        ng-click="setStartSeason(slot, s)">S{{s}}</button>
+                                    <button class='btn btn-sm btn-link'
+                                        ng-show="seasonsOf(slot).startSeason !== undefined"
+                                        ng-click="setStartSeason(slot, null)">clear</button>
+                                </div>
                             </div>
-                            <div>
-                                <button class='btn btn-sm btn-outline-secondary'
-                                    ng-repeat="s in seasonsAvailable(slot.showId)"
-                                    style="margin-right: 6px;"
-                                    ng-class="{'active': seasonsOf(slot).startSeason === s}"
-                                    ng-click="setStartSeason(slot, s)">S{{s}}</button>
-                                <button class='btn btn-sm btn-link'
-                                    ng-show="seasonsOf(slot).startSeason !== undefined"
-                                    ng-click="setStartSeason(slot, null)">clear</button>
+                            <div ng-if="slot.order === 'shuffle'" class='small text-muted'>
+                                Shuffle airs every episode of these seasons once a round, and
+                                changing them moves nothing else in the round.
+                            </div>
+                            <div ng-if="slot.order === 'ordered'" class='small text-muted'>
+                                Ordered shuffle picks a series at random and plays that series' next
+                                episode, every item once a round.
+                            </div>
+                            <div ng-if="slot.order === 'rerun'" class='small text-muted'>
+                                Rerun airs, once a round, the episodes of these seasons that this
+                                show's Play Next has already aired.
                             </div>
                         </div>
 

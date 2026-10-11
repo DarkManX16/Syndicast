@@ -1420,7 +1420,11 @@ for the full spec, stages and acceptance tests.
 - [ ] Episode start: start a show or custom show at a specific episode, not
       just a season
 
-      Extends the existing per-slot season start (the ticked line above).
+      Extends the existing per-slot season start (the ticked line above),
+      and, now that stored progress is built, is a seek on a position's
+      stored place like season start (`seekOf` in `src/slot-progress.js`) -
+      see "Per-position stored progress, and the shuffles built on it" under
+      Known issues.
       Opus 5.5 designs, Sonnet 5 builds. Our stamp: pick the starting
       episode by title from a list of that season's episodes (or the custom
       show's items), and preview the date and time it will first air in that
@@ -1449,19 +1453,38 @@ for the full spec, stages and acceptance tests.
       way to; see the spec's Stage 5. Recorded at step 7, not built.
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
-- [ ] Rerun
-- [ ] Per-position stored progress, which also lets a secondary Play Next range
-      continue across a regeneration instead of restarting
-- [ ] Shuffle - *blocked on per-position stored progress*
-- [ ] Ordered shuffle - *blocked on per-position stored progress*
+- [x] Per-position stored progress, so every slot or range continues where it
+      left off across a regeneration, whichever day it is run and whatever
+      airs first. *Built Oct 9, 2026 (steps 1-2): every Play Next position
+      continues from its own place, and every Shuffle position too, from the
+      old shuffler's number until step 3's rounds replaced it - see the build
+      record in the Known issues entry. Every step's proof re-run on the final
+      code Oct 10 (step 7).*
+- [x] Shuffle - a round per range, kept by episode, with season settings.
+      *Built Oct 9, 2026 (step 3), multi-part stories kept together - see the
+      build record in the Known issues entry.*
+- [x] Rerun - a Shuffle of only the episodes the show's Play Next has already
+      aired, so a weekend never gets ahead of its weekday strip. *Built Oct 9,
+      2026 (step 4) - see the build record in the Known issues entry.*
+- [x] Repeat a slot - re-airs whatever a chosen earlier slot aired, the same
+      day (9pm's episode again at 1am) or another day of the week (Saturday's
+      That's So Raven repeats Thursday's). *Built Oct 9, 2026 (step 5) - see the
+      build record in the Known issues entry.*
+- [x] Ordered shuffle - a series at random, that series' next episode in
+      order, for custom shows that join several series. *Built Oct 9, 2026
+      (step 6) - see the build record in the Known issues entry.*
+- [x] Multi-part stories kept together by every shuffle - part 2 always
+      follows part 1. *Built with Shuffle, Rerun and Ordered shuffle (steps 3,
+      4 and 6), within a series for Ordered shuffle.*
 
-Orderers are no longer keyed by show. `getShowOrderer` keys them by show plus
-the seasons asked for, so slots wanting different ranges of one show get
-different episode positions while slots wanting the same range still advance
-together. That was the half of the blocker the three items shared; what is left
-for the two shuffle ones is somewhere to keep progress per position. That work
-also fixes a rough edge in what already ships, so it is one item rather than
-two - see the per-position stored progress entry under Known issues.
+All six were designed together on Oct 9, 2026 and built Oct 9-10 on the
+`stored-progress` branch, which waits for Ron to merge it into `blocks` - see
+"Per-position stored progress, and the shuffles built on it" under Known
+issues for the design, the measurements behind it and the build record, and
+[docs/stored-progress-plan.md](docs/stored-progress-plan.md) for the build
+order. Orderers stopped being keyed by show when per-slot seasons shipped, but
+a show still had one founder, so only one of its ranges could resume exactly;
+the design replaces the founder with a stored place per position.
 
 Grouped editing was the cost of per-slot settings meeting a weekly period.
 Switching a schedule from daily to weekly clones every slot across seven days,
@@ -2923,9 +2946,10 @@ unchanged.** A channel built before a feature lands keeps working unchanged
 and never has to be rebuilt. Stage 5 already follows this - every transition
 sequence defaults to empty, so a channel with none configured just plays
 commercials through its breaks (see
-[docs/blocks-spec.md](docs/blocks-spec.md)'s Stage 5). Stage 6 and
-per-position stored progress (see Known issues below) don't exist yet and
-have to be designed to the same rule.
+[docs/blocks-spec.md](docs/blocks-spec.md)'s Stage 5). Stage 6 doesn't
+exist yet and has to be designed to the same rule; per-position stored
+progress was (see Known issues below) - a channel saved before it carries
+over on its first regeneration, with nothing to migrate.
 
 Must-haves, each tagged with the model doing the work, in the order they'll
 be built:
@@ -3102,11 +3126,16 @@ be built:
       movie, a card Syndicast renders itself stands in. See "Generated Next
       Time cards for Cartoon Theatre" under Blocks system above and
       docs/blocks-spec.md, Stage 5, "Generated cards". **Built Oct 9, 2026.**
-- [ ] Per-position stored progress, then rerun, shuffle and ordered shuffle
-      (Opus 5.5 · Xhigh throughout - see "Work that stays on Opus 5 end to end" in
-      the Model guide below). See the "Per-position stored progress, which
-      fixes two things at once" Known issues entry above, which covers the
-      four roadmap lines it unblocks.
+- [x] Per-position stored progress, then shuffle, rerun, repeat a slot and
+      ordered shuffle, with multi-part stories kept together (Opus 5.5 · Xhigh
+      throughout - see "Work that stays on Opus 5 end to end" in the Model
+      guide below). Designed Oct 9, 2026: see "Per-position stored progress,
+      and the shuffles built on it" under Known issues, and
+      [docs/stored-progress-plan.md](docs/stored-progress-plan.md) for the
+      build order. **Built Oct 9-10, 2026** on the `stored-progress` branch,
+      all seven steps, each proven on copies of Ron's data; merged into
+      `blocks` when Ron says. Channels saved before it carry over on their
+      first regeneration, with nothing to migrate.
 - [ ] Episode start: start a show or custom show at a specific episode, not
       just a season (Opus 5.5 designs, Sonnet 5 builds). See its Scheduling
       roadmap line above.
@@ -3188,8 +3217,10 @@ from Sep 27, 2026 come round again in the same order.
 The cycle is a whole number of weeks and both ends fall in daylight time, so
 if it did loop the slots would still be on their clock times - the problem
 is the dead stretch and the reruns, not the schedule. Regenerating any time
-before Aug 3 continues each show from where it has got to (see the
-per-position stored progress entry below for the one caveat). A lineup
+before Aug 3 continues each show from where it has got to - every slot and
+range exactly, since per-position stored progress was built (see that entry
+below; before it, a show with several ranges, or with both Play Next and
+Shuffle slots, resumed only its first-airing one exactly). A lineup
 generated in winter and looping in summer, or the other way round, would
 also be an hour off after the loop; regenerating inside the cycle avoids
 that too.
@@ -3305,94 +3336,708 @@ somewhere in the UI - the footer, the Version page, anywhere - so "is this
 the process I think it is" is answerable without shelling out to compare
 timestamps.
 
-### Shuffle progress is stored, and it is seeded over the candidate count
+### Per-position stored progress, and the shuffles built on it
 
-Worth stating plainly because the two orderers in `show-orderers.js` differ and
-the difference is easy to miss.
+Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **all
+seven steps built Oct 9-10, on the `stored-progress` branch, unmerged until
+Ron says** - Play Next continues from stored progress, Shuffle plays rounds
+kept by episode, with season settings and multi-part stories, Rerun replays
+only what its show's Play Next has aired, Repeat a slot re-airs a chosen
+earlier slot, and Ordered shuffle interleaves a custom show's series; every
+step's proof re-run on the final code (step 7), and the final review's fixes
+in, with Ron's rule for narrowing one slot of a shared Shuffle (Oct 10). "A
+regeneration only draws from what the lineup on air holds", the next entry, is
+designed and being built on its own branch. See "Build record" at the end of
+this entry, and the build plan in
+[docs/stored-progress-plan.md](docs/stored-progress-plan.md). Replaces two
+earlier entries, "Shuffle progress is stored, and it is seeded over the
+candidate count" and "Per-position stored progress, which fixes two things at
+once"; what they established is folded in below. Measured on copies of
+`.dizquetv-dev` taken Oct 9, 2026 at 4:54am Central (unchanged at 5:06am), and
+on a copy of channel 1 from the Sep 29 3am backup, the last one that still
+carried Johnny Bravo's season ranges - channel 1 was reprogrammed before the
+Sep 30 backup (308 of 336 slots changed show) and has had no ranges since.
 
-*Play Next* keeps no stored position. `getShowOrderer` rediscovers it each run by
-scanning the sorted episode list for `show.founder`, which is just the first
-program of that show in the channel's current lineup. Nothing persists.
+#### How progress was kept
 
-Having nothing to persist is what let per-slot season settings ship without new
-state, and it is also where they are weakest. A show can now carry several
-positions but still has exactly one founder, so at most one of them resumes on
-the founder itself; the rest fall to the "nearest episode forward" branch and
-resume at the start of the range they are allowed. That is stable and
-repeatable - re-running the tool twice gives the same answer - but which
-position gets the exact match depends on which slot happens to come first in
-the previous lineup. Every other range restarts at its own beginning instead of
-continuing. Fixing that needs somewhere to record progress per position, which
-is the same thing constrained shuffle needs - see the next entry.
+*Play Next stores nothing.* Each run of Time Slots or Random Slots is handed the
+channel's lineup rotated so the program on air comes first, then thinned by
+`removeDuplicates`, and `show.founder` is the first program of each show in it
+(`time-slots-service.js`, `random-slots-service.js`). `resumePosition` in
+`show-orderers.js` starts every Play Next position of that show at the
+founder's episode, or at the nearest later one its seasons allow. So Play
+Next's place *is* the lineup's order, and everything that writes
+`channel.programs` writes it: the two generators, the editor's
+`adjustStartTimeToCurrentProgram`, some 25 programming tools in
+`channel-config.js` (sort, add, remove, replace an airing, block shuffle,
+equalize...), `cleanUpProgram` on save, the database migrations and on-demand.
+`removeDuplicates` decides which occurrence of an episode survives.
 
-*Shuffle* does persist. `getShowShuffler` writes its cursor onto every program it
-emits:
+*Shuffle stores a number on each airing.* `getShowShuffler` writes
+`prog.shuffleOrder = position` on every program it emits and reads
+`show.founder.shuffleOrder` on the next run. The number indexes a permutation
+seeded over the candidate count `n`, so it means nothing once `n` changes -
+with twelve episodes and a saved 7, removing season 2 turned S3E4, S1E1, S3E2
+into S3E3, S3E4, S3E2 - which is why season settings were Play Next only. It
+also has two writers nobody meant: Play Next's candidates are copies of the
+previous lineup's programs, numbers included, so Play Next airings carry stale
+Shuffle numbers (channel 2's Hey Arnold, Wed Nov 11 6:30pm, Play Next S2E9,
+carries pick 4); and replacing an airing by hand drops it (Ron replaced Hey
+Arnold's Fri Oct 9 4pm S3E19, pick 0, with S5E5 at 3:52am that day).
+
+*Season start* is a one-time seek: set in the season panel, part of
+`constraintKey`, applied by `resumePosition`, cleared by `clearStartSeasons`
+after each run.
+
+The only readers are the two generators, through the founder. Playback, the
+guide, filler, transitions and cards read the lineup and nothing else.
+
+#### What a regeneration lost, measured
+
+The editor's path driven directly - rotate the lineup at a moment,
+`removeDuplicates`, the real `time-slots-service` with the clock frozen at that
+moment - and each position's next episodes in the saved lineup compared with
+the regenerated one. At Fri Oct 9, 10am:
+
+- **Channel 1 as saved: nothing.** All 138 positions continue. One range per
+  show and no Shuffle, so there is nothing for the founder to get wrong.
+- **Channel 1 as of Sep 29:** 5 of 50 positions jump, four of them Johnny
+  Bravo's (all seasons Thu 9pm, no S1 Fri-Sat, no S2 Sun-Mon, no S3 Tue-Wed).
+  The founder was Friday's no-S1 airing, S02E07, so three ranges collapsed onto
+  it: S02E07-S02E12 air Fri-Sat, again Tue-Wed, and S02E07-09 a third time on
+  Thursday.
+- **Channel 2: 5 of 164.** **Channel 3: 8 of 155** at Friday 10am, and 18 of
+  155 at Monday 10am - which positions break depends on the day you regenerate.
+
+| Position | Next in saved lineup | Regenerated | Why |
+|---|---|---|---|
+| Ch 1 (Sep 29) Johnny Bravo, all seasons, Thu | S01E28 | S02E07 | founder is Friday's range |
+| Johnny Bravo, no S1, Fri-Sat | S02E07 | S02E07 | is the founder |
+| Johnny Bravo, no S2, Sun-Mon | S01E34 | S03E01 | nearest after S02E07 its range allows |
+| Johnny Bravo, no S3, Tue-Wed | S01E34 | S02E07 | third airing of S02E07 that week |
+| Ch 2 All That, S1-6, Mon-Thu | S01E05 | S01E01 | founder is Friday's S7-10 range |
+| Ch 2 Rugrats, all seasons, weekdays | S01E05 | S06E01 | founder is Friday's S6+ range |
+| Ch 2 Hey Arnold, Play Next, weekdays | S01E09 | S05E05 | founder is Friday's Shuffle airing |
+| Ch 2 Hey Arnold, Shuffle, Fri | S05E05 | S03E19 | founder has no number: round restarts |
+| Ch 2 Kenan & Kel, Play Next | S01E05 | S03E10 | founder is Saturday's Shuffle airing |
+| Ch 3 Boy Meets World, Play Next | S02E05 | S07E23, then S01E01 | founder is Friday's Shuffle airing |
+| Ch 3 Kim Possible, Shuffle (Monday) | S04E04, S02E03 | S01E19, S02E20, S04E04 | founder is a Play Next airing with a stale number |
+
+Channel 3's eight Friday breaks are all weekday Play Next strips whose weekend
+Shuffle airs first from Friday morning (Bill Nye, Boy Meets World, Honey I
+Shrunk the Kids, Sister Sister, So Weird, The Famous Jett Jackson, The Jersey,
+Winnie the Pooh). On Monday it is the other way round: all 18 weekend Shuffles
+re-air the weekend that has just aired - Doug S07E18 again, Kim Possible
+S01E19 and S02E20 again.
+
+So three causes, and they compound: one founder per show, so only the range
+that airs first resumes; Play Next and Shuffle share that founder; and
+Shuffle's numbers are unreliable for the two reasons above.
+
+Not a progress defect, recorded because it looks like one: in the Sep 27
+lineup Johnny Bravo's no-S2 and no-S3 ranges were already airing the same
+Season 1 episodes two days apart, because both were started from one founder.
+Stored progress keeps them where they are; separating them is Episode start's
+job.
+
+#### The design
+
+**A position is one show, one mode and one range** - "Johnny Bravo, Play Next,
+no Season 2" - keyed by show id, mode and the sorted excluded seasons. Slots
+sharing all three share a place, as now, so a weekday strip still advances as
+one thread and Saturday's and Sunday's Shuffle slots of a show share a round.
+Season start leaves the key: it is a one-time move of the position's place,
+which is how Episode start will work too. Its old place in `constraintKey`
+made a position's key change the moment `clearStartSeasons` ran.
+`season-constraints.js` takes the key from the shared module instead of
+keeping a copy that has to agree.
+
+**Every airing records its position.** The generators label each program they
+emit with `slotPosition` (shape below) and copy programs clean, so no
+`shuffleOrder` or old label rides along on a Play Next airing. An airing placed
+or replaced by hand has no label and never moves a position; one moved by hand
+keeps its label and is read where it now sits.
+
+**A position's place is read at the moment Create Lineup runs**, by the editor,
+from the lineup it has loaded. In order, the first that applies:
+
+1. **A seek on one of its slots** - season start today, Episode start later. If
+   two of its slots ask for different seeks, the one airing first from now
+   wins.
+2. **Its first airing on air or ahead** in the lineup. The airing on air counts
+   as not yet aired, as today, so nothing is skipped. Lineups without labels -
+   every channel saved before this - are read by matching each airing to the
+   slot it starts in, with the same `findSlot` arithmetic the generator uses:
+   3,450 of 3,450 airings over three weeks on channels 1-3 (and 1,362 of 1,362
+   on Sep 29's channel 1) matched a slot of their own show. For a Shuffle
+   position the old airing's `shuffleOrder` gives the rest of its current round
+   in the old order, reproduced from the old permutation (checked 40 of 40 on
+   Hey Arnold, Kenan & Kel and Kim Possible), so the carried round finishes
+   exactly as the saved lineup would have aired it.
+3. **Its record in the schedule**, for a position that has no airing ahead - a
+   range taken out at an earlier run and now put back.
+4. **The slot's old place** (Ron's decision): a position nobody used before
+   takes the place of the position the same slot - same time, same show -
+   belonged to in the schedule the lineup was made from, moved forward to the
+   nearest episode the new range allows; for the shuffle family the rest of the
+   old round, with what the new range excludes taken out - but only when no
+   slot still plays the old position; otherwise a round of its own (Ron, Oct
+   10: two positions finishing one round air the same episodes days apart). If its slots came
+   from several old positions, the one airing first from now wins. Not across
+   a change of mode.
+5. **Otherwise the first episode of its range**, or a fresh round.
+
+Random Slots lineups without labels can't be matched (their slots have no
+times), so for that one run step 2 falls back to today's founder rule.
+
+**A place is an episode, never a count.** A reference is
+`{ key: serverKey + '|' + key, order }`, `order` being `getShowData`'s
+(`season * 1000000 + episode`, or a custom show's `customOrder`). It is
+resolved by key, falling back to order when the file has gone, and "the next
+episode" is the first candidate at or after that order, wrapping - so adding
+episodes, changing a range or a custom show gaining an item can't silently
+move a place. If the episode itself is gone or now excluded, the position goes
+to the next one after it.
+
+**Records are saved with the schedule**, one per position (about 150 a
+channel), in `scheduleBackup.progress` and `randomScheduleBackup.progress`.
+They are written only on the Create Lineup path, as of that moment, and reach
+disk with Update Channel like the rest of the schedule. A position that stops
+being used keeps its record.
+
+**Why labels and records, not records alone.** The earlier entry proposed
+storing the last episode each position emitted. A lineup runs about ten months
+ahead, so that record would describe where the lineup *ends*, not where it is
+today, and regenerating mid-way would skip months of episodes. Only the
+airings know which of them have happened; the record covers the positions with
+none ahead. And because the editor reads the whole lineup rather than the
+`removeDuplicates` pool, the earlier worry about one range's tags being thinned
+away does not arise.
+
+**Additive.** Nothing to migrate and nothing to rebuild. Both new fields are
+optional; a channel without them generates exactly as described above on its
+first run, and anything that can't be read falls back to the next rule down,
+never below today's. Playback, the guide, filler, transitions and cards never
+read either field. `shuffleOrder` is read for the carry-over and no longer
+written. Channel files grow by about 4% for the labels.
+
+**Room for Episode start.** Episode start becomes a seek like season start: set
+a position's next episode. Because places are stored, the editor can show each
+position's place ("no S2: next is S01E34, Sun Oct 11 9:00pm"), which is where
+that item's preview of the first airing comes from.
+
+#### Shuffle, Rerun, Repeat a slot and Ordered shuffle
+
+How Ron programs them now: on channels 2 and 3, 23 shows run a Play Next strip
+on weekdays and a Shuffle at the weekend; several custom shows join series
+(Tom & Jerry 4, Yogi Bear 4, Gundam 8, Spider-Man 3); and "Double Dare Series
+(Shuffle)" was shuffled by hand into its custom-show order and plays as Play
+Next.
+
+- **Shuffle.** A random episode of the slot's range each airing, none repeated
+  until every one has aired - a round - and none back within half a round of
+  its last airing, as the old shuffler's two halves guaranteed. A round's order
+  is the range sorted by a hash of the position key, the round number and the
+  episode's key, which doesn't depend on how many episodes there are: adding
+  episodes or changing the range leaves the rest of the round where it was. A
+  new episode whose turn has already passed waits for the next round. At a
+  round boundary, whatever aired in the later half of the old round goes after
+  everything else. Season settings open up for Shuffle slots.
+- **Rerun.** A Shuffle that only picks episodes the show's Play Next has
+  already aired, so a weekend never airs an episode before its weekday strip
+  does. "Aired" is the union over the show's Play Next positions - the live
+  ones as the generator advances them, plus the records of ones no longer in
+  the schedule - of every episode before each one's place, and its whole range
+  once it has gone round. A strip carried over from before this counts
+  everything before its place as aired, since nothing earlier is known. The
+  pool grows as the strip moves on through the lineup; it is cut to the Rerun
+  slot's own range; rounds work as Shuffle's.
+- **Repeat a slot.** Re-airs whatever a chosen earlier slot aired, on the same
+  day or another day of the week. On channel 3, That's So Raven airs Thursday
+  to Sunday; Saturday's 6:30pm slot repeats Thursday's 6:30pm and Sunday's
+  5:00pm repeats Friday's 6:00pm, and 9pm's episode again at 1am is the same
+  option with a slot from the same day. (Ron's change of Oct 9 to the Encore
+  first proposed, which looked back one day only; Rerun stays the option that
+  replays any episode Play Next has already aired.) The slot names its source
+  (`repeatOf`, the source slot's time) and takes its show; it airs the
+  episodes of that show that started in the source's latest occurrence before
+  it - up to one period back, so last Thursday's for a Saturday - as many as
+  fit. A source may be any slot that isn't itself a Repeat, which rules out a
+  slot repeating itself or two repeating each other forever. For a repeat whose
+  source aired before now, the editor passes the period of the lineup on air
+  before now, read back round its loop: Saturday Oct 10's source is Thursday
+  Oct 8, which sits at the end of channel 3's stored cycle. Previewed on the
+  Oct 9 copy, before building: Saturday Oct 10 would repeat Thursday's S01E01
+  "Mother Dearest" and Sunday Oct 11 Friday's S01E02 "Test of Friendship", then
+  S01E03 and S01E04 the next weekend, where the lineup has random Shuffle picks
+  (S02E03, S04E16, S03E35, S01E14); each Thursday and Friday occurrence airs
+  exactly one episode. Before the lineup on air was generated - its
+  `progress.asOf` - that lineup holds the generator's opening flex, so each
+  run keeps the period it read, for the shows Repeats repeat, in
+  `progress.history`, and the next run reads back through that: running
+  Create Lineup twice in a row keeps the weekend's repeats (found by the final
+  review, fixed with step 7). A source older than both isn't known and falls
+  back as below. Repeat airings are
+  labelled `repeat`, so they never move a position - a repeat carrying its
+  source's label would make that strip look one episode behind. Time Slots
+  only; the editor keeps `repeatOf` in step when the source is retimed and
+  flags a repeat whose source is gone.
+- **Ordered shuffle.** Picks a series at random and plays that series' next
+  episode in order - for custom shows holding two or more series, a series
+  being the items' show title and its order the custom show's list order. Each
+  round is a random interleaving of the series, each series keeping its order,
+  so a series airs in proportion to its size and every item airs once per
+  round. It uses Shuffle's hash order: the k-th pick of a series in a round
+  plays that series' k-th item, so the round number and next episode are again
+  the whole record.
+- **Multi-part stories stay together, in all three.** An episode marked part n
+  (n of 2 or more) belongs with the one right before it in its show's order
+  when that one is marked n-1 - or, for part 2, when it has the same title
+  without a marker. Markers: `(2)`, `(II)`, `Part 2`, `Part Two`, `Pt. 2`.
+  Titles are not compared otherwise: "Stewie Kills Lois (1)" is followed by
+  "Lois Kills Stewie (2)", Xiaolin Showdown by "Judging Omi (1)", "Saving Omi
+  (2)", "Finding Omi (3)". The one exception is an arc a title names beside its
+  part, "(Origins, Part 2)": two such titles join only when they name the same
+  arc. A story is picked as one, and its parts are that position's next airings
+  until it is done; Rerun takes a story only once every part has aired. Across
+  all three channels the rule finds 430 stories (1,020 episodes; Harvey Birdman's "Deadomutt (1)" and "(2)" among them, and Attack
+  on Titan's nine-part "The Struggle for Trost"), 13 of them in shows with a
+  Shuffle slot today. 24 parts stay single, as now: crossovers whose other
+  parts belong to another show ("That's So Suite Life of Hannah Montana
+  (II)"), parts whose part 1 isn't next to them or isn't in the library
+  (Histeria!'s, Totally Spies' "A Spy Is Born (2)"), and Sonic Underground's
+  two interleaved arcs. Movies outside custom shows are left alone. A round
+  carried over from the old shuffler finishes in the old order, parts and all;
+  stories stay together from the first new round.
+
+Rerun and Ordered shuffle work in both generators, but only the Time Slots
+editor offers the new modes; Random Slots keeps Play Next and Shuffle, and none
+of the dev channels uses it.
+
+#### Shapes
 
 ```js
-prog.shuffleOrder = position;
+// on each airing a slot generator emits; the show comes from getShowData
+program.slotPosition = "next|2";        // mode | excluded seasons, comma-joined
+program.slotPosition = "shuffle||3";    // shuffle family: ... | round
+program.slotPosition = "repeat";
+
+// on the schedule, saved as scheduleBackup / randomScheduleBackup
+schedule.progress = {
+  asOf: "2026-10-09T15:00:00.000Z",
+  positions: {
+    '["tv.Johnny Bravo","next",[2]]':  { next: { key, order }, wrapped: false },
+    '["tv.Kim Possible","shuffle",[]]': { round: 2, next: { key, order } },
+    '["tv.Doug","shuffle",[]]':        { round: 0, queue: [ { key, order } ] },  // a carried round
+  },
+  // what aired in the period before asOf, of every show a Repeat repeats,
+  // for the next run's Repeats (repeatHistory)
+  history: [ { start: 1791325800000, program: { ... } } ],
+};
+
+// slots
+slot.order = 'next' | 'shuffle' | 'rerun' | 'repeat' | 'ordered';
+slot.repeatOf = 75600000;               // a repeat's source, by the source slot's time
 ```
 
-That program goes into the lineup and is saved with the channel. The permutation
-is seeded from the show id plus a generation number, where the generation is
-`Math.floor(position / n)` and `n` is the number of candidate episodes.
+Pure modules hold the rules: `src/slot-progress.js` keys, labels, references
+and the reading of places; `src/shuffle-rounds.js` the hash order and rounds;
+`src/multi-part.js` the part markers and stories.
+The editor reaches both through browserify, as the channel detail page already
+does with `src/channel-library.js`, so the editor and the generators can't
+disagree.
 
-So a saved `shuffleOrder` only means anything relative to the `n` it was produced
-under. Change the candidate count - which is exactly what a season filter does -
-and the same number selects a different episode, silently. Measured with twelve
-episodes against the same saved position of 7:
+#### Fallbacks, as Ron decided them on Oct 9
 
-    all 12 episodes   : S3E4 -> S1E1 -> S3E2 -> S3E3 -> S3E1
-    season 2 removed  : S3E3 -> S3E4 -> S3E2 -> S1E2 -> S1E1
+- A Rerun whose show's Play Next hasn't aired anything yet plays as a Shuffle
+  over its range, and the editor shows why under the slot. A whole slot of
+  Flex is worse than an early episode, and this only happens right after a
+  show is set up.
+- A Rerun of a show with no Play Next anywhere plays as a Shuffle over its
+  range, since there is nothing to get ahead of.
+- A Repeat whose source aired nothing - lateness turned it to Flex, or it aired
+  before the lineup on air existed - airs a Rerun of the same show.
+- Ordered shuffle shares airings by series size, as above, rather than equally
+  between series.
 
-This is why season settings are Play Next only. Constrained shuffle is not a
-filter on top of the existing mechanism; it needs a progress representation that
-survives `n` changing, or an explicit decision to reshuffle when constraints
-change. The control stays disabled for shuffle slots, with that reason in its
-tooltip.
+#### What this doesn't change
 
-### Per-position stored progress, which fixes two things at once
+- The candidates are still the episodes in the lineup the editor loaded, so a
+  season no slot plays drops out after a run, as before - and, measured while
+  building step 6, so does every episode a sparse slot didn't reach. See "A
+  regeneration only draws from what the lineup on air holds" below.
+- Ranges already in step stay in step (Johnny Bravo above).
+- A lineup rearranged by the programming tools still reads, but a position's
+  place is wherever its labelled airings were moved to.
 
-Two defects above look unrelated and are not. Both should be fixed by one piece
-of work, and doing either alone is a false economy.
+#### Build record
 
-The defects:
+**Steps 1-2, Oct 9, 2026** (`stored-progress` branch, 01b7da4..). Proofs on a
+copy of `.dizquetv-dev` taken Fri Oct 9, 7:40pm Central (re-checked unchanged
+at 7:58pm, and re-copied whole at 8:01pm for the preview), and on Sep 29's
+channel 1.
 
-- A Play Next slot asking for a range other than the one the founder falls in
-  restarts at the beginning of its range every time the lineup is regenerated,
-  rather than continuing. Only one range per show can resume exactly, because a
-  show has one founder and several positions.
-- Constrained shuffle cannot ship at all, because `shuffleOrder` is an index
-  into a permutation of `n` items and a season filter changes `n`.
+- **What shipped.** `src/slot-progress.js` (keys, labels, references, reading
+  places, the planner); `show-orderers.js`'s `createPositions` in both
+  generators, which label every airing and copy it clean; the editors read
+  places when Create Lineup runs and send them as `schedule.progress`, saved
+  with the schedule; season start is a seek, not part of a position's key
+  (`season-constraints.js` takes the key from the shared module); and
+  `scripts/progress-check.js`, the before-and-after report used below.
+- **Today's losses, reproduced first.** With the planner off (`--today`),
+  the tool gives NOTES' numbers exactly - Fri 10am channel 1 138/138, Sep 29
+  45/50, channel 2 159/164, channel 3 147/155; Mon 10am channel 3 137/155 -
+  and every airing over three weeks matches a position (3,449 of 3,450 at
+  Friday; the one left is Ron's hand-placed Hey Arnold S05E05, which a
+  position rightly ignores).
+- **Every position continues exactly**, at Fri 10am, Sat 11pm and Mon 10am:
+  channel 1 138/138, channel 2 164/164, channel 3 155/155, Sep 29's channel 1
+  50/50. Johnny Bravo's four ranges stay at S01E28, S02E07, S01E34, S01E34;
+  All That S01E05 and S07E01, Rugrats S01E05 and S06E01, Hey Arnold S01E09,
+  Kenan & Kel S01E05, channel 3's eight weekday strips on their own places,
+  and Monday's 18 weekend Shuffles on their own numbers. Hey Arnold's Friday
+  Shuffle resumes at pick 1, S01E09, not at the hand-placed S05E05.
+- **Nothing changes where nothing was wrong.** Channel 1 regenerated with the
+  planner matches `blocks`' generator program for program (0 of 39,999
+  differ, ignoring the label). With no progress at all, channels 1-3 match it
+  too (0 differ); `blocks` leaked a Shuffle number onto 0, 55 and 598 Play
+  Next airings there, which no longer happens.
+- **Twice in a row**, Friday's output regenerated again at Monday, read from
+  its labels: 138/138, 164/164, 155/155, 50/50.
+- **The slot's old place.** All That's Fri-Sun range narrowed to no S1-7
+  continues at S08E01; Rugrats' Friday range narrowed to no S1-6 goes to
+  S07E04, the first Season 7 episode channel 2's lineup has - S07E01-03 are
+  not in it, the lineup-is-the-pool limit above. Sep 29's no-S2 Johnny Bravo
+  slots taken out at Friday's run kept their record (S01E34), and put back at
+  Monday's resumed there.
+- **Live**, on a preview of the worktree (port 18200, the copy; HDHomeRun
+  discovery turned off in the copy): channel 2, Time Slots, Create Lineup,
+  Update Channel at 8:04pm. The saved file has 164 records and all 17,670
+  airings labelled, no Play Next airing carries a Shuffle number, all 164
+  positions continue from what the old lineup would have aired at 8:04pm, and
+  regenerating from the saved file continues 164/164. No console or server
+  errors. The preview had to be started from the worktree by hand: the preview
+  tool reads the main checkout's `launch.json`, whose working folder would have
+  let the preview's live bundle rebuild write the live server's bundle.
+- Channel files grow about 2.6% (channel 2, 23.7 to 24.3 MB).
 
-What they share is the absence of anywhere to put progress that belongs to a
-*position* rather than to a show. The founder is per show. `shuffleOrder` is
-per program but means nothing without the `n` it was produced under. Neither
-survives one show carrying several ranges.
+**Step 3, Oct 9, 2026** (64af61b..). Proofs on a fresh copy taken 8:23pm
+Central.
 
-So the same three decisions serve both:
+- **What shipped.** `src/multi-part.js` (stories), `src/shuffle-rounds.js`
+  (hash rounds, the half-round rule, carried rounds, the old shuffler's
+  arithmetic kept for carrying over), Shuffle positions playing rounds in both
+  generators, the planner writing round records, season settings for Shuffle
+  slots in the editor ("Start from season" stays Play Next's), and
+  `scripts/progress-audit.js`, which checks a whole saved lineup against the
+  round rules.
+- **Multi-part stories:** 430 stories (1,020 episodes) on channels 1-3, 24
+  parts single. The arc rule - two titles naming an arc beside the part,
+  "(Origins, Part 2)", join only when the arcs match - was added while
+  building: the rule as first measured joined Sonic Underground's Origins
+  Part 2 with Chaos Emerald Crisis Part 3, which is why the count is one under
+  the 431 first recorded.
+- **The old shuffler had a second way of building an order.** Started in
+  generation 0, it shuffled its base list twice, so every later generation
+  came out unlike one built by a shuffler started there: 153 of channel 3's
+  1,172 Shuffle-slot airings are of that kind. Carrying over builds the round
+  whichever way reproduces the airing it starts from: every Shuffle-slot
+  airing on channels 2 (102) and 3 (1,172) carries over from itself.
+- **Channel 3's 18 weekend Shuffles continue exactly** at Monday and Friday
+  (155/155), and each carried round finishes in exactly the saved lineup's
+  order: 994 airings compared, from Monday's regeneration, none different.
+- **The audit**, on Monday's regenerated year of channel 3: 18 positions, 0
+  violations - no story twice in a round, none back within half a round,
+  every story's parts in a row in the position's own rounds. Most weekend
+  Shuffles spend the whole year finishing their carried round at one or two
+  airings a week, so on a copy Boy Meets World's Shuffle also took the 2:30am
+  slot Monday to Friday: its carried round ended, it played one whole round of
+  its own and part of another, five multi-part stories aired with their parts
+  in a row, and nothing came back sooner than 74 stories, the minimum (half
+  of 148) - 78 before step 4 changed the round hash. 0 violations.
+- **A range change mid-round**, on a copy: Kim Possible's weekend Shuffle set
+  to no Season 1 continues the rest of its old round without Season 1 (63 of
+  the 82 left), none of its 106 airings is Season 1, and none of the 63 had
+  aired earlier in the round.
+- **Live**, on the preview: channel 3, Saturday's Kim Possible Shuffle slot
+  set to no Season 1 in the season panel, Create Lineup, Update Channel at
+  8:29pm. The schedule saved the range and 156 records; Kim Possible's no-S1
+  record is the rest of its old round (64); none of its 54 airings is Season
+  1; no airing carries a Shuffle number; the audit finds 0 violations over all
+  19 shuffle positions; regenerating from the saved file continues 156/156.
+  The first attempt ran on a preview started before rounds existed - its
+  generator was still step 2's, and the lineup it saved had Season 1 airings
+  in the no-S1 position and 1,197 Shuffle numbers. A server keeps the code it
+  started with (see "A long-running server keeps serving the build it started
+  with"); rebuilding the bundle only refreshes the editor. The preview was
+  restarted and its copy of channel 3 restored before the run above.
 
-- **Key.** `(showId, constraintKey(constraint))` - the key already exists, in
-  `show-orderers.js`, and already groups slots the way progress would need to be
-  grouped.
-- **Storage.** The schedule is the honest place. It already round-trips as
-  `channel.scheduleBackup`, and unlike program tags it does not get thinned by
-  `removeDuplicates`, which keys on `showId|order` and would silently drop one
-  range's record whenever two ranges overlap on an episode. The cost is that the
-  services would have to return the updated schedule and the editors merge it
-  back, instead of the editor overwriting with its own copy as `doIt` does now.
-- **Shape.** Episode identity, never an index. `getShowData(p).order` is
-  `season * 1000000 + episode` and stays meaningful when the candidate set
-  changes, which is exactly the property `shuffleOrder` lacks.
+**Step 4, Oct 9, 2026** (33d070e..). Proofs on the fresh copy of 8:23pm
+Central.
 
-The payloads differ, and that is the whole of the difference: Play Next needs
-the last episode emitted, shuffle needs the set already emitted this pass plus
-the seed, so an unplayed candidate can be picked deterministically without
-re-deriving a permutation over a count that has moved.
+- **What shipped.** Rerun positions in both generators: Shuffle's rounds over
+  the slot's range, passing over any story not every part of which the show's
+  Play Next has aired - asked afresh at each pick from the live Play Next
+  positions and the records of ones no longer in the schedule. With nothing of
+  its range aired, or no Play Next at all, it plays as a Shuffle (Ron's
+  fallback), and the editor says why under the slot. The Time Slots editor
+  offers Rerun, with season settings.
+- **Two defects found and fixed while building it.** The round hash first
+  ordered by FNV-1a alone, which follows a key's last characters: Plex keys
+  run in sequence, so a round came out close to the files' own order (rank
+  correlation 0.8), Shuffle's included - murmur3's 32-bit finaliser on top
+  brings it to -0.07. And what goes last in a Rerun's next round is now the
+  later half of what it actually aired, as the design says, rather than of its
+  round's whole order: with a pool smaller than the show, the two differ, and
+  over 50 seeds the first let a story return too soon 97 times. A Rerun's
+  record therefore also carries what it has aired this round.
+- **On a copy of channel 3 with Kim Possible's, Lizzie McGuire's, Even
+  Stevens' and The Proud Family's weekend Shuffles set to Rerun**, regenerated
+  Monday Oct 12 for a year: no Rerun airing is ahead of its strip (0 of 409),
+  and the pools grow through the year - Kim Possible 4 to 84 episodes, Lizzie
+  McGuire 4 to 63, The Proud Family 4 to 50, Even Stevens 24 to 63. The audit
+  finds 0 violations over all 18 shuffle-family positions, a Rerun's round
+  measured by what it aired. Regenerated again from that output at Jan 11,
+  2027: every position continues exactly (155/155), and every Play Next and
+  Rerun position airs exactly what the October lineup had from then on - 141
+  positions, 13,369 airings, none different.
+- **Live**, on the preview restarted with this code: the editor offers Rerun;
+  Kim Possible's Saturday slot set to Rerun with only Season 4 shows "Plays as
+  a Shuffle for now: this show's Play Next hasn't aired any of these seasons
+  yet" under the slot, and no note with all seasons. Saved with Yin Yang Yo!'s
+  only slot also switched from Play Next to Rerun: 157 records, Kim Possible's
+  Rerun 0 ahead of its strip (pool 2 to 84 episodes), 0 violations over 20
+  positions, no console or server errors. Yin Yang Yo! has a single episode in
+  channel 3's lineup, so its Rerun - with its old strip's record saying
+  nothing has aired - plays that one episode as a Shuffle every week. The
+  "no Play Next" wording is pinned by test/slot-progress.js: every show on
+  channel 3 has Play Next history, kept in records after its slots go.
 
-Build them together. Whichever ships first will pick the key, the storage and
-the invalidation rule for the other, and if the second is added later against a
-different representation the channel ends up carrying two disagreeing records of
-where a show is. That is a worse bug than either of the ones being fixed.
+**Step 5, Oct 9, 2026** (3adb5d4..). Proofs on the fresh copy of 8:23pm
+Central.
+
+- **What shipped.** Repeat slots in Time Slots: a slot names its source by
+  time, takes its show, and re-airs the episodes that started in the source's
+  latest occurrence before it - found by wall-clock time, so the Nov 1 change
+  in between moves nothing - labelled `repeat`, so it never moves a position.
+  A source that aired before the new lineup comes from the lineup on air: the
+  editor passes the last period of it (`slotProgress.recentAirings`, read back
+  round the loop, never from before that lineup was made). A source with
+  nothing in it plays a Rerun of the show. In the editor: "Repeat a slot" in
+  the Order menu, a picker listing every slot that isn't itself a Repeat with
+  how far back it is ("Thursday 6:30pm That's So Raven - 2 days earlier",
+  "earlier the same day, 30 minutes before"), retiming a source moves its
+  Repeats with it, and a Repeat with no source - or one gone or turned into a
+  Repeat - is marked at once and holds up Create Lineup, saying why.
+  `progress-audit` checks every Repeat occurrence against its source.
+- **Channel 3's That's So Raven**, Saturday 6:30pm repeating Thursday 6:30pm
+  and Sunday 5:00pm repeating Friday 6:00pm, regenerated at Fri Oct 9 10am:
+  Saturday Oct 10 airs S01E01 "Mother Dearest" - Thursday Oct 8's, read from
+  the lineup on air round its loop - and Sunday Oct 11 S01E02 "Test of
+  Friendship", Friday's from the new lineup, then S01E03 and S01E04 the next
+  weekend, as previewed above. Over the year, 103 of 104 Repeat occurrences
+  equal their source and the 104th is that first Saturday: 0 mismatches.
+  Regenerated again from that output at Monday Oct 12, the Thursday-Friday
+  strip continues exactly (S01E03 next, 154/154 positions) and all 102 Repeat
+  occurrences equal their source.
+- **Same day, channel 1:** Friday 1:00am repeating Thursday 9:00pm (Pokémon):
+  45 of 45 occurrences equal their source; 138/138 positions continue.
+- **The fall-back night:** a 1:00am Repeat of Saturday's 9pm airs at 1:00 CDT
+  and again at 1:00 CST, both times Saturday's episode
+  (test/dst-fall-back.js).
+- **Live**, on the preview restarted with this code: That's So Raven's
+  weekend slots set to Repeat through the picker and saved at 11:45pm - the
+  first weekend from history ("Mother Dearest", "Test of Friendship"), 102 of
+  the other occurrences equal their source, 0 mismatches, no errors.
+  Retiming Thursday to 6:15pm moved Saturday's source to "Thursday 6:15pm";
+  deleting Thursday marked Saturday "The slot this repeated is gone - choose
+  another" and Create Lineup was refused with that reason. Three editor bugs
+  found that way and fixed: deleting a slot didn't refresh its Repeats until
+  Create Lineup; a gone source dropped out of the picker, so the select cleared
+  the slot and the message changed to "Choose the slot this repeats"; and a
+  reopened schedule drew its Repeat pickers before their options existed, so
+  saved sources showed blank - and could have been cleared - until an edit.
+
+**Step 6, Oct 9, 2026** (e51f0d1..). Proofs on the fresh copy of 8:23pm
+Central.
+
+- **What shipped.** Ordered shuffle positions in both generators: a round is
+  Shuffle's hash order over the stories of every series - a series being an
+  item's show title, its order the custom show's list, its multi-part stories
+  grouped within it - and the k-th slot falling to a series plays that
+  series' k-th story. The record is Shuffle's. The Time Slots editor offers
+  "Ordered shuffle (N series)" only for a show whose items join two or more
+  series; `progress-audit` checks each series' list order and each whole
+  round's counts. A range change starts its rounds afresh rather than
+  carrying the old round.
+- **Channel 1's Tom & Jerry**, its nine slots set to Ordered shuffle on a copy
+  and generated for a year: 990 airings in five rounds, three of them whole,
+  each whole round airing exactly the four series' sizes - Tom and Jerry 164,
+  The New Tom & Jerry Show 48, the stray "The New Tom & Jerry Show 15 - Cosmic
+  Cat and Meteor Mouse (1975)" 1, The Tom and Jerry Comedy Show 14 - each in
+  list order; 0 violations. Regenerated three months in from that output: the
+  707 Tom & Jerry airings to the lineup's end are identical.
+- **Channel 2's Double Dare Series (Shuffle)**, one weekly slot: its 465 items
+  would take about nine years to air one round, so a year shows the shares,
+  not whole rounds. With the custom show's items added on the copy (see the
+  next entry for why the lineup alone doesn't hold them), the four series
+  interleave at random and each stays in list order; their airings over the
+  year (17, 14, 11 and 10) track their sizes (an expected 20.8, 13.2, 10.5
+  and 7.5 of 52).
+- **Live**, on the preview restarted with this code: the Order menu offers
+  "Ordered shuffle (4 series)" on Tom & Jerry's slots and not on Johnny
+  Bravo's; all nine Tom & Jerry slots saved as Ordered shuffle through it -
+  995 airings, three whole rounds of exactly 164/48/1/14, 0 violations, no
+  console or server errors.
+
+**Step 7, Oct 10, 2026** (d67c6e1..). Every step's proof again, with the
+final code, on the proof copy of Oct 9 8:23pm Central - diffed against
+`.dizquetv-dev` at 11:59pm Central and identical (its channel files were last
+written at 4:18am), so the copy is current - and on Sep 29's channel 1. Suite
+1860/1860.
+
+- **Steps 1-2.** Every position continues exactly at Fri 10am, Sat 11pm and
+  Mon 10am - channel 1 138/138, channel 2 164/164, channel 3 155/155, Sep 29's
+  channel 1 50/50 - and again from each regenerated file. All That's range
+  moved to no S1-7 starts at S08E01, Rugrats' to no S1-6 at S07E04 (the pool's
+  first Season 7 episode), and Johnny Bravo's no-S2 slots taken out of Sep 29's
+  channel 1 and put back start at S01E34.
+- **`--today` no longer reproduces step 1's "before" numbers for Shuffle
+  slots.** With no records, this code's Shuffle positions start rounds of
+  their own instead of carrying the old shuffler's numbers on, so channels 2
+  and 3 lose different positions (Fri 10am 158/164 and 129/155) from the ones
+  blocks lost (159 and 147). Play Next falls back to blocks' founder rule
+  either way. The table under "What a regeneration lost" was measured on
+  blocks' generator and stands; the tool's usage now says what `--today` is.
+- **Step 3.** Channel 3's 18 carried rounds are identical to the saved lineup
+  through their ends (994 airings), and the audit of Monday's year finds 0
+  violations in 18 positions. Boy Meets World's daily copy: five multi-part
+  stories in a row in its own rounds, closest return 74 stories, the minimum.
+  Kim Possible's no-S1 range: its queue is exactly the rest of its old round
+  without Season 1 (63 of 82), in the same order; 0 of its 105 airings is
+  Season 1.
+- **Step 4.** The four weekend Reruns: 0 airings ahead of their strip, pools
+  Kim Possible 4 -> 84, Lizzie McGuire 4 -> 63, The Proud Family 4 -> 50, Even
+  Stevens 24 -> 63, 0 violations. Regenerated Jan 11 from that output: 155/155,
+  and 141 Play Next and Rerun positions identical airing for airing (13,369
+  airings) to where the October lineup's last ten days begin, which are flex
+  - Ron's own lineups of Oct 9, made by blocks, end the same way, in 4 to 10
+  days of flex.
+- **Step 5.** That's So Raven: Sat Oct 10 repeats Thursday's "Mother Dearest",
+  from the lineup on air, and Sun Oct 11 Friday's "Test of Friendship"; 103 of
+  104 occurrences equal their source and the other is the one from history, 0
+  mismatches; Monday's regeneration 154/154 and 102/102 equal. Channel 1's Fri
+  1am repeat of Thu 9pm: 45/45 equal, 138/138.
+- **Step 6.** Tom & Jerry: three whole rounds of exactly 164/48/1/14, 0
+  violations, and the 707 airings regenerated Jan 11 identical. Double Dare:
+  the four series interleave, each in list order, 17/14/11/10 airings against
+  an expected 20.8/13.2/10.5/7.5.
+- **Live checks** weren't repeated. Each ran on the preview with its own
+  step's code; what later steps changed under them - the round hash in step 4
+  above all - is what the scripted proofs above re-measure.
+
+**The final review, Oct 10, 2026** (7279f2b..). A fresh review of the whole
+branch (Opus 5.5) re-ran the headline proofs (all exact) and found four
+things worth fixing; three are fixed, each with a test that failed first,
+suite 1867/1867.
+
+- **Create Lineup twice in a row lost the weekend's repeats.** The second
+  run's history started at the first run's `asOf`, so Saturday's source,
+  Thursday 6:30pm, was gone and Saturday became a Rerun - S01E02 then aired
+  Friday, Saturday and Sunday. Now each run keeps what it read for the shows
+  Repeats repeat (`repeatHistory`, `progress.history`). On the copy, That's
+  So Raven regenerated at 10am, 10:30 and 11am Friday: Saturday repeats
+  "Mother Dearest" every time, 0 mismatches. Live on the preview, Ron's
+  channel 3 with the two weekend Repeats, Create Lineup and Update Channel
+  twice at 12:46 and 12:47am Saturday: the first run kept Thursday's and
+  Friday's airings, and the second, both sources now before the last run,
+  still repeats "Mother Dearest" and "Test of Friendship"; 102 occurrences
+  equal their source and 2 come from the kept history, 0 mismatches, no
+  errors. That history is genuine: channel 3's lineup was generated Wednesday
+  Oct 7 at 2:48am and only re-saved Friday at 4:18am, so Thursday's airing is
+  in its cycle.
+- **Changing a schedule from daily to weekly moved its Repeats' sources.**
+  The clones kept `repeatOf` as it was, so a daily "1am repeats 9pm" became
+  seven Repeats of Thursday's 9pm, six of them the wrong evening, unflagged.
+  Now each keeps its distance back (`movedRepeatOf`): every day's 1am repeats
+  the 9pm four hours before it; going back to daily keeps a distance a day can
+  hold and marks one it can't ("gone - choose another").
+- **The planner slowed with time since the last run** - every Play Next and
+  Rerun position walked the whole lineup since then, twice per regeneration in
+  the browser: channel 1 took 265 ms at 30 days, 886 at 120, 2,313 at 250.
+  One walk now serves every position: 22, 26 and 47 ms. The January Rerun
+  regeneration is identical program for program (37,253) and record for
+  record, and every position on the four copies still continues exactly.
+- **Narrowing one slot of a shared Shuffle** was the fourth - Ron's to decide,
+  decided and built Oct 10; see the next section.
+- **At merge, rebuild the bundle and restart the server together.** An old
+  server's generator has no case for the Rerun, Repeat and Ordered shuffle
+  slots a new editor sends - it picks nothing and Create Lineup fails with an
+  error (found by the review, checked in blocks' code) - and a server keeps the
+  code it started with (see "A long-running server keeps serving the build it started
+  with"). The server on port 18000 is Ron's to restart.
+
+#### Narrowing one slot of a shared Shuffle
+
+Kim Possible's Saturday 3:30pm and Sunday 6pm Shuffles are one position. Set
+Saturday alone to no Season 1 and, by rule 4 as decided, the new no-S1
+position takes the rest of the old round without Season 1 - while Sunday,
+still in the old position, plays that same round. The two then air the same
+episodes in the same order days apart all year. Measured on the copy,
+regenerated at Monday Oct 12: 39 of the 106 Kim Possible airings repeat an
+episode the other position aired in the previous 120 days, 7 within 30 -
+S04E04 on Saturday Oct 17 and again on Sunday Oct 18 - where the unsplit
+lineup, or both slots narrowed together, has none. `progress-audit` checks each position on
+its own, so it doesn't see it. Play Next does the same - both ranges step
+through the same episodes from the same place - which is what two ranges of
+one show sharing seasons already do, but a Shuffle is meant to look random.
+
+**Ron's rule, Oct 10, built:** a narrowed Shuffle or Rerun slot inherits the
+old round only when no slot still plays the old position; when the old one
+carries on, the new one starts a round of its own. Play Next is unchanged.
+Tested ("narrowing one slot of a shared Shuffle starts a round of its own",
+"...and so does a Rerun"), suite 1869/1869. On the copy, Saturday narrowed
+alone: the no-S1 position starts round 0 of its own and Sunday finishes the
+old round; 17 of the 104 airings repeat an episode the other slot aired in the
+previous 120 days (was 39), 8 within 30 (was 7) - now chance, two independent
+shuffles of mostly the same episodes, not one order played twice. Both
+weekend slots narrowed together still carry the rest of the old round (63 of
+82) with none, and every position on channels 1-3 continues exactly.
+
+### A regeneration only draws from what the lineup on air holds
+
+Found while building Ordered shuffle (Oct 9, 2026), and older than it: the
+Time Slots and Random Slots editors hand the generator
+`removeDuplicates(channel.programs)` - the lineup on air - as the episodes
+it may use. Programs added from the library are in `channel.programs` until
+the first Create Lineup replaces it with a lineup, and after that only what
+that lineup aired is left. A show in a sparse slot loses every episode the
+lineup didn't reach. Measured on the copies of Oct 9:
+
+- channel 1: Mobile Suit Gundam Series 45 of 223 items, G Gundam/Gundam
+  Wing/Gundam SEED+Destiny 91 of 198, Ben 10 series 90 of 146, G.I. Joe ('83)
+  45 of 95, Voltron 45 of 124;
+- channel 2: Double Dare Series (Shuffle) 51 of 465, The Penguins of
+  Madagascar 97 of 146, Think Fast 51 of 101, Saved by the Bell/College Years
+  51 of 104, Degrassi 51 of 69;
+- channel 3: Phineas and Ferb 51 of 140, Spider-Man 52 of 102, The Raccoons 51
+  of 63, Care Bears (1986) 51 of 59;
+- and episodes of ordinary shows the same way - channel 2's lineup has no
+  Rugrats S07E01-03, which is why step 2's Rugrats check landed on S07E04.
+
+**What it does:** Double Dare's weekly Play Next airs items 2-52 in the saved
+lineup; regenerated from it, the lineup airs 2-52 and then item 2 again, never
+53. Stored progress keeps each place exactly, but the place can only move
+among what the pool holds, so a big show in a sparse slot loops its first
+year forever after one regeneration. Before stored progress the same thing
+happened through the founder.
+
+**Not fixed - a design decision for Ron.** The pool needs to come from
+somewhere the lineup doesn't thin: custom shows have their full item list in
+the data folder's `custom-shows`; ordinary shows' full episode lists are
+only in Plex, or in a per-channel list of everything ever added, kept beside
+the lineup. Re-adding a show or custom show from the library before Create
+Lineup restores it for that run.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 
@@ -4108,6 +4753,52 @@ touches a disk at all - and there is no test runner dependency to install: it is
 plain Node, in keeping with the rest of the project having none either. Each file also runs standalone, e.g. `node
 test/blocks-acceptance.js`, while developing just that piece.
 
+### Checking a regeneration on a copy: `progress-check` and `progress-audit`
+
+Two scripts prove a scheduling change on real data without a browser or a
+server; every stored-progress proof under Known issues was made with them.
+Both read only the files they are given and write only `--save`: run them on
+a copy of the data folder, never on `.dizquetv-dev` itself.
+
+- `node scripts/progress-check.js --data <copy> --channel <n> --at <ISO>` runs
+  the editor's Create Lineup path directly - the lineup rotated to `--at` as
+  the editor rotates it, `removeDuplicates`, the planner (the records the
+  editor would send), the Repeat history, and the real Time Slots generator
+  with `Date` frozen at `--at` - then compares, per position, the saved
+  lineup's next episodes over three weeks with the regenerated one's:
+  `continue exactly: N of M`, listing the positions that jump.
+  - `--edit <module.js>` changes the schedule first, as an edit in the dialog
+    would: a module exporting `(schedule) => void`.
+  - `--save <out.json>` writes the regenerated channel and `--from <out.json>`
+    reads one back - how "twice in a row" and "three months in" are run.
+  - `--show <regex>`, `--airings <regex> --days <n>` and `--all` list more.
+  - `--add-custom <id>` adds a custom show's whole item list first, as adding
+    it from the library does - the lineup alone holds only what it aired (see
+    "A regeneration only draws from what the lineup on air holds").
+  - `--today` skips the planner. With no records Play Next falls back to the
+    founder rule, as blocks did, but Shuffle starts rounds of its own, so it
+    reproduces blocks' Play Next losses and not its Shuffle ones; those need
+    blocks' code (`git show blocks:<file>` into a scratch directory).
+- `node scripts/progress-audit.js --channel <saved.json> [--show <regex>]`
+  checks a whole saved lineup against the shuffle rules, for every Shuffle,
+  Rerun and Ordered shuffle position: each whole round has each story once;
+  nothing comes back within half a round (for a Rerun, half of what it aired;
+  Ordered shuffle makes no such promise); a multi-part story's parts air in a
+  row; a Rerun is never ahead of its strip; each Ordered shuffle series airs
+  in list order. It also checks every Repeat a slot occurrence against its
+  source. `audit()` is exported for other scripts.
+- A round carried over from the old shuffler finishes in the old order, so the
+  audit doesn't measure the gap between two parts of one story inside it. A
+  whole round needs both its ends inside the lineup, so a big show in a weekly
+  slot (Double Dare's 465 items) shows its shares in a year, not its rounds.
+- Comparing two lineups airing for airing - a regeneration three months in
+  against the first - is a few lines over `slotProgress.airings` grouped by
+  position, and isn't committed. Compare up to where the shorter list ends: a
+  year's lineup ends in days of flex, blocks' lineups as much as these.
+- A preview server keeps the code it started with: restart it after a change
+  to server code before a live check, or the check runs the old generator (the
+  first step 3 live check did).
+
 ### createLineup can be exercised directly
 
 `helperFuncs.createLineup(programPlayTime, obj, channel, fillers, isFirst, t0)`
@@ -4199,10 +4890,10 @@ first real decision is made in the code, and there is no settled shape to hand
 over. These stay on Opus 5 for both halves:
 
 - **Per-position stored progress.** The representation is the whole problem.
-  See its entry above: whichever half ships first picks the key, the storage
-  and the invalidation rule for the other.
-- **Rerun, shuffle and ordered shuffle.** They depend on stored progress and
-  inherit the same decision.
+  See its entry above: the key, the labels and the records are one decision,
+  made once for every mode.
+- **Shuffle, rerun, repeat a slot and ordered shuffle.** They depend on stored
+  progress and inherit the same decision.
 - **Very short items repeating or being skipped next to Flex.** A diagnosis
   problem in the concat or transition handling, with no reproduction yet. The
   roadmap entry already says guessing at the layer here would be expensive.

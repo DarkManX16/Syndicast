@@ -33,6 +33,7 @@ const { spawnSync } = require('child_process');
 const TVGuideService = require('../src/services/tv-guide-service');
 const timeSlotsService = require('../src/services/time-slots-service');
 const slotWeek = require('../src/slot-week');
+const slotProgress = require('../src/slot-progress');
 const { helperFuncs, dayParts, MIN, HOUR, DAY, mix, Suite, liftSource } = require('./support');
 
 const ZONE = 'America/Chicago';
@@ -441,6 +442,56 @@ async function checks() {
         (s) => [s.context ? s.context.name : 'Flex', s.startMs, s.endMs] ) ));
     suite.check('As configured, the week of Nov 1 draws the same as the week before it',
         flat(week) === flat(dayParts.weeklySegments(channel, Z('2026-10-28T17:00:00Z'))));
+
+    // ---- stored progress ------------------------------------------------
+    /*
+     * A lineup saved before airings carried labels is read by matching each
+     * airing to the slot it starts in, so that matching has to agree with the
+     * generator's own, minute by minute, through both passes of 1-2am. Both
+     * generator functions are lifted rather than transcribed.
+     */
+    suite.log('-- stored progress: reading old lineups by slot --');
+    const generatorSlotAt = new Function('schedule', 'MINUTE', 's', 'instant',
+        liftSource('src/services/time-slots-service.js', 'localMsIntoPeriod') + '\n'
+        + liftSource('src/services/time-slots-service.js', 'findSlot') + '\n'
+        + 'let found = findSlot(localMsIntoPeriod(instant));\n'
+        + 'return found === null ? null : found.slot;');
+    const fixture = slotFixture().schedule;
+    const sorted = fixture.slots.slice().sort((a, b) => a.time - b.time);
+    const slotDisagreements = [];
+    for (let t = Z('2026-11-01T05:00:00Z'); t <= Z('2026-11-01T09:00:00Z'); t += MIN) {
+        const ours = slotProgress.slotAt(fixture, t);
+        const theirs = generatorSlotAt(fixture, MIN, sorted, t);
+        if ((ours && ours.time) !== (theirs && theirs.time)) {
+            slotDisagreements.push(`${label(t)}: ${ours && ours.showId} vs ${theirs && theirs.showId}`);
+        }
+    }
+    suite.check('slotAt agrees with the generator through the fall-back hour',
+        slotDisagreements.length === 0, slotDisagreements.slice(0, 3).join(' | '));
+
+    // A 1:00am Repeat of Saturday's 9pm: 1:00 comes round twice, and both times
+    // it repeats the same Saturday evening.
+    const repeatShow = [];
+    for (let e = 1; e <= 8; e++) {
+        repeatShow.push({ type: 'episode', showTitle: 'Nine', title: `Nine e${e}`, season: 1, episode: e,
+            key: `/k/nine/${e}`, serverKey: 'srv', duration: 22 * MIN });
+    }
+    const satNine = 2 * DAY + 21 * HOUR, sunOne = 3 * DAY + 1 * HOUR;
+    const repeatSchedule = { period: WEEK, lateness: 0, maxDays: 14, flexPreference: 'distribute', pad: 5 * MIN, slots: [
+        { time: satNine, showId: 'tv.Nine', order: 'next' },
+        { time: satNine + 30 * MIN, showId: 'flex.', order: 'next' },
+        { time: sunOne, showId: 'tv.Nine', order: 'repeat', repeatOf: satNine },
+        { time: sunOne + 30 * MIN, showId: 'flex.', order: 'next' },
+    ] };
+    const repeated = await generate(repeatShow, repeatSchedule, Z('2026-10-28T17:00:00Z'));
+    let tr = Date.parse(repeated.startTime);
+    const repeatAirings = repeated.programs.map( (pr) => { const a = { start: tr, program: pr }; tr += pr.duration; return a; } )
+        .filter( (a) => ! a.program.isOffline );
+    const titleAt = (iso) => (repeatAirings.find( (a) => a.start === Z(iso) ) || { program: { title: 'nothing' } }).program.title;
+    const saturday = titleAt('2026-11-01T02:00:00Z');
+    suite.check('On the fall-back night a 1:00 repeat airs twice, the same episode',
+        saturday !== 'nothing' && titleAt('2026-11-01T06:00:00Z') === saturday && titleAt('2026-11-01T07:00:00Z') === saturday,
+        `Sat 9pm ${saturday}; 1:00 CDT ${titleAt('2026-11-01T06:00:00Z')}; 1:00 CST ${titleAt('2026-11-01T07:00:00Z')}`);
 
     return suite;
 }

@@ -44,6 +44,13 @@ const suites = [
     './card-service',
     './card-player',
     './card-api',
+    './slot-progress',
+    './progress-generators',
+    './multi-part',
+    './shuffle-rounds',
+    './progress-rerun',
+    './progress-repeat',
+    './progress-ordered',
 ];
 
 (async () => {

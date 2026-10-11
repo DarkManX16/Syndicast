@@ -390,13 +390,15 @@ module.exports = function ($http, $q) {
         /*======================================================================
         * Channel Tool Services
         */
-        calculateTimeSlots: async( programs, schedule) => {
+        //`history` is what the lineup on air aired before now, for Repeat slots.
+        calculateTimeSlots: async( programs, schedule, history) => {
             let d = await $http( {
                 method: "POST",
                 url : "/api/channel-tools/time-slots",
                 data: {
                     programs: programs,
                     schedule: schedule,
+                    history: history,
                 },
                 headers: { 'Content-Type': 'application/json; charset=utf-8' },
             } );

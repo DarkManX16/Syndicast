@@ -1,5 +1,7 @@
 const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
+const slotProgress = require('../../src/slot-progress');
+const slotRounds = require('../../src/shuffle-rounds');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) {
     const DAY = 24*60*60*1000;
@@ -98,11 +100,20 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     let l = scope.schedule.slots.length;
                     for (let i = 0; i < l; i++) {
                         let t = scope.schedule.slots[i].time;
+                        //A Repeat on every day repeats the slot as far back as before.
+                        let daily = { time: t, repeatOf: scope.schedule.slots[i].repeatOf };
+                        let moveRepeat = (s) => {
+                            if ( (s.order === 'repeat') && (typeof(daily.repeatOf) === 'number') ) {
+                                s.repeatOf = slotProgress.movedRepeatOf(daily, s.time, DAY, WEEK);
+                            }
+                        };
                         scope.schedule.slots[i].time = t % DAY;
+                        moveRepeat(scope.schedule.slots[i]);
                         for (let j = 1; j < 7; j++) {
                             //clone the slot for every day of the week
                             let c = JSON.parse( angular.toJson(scope.schedule.slots[i]) );
                             c.time += j * DAY;
+                            moveRepeat(c);
                             scope.schedule.slots.push(c);
                         }
                     }
@@ -115,6 +126,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                         let t = slot.time % DAY;
                         if (seen[t] !== true) {
                             seen[t] = true;
+                            if ( (slot.order === 'repeat') && (typeof(slot.repeatOf) === 'number') ) {
+                                slot.repeatOf = slotProgress.movedRepeatOf(slot, t, WEEK, DAY);
+                            }
                             newSlots.push(slot);
                         }
                     }
@@ -300,9 +314,76 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 };
             }
             scope.finishedTimeEdit = (slot) => {
+                //Repeats of a retimed slot follow it to its new time.
+                slotProgress.followRetime(scope.schedule, scope.schedule.slots[slot.index].time, slot.time);
                 scope.schedule.slots[slot.index].time = slot.time;
                 scope.refreshSlots();
             }
+
+            /*
+             * Repeat a slot. The picker lists every slot that isn't itself a
+             * Repeat, each with how far back the occurrence it would repeat is;
+             * choosing one takes that slot's show. A Repeat with no source, or
+             * one whose source is gone or became a Repeat, is marked and holds
+             * up Create Lineup.
+             */
+            let repeatInfo = new Map();
+            let refreshRepeats = () => {
+                repeatInfo = new Map();
+                (scope.schedule.slots || []).forEach( (slot) => {
+                    if (slot.order !== 'repeat') {
+                        return;
+                    }
+                    let source = (scope.schedule.slots || []).find( (s) => (s !== slot) && (s.time === slot.repeatOf) && (s.order !== 'repeat') );
+                    if (typeof(source) !== 'undefined') {
+                        slot.showId = source.showId;
+                    }
+                    let problem = slotProgress.repeatProblem(scope.schedule, slot);
+                    let sources = slotProgress.repeatSources(scope.schedule, slot).map( (x) => ({
+                        time: x.slot.time,
+                        label: slotLabel(x.slot.time) + " " + getTitle(x.slot) + " - " + howFarBack(x.back),
+                    }) );
+                    //A source that is gone, or became a Repeat, stays in the list so
+                    //the picker keeps showing it - otherwise the select would clear
+                    //the slot and lose why it needs a new one.
+                    if ( (typeof(slot.repeatOf) === 'number') && (problem !== null)
+                         && ! sources.some( (x) => x.time === slot.repeatOf ) ) {
+                        sources.unshift({ time: slot.repeatOf, label: slotLabel(slot.repeatOf) + " - gone, choose another" });
+                    }
+                    repeatInfo.set(slot, { problem: problem, sources: sources });
+                } );
+            };
+            let slotLabel = (time) => {
+                let d = new Date(Date.UTC(2000, 0, 1) + (time % DAY));
+                let h = d.getUTCHours(), m = d.getUTCMinutes();
+                let clock = ((h % 12) || 12) + ":" + String(m).padStart(2, '0') + (h < 12 ? "am" : "pm");
+                return scope.isWeekly() ? WEEK_DAYS[Math.floor(time / DAY)] + " " + clock : clock;
+            };
+            let howFarBack = (back) => {
+                let days = Math.floor(back / DAY);
+                if (days === 0) {
+                    let minutes = Math.round( (back % DAY) / (60 * 1000) );
+                    let hours = Math.floor(minutes / 60);
+                    minutes = minutes % 60;
+                    let parts = [];
+                    if (hours > 0) {
+                        parts.push(hours + (hours === 1 ? " hour" : " hours"));
+                    }
+                    if (minutes > 0) {
+                        parts.push(minutes + (minutes === 1 ? " minute" : " minutes"));
+                    }
+                    return "earlier the same day, " + parts.join(" ") + " before";
+                }
+                if (days === 7) {
+                    return "a week earlier";
+                }
+                return days + (days === 1 ? " day" : " days") + " earlier";
+            };
+            scope.repeatSourcesOf = (slot) => (repeatInfo.get(slot) || { sources: [] }).sources;
+            scope.repeatProblemOf = (slot) => (repeatInfo.get(slot) || { problem: null }).problem;
+            scope.chooseRepeatSource = (slot) => {
+                scope.refreshSlots();
+            };
             scope.addSlot = () => {
                 scope._addedTime =  {
                     time: 0,
@@ -384,7 +465,33 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             scope.orderOptions = [
                 { id: "next", description: "Play Next" },
                 { id: "shuffle", description: "Shuffle" },
+                { id: "rerun", description: "Rerun" },
+                { id: "repeat", description: "Repeat a slot" },
             ];
+
+            /*
+             * The Order menu for one slot: Ordered shuffle only for a show whose
+             * items join two or more series (a custom show like Tom & Jerry),
+             * saying how many. One array per show, kept while the dialog is open,
+             * so the select sees the same options on every digest.
+             */
+            let orderOptionsByShow = new Map();
+            scope.orderOptionsFor = (slot) => {
+                if (! orderOptionsByShow.has(slot.showId)) {
+                    let series = new Set();
+                    (scope.programs || []).forEach( (p) => {
+                        if (getShowData(p).showId === slot.showId) {
+                            series.add(slotRounds.seriesOf(p));
+                        }
+                    } );
+                    let options = scope.orderOptions.slice();
+                    if (series.size >= 2) {
+                        options.push({ id: "ordered", description: "Ordered shuffle (" + series.size + " series)" });
+                    }
+                    orderOptionsByShow.set(slot.showId, options);
+                }
+                return orderOptionsByShow.get(slot.showId);
+            };
 
             let doWait = (millis) => {
                 return new Promise( (resolve) => {
@@ -395,7 +502,43 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
             let doIt = async(fromInstant) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
                 let t0 = new Date().getTime();
-                let res = await dizquetv.calculateTimeSlots(scope.programs, scope.schedule  );
+                /*
+                 * Every position's place, read from the lineup on air at this
+                 * moment, so the generator continues each one where it is -
+                 * see src/slot-progress.js. Saved with the schedule as scheduleBackup.
+                 */
+                if (typeof(scope.lineup) === 'function') {
+                    let onAir = scope.lineup();
+                    scope.schedule.progress = slotProgress.planProgress({
+                        programs: onAir.programs,
+                        startTime: new Date(onAir.startTime).getTime(),
+                        now: t0,
+                        openedSchedule: scope.openedSchedule,
+                        schedule: scope.schedule,
+                        pool: scope.programs,
+                        getShowData: getShowData,
+                    });
+                }
+                //What aired in the last period, for Repeat slots whose source
+                //aired before the new lineup begins: from the lineup on air, and
+                //from before it from what the last run kept, which this run keeps
+                //again for the next.
+                let history = [];
+                if (typeof(scope.lineup) === 'function') {
+                    let onAir = scope.lineup();
+                    let h = slotProgress.repeatHistory({
+                        programs: onAir.programs,
+                        startTime: new Date(onAir.startTime).getTime(),
+                        now: t0,
+                        spanMs: (scope.schedule.period || DAY) + 60 * 60 * 1000,
+                        opened: scope.openedSchedule,
+                        schedule: scope.schedule,
+                        getShowData: getShowData,
+                    });
+                    history = h.history;
+                    scope.schedule.progress.history = h.keep;
+                }
+                let res = await dizquetv.calculateTimeSlots(scope.programs, scope.schedule, history );
                 let t1 = new Date().getTime();
 
                 let w = Math.max(0, 250 - (t1 - t0) );
@@ -412,9 +555,16 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
 
             
-            let startDialog = (programs, limit, backup, instant, slotScope) => {
+            //`lineup` returns the channel's programs and startTime as the
+            //editor has them, read again when Create Lineup runs.
+            let startDialog = (programs, limit, backup, instant, slotScope, lineup) => {
                 scope.limit = limit;
                 scope.programs = programs;
+                orderOptionsByShow = new Map();
+                scope.lineup = lineup;
+                //The schedule the lineup on air was made from, as it was saved,
+                //for reading places by slot and for each slot's old place.
+                scope.openedSchedule = (typeof(backup) === 'undefined') ? null : JSON.parse( JSON.stringify(backup) );
 
                 reset();
                 scope.slotScope = slotScope || null;
@@ -440,6 +590,25 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 if (scope.hadBackup) {
                     loadBackup(backup);
                 }
+                //Where each position is as the dialog opens, for the notes
+                //under Rerun slots; Create Lineup reads it again.
+                scope.openProgress = null;
+                if (typeof(lineup) === 'function') {
+                    let onAir = lineup();
+                    scope.openProgress = slotProgress.planProgress({
+                        programs: onAir.programs,
+                        startTime: new Date(onAir.startTime).getTime(),
+                        now: Date.now(),
+                        openedSchedule: scope.openedSchedule,
+                        schedule: scope.schedule,
+                        pool: scope.programs,
+                        getShowData: getShowData,
+                    });
+                }
+                //Before the template draws a Repeat's picker: without its options
+                //the select would show nothing and could drop the saved source.
+                refreshRepeats();
+                refreshRerunNotes();
                 applyFilter();
 
                 scope.visible = true;
@@ -459,6 +628,14 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     if ( scope.schedule.slots.length === 0) {
                         scope.onDone(null);
                         scope.visible = false;
+                        return;
+                    }
+                    refreshRepeats();
+                    let problem = (scope.schedule.slots || [])
+                        .filter( (s) => (s.order === 'repeat') && (scope.repeatProblemOf(s) !== null) )
+                        .map( (s) => slotLabel(s.time) + ": " + scope.repeatProblemOf(s) );
+                    if (problem.length > 0) {
+                        scope.error = "A Repeat slot needs a source before the lineup can be made. " + problem.join(" ");
                         return;
                     }
 
@@ -487,7 +664,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                     if (scope.openSeasonEditor === slot) {
                         scope.openSeasonEditor = null;
                     }
-                    applyFilter();
+                    //A Repeat of the deleted slot is marked at once, not at Create Lineup.
+                    scope.refreshSlots();
                 }
             }
 
@@ -551,20 +729,33 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                 return Object.keys(seasons).map( (s) => parseInt(s, 10) ).sort( (a,b) => a - b );
             }
 
+            //Shuffle keeps its rounds by episode, so leaving seasons out of a
+            //Shuffle slot moves nothing else - see src/shuffle-rounds.js.
             scope.canConstrainSeasons = (slot) => {
                 return scope.canShowSlot(slot)
-                    && (slot.order === 'next')
+                    && ( (slot.order === 'next') || (slot.order === 'shuffle') || (slot.order === 'rerun') || (slot.order === 'ordered') )
                     && (scope.seasonsAvailable(slot.showId).length > 1);
             }
 
+            /*
+             * Why a Rerun slot will play as a Shuffle for now, if it will - no
+             * Play Next for its show, or none of its seasons aired yet. Worked
+             * out on opening and after each edit rather than on every digest,
+             * keyed by the slot object so nothing is added to the schedule.
+             */
+            let rerunNotes = new Map();
+            let refreshRerunNotes = () => {
+                rerunNotes = new Map();
+                (scope.schedule.slots || []).forEach( (slot) => {
+                    if (slot.order === 'rerun') {
+                        rerunNotes.set(slot, slotProgress.rerunNote({ schedule: scope.schedule,
+                            progress: scope.openProgress, slot: slot, pool: scope.programs || [], getShowData: getShowData }));
+                    }
+                } );
+            };
+            scope.rerunNoteOf = (slot) => rerunNotes.get(slot) || null;
+
             scope.seasonsDisabledReason = (slot) => {
-                if (! scope.canShowSlot(slot)) {
-                    return "";
-                }
-                if (slot.order === 'shuffle') {
-                    return "Season settings apply to Play Next only. Shuffle stores its position "
-                         + "in a way that changes meaning when the episode count changes.";
-                }
                 return "";
             }
 
@@ -765,6 +956,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
 
             scope.refreshSlots = () => {
                 scope.badTimes = false;
+                refreshRepeats();
+                refreshRerunNotes();
                 applyFilter();
                 //"Bubble sort ought to be enough for anybody"
                 for (let i = 0; i < scope.schedule.slots.length; i++) {
@@ -775,7 +968,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints ) 
                             scope.schedule.slots[j] = x;
                         }
                     }
-                    if (scope.schedule.slots[i].showId == 'movie.') {
+                    if ( (scope.schedule.slots[i].showId == 'movie.') && (scope.schedule.slots[i].order !== 'repeat') ) {
                         scope.schedule.slots[i].order = "shuffle";
                     }
                 }

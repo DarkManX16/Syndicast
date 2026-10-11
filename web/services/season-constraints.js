@@ -1,7 +1,8 @@
-//Season settings a slot puts on its show. The server counterpart lives in
-//src/services/show-orderers.js - keyOf below must agree with constraintKey
-//there, or the editor will report slots as sharing an episode position when the
-//generator gives them separate ones.
+//Season settings a slot puts on its show. Which slots share an episode
+//position comes from src/slot-progress.js, the same module the generators key
+//positions with, so the editor and the generator cannot disagree about it.
+const slotProgress = require('../../src/slot-progress');
+
 module.exports = function () {
 
     //Returned for a slot that has no settings yet. It is shared and never
@@ -10,25 +11,25 @@ module.exports = function () {
     const NONE = { excludeSeasons: [] };
 
     /*
-     * Which slots share an episode position: same show, same answer here.
-     * startSeason is included because two slots seeking different places are
-     * asking for different positions, and a constraint that asks for nothing
-     * keys the same as no constraint at all.
+     * Which slots share an episode position: same show, same answer here. Only
+     * the excluded seasons count - startSeason is a one-time move of the
+     * position's place, not a different position - and a constraint that
+     * excludes nothing keys the same as no constraint at all.
      */
     function keyOf(constraint) {
+        let excluded = slotProgress.excludedOf(constraint);
+        return (excluded.length === 0) ? "" : JSON.stringify(excluded);
+    }
+
+    //Whether a slot's settings ask for anything at all - seasons left out, or
+    //a season to start from. Distinct from keyOf: a slot that only seeks shares
+    //its position, but its seek still has to be kept.
+    function asksNothing(constraint) {
         if ( (typeof(constraint) !== 'object') || (constraint === null) ) {
-            return "";
+            return true;
         }
-        let excluded = Array.isArray(constraint.excludeSeasons)
-            ? constraint.excludeSeasons.slice().sort( (a,b) => a - b )
-            : [];
-        let start = (typeof(constraint.startSeason) === 'number')
-            ? constraint.startSeason
-            : null;
-        if ( (excluded.length === 0) && (start === null) ) {
-            return "";
-        }
-        return JSON.stringify( [ excluded, start ] );
+        return (slotProgress.excludedOf(constraint).length === 0)
+            && (typeof(constraint.startSeason) !== 'number');
     }
 
     /*
@@ -59,13 +60,13 @@ module.exports = function () {
     //A slot that asks for nothing carries no settings at all, so an untouched
     //schedule stays as small as it was.
     function tidy(slot) {
-        if (keyOf(slot.seasons) === "") {
+        if (asksNothing(slot.seasons)) {
             delete slot.seasons;
         }
     }
 
     function isConstrained(slot) {
-        return keyOf(read(slot)) !== "";
+        return ! asksNothing(read(slot));
     }
 
     function sameRange(a, b) {
@@ -121,7 +122,7 @@ module.exports = function () {
                 continue;
             }
             let c = old[ slot.showId ];
-            if ( (typeof(c) === 'object') && (c !== null) && (keyOf(c) !== "") ) {
+            if (! asksNothing(c)) {
                 slot.seasons = JSON.parse( JSON.stringify(c) );
             }
         }

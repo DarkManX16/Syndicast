@@ -2212,7 +2212,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             let openSlotEditor = (slotScope) => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
                 scope.timeSlots.startDialog(
-                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope
+                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir
                 );
             };
 
@@ -2487,20 +2487,29 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
 
 
+            /*
+             * The lineup on air as the editor has it, for the slot editors to
+             * read each position's place from when Create Lineup runs - read
+             * then, not when the dialog opens, so edits made meanwhile count.
+             */
+            let lineupOnAir = () => {
+                return { programs: scope.channel.programs, startTime: scope.channel.startTime };
+            };
+
             scope.onTimeSlotsButtonClick = () => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
-                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup );
+                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir );
             }
             scope.onRandomSlotsButtonClick = () => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
-                scope.randomSlots.startDialog(progs, scope.maxSize, scope.channel.randomScheduleBackup );
+                scope.randomSlots.startDialog(progs, scope.maxSize, scope.channel.randomScheduleBackup, false, lineupOnAir );
             }
 
             scope.rerollRandomSlots = () => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
                 scope.randomSlots.startDialog(
                     progs, scope.maxSize, scope.channel.randomScheduleBackup,
-                    true
+                    true, lineupOnAir
                 );
             }
             scope.hasNoRandomSlots = () => {
@@ -2515,7 +2524,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
                 scope.timeSlots.startDialog(
                     progs, scope.maxSize, scope.channel.scheduleBackup,
-                    true
+                    true, null, lineupOnAir
                 );
             }
             scope.hasNoTimeSlots = () => {
