@@ -314,7 +314,10 @@ function startRecord({ key, mode, record, pick, pool, getShowData }) {
     let inStory = new Set( story.map( (p) => rounds.fileKey(p) ) );
     let started;
     if (Array.isArray(base.queue)) {
-        let mine = rest.refs.filter( (r) => inStory.has(r.key) );
+        // The old shuffler knew nothing of stories, so a carried round can hold
+        // part 2 long before part 1: the story still airs in its own order.
+        let partOf = new Map( story.map( (p, i) => [ rounds.fileKey(p), i ] ) );
+        let mine = rest.refs.filter( (r) => inStory.has(r.key) ).sort( (a, b) => partOf.get(a.key) - partOf.get(b.key) );
         if (mine.length === 0) {
             return null;
         }

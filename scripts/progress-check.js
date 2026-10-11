@@ -23,6 +23,10 @@
  *                                 channel's own catalog state, and --save keeps that state
  *       [--review <regex|all>]    with --catalog: review the matching shows first, everything ticked
  *       [--never-air <keys.json>] with --catalog: an array of file keys put on the never-air list
+ *       [--start <show|mode|seasons=episode>]  Episode start, repeatable: the position of <show> in <mode>
+ *                                 (next, shuffle, rerun) leaving out <seasons> (comma-separated, may be
+ *                                 empty) plays <episode> next - S01E34, or #12 for the 12th item of a
+ *                                 custom show. e.g. --start "Johnny Bravo|next|2=S01E34"
  *
  * Reads only the files it is given and writes only --save. Never point it at
  * the live data folder's files with --save.
@@ -64,6 +68,7 @@ function parseArgs(argv) {
         else if (a === '--catalog') args.catalog = next();
         else if (a === '--review') args.review = next();
         else if (a === '--never-air') args.neverAir = next();
+        else if (a === '--start') (args.starts = args.starts || []).push(next());
         else throw new Error('Unknown argument ' + a);
     }
     if (isNaN(args.at)) throw new Error('--at <ISO instant> is required');
@@ -191,11 +196,29 @@ async function main() {
             + `pool ${lineupPool.length} -> ${pool.length}; new since the last run: ${Object.values(run.fresh).reduce( (a, l) => a + l.length, 0 )}; `
             + `fell back: ${run.fellBack.map( (f) => f.showId + ' (' + f.reason + ')' ).join(', ') || 'none'}`);
     }
+    // Episode start: the picks, each found in the pool the planner draws on.
+    let starts = {};
+    (args.starts || []).forEach( (spec) => {
+        let m = spec.match(/^(.+?)\|(\w+)\|([\d,]*)=(.+)$/);
+        if (m === null) throw new Error('--start wants show|mode|seasons=episode, got ' + spec);
+        let showId = /^(tv|custom)\./.test(m[1]) ? m[1] : 'tv.' + m[1];
+        let excluded = m[3] === '' ? [] : m[3].split(',').map(Number);
+        let key = slotProgress.positionKey(showId, m[2], { excludeSeasons: excluded });
+        let wanted = m[4].trim();
+        let found = pool.find( (p) => {
+            if (p.isOffline || getShowData(p).showId !== showId) return false;
+            return (wanted.startsWith('#')) ? (p.customOrder + 1 === Number(wanted.slice(1))) : (episodeOf(p) === wanted);
+        } );
+        if (! found) throw new Error('--start: ' + wanted + ' is not in the pool for ' + showId);
+        starts[key] = slotProgress.ref(found, getShowData);
+        console.log('start: ' + describe(key) + ' -> ' + wanted + ' ' + found.title);
+    } );
     // The editor's doIt: every position's place, read from the lineup on air at this moment.
     if (! args.today) {
         schedule.progress = slotProgress.planProgress({
             programs: channel.programs, startTime: savedStart, now: at,
-            openedSchedule: channel.scheduleBackup, schedule: schedule, pool: lineupPool, catalog: pool, getShowData,
+            openedSchedule: channel.scheduleBackup, schedule: schedule, pool: lineupPool, catalog: pool,
+            starts: Object.keys(starts).length ? starts : undefined, getShowData,
         });
     }
     // and, as the editor does, what aired in the last period, for Repeat slots:
@@ -233,7 +256,7 @@ async function main() {
         if (ok) same++;
         if (ok && ! args.all && ! (args.show && args.show.test(key))) continue;
         let first = bs.length ? `${when(bs[0].start)} (${slotLabel(slotProgress.slotAt(channel.scheduleBackup, bs[0].start).time)})` : '-';
-        lines.push(`  ${ok ? 'same' : 'JUMP'} ${describe(key)}   first ${first}`);
+        lines.push(`  ${ok ? 'same' : 'JUMP'} ${describe(key)}${starts[key] ? '   [start]' : ''}   first ${first}`);
         lines.push(`        saved lineup next: ${bs.map( (x) => episodeOf(x.program) ).join(', ') || '-'}`);
         lines.push(`        regenerated next:  ${as.map( (x) => episodeOf(x.program) ).join(', ') || '-'}`);
     }

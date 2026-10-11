@@ -266,6 +266,26 @@ module.exports = async function () {
             Array.isArray(queueBefore.queue) && titles(queueBefore.queue)[0] === order0[4][0].title, titles(queueBefore.queue).slice(0, 2).join(' | '));
         suite.check('...and Air next moves the pick to its front',
             same(titles(queuePicked.queue), flat([order0[9]].concat(order0.slice(4, 9), order0.slice(10)))));
+
+        // The old shuffler knew nothing of stories: a carried round can hold
+        // part 2 long before part 1. Picking either still airs part 1 first.
+        const part1 = D('The Big One (1)');
+        const part2Ref = ref(D('The Big One (2)'));
+        const others = carried.filter((r) => r.key !== ref(part1).key && r.key !== part2Ref.key);
+        const split = Object.assign(sched(), { progress: { asOf: new Date(NOW - DAY).toISOString(), positions: {
+            [queueKey]: { round: 0, queue: others.slice(0, 3).concat([part2Ref], others.slice(3, 9), [ref(part1)], others.slice(9)), laterHalf: [] },
+        } } });
+        const fromSplit = (starts, which) => slotProgress.planProgress({
+            programs: lineupOf([[at(Sat, 6), Object.assign({}, doug.find((p) => ref(p).key === others[0].key), { slotPosition: 'shuffle||0' })]]),
+            startTime: THU, now: NOW, openedSchedule: split, schedule: sched(), pool: doug, starts, getShowData,
+        }).positions[queueKey];
+        suite.check('a carried round that split a story: picking part 2 airs part 1, then part 2',
+            same(titles(fromSplit({ [queueKey]: part2Ref }).queue).slice(0, 2), ['The Big One (1)', 'The Big One (2)']),
+            titles(fromSplit({ [queueKey]: part2Ref }).queue).slice(0, 3).join(' | '));
+        suite.check('...and so does picking part 1',
+            same(titles(fromSplit({ [queueKey]: ref(part1) }).queue).slice(0, 2), ['The Big One (1)', 'The Big One (2)']));
+        suite.check('...nothing is lost or doubled',
+            fromSplit({ [queueKey]: part2Ref }).queue.length === split.progress.positions[queueKey].queue.length);
     }
 
     suite.log('-- the generator plays the pick, then carries on --');
