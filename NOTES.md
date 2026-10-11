@@ -2859,6 +2859,12 @@ on shows.
 - [ ] Profiles for specific looks
 - [ ] Custom TV guides
 - [ ] UI customization and cosmetic theming
+
+      Include: the Channels list's remove-channel button is an unlabelled
+      trash icon beside each channel's name (`web/public/views/channels.html`),
+      and a careful session clicked it by mistake while testing (a native
+      confirmation caught it). It needs a label or tooltip, and probably some
+      distance from the name Ron clicks to edit. Added Oct 11, 2026.
 - [x] Channel detail page: now playing with progress, total runtime, program count,
       stream mode and transcode config, plus a library browsable by type - movies,
       shows, artists, music videos, other - with durations and artwork
