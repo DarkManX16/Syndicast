@@ -1423,18 +1423,13 @@ for the full spec, stages and acceptance tests.
 - [x] Season exclusion / season start, per slot, for Play Next
 - [x] Setting a season range across a group of slots in one go, and a filter for
       finding the slots to set it on
-- [ ] Episode start: start a show or custom show at a specific episode, not
-      just a season
-
-      Extends the existing per-slot season start (the ticked line above),
-      and, now that stored progress is built, is a seek on a position's
-      stored place like season start (`seekOf` in `src/slot-progress.js`) -
-      see "Per-position stored progress, and the shuffles built on it" under
-      Known issues.
-      Opus 5.5 designs, Sonnet 5 builds. Our stamp: pick the starting
-      episode by title from a list of that season's episodes (or the custom
-      show's items), and preview the date and time it will first air in that
-      slot.
+- [x] Episode start: start a show or custom show at a specific episode, not
+      just a season. *Designed Oct 10, 2026 (Opus 5.5) and built the same day
+      (Sonnet 5.5) on the `episode-start` branch - see "Episode start" under
+      Known issues. In the Time Slots editor every row shows its position's
+      next episode and when it airs; "change" picks another from the show's
+      full catalog (Play Next: start at it; Shuffle and Rerun: air it next),
+      once. It replaces Start from season in Time Slots.*
 - [ ] Save time-slot editing progress without generating a lineup
 
       `channel.scheduleBackup` already round-trips the schedule -
@@ -3153,9 +3148,11 @@ be built:
       (Opus 5.5). **Built Oct 10, 2026** on the `full-catalog` branch, on top
       of `stored-progress`, so the two merge together when Ron says. See "Full catalogs, and a never-air list"
       under Known issues and [docs/full-catalog-plan.md](docs/full-catalog-plan.md).
-- [ ] Episode start: start a show or custom show at a specific episode, not
-      just a season (Opus 5.5 designs, Sonnet 5 builds). See its Scheduling
-      roadmap line above.
+- [x] Episode start: start a show or custom show at a specific episode, not
+      just a season (Opus 5.5 designs, Sonnet 5.5 builds). **Built Oct 10,
+      2026** on the `episode-start` branch, on top of `blocks` (which holds
+      stored progress and full catalogs); merged when Ron says. See its
+      Scheduling roadmap line above and "Episode start" under Known issues.
 - [ ] Swap out episodes of a show, and plug library items in anywhere
       (including individual items from a custom show), and Flex adjusts
       itself when lineup items are added, swapped or deleted - designed
@@ -4421,6 +4418,199 @@ catalog ops run one at a time, and custom-show ids are checked.
 - **`GET /api/show/:id` builds a file path from its id** - the same unchecked
   id the catalog read now refuses - older than this work.
 
+### Episode start
+
+Designed Oct 10, 2026 (Opus 5.5) from Ron's brief and **built the same day**
+(Sonnet 5.5) on the `episode-start` branch, from `blocks` at 57334c6 - which
+already holds stored progress and full catalogs - unmerged until Ron says. Build
+plan in [docs/episode-start-plan.md](docs/episode-start-plan.md); see "Build
+record" at the end of this entry.
+
+#### What it is
+
+With stored progress, every position (one show, one order, one season range)
+has a place: the episode it plays next. Episode start lets Ron set that place
+himself in the Time Slots editor, **once**: Create Lineup jumps the position
+there and it carries on normally from wherever the new lineup leaves it. His
+examples: the "no Season 2" Johnny Bravo range started at S01E34 instead of
+sharing the all-seasons strip's place (Sep 29's channel 1 had the no-S2 and
+no-S3 ranges both at S01E34, airing the same Season 1 episodes days apart);
+a newly added show's weekday strip started at a chosen episode.
+
+#### What Ron decided, Oct 10
+
+1. Shuffle and Rerun get "Air next" as well as Play Next.
+2. "Start from season" folds into the new panel (Time Slots; Random Slots keeps
+   its own, and the generators still honour `startSeason` for it).
+3. Two Play Next ranges of one show sitting at the same episode warn on their
+   rows.
+4. A Play Next jump forward in a show that also has a Rerun slot says so in the
+   panel: the Rerun treats everything before the strip's place as aired, so it
+   may replay the episodes the jump skips.
+
+#### The design, as built
+
+- **A pick is an episode reference** (`{ key, order }`, as every place is) held
+  by the dialog, by position key - `starts` in `time-slots-schedule-editor.js` -
+  for that opening of the dialog only. Nothing is saved on the schedule or the
+  channel: Cancel drops it, Create Lineup spends it. `planProgress` takes
+  `starts: { positionKey: reference }` and, after every rule that gave a position
+  its place, `startRecord` replaces it:
+  - **Play Next:** the place is the pick - or, if its file has gone or the range
+    leaves it out, the next episode the range has, as any place does. Whether
+    the position has gone round its range is kept.
+  - **Shuffle and Rerun:** the pick's story - its parts in order - airs next,
+    and the rest of the round follows in its own order, so nothing airs twice in
+    a round. That is a carried queue, which the player already plays; the later
+    half that goes last in the next round is worked out again for the new
+    order, so no story comes back sooner. A story under way finishes before the
+    pick comes on. A pick that has aired this round, or isn't a candidate,
+    doesn't apply, and the row says so. A Rerun's record keeps what it has
+    aired this round.
+  - **Ordered shuffle and Repeat:** no picker. A round interleaves the series,
+    each in its own order, and a Repeat re-airs its source.
+- **The picker** lists the position's own candidates - the show's full catalog
+  once reviewed, less the never-air list, within the slot's seasons - by
+  season, then episode (a custom show: one list with a filter). It says what
+  can't be picked: *already aired this round*, *held to the end of this round*
+  (it aired late in the last, so nothing comes back within half a round), and
+  for a Rerun *this show's Play Next hasn't aired it yet*; the episode that is
+  next now is shown and not offered. The panel previews "Airs Mon Oct 12,
+  6:00pm, then on in order", counts the range ("107 episodes in this range, 2
+  more after the show is reviewed", never-air hidden too) and warns as above.
+- **Every row of a playing position shows** "Next: S01E24 Substitute Teacher .
+  Mon Oct 12, 6:00pm", the same on every row of the position, with **change**,
+  and **undo** once a start is set. The episode is asked of the generators' own
+  orderers over the same pool (`createPositions` is bundled into the editor), so
+  a Rerun that passes a story over shows the one it will really play. The time
+  is when the position's earliest slot next starts - or "right away" when one of
+  its slots is under way and the schedule's lateness lets a program start late,
+  as the generator does - following the wall clock across a change of the
+  clocks. Flex and padding can move it by minutes.
+- **A pick goes with its position.** A row that changes its show, order or
+  seasons leaves the position and the pick stays with the rows that remain; when
+  none do it is dropped, and the dialog says "Your start for Johnny Bravo, no
+  Season 2 (S01E34 ...) was dropped: no slot plays that any more." Marking the
+  picked episode never-air moves a Play Next start to the next episode, as any
+  place does.
+- **The modules.** `src/episode-start.js` is pure and tested in Node: `plan` (the
+  editor's whole picture in one call), `describe`, `options`, `firstAiring`,
+  `doubling`, `skipNote`, the labels. `src/slot-progress.js` gains `startRecord`,
+  `storiesOf`, `restOfRoundOf` (lifted out of `planProgress`) and
+  `playNextAired` (lifted out of `rerunNote`). The directive only draws what
+  these answer; it recomputes once after something it depends on changes, the
+  first time the template asks, not on every digest (about 130 ms on channel 3
+  in Node: the planner 73, the orderers 55).
+
+#### Shapes
+
+```js
+slotProgress.planProgress({ ..., starts: { '["tv.Johnny Bravo","next",[2]]': { key, order } } });
+// a Play Next pick:   { next: { key, order }, wrapped }
+// a Shuffle/Rerun pick: { round, queue: [ { key, order }, ... ], laterHalf: [ fileKeys ], aired? }
+```
+
+#### What this doesn't change
+
+- A schedule with no start generates exactly what it did: the planner is only
+  handed `starts` when there are some, and the lifted helpers return what the
+  closures did.
+- The server's generators, the channel file, `channel.scheduleBackup` and
+  `channel.catalog`. Random Slots and the Random Slots editor.
+- Where a position's place comes from when nothing is picked (stored progress's
+  five rules).
+
+#### Build record
+
+**Oct 10, 2026** (`episode-start`, f235af7..). Proofs on a copy of `channels`,
+`custom-shows` and `show-aliases.json` taken Sat Oct 10 at 10:39pm Central
+(03:39 UTC), identical to `.dizquetv-dev` then (channel 1 had been re-saved at
+9:05pm; the earlier 7:53pm copy was replaced), and on Sep 29's channel 1 from
+that day's 3am backup. Suite 1919 at the start, 2009/2009 at the end.
+
+- **Additive.** `progress-check` run from the `blocks` checkout and from the
+  branch with no start, the two saved channels compared: channels 1, 2 and 3 at
+  Sat 10:45pm and Mon 10am - 0 of 39,999, 35,204/35,062 and 37,409/37,248
+  programs differ, same start times, same records, every position continues
+  exactly (138/138, 164/164, 155/155).
+- **Johnny Bravo, channel 1** (Mon and Tue set to no Season 2). With no start both
+  ranges sit at S01E24 and air S01E24-26 on Monday and again on Wednesday.
+  With the no-S2 range started at S01E34: Mon Oct 12 6:00pm S01E34, E35, E36, then
+  S01E37, E38 Tuesday and S03E01 (Season 2 is out); the all-seasons strip
+  stays at S01E24 for Wednesday. 138 of 139 positions continue exactly - the
+  picked one is the one that jumps. Regenerated from that lineup with no start
+  on Mon 10am, Tue 8pm and Sat 10am: 139 of 139 continue each time, the range
+  at S01E34, S01E37 and S03E02 - the jump happens once.
+- **All That, channel 2** (the Season 1-6 weekday strip, started at S03E01):
+  S03E01 Mon Oct 12 9:00pm, S03E02 Tue, S03E03 Wed, S03E04 Thu; the weekend range
+  stays at S07E03; 163 of 164 continue.
+- **A newly added show, channel 2** (Voltron, a custom show not on the channel,
+  on the five 4pm weekday slots): without a start item 1 on Monday, with a start at item 25,
+  X25 to X29 across the week.
+- **Shuffle, channel 3** (Kim Possible's Sat 3:30pm and Sun 6pm): started at
+  S01E01 "Crush" - 33rd of the 83 episodes left in the carried round - it airs Sun
+  Oct 11 6:00pm, "The Full Monkey" moves to Sat Oct 17, and round 0 is the plain
+  one with "Crush" moved to the front, in the same order otherwise; every later
+  round is identical; `progress-audit` 0 violations, 154 of 155 continue.
+  Started at "Graduation, Part 2", which the old shuffler's carried round holds
+  19th with Part 1 71st: Part 1 airs Sunday and Part 2 the next Saturday; 0
+  violations.
+- **Rerun, channel 3** (Kim Possible's weekend slots as Reruns of her weekday
+  strip, at S01E03): started at S01E01, the Rerun airs S01E01 then S01E02, where
+  with no start it began at S01E02; 0 violations.
+- **Sep 29's channel 1**: no start, the no-S2 and no-S3 ranges air S01E34-38 on
+  Sun-Mon and again Tue-Wed. With the no-S3 range started at S02E10 it airs
+  S02E10-S02E15 Tue-Wed and the other 49 positions continue exactly.
+- **Live, on the preview** (the branch's server on port 18200 on a full copy of the data
+  folder, taken 10:44pm Central, HDHomeRun discovery off; the preview was started
+  by hand from the worktree - the preview tool reads the main checkout's
+  `launch.json`). Channel 2: every row shows its next episode and time (335 rows;
+  All That's Monday row "Next: S01E05 Craig Mack . Mon Oct 12, 9:00pm"); the
+  panel for All That, Season 3, S03E01, "Airs Mon Oct 12, 9:00pm, then on in
+  order", Start here, Create Lineup, Update Channel: the saved file has S03E01
+  Monday, S03E02 Tuesday, all 164 records, 17,616 airings labelled, no start
+  field anywhere on the schedule, and regenerating from it on Mon 8pm and Thu
+  10am continues 164/164. Channel 1: narrowing Monday to no Season 2 in the
+  season panel moved its row and the others' first airing to Tuesday and put
+  "Same place as Johnny Bravo, no Season 2: they'll air the same episodes days
+  apart" on both; starting it at S01E34 cleared the warnings and showed "your
+  start, one time . undo"; putting Monday back to all seasons dropped the start
+  with its notice. Channel 3: the panel for Kim Possible's Sunday Shuffle reads
+  "Air next ... Next now: S02E20 The Full Monkey" with that episode marked and
+  not offered. No console or server errors. The Seasons panel says to use
+  **change** where Start from season was.
+- **Found while proving it:** the old shuffler's carried round holds a story's parts
+  apart (Graduation, Part 2 nineteenth, Part 1 seventy-first), so a pick of
+  either part put them in the wrong order - fixed (a test failed first): the
+  story airs in its own order. And **a Rerun with a tiny pool leaves a
+  story's Part 1 without its Part 2**: with Kim Possible's weekend slots set to
+  Rerun and her strip at S01E03, `progress-audit` reports "Oct 3, 6:00 PM
+  Graduation, Part 1: part 1 of 2 not followed by part 2". It is the same program
+  for program on `blocks` (compared), so it is not from this work; the pool is 2
+  episodes growing to 84 over the year and the round it carries ends on a story it
+  had passed over. Left for later; a Rerun pick of S01E01 doesn't show it.
+
+#### Approximations, and left for later
+
+- A Shuffle or Rerun pick on a carried queue keeps the queue's later half as it
+  was rather than working it out again (a queue doesn't record its order before
+  the carry): a story at the half-way boundary can sit a story nearer the end of
+  the next round than the half-round rule allows. A round that isn't carried is
+  recomputed exactly (tested, including a pick from the later half).
+- A Rerun's `aired` list rides on the pick's queue record for the run that uses
+  it; a second run rebuilds the record from the lineup without it, as it does for
+  any carried Rerun round.
+- The picker lists a position's whole range in one list by season; for a custom
+  show of hundreds of items (Double Dare Series, 465) it is one list with a
+  filter box. A search by title across seasons for a Plex show isn't built.
+- The doubling warning compares Play Next positions' next episode only. A
+  Shuffle that happens to start where a Play Next sits isn't flagged: it is meant
+  to look random.
+- Time Slots only. Random Slots keeps Start from season.
+- There is no way to keep a pick across closing the dialog, by design: it is a
+  one-time jump, and a pick not used would be a stale surprise on the next
+  Create Lineup.
+
 ### Slot times count from the epoch week, day-parts from the calendar week
 
 Fixed, and documented here because the two systems still coexist and anything
@@ -5161,6 +5351,14 @@ a copy of the data folder, never on `.dizquetv-dev` itself.
     founder rule, as blocks did, but Shuffle starts rounds of its own, so it
     reproduces blocks' Play Next losses and not its Shuffle ones; those need
     blocks' code (`git show blocks:<file>` into a scratch directory).
+  - `--start "<show>|<mode>|<seasons>=<episode>"`, repeatable, is Episode
+    start: that position (`Johnny Bravo|next|2=S01E34` - no Season 2, Play
+    Next; `Kim Possible|shuffle|=S01E01`; `custom.<id>|next|=#25`) plays that
+    episode next. A `--start` spec has pipes in it: run it from a script file,
+    since a command checker may take `|shuffle` for a pipe into `sh`. The
+    same script run from the `blocks` checkout and from the branch, with no
+    `--start`, and the two saved channels compared program for program, is how
+    "additive" is proved.
 - `node scripts/progress-audit.js --channel <saved.json> [--show <regex>]`
   checks a whole saved lineup against the shuffle rules, for every Shuffle,
   Rerun and Ordered shuffle position: each whole round has each story once;
