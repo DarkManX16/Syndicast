@@ -299,6 +299,25 @@ module.exports = async function () {
         suite.check('narrowing a range keeps the slot\'s place, moved forward (rule 4)',
             nextOf(n, NO12) === 'S3E1' && nextOf(n, NO3) === 'S1E8', `${nextOf(n, NO12)}, ${nextOf(n, NO3)}`);
 
+        // Full catalogs: the lineup lacks S3E1, the show's catalog has it.
+        const thinned = pool.filter((p) => !(p.showTitle === JB && p.season === 3 && p.episode === 1));
+        const fromCatalog = slotProgress.planProgress({ programs: savedLineup(), startTime: THU, now: NOW,
+            openedSchedule: jbSlots(), schedule: narrowed, pool: thinned, catalog: pool, getShowData });
+        const fromLineup = slotProgress.planProgress({ programs: savedLineup(), startTime: THU, now: NOW,
+            openedSchedule: jbSlots(), schedule: narrowed, pool: thinned, getShowData });
+        suite.check('a narrowed range moves forward through the catalog, not only the lineup',
+            nextOf(fromCatalog, NO12) === 'S3E1' && nextOf(fromLineup, NO12) === 'S3E2', `${nextOf(fromCatalog, NO12)}, ${nextOf(fromLineup, NO12)}`);
+        const noS1E1 = pool.filter((p) => !(p.showTitle === JB && p.season === 2 && p.episode === 1));
+        const brandNew = jbSlots();
+        brandNew.slots.push({ time: slotTime(Mon, 21), showId: 'tv.' + JB, order: 'next', seasons: { excludeSeasons: [1, 3] } });
+        suite.check('...and a brand-new slot starts at the catalog\'s first episode of its range',
+            nextOf(slotProgress.planProgress({ programs: savedLineup(), startTime: THU, now: NOW, openedSchedule: jbSlots(), schedule: brandNew,
+                pool: noS1E1, catalog: pool, getShowData }), NO13) === 'S2E1');
+        const neverAired = pool.filter((p) => p.showTitle === JB && !(p.season === 1 && p.episode === 8));
+        const placeOnIt = plan(jbSlots()).positions[ALL].next;
+        suite.check('a Play Next place on a never-air episode moves to the next',
+            neverAired[slotProgress.resolveRef(placeOnIt, neverAired, getShowData)].title === JB + ' S1E9');
+
         const added = jbSlots();
         added.slots.push({ time: slotTime(Mon, 21), showId: 'tv.' + JB, order: 'next', seasons: { excludeSeasons: [1, 3] } });
         suite.check('a brand-new slot starts at the first episode of its range (rule 5)', nextOf(plan(added), NO13) === 'S2E1');
@@ -319,6 +338,12 @@ module.exports = async function () {
             kept && kept.round === 0 && kept.queue.map((r) => r.key).join() === oldRound.slice(2).map((p) => slotProgress.ref(p, getShowData).key).join()
                 && kept.laterHalf.length === 1 && kept.laterHalf[0] === slotProgress.ref(oldRound[2], getShowData).key,
             JSON.stringify(kept));
+
+        const widerDoug = pool.concat([4, 5].map((e) => episode('Doug', 1, e)));
+        const keptWider = slotProgress.planProgress({ programs: dougLineup, startTime: THU, now: NOW,
+            openedSchedule: doug, schedule: doug, pool, catalog: widerDoug, getShowData }).positions[DOUG];
+        suite.check('a carried round is rebuilt from the lineup\'s list, not the catalog',
+            JSON.stringify(keptWider) === JSON.stringify(kept), JSON.stringify(keptWider));
 
         // A labelled lineup: the place's round, and the deferred stories of that round.
         const dougStories = multiPart.stories(dougSorted);

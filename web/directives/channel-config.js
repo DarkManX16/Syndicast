@@ -2,6 +2,8 @@ const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
 const transitions = require('../../src/transitions');
 const transitionsEditor = require('../../src/transitions-editor');
+const showCatalog = require('../../src/show-catalog');
+const slotRounds = require('../../src/shuffle-rounds');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
     return {
@@ -1169,6 +1171,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
             scope._onDone = async (channel) => {
                 if (typeof channel === 'undefined') {
+                    scope.catalogQueue = [];
                     await scope.onDone()
                     $timeout();
                 } else {
@@ -1267,6 +1270,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                                     block.fillerCollections = cleanMix(block.fillerCollections);
                                 } );
                                 await scope.onDone(cloned)
+                                await flushCatalogOps(cloned.number);
                                 s = null;
                             }
                         } catch(err) {
@@ -1372,9 +1376,45 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return Math.floor( scope.maxSize / (scope.channel.programs.length) );
                 }
             }
+            /*
+             * Deleting an episode, custom-show item or movie asks which is meant:
+             * this airing only, as before, or out of the channel's rotation for
+             * good - a holiday Ron places himself, or never air (the never-air
+             * list, src/show-catalog.js; queued and saved after Update Channel).
+             * Flex and redirects go at once, as before.
+             */
+            scope.holidayNames = showCatalog.HOLIDAYS.map( (h) => h.name ).concat(['Other']);
+            scope.deletePrompt = null;
             scope.removeItem = (x) => {
+                let program = scope.channel.programs[x];
+                if ( (typeof(program) === 'undefined') || program.isOffline || ! getShowData(program).hasShow ) {
+                    scope.channel.programs.splice(x, 1)
+                    updateChannelDuration()
+                    return;
+                }
+                let key = slotRounds.fileKey(program);
+                let others = scope.channel.programs.filter( (p, i) => (i !== x) && ! p.isOffline && (slotRounds.fileKey(p) === key) ).length;
+                let label = commonProgramTools.getProgramDisplayTitle(program);
+                scope.deletePrompt = { index: x, program: program, label: label, others: others,
+                    holiday: showCatalog.holidayOf(program.title) || 'Christmas' };
+            }
+            scope.finishDelete = (choice) => {
+                let prompt = scope.deletePrompt;
+                scope.deletePrompt = null;
+                if ( (prompt === null) || (choice === null) ) {
+                    return;
+                }
+                // The row the prompt was opened for, even if the list moved meanwhile.
+                let x = (scope.channel.programs[prompt.index] === prompt.program) ? prompt.index : scope.channel.programs.indexOf(prompt.program);
+                if (x === -1) {
+                    return;
+                }
                 scope.channel.programs.splice(x, 1)
                 updateChannelDuration()
+                if (choice !== 'only') {
+                    queueCatalogOps([ { neverAir: [ showCatalog.neverAirEntry(prompt.program, getShowData, 'deleted', choice,
+                        (choice === 'holiday') ? prompt.holiday : undefined, Date.now()) ] } ]);
+                }
             }
             scope.knownChannels = [
                 { id: -1, description: "# Channel #"},
@@ -2209,11 +2249,13 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
              * "Mon" would also pull in Pokémon and Yu-Gi-Oh! Duel Monsters
              * from every other day of the week.
              */
-            let openSlotEditor = (slotScope) => {
+            let openSlotEditor = async (slotScope) => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let state = await catalogFor();
                 scope.timeSlots.startDialog(
-                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir
+                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir, state
                 );
+                $timeout();
             };
 
             scope.onCalendarSlotClick = (slot) => {
@@ -2474,6 +2516,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 } else {
                     scope.channel.scheduleBackup = slotsResult.schedule;
                     readSlotsResult(slotsResult);
+                    queueCatalogOps(slotsResult.catalogOps);
                 }
             }
 
@@ -2483,8 +2526,55 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 } else {
                     scope.channel.randomScheduleBackup = slotsResult.schedule;
                     readSlotsResult(slotsResult);
+                    queueCatalogOps(slotsResult.catalogOps);
                 }
             }
+
+            /*
+             * The channel's full-catalog state (src/show-catalog.js) is the
+             * catalog API's, not this page's: changes made while editing - what a
+             * Create Lineup read and left out, a never-air from deleting an
+             * airing - wait here with the channel's other unsaved changes, go to
+             * the API after Update Channel, and are dropped on Cancel.
+             */
+            scope.catalogQueue = [];
+            let queueCatalogOps = (ops) => {
+                if (Array.isArray(ops)) {
+                    ops.forEach( (op) => scope.catalogQueue.push(op) );
+                }
+            };
+            let catalogFor = async () => {
+                let stored = showCatalog.emptyState();
+                let number = scope.channel ? scope.channel.number : undefined;
+                let unreadable = null;
+                if (! scope.isNewChannel && (typeof(number) !== 'undefined')) {
+                    try {
+                        stored = await dizquetv.getChannelCatalog(number);
+                    } catch (err) {
+                        // The slot editors then save no catalog changes: they'd be
+                        // built on a state they never saw.
+                        console.error('Could not read the channel\'s catalog state', err);
+                        unreadable = (err && err.data) || (err && err.statusText) || (err && err.message) || 'no answer from the server';
+                    }
+                }
+                let state = showCatalog.applyOps(stored, scope.catalogQueue, Date.now());
+                state.channelNumber = number;
+                state.unreadable = unreadable;
+                return state;
+            };
+            scope.catalogStateFor = catalogFor;
+            let flushCatalogOps = async (number) => {
+                let ops = scope.catalogQueue;
+                scope.catalogQueue = [];
+                if (ops.length === 0) {
+                    return;
+                }
+                try {
+                    await dizquetv.applyChannelCatalogOps(number, ops);
+                } catch (err) {
+                    console.error('Could not save the channel\'s catalog changes', err);
+                }
+            };
 
 
             /*
@@ -2496,21 +2586,27 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 return { programs: scope.channel.programs, startTime: scope.channel.startTime };
             };
 
-            scope.onTimeSlotsButtonClick = () => {
+            scope.onTimeSlotsButtonClick = async () => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
-                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir );
+                let state = await catalogFor();
+                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state );
+                $timeout();
             }
-            scope.onRandomSlotsButtonClick = () => {
+            scope.onRandomSlotsButtonClick = async () => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
-                scope.randomSlots.startDialog(progs, scope.maxSize, scope.channel.randomScheduleBackup, false, lineupOnAir );
+                let state = await catalogFor();
+                scope.randomSlots.startDialog(progs, scope.maxSize, scope.channel.randomScheduleBackup, false, lineupOnAir, state );
+                $timeout();
             }
 
-            scope.rerollRandomSlots = () => {
+            scope.rerollRandomSlots = async () => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let state = await catalogFor();
                 scope.randomSlots.startDialog(
                     progs, scope.maxSize, scope.channel.randomScheduleBackup,
-                    true, lineupOnAir
+                    true, lineupOnAir, state
                 );
+                $timeout();
             }
             scope.hasNoRandomSlots = () => {
                 return (
@@ -2520,12 +2616,14 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 );
             }
 
-            scope.rerollTimeSlots = () => {
+            scope.rerollTimeSlots = async () => {
                 let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let state = await catalogFor();
                 scope.timeSlots.startDialog(
                     progs, scope.maxSize, scope.channel.scheduleBackup,
-                    true, null, lineupOnAir
+                    true, null, lineupOnAir, state
                 );
+                $timeout();
             }
             scope.hasNoTimeSlots = () => {
                 return (

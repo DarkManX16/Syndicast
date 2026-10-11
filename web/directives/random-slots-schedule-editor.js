@@ -1,7 +1,9 @@
 
 const slotProgress = require('../../src/slot-progress');
 
-module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
+const showCatalog = require('../../src/show-catalog');
+
+module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader) {
     const MINUTE = 60*1000;
     const HOUR = 60*MINUTE;
     const DAY = 24*HOUR;
@@ -227,6 +229,25 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
             let doIt = async(fromInstant) => {
                 let t0 = new Date().getTime();
                 /*
+                 * Full catalogs, as Time Slots draws on them (src/show-catalog.js):
+                 * read here at Create Lineup, without Time Slots' notes.
+                 */
+                let state = scope.catalogState || showCatalog.emptyState();
+                let slotted = [ ...new Set( (scope.schedule.slots || []).map( (sl) => sl.showId )
+                    .filter( (id) => (typeof(id) === 'string') && (id !== 'flex.') && (id !== 'movie.') && ! id.startsWith('redirect.') ) ) ];
+                let catalogs = {};
+                if (scope.catalogState && ! scope.catalogState.unreadable) {
+                    try {
+                        catalogs = await catalogReader.read( slotted.map( (id) => {
+                            let items = (scope.programs || []).filter( (p) => ! p.isOffline && getShowData(p).showId === id );
+                            return { showId: id, title: items.length ? items[0].showTitle : id, lineupItems: items, source: state.shows[id] ? state.shows[id].source : undefined };
+                        } ) );
+                    } catch (err) {
+                        console.error('Could not read the catalogs', err);
+                    }
+                }
+                let run = showCatalog.poolFor({ lineupPool: scope.programs || [], slotted, catalogs, state, getShowData });
+                /*
                  * Every position's place, read from the lineup on air at this
                  * moment, so the generator continues each one where it is -
                  * see src/slot-progress.js. Saved with the schedule as randomScheduleBackup.
@@ -240,10 +261,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
                         openedSchedule: scope.openedSchedule,
                         schedule: scope.schedule,
                         pool: scope.programs,
+                        catalog: run.pool,
                         getShowData: getShowData,
                     });
                 }
-                let res = await dizquetv.calculateRandomSlots(scope.programs, scope.schedule  );
+                let res = await dizquetv.calculateRandomSlots(run.pool, scope.schedule  );
                 let t1 = new Date().getTime();
 
                 let w = Math.max(0, 250 - (t1 - t0) );
@@ -256,6 +278,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
                 }
                 res.schedule = scope.schedule;
                 seasonConstraints.clearStartSeasons(res.schedule);
+                res.catalogOps = showCatalog.opsAfterRun({ run, catalogs, lineupPool: scope.programs || [], leftOut: [], named: false,
+                    stateReadable: !! scope.catalogState && ! scope.catalogState.unreadable, getShowData: getShowData });
                 return res;
             }
 
@@ -264,7 +288,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints) {
             
             //`lineup` returns the channel's programs and startTime as the
             //editor has them, read again when Create Lineup runs.
-            let startDialog = (programs, limit, backup, instant, lineup) => {
+            let startDialog = (programs, limit, backup, instant, lineup, catalogState) => {
+                scope.catalogState = catalogState || null;
                 scope.limit = limit;
                 scope.programs = programs;
                 scope.lineup = lineup;

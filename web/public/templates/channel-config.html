@@ -1217,6 +1217,40 @@
     <plex-library limit="libraryLimit" height="300" visible="displayPlexLibrary" position-choice=true on-finish="importPrograms"></plex-library>
     <plex-library height="300" limit=1 visible="showFallbackPlexLibrary" on-finish="importFallback"></plex-library>
     <channel-redirect visible="_displayRedirect" on-done="finishRedirect" form-title="_redirectTitle" program="_selectedRedirect" ></channel-redirect>
+    <!-- Deleting an airing: this airing only, or out of the rotation for good.
+         See NOTES.md, "Full catalogs, and a never-air list". -->
+    <div ng-if="deletePrompt" class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Delete {{deletePrompt.label}}</h5></div>
+                <div class="modal-body">
+                    <button class="btn btn-outline-secondary btn-block text-left" ng-click="finishDelete('only')">
+                        <b>Remove this airing only</b>
+                        <div class="small text-muted">As before: the next Create Lineup may schedule it again.</div>
+                    </button>
+                    <div class="btn btn-outline-primary btn-block text-left" style="cursor: default;">
+                        <b>Holiday: I'll place it myself</b>
+                        <div class="small text-muted">Out of the rotation, listed under its holiday on the Catalog page.</div>
+                        <div class="form-inline" style="margin-top: 4px;">
+                            <select class="form-control form-control-sm" ng-model="deletePrompt.holiday"
+                                ng-options="h for h in holidayNames"></select>
+                            <button class="btn btn-sm btn-primary" style="margin-left: 6px;" ng-click="finishDelete('holiday')">Leave out as {{deletePrompt.holiday}}</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-danger btn-block text-left" ng-click="finishDelete('never')">
+                        <b>Never air this episode on this channel</b>
+                    </button>
+                    <div class="small" style="margin-top: 8px;" ng-show="deletePrompt.others > 0">
+                        It airs {{deletePrompt.others}} more {{deletePrompt.others === 1 ? 'time' : 'times'}} in this lineup;
+                        if you leave it out, the next Create Lineup leaves those out too.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-link" ng-click="finishDelete(null)">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <time-slots-schedule-editor linker="registerTimeSlots" on-done="onTimeSlotsDone"></time-slots-schedule-editor>
     <random-slots-schedule-editor linker="registerRandomSlots" on-done="onRandomSlotsDone"></random-slots-schedule-editor>
 </div>

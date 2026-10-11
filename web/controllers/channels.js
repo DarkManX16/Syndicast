@@ -54,7 +54,9 @@ module.exports = function ($scope, dizquetv) {
             ) {
                 //update + change channel number.
                 $scope.channels[ $scope.selectedChannelIndex ].pending = true;
-                await dizquetv.updateChannel(channel),
+                //catalogFrom: the old number, so the channel's catalog state
+                //(reviews, never-air list) moves with it.
+                await dizquetv.updateChannel( Object.assign( {}, channel, { catalogFrom: $scope.originalChannelNumber } ) ),
                 await dizquetv.removeChannel( { number: $scope.originalChannelNumber } )
                 $scope.showChannelConfig = false
                 $scope.$apply();

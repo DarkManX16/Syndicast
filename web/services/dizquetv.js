@@ -184,6 +184,18 @@ module.exports = function ($http, $q) {
                 headers: { 'Content-Type': undefined }
             }).then((d) => { return d.data })
         },
+        // A channel's full-catalog state, and ops on it (src/show-catalog.js).
+        getChannelCatalog: (number) => {
+            return $http.get(`/api/channel/${number}/catalog`).then((d) => { return d.data })
+        },
+        applyChannelCatalogOps: (number, ops) => {
+            return $http({
+                method: 'POST',
+                url: `/api/channel/${number}/catalog`,
+                data: angular.toJson({ ops: ops }),
+                headers: { 'Content-Type': 'application/json; charset=utf-8' }
+            }).then((d) => { return d.data })
+        },
         updateChannel: (channel) => {
             return $http({
                 method: 'PUT',

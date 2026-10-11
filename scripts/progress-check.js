@@ -18,6 +18,11 @@
  *                                 Shuffle losses need blocks' code
  *       [--add-custom <id>]       add a custom show's items to the programs first, as the library's
  *                                 "add custom show" does (the lineup alone holds only what it aired)
+ *       [--catalog <snapshot.json>] full catalogs, from scripts/catalog-snapshot.js: the pool is built
+ *                                 as the editor builds it (src/show-catalog.js poolFor), with the
+ *                                 channel's own catalog state, and --save keeps that state
+ *       [--review <regex|all>]    with --catalog: review the matching shows first, everything ticked
+ *       [--never-air <keys.json>] with --catalog: an array of file keys put on the never-air list
  *
  * Reads only the files it is given and writes only --save. Never point it at
  * the live data folder's files with --save.
@@ -32,6 +37,8 @@ const slotProgress = require('../src/slot-progress');
 const getShowData = require('../web/services/get-show-data')();
 const commonProgramTools = require('../web/services/common-program-tools')(getShowData);
 const seasonConstraints = require('../web/services/season-constraints')();
+const showCatalog = require('../src/show-catalog');
+const rounds = require('../src/shuffle-rounds');
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -54,6 +61,9 @@ function parseArgs(argv) {
         else if (a === '--all') args.all = true;
         else if (a === '--today') args.today = true;
         else if (a === '--add-custom') args.addCustom = next();
+        else if (a === '--catalog') args.catalog = next();
+        else if (a === '--review') args.review = next();
+        else if (a === '--never-air') args.neverAir = next();
         else throw new Error('Unknown argument ' + a);
     }
     if (isNaN(args.at)) throw new Error('--at <ISO instant> is required');
@@ -145,11 +155,47 @@ async function main() {
     if (args.edit) {
         require(path.resolve(args.edit))(schedule);
     }
+    // Full catalogs, as the editor reads them at the dialog and builds the pool at Create Lineup.
+    let lineupPool = pool;
+    let state = showCatalog.stateOf(channel);
+    let catalogOps = [];
+    if (args.catalog) {
+        let catalogs = JSON.parse(fs.readFileSync(args.catalog, 'utf8'))[String(channel.number)] || {};
+        let ops = [];
+        if (args.review) {
+            let re = (args.review === 'all') ? /./ : new RegExp(args.review);
+            let byShow = new Map();
+            pool.forEach( (p) => { let d = getShowData(p); if (d.hasShow) { if (! byShow.has(d.showId)) byShow.set(d.showId, []); byShow.get(d.showId).push(p); } } );
+            Object.keys(catalogs).filter( (id) => re.test(id) && catalogs[id].items && ! state.shows[id] ).forEach( (id) => {
+                ops.push({ review: { showId: id, source: catalogs[id].source, by: 'review',
+                    specials: id.startsWith('custom.') || showCatalog.specialsAllowed(byShow.get(id) || []),
+                    known: catalogs[id].items.map(rounds.fileKey), neverAir: [] } });
+            } );
+        }
+        if (args.neverAir) {
+            let all = new Map();
+            Object.values(catalogs).forEach( (c) => (c.items || []).forEach( (p) => all.set(rounds.fileKey(p), p) ) );
+            pool.forEach( (p) => { if (! p.isOffline) all.set(rounds.fileKey(p), p); } );
+            let entries = JSON.parse(fs.readFileSync(args.neverAir, 'utf8')).filter( (k) => all.has(k) )
+                .map( (k) => showCatalog.neverAirEntry(all.get(k), getShowData, 'deleted', 'never', undefined, at) );
+            ops.push({ neverAir: entries });
+        }
+        state = showCatalog.applyOps(state, ops, at);
+        let slotted = [ ...new Set( schedule.slots.map( (sl) => sl.showId ).filter( (id) => typeof(id) === 'string' && id !== 'flex.' && ! id.startsWith('redirect.') ) ) ];
+        let run = showCatalog.poolFor({ lineupPool: pool, slotted, catalogs, state, getShowData });
+        pool = run.pool;
+        catalogOps = [ { known: run.known } ].concat( run.complete.map( (id) => ({ review: { showId: id, by: 'complete', source: catalogs[id].source,
+            specials: id.startsWith('custom.') || showCatalog.specialsAllowed(lineupPool.filter( (p) => getShowData(p).showId === id )),
+            known: run.known[id], neverAir: [] } }) ) );
+        console.log(`catalog: ${Object.keys(state.shows).length} shows reviewed, ${run.complete.length} complete, ${Object.keys(state.neverAir).length} never air; `
+            + `pool ${lineupPool.length} -> ${pool.length}; new since the last run: ${Object.values(run.fresh).reduce( (a, l) => a + l.length, 0 )}; `
+            + `fell back: ${run.fellBack.map( (f) => f.showId + ' (' + f.reason + ')' ).join(', ') || 'none'}`);
+    }
     // The editor's doIt: every position's place, read from the lineup on air at this moment.
     if (! args.today) {
         schedule.progress = slotProgress.planProgress({
             programs: channel.programs, startTime: savedStart, now: at,
-            openedSchedule: channel.scheduleBackup, schedule: schedule, pool: pool, getShowData,
+            openedSchedule: channel.scheduleBackup, schedule: schedule, pool: lineupPool, catalog: pool, getShowData,
         });
     }
     // and, as the editor does, what aired in the last period, for Repeat slots:
@@ -159,7 +205,7 @@ async function main() {
         spanMs: (schedule.period || DAY) + 60 * MIN,
         opened: channel.scheduleBackup, schedule, getShowData,
     });
-    let history = h.history;
+    let history = args.catalog ? h.history.filter( (a) => ! showCatalog.isNeverAir(state, a.program) ) : h.history;
     if (schedule.progress) {
         schedule.progress.history = h.keep;
     }
@@ -220,6 +266,9 @@ async function main() {
             startTime: new Date(saved.startTime).toISOString(),
             scheduleBackup: schedule,
         });
+        if (args.catalog) {
+            out.catalog = showCatalog.applyOps(state, catalogOps, at);
+        }
         fs.writeFileSync(args.save, JSON.stringify(out));
         console.log('saved ' + args.save);
     }
