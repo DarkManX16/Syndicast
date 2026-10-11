@@ -4374,6 +4374,52 @@ custom shows, filler, aliases), with a fresh Plex snapshot taken then. Suite
   saved (open rows and touched episodes now carry over). Also fixed: a re-roll
   marked newcomers it never named as seen, and a short Plex read could mark a
   show complete.
+- **Before the merge** (Ron, Oct 10), three of the deferred items, each with a
+  test that failed first, suite 1919/1919: if the slot editors can't read a
+  channel's catalog state, Create Lineup draws on the lineup alone, saves no
+  catalog changes and says why, and an automatic "complete" review can never
+  replace one Ron made; a channel's saves and catalog ops run one at a time,
+  and only a catalog op writes `channel.catalog`, so no save from an older
+  copy - the channel page, the filler or on-demand services, a Plex server
+  change - can undo an op, and no op can undo a save; and a custom-show id must
+  be letters, digits and dashes before it is read. The rest are under "Full
+  catalogs: smaller things left for later" below.
+
+### Full catalogs: smaller things left for later
+
+Found by the final review of full catalogs (Oct 10, 2026) and left for later -
+none loses a decision Ron made. The three that could were fixed before the
+merge: an unreadable catalog state now saves nothing, a channel's saves and
+catalog ops run one at a time, and custom-show ids are checked.
+
+- **The catalog ops API takes what it's sent on trust.** An op naming
+  `__proto__` as a key or show (`{"reason":{"key":"__proto__"}}`) sets a
+  property on every object in the server process, and a malformed op saves a
+  show named "undefined" or answers with a raw TypeError. The API has no
+  authentication anyway, so this is defence in depth: check each op's shape
+  and keep the maps own-property only (`Object.create(null)`).
+- **Every catalog op rewrites the whole channel file** - about 27 MB for
+  channel 1, with a playback-cache flush and a `channel-update` event - so
+  each click on the Catalog page costs a full save, and Update Channel now
+  saves twice. They run in turn with the channel's other saves, so nothing is
+  lost; it is only slow. A catalog-only write path would fix it.
+- **A catalog save that fails after Update Channel is only logged.** The
+  lineup is saved without the deleted airing, but its never-air entry is lost
+  with no message; the page should say so.
+- **A catalog read still running can leak into a reopened Time Slots dialog**
+  - closed and reopened mid-read, the old read's catalogs merge into the new
+  dialog and hide its "Reading..." note early.
+- **The dialog reads the catalog state only when it opens**, so a review done
+  through its own link to the Catalog page counts from the next opening.
+- **The delete prompt's "As before" is wrong for a reviewed show:** removing
+  a reviewed show's airing alone lets the episode come back from its catalog
+  at the next Create Lineup, where before it could not.
+- **The Catalog page shows "SE" with blank numbers** for a left-out entry with
+  no season or episode.
+- **Random Slots records what it read without naming newcomers** (it has no
+  notes); it leaves them out of what it records, so Time Slots names them.
+- **`GET /api/show/:id` builds a file path from its id** - the same unchecked
+  id the catalog read now refuses - older than this work.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 
@@ -5896,6 +5942,18 @@ by default (or removing it as an option) for the program-icon path, and
 routing the channel icon through the same proxy regardless of that setting
 for the second path - but that's a decision for whoever builds public
 sharing, not a drive-by change now.
+
+A third path came with full catalogs (Oct 10, 2026; see "Full catalogs, and
+a never-air list" below). `POST /api/catalogs/read` returns every episode of
+the shows it reads as the library makes them - `icon`, `episodeIcon`,
+`seasonIcon` and `showIcon` with `X-Plex-Token` in the URL - to the Time
+Slots dialog and the Catalog page, and the episodes Create Lineup adds land in
+the lineup the same way. That is what the library's own Plex browsing has
+always handed the browser, and the API has no authentication, so nothing new
+reaches someone who couldn't already ask for a channel; but a build's ruling
+said the reads kept the token on the server, and they don't. Public sharing's
+design has to treat these responses, like every API answer that carries
+programs, as token-bearing.
 
 ### The program-list-row work broke the live dev server, without touching it
 
