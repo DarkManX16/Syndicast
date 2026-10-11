@@ -54,6 +54,7 @@ const suites = [
     './show-catalog',
     './catalog-reader',
     './channel-catalog',
+    './episode-start',
 ];
 
 (async () => {

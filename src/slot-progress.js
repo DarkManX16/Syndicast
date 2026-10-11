@@ -223,6 +223,131 @@ function seekOf(slots, schedule, now) {
 }
 
 /*
+ * A position's candidates as its rounds see them: stories, with movies outside
+ * custom shows left single. An Ordered shuffle's are grouped series by series,
+ * as the generator's Ordered shuffle does.
+ */
+function storiesOf(pool, showId, constraint, mode, getShowData) {
+    let candidates = candidatesFor(pool, showId, constraint, getShowData);
+    if (mode === 'ordered') {
+        return rounds.seriesStories(candidates).all;
+    }
+    return (showId === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
+}
+
+const isRecordValue = (value) => (typeof(value) === 'object') && (value !== null);
+
+/*
+ * The rest of a shuffle-family position's round, in its order, as episode
+ * references, with the later half that goes last after it. For a record that
+ * isn't a carried queue the round's whole order comes too, with where the
+ * record stands in it: `start`, the story, and `part`, the episode in it.
+ */
+function restOfRoundOf(pool, getShowData, key, record) {
+    if (Array.isArray(record.queue)) {
+        return { refs: record.queue, laterHalf: record.laterHalf || [] };
+    }
+    if (typeof(record.round) !== 'number') {
+        return null;
+    }
+    let [ showId, , excluded ] = JSON.parse(key);
+    let order = rounds.roundOrder({ seed: key, round: record.round,
+        stories: storiesOf(pool, showId, { excludeSeasons: excluded }, undefined, getShowData), laterHalf: new Set(record.deferred || []) });
+    let start = 0;
+    let part = 0;
+    if (isRecordValue(record.next)) {
+        let i = order.findIndex( (story) => story.some( (p) => rounds.fileKey(p) === record.next.key ) );
+        if (i !== -1) {
+            start = i;
+            part = order[i].findIndex( (p) => rounds.fileKey(p) === record.next.key );
+        }
+    }
+    let refs = [];
+    order.slice(start).forEach( (story, j) => {
+        story.slice( (j === 0) ? part : 0 ).forEach( (p) => refs.push( ref(p, getShowData) ) );
+    } );
+    return { refs: refs, laterHalf: [ ...rounds.laterHalfOf(order) ], order: order, start: start, part: part };
+}
+
+/*
+ * A position's record once Ron has picked the episode it plays next (Episode
+ * start), or null when the pick can't apply and the position carries on as it
+ * was. `record` is what the position's place would be without the pick.
+ *
+ *   Play Next: the place is the pick, or - when its file has gone or the range
+ *     leaves it out - the next episode the range has, as any place does.
+ *     Whether the position has gone round its range is kept.
+ *   Shuffle and Rerun: the pick's story, with its parts in order, airs next
+ *     and the rest of the round follows in its own order, so nothing airs twice
+ *     in a round. That is a carried queue, which the player already plays. A
+ *     pick that isn't in the rest of the round - it has aired this round - or
+ *     isn't a candidate does not apply. Where the round's later half starts is
+ *     worked out again for the new order, so no story comes back sooner.
+ *   Ordered shuffle and Repeat have none: a round interleaves its series.
+ */
+function startRecord({ key, mode, record, pick, pool, getShowData }) {
+    let [ showId, , excluded ] = JSON.parse(key);
+    let constraint = { excludeSeasons: excluded };
+    if (mode === 'next') {
+        let candidates = candidatesFor(pool, showId, constraint, getShowData);
+        if (candidates.length === 0) {
+            return null;
+        }
+        return {
+            next: ref(candidates[ resolveRef(pick, candidates, getShowData) ], getShowData),
+            wrapped: isRecordValue(record) && (record.wrapped === true),
+        };
+    }
+    if ( (mode !== 'shuffle') && (mode !== 'rerun') ) {
+        return null;
+    }
+    let base = isRecordValue(record) ? record : { round: 0, deferred: [] };
+    let rest = restOfRoundOf(pool, getShowData, key, base);
+    if (rest === null) {
+        return null;
+    }
+    let story = storiesOf(pool, showId, constraint, mode, getShowData)
+        .find( (st) => st.some( (p) => rounds.fileKey(p) === pick.key ) );
+    if (typeof(story) === 'undefined') {
+        return null;
+    }
+    let inStory = new Set( story.map( (p) => rounds.fileKey(p) ) );
+    let started;
+    if (Array.isArray(base.queue)) {
+        let mine = rest.refs.filter( (r) => inStory.has(r.key) );
+        if (mine.length === 0) {
+            return null;
+        }
+        started = { round: base.round, queue: mine.concat( rest.refs.filter( (r) => ! inStory.has(r.key) ) ), laterHalf: rest.laterHalf };
+    } else {
+        let at = rest.order.findIndex( (st) => rounds.storyKey(st) === rounds.storyKey(story) );
+        if (at < rest.start) {
+            return null;
+        }
+        let remaining = rest.order.slice(rest.start);
+        if (at > rest.start) {
+            // A story under way finishes before the pick comes on.
+            let moved = remaining.splice(at - rest.start, 1)[0];
+            remaining.splice( (rest.part > 0) ? 1 : 0, 0, moved );
+        }
+        let queue = [];
+        remaining.forEach( (st, j) => st.slice( (j === 0) ? rest.part : 0 ).forEach( (p) => queue.push( ref(p, getShowData) ) ) );
+        if (! queue.some( (r) => inStory.has(r.key) ) ) {
+            return null;
+        }
+        started = {
+            round: base.round,
+            queue: queue,
+            laterHalf: [ ...rounds.laterHalfOf( rest.order.slice(0, rest.start).concat(remaining) ) ],
+        };
+    }
+    if (Array.isArray(base.aired)) {
+        started.aired = base.aired.slice();
+    }
+    return started;
+}
+
+/*
  * Each position's place: its first airing on air at `now` or after, walking
  * the lineup's cycle once from the airing on air. The airing on air counts as
  * not yet aired, so nothing is skipped.
@@ -385,8 +510,12 @@ function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
  * replace the old shuffler, a Shuffle position's record is just its number.
  * Positions no longer used keep a record, refreshed from the lineup when it
  * still has their airings.
+ *
+ * `starts` ({ positionKey: episode reference }) is Episode start: whatever the
+ * rules above gave a position, the pick replaces it (startRecord). The editor
+ * holds the picks while its dialog is open; nothing saves them.
  */
-function planProgress({ programs, startTime, now, openedSchedule, schedule, pool, catalog, getShowData }) {
+function planProgress({ programs, startTime, now, openedSchedule, schedule, pool, catalog, starts, getShowData }) {
     // Every candidate list comes from the full catalog when the editor has one
     // (see src/show-catalog.js); a round the old shuffler started is rebuilt
     // from the lineup's own list, the one that shuffler shuffled.
@@ -471,16 +600,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
 
     let isRecord = (value) => (typeof(value) === 'object') && (value !== null);
 
-    // A position's candidates as its rounds see them: stories, with movies
-    // outside custom shows left single.
-    let storiesFor = (showId, constraint, mode) => {
-        let candidates = candidatesFor(candidatePool, showId, constraint, getShowData);
-        if (mode === 'ordered') {
-            // Grouped series by series, as the generator's Ordered shuffle does.
-            return rounds.seriesStories(candidates).all;
-        }
-        return (showId === 'movie.') ? candidates.map( (p) => [ p ] ) : multiPart.stories(candidates);
-    };
+    let storiesFor = (showId, constraint, mode) => storiesOf(candidatePool, showId, constraint, mode, getShowData);
 
     // The deferred stories of `round`, from the record of the last run: its
     // own when the round is the same, else the later half of each round since,
@@ -599,33 +719,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         return { next: ref(place.program, getShowData), wrapped: wrappedSince(key, place) };
     };
 
-    // The rest of an old shuffle-family position's round, in its order, as
-    // episode references, with the later half that goes last after it.
-    let restOfRound = (oldKey, record) => {
-        if (Array.isArray(record.queue)) {
-            return { refs: record.queue, laterHalf: record.laterHalf || [] };
-        }
-        if (typeof(record.round) !== 'number') {
-            return null;
-        }
-        let [ showId, , excluded ] = JSON.parse(oldKey);
-        let order = rounds.roundOrder({ seed: oldKey, round: record.round,
-            stories: storiesFor(showId, { excludeSeasons: excluded }), laterHalf: new Set(record.deferred || []) });
-        let start = 0;
-        let part = 0;
-        if (isRecord(record.next)) {
-            let i = order.findIndex( (story) => story.some( (p) => rounds.fileKey(p) === record.next.key ) );
-            if (i !== -1) {
-                start = i;
-                part = order[i].findIndex( (p) => rounds.fileKey(p) === record.next.key );
-            }
-        }
-        let refs = [];
-        order.slice(start).forEach( (story, j) => {
-            story.slice( (j === 0) ? part : 0 ).forEach( (p) => refs.push( ref(p, getShowData) ) );
-        } );
-        return { refs: refs, laterHalf: [ ...rounds.laterHalfOf(order) ] };
-    };
+    let restOfRound = (oldKey, record) => restOfRoundOf(candidatePool, getShowData, oldKey, record);
 
     // Where an old position is now, by the same rules 2 and 3.
     let placeOfOld = (key) => {
@@ -741,6 +835,15 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
                 if (typeof(found) !== 'undefined') {
                     record = { next: ref(found, getShowData), wrapped: (record !== null) && (record.wrapped === true) };
                 }
+            }
+        }
+        // Episode start: Ron's pick of the episode this position plays next,
+        // for this run only - the editor holds it, nothing saves it.
+        let pick = (isRecord(starts) && isRecord(starts[key])) ? starts[key] : null;
+        if ( (pick !== null) && (typeof(pick.key) === 'string') ) {
+            let started = startRecord({ key, mode: group.mode, record, pick, pool: candidatePool, getShowData });
+            if (started !== null) {
+                record = started;
             }
         }
         if (record !== null) {
@@ -899,6 +1002,9 @@ module.exports = {
     slotAt: slotAt,
     slotFinder: slotFinder,
     seekOf: seekOf,
+    storiesOf: storiesOf,
+    restOfRoundOf: restOfRoundOf,
+    startRecord: startRecord,
     readPlaces: readPlaces,
     airings: airings,
     seasonOf: seasonOf,
