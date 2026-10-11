@@ -3,6 +3,7 @@ const slotWeek = require('../../src/slot-week');
 const slotProgress = require('../../src/slot-progress');
 const slotRounds = require('../../src/shuffle-rounds');
 const showCatalog = require('../../src/show-catalog');
+const episodeStart = require('../../src/episode-start');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
@@ -533,10 +534,15 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                         label: ( (p.season !== undefined) ? 'S' + String(p.season).padStart(2, '0') + 'E' + String(p.episode).padStart(2, '0') + ' ' : '' ) + p.title }) ),
                 }) );
                 scope.catalog.fellBack = lastRun.fellBack.map( (f) => ({ name: nameOf(f.showId), reason: f.reason }) );
-                scope.catalog.toReview = showCatalog.reviewList({ lineupPool: scope.programs || [], catalogs: catalogs,
-                    state: catalogStateNow(), getShowData: getShowData }).length;
+                let toReview = showCatalog.reviewList({ lineupPool: scope.programs || [], catalogs: catalogs,
+                    state: catalogStateNow(), getShowData: getShowData });
+                scope.catalog.toReview = toReview.length;
+                scope.catalog.reviewCounts = {};
+                toReview.forEach( (entry) => { scope.catalog.reviewCounts[entry.showId] = entry.count; } );
                 orderOptionsByShow = new Map();
                 refreshRerunNotes();
+                //What a position draws on may have changed with the catalog.
+                scope.startsStale();
             };
             let readMissing = () => {
                 let shows = slottedIds().filter( (id) => ! Object.prototype.hasOwnProperty.call(catalogs, id) ).map( (id) => {
@@ -567,6 +573,196 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 refreshCatalogNotes();
             };
 
+            /*
+             * Episode start (src/episode-start.js; NOTES.md, "Episode start"):
+             * each position's next episode and when it first airs, drawn under
+             * its rows, and a panel to pick a different one. A pick is held here,
+             * for this dialog only, by position - never in the schedule - and
+             * Create Lineup hands it to the planner, which starts the position
+             * there once. The picture (what every position plays next, with the
+             * picks in) is worked out when something it depends on has changed,
+             * the first time the template asks, not on every digest.
+             */
+            let starts = {};
+            let model = null;
+            let modelDirty = true;
+            let slotInfo = new Map();
+            scope.startPanel = null;
+            scope.droppedStarts = [];
+            scope.startsStale = () => { modelDirty = true; };
+
+            let orderName = (mode) => ( { next: 'Play Next', shuffle: 'Shuffle', rerun: 'Rerun', ordered: 'Ordered shuffle' } )[mode] || mode;
+            let timesText = (slots) => slots.slice(0, 3).map( (s) => scope.displayTime(s.time) ).join(', ') + (slots.length > 3 ? '...' : '');
+            let neverAirCount = (showId) => {
+                let state = catalogStateNow();
+                return Object.keys(state.neverAir).filter( (k) => state.neverAir[k].showId === showId ).length;
+            };
+
+            let buildModel = () => {
+                model = null;
+                slotInfo = new Map();
+                if ( (typeof(scope.lineup) !== 'function') || (scope.schedule.slots.length === 0) ) {
+                    return;
+                }
+                try {
+                    let onAir = scope.lineup();
+                    let now = Date.now();
+                    model = episodeStart.plan({
+                        planArgs: {
+                            programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(),
+                            openedSchedule: scope.openedSchedule, schedule: scope.schedule,
+                            pool: scope.programs, catalog: scope.catalogPool(), getShowData: getShowData,
+                        },
+                        starts: starts, now: now,
+                    } );
+                } catch (err) {
+                    console.error("Unable to work out each position's next episode", err);
+                    model = null;
+                    return;
+                }
+                model.dropped.forEach( (key) => {
+                    let gone = starts[key];
+                    delete starts[key];
+                    if (gone) {
+                        scope.droppedStarts.push("Your start for " + gone.name + ", " + gone.range + " (" + gone.label
+                            + ") was dropped: no slot plays that any more.");
+                    }
+                } );
+                let doubling = episodeStart.doubling({ rows: model.rows, schedule: scope.schedule, nameOf: nameOf });
+                let infoByKey = new Map();
+                model.rows.forEach( (row, key) => {
+                    let picked = starts[key];
+                    infoByKey.set(key, {
+                        key: key,
+                        episode: (row.program === null) ? null : episodeStart.episodeLabel(row.program),
+                        when: episodeStart.whenLabel(row),
+                        picked: (typeof(picked) !== 'undefined'),
+                        pickedLabel: picked ? picked.label : null,
+                        ignored: model.ignored.indexOf(key) !== -1,
+                        canPick: (row.mode !== 'ordered') && (row.program !== null),
+                        doubling: doubling.get(key) || null,
+                    } );
+                } );
+                scope.schedule.slots.forEach( (slot) => {
+                    if (episodeStart.playsPosition(slot)) {
+                        let info = infoByKey.get(episodeStart.keyOfSlot(slot, scope.schedule));
+                        if (typeof(info) !== 'undefined') {
+                            slotInfo.set(slot, info);
+                        }
+                    }
+                } );
+            };
+            let ensureModel = () => {
+                if (modelDirty) {
+                    modelDirty = false;
+                    buildModel();
+                }
+                return model;
+            };
+            scope.nextLineOf = (slot) => {
+                ensureModel();
+                return slotInfo.get(slot) || null;
+            };
+
+            let panelVisible = (panel) => {
+                let text = (panel.filter || '').toLowerCase().trim();
+                panel.visible = panel.items.filter( (item) => panel.custom
+                    ? ( (text === '') || (item.label.toLowerCase().indexOf(text) !== -1) )
+                    : (item.season === panel.season) );
+            };
+            let panelPreview = (panel) => {
+                panel.preview = null;
+                panel.skip = null;
+                if ( (panel.choice === null) || panel.choice.disabled ) {
+                    return;
+                }
+                let row = (model === null) ? undefined : model.rows.get(panel.key);
+                if (typeof(row) === 'undefined') {
+                    return;
+                }
+                let when = episodeStart.whenLabel(row);
+                panel.preview = (panel.mode === 'next')
+                    ? "Airs " + when + ", then on in order. One time: after this lineup the range carries on as usual."
+                    : "Airs " + when + ", then the rest of this round in its own order.";
+                let current = panel.items.find( (item) => item.state === 'current' );
+                if ( (panel.mode === 'next') && current ) {
+                    panel.skip = episodeStart.skipNote({ key: panel.key, current: current.program, pick: panel.choice.program,
+                        schedule: scope.schedule, pool: scope.catalogPool(), getShowData: getShowData });
+                }
+            };
+
+            scope.toggleStartPanel = (slot) => {
+                if ( (scope.startPanel !== null) && (scope.startPanel.slot === slot) ) {
+                    scope.startPanel = null;
+                    return;
+                }
+                if (ensureModel() === null) {
+                    return;
+                }
+                let key = episodeStart.keyOfSlot(slot, scope.schedule);
+                let row = model.rows.get(key);
+                if (typeof(row) === 'undefined') {
+                    return;
+                }
+                let [ showId, mode, excluded ] = JSON.parse(key);
+                let pool = scope.catalogPool();
+                let aired = (mode === 'rerun')
+                    ? slotProgress.playNextAired({ schedule: scope.schedule, progress: model.progress, showId: showId, pool: pool, getShowData: getShowData })
+                    : null;
+                let offered = episodeStart.options({ key: key, mode: mode, record: model.base.positions[key], pool: pool, aired: aired, getShowData: getShowData });
+                if (offered === null) {
+                    return;
+                }
+                let items = offered.episodes.map( (e) => ({
+                    program: e.program, ref: e.ref, state: e.state,
+                    season: (typeof(e.program.season) === 'number') ? e.program.season : 0,
+                    disabled: (e.state !== 'ok'),
+                    label: episodeStart.episodeLabel(e.program) + ( (e.state === 'current') ? "  - next now" : "" ) + ( e.why ? "  - " + e.why : "" ),
+                }) );
+                let seasons = [ ...new Set( items.map( (i) => i.season ) ) ].sort( (a, b) => a - b )
+                    .map( (s) => ({ id: s, label: (s === 0) ? "Specials" : "Season " + s }) );
+                let current = items.find( (i) => i.state === 'current' );
+                let slots = model.rows.get(key).slots;
+                let panel = {
+                    slot: slot, key: key, mode: mode, showId: showId, custom: showId.startsWith('custom.'),
+                    title: nameOf(showId) + " · " + orderName(mode) + " · " + episodeStart.rangeLabel(excluded)
+                        + " · " + slots.length + (slots.length === 1 ? " slot" : " slots") + " (" + timesText(slots) + ")",
+                    nowNext: (row.program === null) ? null : episodeStart.episodeLabel(row.program) + " · " + episodeStart.whenLabel(row),
+                    items: items, seasons: seasons,
+                    season: current ? current.season : (seasons.length ? seasons[0].id : 0),
+                    filter: '', visible: [], choice: null, preview: null, skip: null,
+                    neverAir: neverAirCount(showId), more: (scope.catalog.reviewCounts || {})[showId] || 0,
+                };
+                panelVisible(panel);
+                scope.startPanel = panel;
+            };
+            scope.startPanelChanged = (changedSeason) => {
+                let panel = scope.startPanel;
+                if (changedSeason) {
+                    panel.choice = null;
+                }
+                panelVisible(panel);
+                panelPreview(panel);
+            };
+            scope.commitStart = () => {
+                let panel = scope.startPanel;
+                if ( (panel === null) || (panel.choice === null) || panel.choice.disabled ) {
+                    return;
+                }
+                starts[panel.key] = {
+                    ref: panel.choice.ref, label: episodeStart.episodeLabel(panel.choice.program),
+                    name: nameOf(panel.showId), range: episodeStart.rangeLabel(JSON.parse(panel.key)[2]),
+                };
+                scope.startPanel = null;
+                scope.startsStale();
+            };
+            scope.clearStart = (slot) => {
+                delete starts[episodeStart.keyOfSlot(slot, scope.schedule)];
+                scope.startPanel = null;
+                scope.startsStale();
+            };
+            scope.dismissDroppedStarts = () => { scope.droppedStarts = []; };
+
             let doIt = async(fromInstant) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
                 let t0 = new Date().getTime();
@@ -593,6 +789,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                         schedule: scope.schedule,
                         pool: scope.programs,
                         catalog: run.pool,
+                        //Episode start: the picks of the positions still in the schedule.
+                        starts: episodeStart.liveStarts(scope.schedule, starts).pending,
                         getShowData: getShowData,
                     });
                 }
@@ -648,6 +846,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0, named: ! instant,
                     unreadable: (catalogState && catalogState.unreadable) || null };
                 orderOptionsByShow = new Map();
+                //Picks belong to one opening of the dialog.
+                starts = {};
+                scope.startPanel = null;
+                scope.droppedStarts = [];
+                scope.startsStale();
                 scope.lineup = lineup;
                 //The schedule the lineup on air was made from, as it was saved,
                 //for reading places by slot and for each slot's old place.
@@ -1026,19 +1229,6 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 scope.refreshSlots();
             }
 
-            scope.setStartSeason = (slot, season) => {
-                let c = seasonConstraints.edit(slot);
-                if ( (season === null) || (typeof(season) === 'undefined') ) {
-                    delete c.startSeason;
-                } else {
-                    c.startSeason = season;
-                }
-                seasonConstraints.tidy(slot);
-                spreadToGroup(slot);
-                rebuildSeasonDays();
-                scope.refreshSlots();
-            }
-
             //Slots naming the same show with the same seasons advance one
             //position between them, so the panel can say how many it is setting.
             scope.slotsSharingPosition = (slot) => {
@@ -1050,6 +1240,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 refreshRepeats();
                 refreshRerunNotes();
                 applyFilter();
+                scope.startsStale();
                 //"Bubble sort ought to be enough for anybody"
                 for (let i = 0; i < scope.schedule.slots.length; i++) {
                     for (let j = i+1; j < scope.schedule.slots.length; j++) {

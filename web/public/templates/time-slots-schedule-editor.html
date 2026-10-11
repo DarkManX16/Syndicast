@@ -43,6 +43,10 @@
                         {{catalog.toReview}} {{catalog.toReview === 1 ? 'show has' : 'shows have'}} episodes to review before they draw on their full catalogs -
                         <a ng-href="#!/channels/{{catalog.channelNumber}}/catalog" target="_blank">the Catalog page</a>.
                     </div>
+                    <div class="alert alert-warning py-1 px-2 small" ng-show="droppedStarts.length > 0" style="margin-bottom: 6px;">
+                        <div ng-repeat="m in droppedStarts track by $index">{{m}}</div>
+                        <button type="button" class='btn btn-sm btn-link' style="padding: 0;" ng-click="dismissDroppedStarts()">dismiss</button>
+                    </div>
                     <div class="alert alert-info py-1 px-2 small" ng-show="hasScope()" style="margin-bottom: 6px;">
                         {{scopePrefix()}} <b>{{scopeLabel()}}</b>.
                         <button class='btn btn-sm btn-link' style="padding: 0 0 0 6px;"
@@ -143,6 +147,74 @@
                             <i class='fa fa-info-circle'></i> {{ rerunNoteOf(slot) }}
                         </div>
 
+                        <!-- Episode start: see NOTES.md, "Episode start". -->
+                        <div class='col-md-12 small' ng-if="nextLineOf(slot)" style="margin-top: -8px; margin-bottom: 6px;">
+                            <span class='text-muted'>Next:</span>
+                            <span ng-if="nextLineOf(slot).episode">
+                                <b>{{ nextLineOf(slot).episode }}</b> <span class='text-muted'>&middot;</span> {{ nextLineOf(slot).when }}
+                            </span>
+                            <span ng-if="!nextLineOf(slot).episode" class='text-muted'>nothing to play yet</span>
+                            <span ng-if="nextLineOf(slot).picked && !nextLineOf(slot).ignored" class='text-info'>
+                                &middot; your start, one time
+                            </span>
+                            <button type="button" class='btn btn-sm btn-link py-0' style="vertical-align: baseline;"
+                                ng-if="nextLineOf(slot).picked" ng-click="clearStart(slot)">undo</button>
+                            <button type="button" class='btn btn-sm btn-link py-0' style="vertical-align: baseline;"
+                                ng-if="nextLineOf(slot).canPick && !(startPanel && startPanel.slot === slot)"
+                                ng-click="toggleStartPanel(slot)">change</button>
+                            <div class='text-danger' ng-if="nextLineOf(slot).ignored">
+                                <i class='fa fa-exclamation-triangle'></i>
+                                Your start ({{ nextLineOf(slot).pickedLabel }}) can't apply any more - it has already aired this
+                                round, or isn't one of this range's episodes. This position carries on as it was.
+                            </div>
+                            <div class='text-warning' ng-if="nextLineOf(slot).doubling">
+                                <i class='fa fa-exclamation-triangle'></i> {{ nextLineOf(slot).doubling }}
+                            </div>
+                        </div>
+
+                        <div class='col-md-12' ng-if="startPanel && startPanel.slot === slot"
+                             style="background: rgba(0,0,0,.04); padding: 8px; margin-bottom: 8px;">
+                            <div class='small' style="margin-bottom: 4px;"><b>{{ startPanel.title }}</b></div>
+                            <div class='small text-muted' style="margin-bottom: 6px;" ng-if="startPanel.nowNext">
+                                Next now: {{ startPanel.nowNext }}
+                            </div>
+                            <div class='form-inline' style="margin-bottom: 6px;">
+                                <label class='small' style="margin-right: 8px;">
+                                    <span ng-if="startPanel.mode === 'next'">Start at</span>
+                                    <span ng-if="startPanel.mode !== 'next'">Air next</span>
+                                </label>
+                                <select class="custom-select custom-select-sm" style="margin-right: 8px;"
+                                    ng-if="!startPanel.custom"
+                                    ng-model="startPanel.season"
+                                    ng-options="s.id as s.label for s in startPanel.seasons"
+                                    ng-change="startPanelChanged(true)"></select>
+                                <input type="text" class="form-control form-control-sm" style="margin-right: 8px;"
+                                    ng-if="startPanel.custom" placeholder="Filter the list"
+                                    ng-model="startPanel.filter" ng-change="startPanelChanged(false)"></input>
+                                <select class="custom-select custom-select-sm" style="max-width: 100%;"
+                                    ng-model="startPanel.choice"
+                                    ng-options="o as o.label disable when o.disabled for o in startPanel.visible"
+                                    ng-change="startPanelChanged(false)">
+                                    <option value="">- choose an episode -</option>
+                                </select>
+                            </div>
+                            <div class='small text-info' ng-if="startPanel.preview" style="margin-bottom: 4px;">
+                                <i class='fa fa-arrow-right'></i> {{ startPanel.preview }}
+                            </div>
+                            <div class='small text-warning' ng-if="startPanel.skip" style="margin-bottom: 4px;">
+                                <i class='fa fa-exclamation-triangle'></i> {{ startPanel.skip }}
+                            </div>
+                            <div class='small text-muted' style="margin-bottom: 6px;">
+                                {{ startPanel.items.length }} episodes in this range<span ng-if="startPanel.neverAir > 0">,
+                                {{ startPanel.neverAir }} never-air hidden</span><span ng-if="startPanel.more > 0">,
+                                {{ startPanel.more }} more after the show is <a ng-href="#!/channels/{{catalog.channelNumber}}/catalog" target="_blank">reviewed</a></span>.
+                            </div>
+                            <button type="button" class="btn btn-sm btn-primary" style="margin-right: 6px;"
+                                ng-disabled="!startPanel.choice || startPanel.choice.disabled"
+                                ng-click="commitStart()">Start here</button>
+                            <button type="button" class="btn btn-sm btn-link" ng-click="toggleStartPanel(slot)">Cancel</button>
+                        </div>
+
                         <div class='col-md-12' ng-if="openSeasonEditor === slot && canConstrainSeasons(slot)"
                              style="background: rgba(0,0,0,.04); padding: 8px; margin-bottom: 8px;">
                             <div ng-if="isWeekly()" style="margin-bottom: 8px;">
@@ -189,22 +261,9 @@
                                 </label>
                             </div>
 
-                            <div ng-if="slot.order === 'next'">
-                                <div class='small' style="margin-bottom: 4px;">
-                                    <b>Start from season</b>
-                                    <span class='text-muted'>- jumps the position once, then resumes normally.
-                                    Earlier seasons stay in rotation.</span>
-                                </div>
-                                <div>
-                                    <button class='btn btn-sm btn-outline-secondary'
-                                        ng-repeat="s in seasonsAvailable(slot.showId)"
-                                        style="margin-right: 6px;"
-                                        ng-class="{'active': seasonsOf(slot).startSeason === s}"
-                                        ng-click="setStartSeason(slot, s)">S{{s}}</button>
-                                    <button class='btn btn-sm btn-link'
-                                        ng-show="seasonsOf(slot).startSeason !== undefined"
-                                        ng-click="setStartSeason(slot, null)">clear</button>
-                                </div>
+                            <div ng-if="slot.order === 'next'" class='small text-muted'>
+                                To start a range at a particular season or episode, use <b>change</b> on
+                                the Next line under the slot.
                             </div>
                             <div ng-if="slot.order === 'shuffle'" class='small text-muted'>
                                 Shuffle airs every episode of these seasons once a round, and
@@ -254,6 +313,7 @@
                         <select
                             id="lateness" class="custom-select form-control"
                             ng-model="schedule.lateness" ng-options="o.id as o.description for o in latenessOptions"
+                            ng-change="startsStale()"
                             aria-describedby="latenessHelp"
                             >
                         </select>

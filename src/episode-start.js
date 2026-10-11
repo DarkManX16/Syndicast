@@ -284,7 +284,63 @@ function skipNote({ key, current, pick, schedule, pool, getShowData }) {
         + (reruns.length === 1 ? "This show's Rerun" : "This show's Rerun slots") + " may replay episodes this jump skips.";
 }
 
+/*
+ * The picks the editor holds ({ positionKey: { ref, ... } }) that a slot of the
+ * schedule still plays - `pending`, as the planner takes them ({ key: ref }) -
+ * and the keys of those that no slot plays any more, `dropped`: a row that
+ * changed its show, order or seasons left its position, and with the last row
+ * gone there is nothing for a pick to start.
+ */
+function liveStarts(schedule, starts) {
+    let live = new Set( (Array.isArray(schedule.slots) ? schedule.slots : []).filter(playsPositionForStart).map( (s) => keyOfSlot(s, schedule) ) );
+    let pending = {};
+    let dropped = [];
+    Object.keys(starts).forEach( (key) => {
+        if (live.has(key) && isRecord(starts[key]) && isRecord(starts[key].ref) ) {
+            pending[key] = starts[key].ref;
+        } else {
+            dropped.push(key);
+        }
+    } );
+    return { pending: pending, dropped: dropped };
+}
+
+// A start needs a position with a picker: Ordered shuffle has none.
+function playsPositionForStart(slot) {
+    return playsPosition(slot) && (slot.order !== 'ordered');
+}
+
+/*
+ * The editor's whole picture at one moment, in one call:
+ *   base     - every position's place with no picks (what the picker is drawn from)
+ *   progress - the same with the picks in (what Create Lineup would start from)
+ *   rows     - describe() over `progress`
+ *   pending  - the picks that apply, as the planner takes them
+ *   dropped  - keys of picks no slot plays any more
+ *   ignored  - keys of picks that can't apply as they stand (a Shuffle pick that
+ *              has aired this round, or no longer a candidate)
+ * `planArgs` is what slotProgress.planProgress takes, less `now` and `starts`.
+ */
+function plan({ planArgs, starts, now }) {
+    let schedule = planArgs.schedule;
+    let { pending, dropped } = liveStarts(schedule, starts);
+    let base = slotProgress.planProgress(Object.assign( {}, planArgs, { now: now, starts: undefined } ));
+    let progress = (Object.keys(pending).length === 0)
+        ? base
+        : slotProgress.planProgress(Object.assign( {}, planArgs, { now: now, starts: pending } ));
+    let pool = Array.isArray(planArgs.catalog) ? planArgs.catalog : planArgs.pool;
+    let rows = describe({ schedule: schedule, progress: progress, pool: pool, now: now });
+    let ignored = Object.keys(pending).filter( (key) => {
+        let [ , mode ] = JSON.parse(key);
+        return slotProgress.startRecord({ key: key, mode: mode, record: base.positions[key], pick: pending[key],
+            pool: pool, getShowData: planArgs.getShowData }) === null;
+    } );
+    return { base: base, progress: progress, rows: rows, pending: pending, dropped: dropped, ignored: ignored };
+}
+
 module.exports = {
+    liveStarts: liveStarts,
+    plan: plan,
     firstAiring: firstAiring,
     keyOfSlot: keyOfSlot,
     playsPosition: playsPosition,

@@ -40,6 +40,9 @@ const ref = (p) => slotProgress.ref(p, getShowData);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const JB = 'Johnny Bravo';
 
+// The program a Play Next record points at, for the checks below.
+let titleOfRecord = () => 'none';
+
 module.exports = async function () {
     const suite = new Suite('episode-start-model');
 
@@ -84,6 +87,7 @@ module.exports = async function () {
         return p;
     }));
     const D = (title) => pool.find((p) => p.title === title);
+    titleOfRecord = (record) => pool.find((p) => ref(p).key === record.next.key).title;
     const schedule = () => ({
         period: WEEK, lateness: 24 * HOUR, maxDays: 14, flexPreference: 'distribute', pad: 5 * MIN,
         slots: [
@@ -223,6 +227,40 @@ module.exports = async function () {
         const noRerun = sched.slots.filter((s) => s.order !== 'rerun');
         suite.check('...nor does a show with no Rerun slot',
             episodeStart.skipNote({ key: NO2, current: D(`${JB} S1E9`), pick: D(`${JB} S3E4`), schedule: { slots: noRerun }, pool, getShowData }) === null);
+    }
+
+    suite.log('-- the editor\'s picture --');
+    {
+        const sched = schedule();
+        const planArgs = () => ({ programs: lineup, startTime: THU, openedSchedule: schedule(), schedule: sched, pool, getShowData });
+        const pick = (title) => ({ ref: ref(D(title)), label: title });
+        const NO3 = slotProgress.positionKey('tv.' + JB, 'next', { excludeSeasons: [3] });
+
+        const live = episodeStart.liveStarts(sched, { [NO2]: pick(`${JB} S3E4`), [NO3]: pick(`${JB} S1E2`) });
+        suite.check('a start stays while a slot plays its position, and is dropped when none does',
+            same(Object.keys(live.pending), [NO2]) && same(live.dropped, [NO3]));
+        suite.check('...and a start for a Repeat or Flex is dropped too',
+            episodeStart.liveStarts(sched, { [slotProgress.positionKey('tv.Doug', 'repeat', undefined)]: pick('Doug S1E1') }).dropped.length === 1);
+
+        const m = episodeStart.plan({ planArgs: planArgs(), starts: { [NO2]: pick(`${JB} S3E4`) }, now: NOW });
+        suite.check('the picture has each row with the pick in it, and the plan without it',
+            m.rows.get(NO2).program.title === `${JB} S3E4` && m.rows.get(ALL).program.title === `${JB} S1E8`
+                && titleOfRecord(m.base.positions[NO2]) === `${JB} S1E9` && titleOfRecord(m.progress.positions[NO2]) === `${JB} S3E4`);
+        suite.check('...nothing ignored, nothing dropped', m.ignored.length === 0 && m.dropped.length === 0);
+
+        const none = episodeStart.plan({ planArgs: planArgs(), starts: {}, now: NOW });
+        suite.check('with no starts the picture is the plain plan', none.progress === none.base && none.rows.size === 4);
+
+        const gone = episodeStart.plan({ planArgs: planArgs(), starts: { [SHUF]: { ref: { key: 'srv|/e/nobody', order: 1 }, label: 'x' } }, now: NOW });
+        suite.check('a Shuffle start that is no episode of the round is told apart as ignored',
+            same(gone.ignored, [SHUF]) && gone.rows.get(SHUF).program !== null);
+        const aired = episodeStart.plan({ planArgs: planArgs(), starts: { [NO3]: pick(`${JB} S1E2`) }, now: NOW });
+        suite.check('a start whose position is gone is dropped by the picture', same(aired.dropped, [NO3]));
+
+        const withCatalog = episodeStart.plan({ planArgs: Object.assign(planArgs(), { pool: pool.filter((p) => p.season !== 3), catalog: pool }),
+            starts: { [NO2]: pick(`${JB} S3E4`) }, now: NOW });
+        suite.check('rows are read from the catalog when the editor has one',
+            withCatalog.rows.get(NO2).program.title === `${JB} S3E4`);
     }
 
     suite.log('-- the words --');
