@@ -285,6 +285,23 @@ function knownAfter(run, named) {
 }
 
 /*
+ * The catalog ops a Create Lineup hands back for the channel page to save:
+ * shows found complete, episodes left out in the dialog, and what was read.
+ * None at all when the channel's catalog state couldn't be read - the run
+ * drew on the lineup alone, and anything it saved would be built on a state
+ * it never saw.
+ */
+function opsAfterRun({ run, catalogs, lineupPool, leftOut, named, stateReadable, getShowData }) {
+    if (! stateReadable) {
+        return [];
+    }
+    let lineupItemsOf = (id) => (lineupPool || []).filter( (p) => ! p.isOffline && getShowData(p).showId === id );
+    return run.complete.map( (id) => ({ review: { showId: id, by: 'complete', source: catalogs[id].source,
+            specials: id.startsWith('custom.') || specialsAllowed(lineupItemsOf(id)), known: run.known[id], neverAir: [] } }) )
+        .concat( [ { neverAir: (leftOut || []).slice() }, { known: knownAfter(run, named) } ] );
+}
+
+/*
  * The Catalog page rebuilds its rows after every save; a show's open state
  * and the choices Ron made on its episodes but hasn't saved carry over.
  * choices: { showId: { open, episodes: { fileKey: { ticked, touched, reason, holiday } } } }.
@@ -317,6 +334,10 @@ function applyOps(state, ops, now) {
     (ops || []).forEach( (op) => {
         if (op.review) {
             let r = op.review;
+            // An automatic "complete" never replaces a review Ron made.
+            if ( (r.by === 'complete') && s.shows[r.showId] && (s.shows[r.showId].by !== 'complete') ) {
+                return;
+            }
             s.shows[r.showId] = { reviewedAt: at, by: r.by || 'review', specials: r.specials === true, source: r.source || {}, known: (r.known || []).slice() };
             addEntries(r.neverAir);
         } else if (op.neverAir) {
@@ -378,5 +399,5 @@ module.exports = {
     DEFAULT_LIMIT_MS, HOLIDAYS,
     emptyState, stateOf, showKeysOf, fromPlex, fromCustom, specialsAllowed,
     isNeverAir, withoutNeverAir, neverAirEntry, holidayOf, preUntick,
-    toAdd, reviewList, poolFor, applyOps, byHoliday, knownAfter, carryChoices,
+    toAdd, reviewList, poolFor, applyOps, byHoliday, knownAfter, carryChoices, opsAfterRun,
 };

@@ -102,5 +102,16 @@ module.exports = async function () {
         suite.check('a server that can\'t be reached fails its other shows at once',
             calls === 1 && Object.values(out).every((c) => /ECONNREFUSED|unreachable/.test(c.error || '')), `${calls} calls; ${JSON.stringify(out['tv.S5'])}`);
     }
+    {
+        // A custom-show id is a file name in custom-shows: nothing else may reach getShow.
+        let asked = [];
+        const getShow = async (id) => { asked.push(id); return { id, name: 'x', content: [] }; };
+        const shows = ['../channels/1', '..\\plex-servers', 'a/b', 'C:/Windows/win', ''].map((id, i) => ({ showId: 'custom.' + id, title: 't', lineupItems: [], source: { custom: id } }));
+        shows.push({ showId: 'custom.5c8285f1-4235-4fe0-99dd-5a6f50092641', title: 'DD', lineupItems: [] });
+        const out = await readCatalogs({ shows, servers: [SERVER], getNested: stubs().getNested, getShowKey: stubs().getShowKey, getShow });
+        suite.check('custom-show ids that aren\'t plain names never reach getShow',
+            asked.join() === '5c8285f1-4235-4fe0-99dd-5a6f50092641' && shows.slice(0, 5).every((s) => /not a custom show id/.test(out[s.showId].error || '')),
+            JSON.stringify({ asked, errors: shows.slice(0, 5).map((s) => out[s.showId].error) }));
+    }
     return suite;
 };

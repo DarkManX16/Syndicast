@@ -78,6 +78,27 @@ module.exports = async function run() {
         await service.saveChannel(7, channel(7, 'Seven'));
         await service.applyCatalogOps(7, [{ neverAir: [entry(3), entry(4)] }]);
 
+        // Another writer (filler, on-demand, a Plex server change) read the channel before an op
+        // landed, then saves its copy: the op stays.
+        const staleRead = JSON.parse(JSON.stringify(await service.getChannel(7)));
+        await service.applyCatalogOps(7, [{ neverAir: [entry(5)] }]);
+        staleRead.fillerCollections = [{ id: 'y', weight: 1, cooldown: 0 }];
+        await service.saveChannel(7, staleRead);
+        const keptOp = await service.getCatalog(7);
+        suite.check('a save made from a copy read before an op never undoes it',
+            Object.keys(keptOp.neverAir).includes('srv|/library/metadata/5') && (await service.getChannel(7)).fillerCollections[0].id === 'y',
+            Object.keys(keptOp.neverAir).join());
+        // An op and a channel save at the same moment: both land, one after the other.
+        const renamed = JSON.parse(JSON.stringify(await service.getChannel(7)));
+        renamed.name = 'Seven, saved meanwhile';
+        renamed.programs = renamed.programs.concat([flex(4)]);
+        await Promise.all([ service.applyCatalogOps(7, [{ neverAir: [entry(6)] }]), service.saveChannel(7, renamed, { keepCatalog: true }) ]);
+        const together = await service.getChannel(7);
+        suite.check('an op and a channel save at once both land',
+            together.name === 'Seven, saved meanwhile' && together.programs.length === 4 && Object.keys(together.catalog.neverAir).includes('srv|/library/metadata/6'),
+            JSON.stringify({ name: together.name, programs: together.programs.length, neverAir: Object.keys(together.catalog.neverAir) }));
+        await service.applyCatalogOps(7, [{ restore: ['srv|/library/metadata/5', 'srv|/library/metadata/6'] }]);
+
         let threw = null;
         try { await service.applyCatalogOps(7, [{ explode: 1 }]); } catch (err) { threw = err; }
         suite.check('a bad op is refused and nothing is saved', threw !== null && Object.keys((await service.getCatalog(7)).neverAir).length === 2);

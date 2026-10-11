@@ -2546,15 +2546,20 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             let catalogFor = async () => {
                 let stored = showCatalog.emptyState();
                 let number = scope.channel ? scope.channel.number : undefined;
+                let unreadable = null;
                 if (! scope.isNewChannel && (typeof(number) !== 'undefined')) {
                     try {
                         stored = await dizquetv.getChannelCatalog(number);
                     } catch (err) {
+                        // The slot editors then save no catalog changes: they'd be
+                        // built on a state they never saw.
                         console.error('Could not read the channel\'s catalog state', err);
+                        unreadable = (err && err.data) || (err && err.statusText) || (err && err.message) || 'no answer from the server';
                     }
                 }
                 let state = showCatalog.applyOps(stored, scope.catalogQueue, Date.now());
                 state.channelNumber = number;
+                state.unreadable = unreadable;
                 return state;
             };
             scope.catalogStateFor = catalogFor;

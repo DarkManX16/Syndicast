@@ -14,6 +14,11 @@
 
                 <div class="modal-body" ng-show='! loading' >
                     <!-- Full catalogs: see NOTES.md, "Full catalogs, and a never-air list". -->
+                    <div class="alert alert-danger py-1 px-2 small" ng-show="catalog.unreadable" style="margin-bottom: 6px;">
+                        Couldn't read this channel's catalog state ({{catalog.unreadable}}), so this Create Lineup uses the
+                        episodes already in the lineup and saves no reviews, new episodes or never-air changes. Try again
+                        when the server answers.
+                    </div>
                     <div class="small text-muted" ng-show="catalog.reading" style="margin-bottom: 6px;">
                         <span class='loader'></span> Reading {{catalog.readCount}} shows' episode lists...
                     </div>

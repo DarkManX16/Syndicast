@@ -236,7 +236,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 let slotted = [ ...new Set( (scope.schedule.slots || []).map( (sl) => sl.showId )
                     .filter( (id) => (typeof(id) === 'string') && (id !== 'flex.') && (id !== 'movie.') && ! id.startsWith('redirect.') ) ) ];
                 let catalogs = {};
-                if (scope.catalogState) {
+                if (scope.catalogState && ! scope.catalogState.unreadable) {
                     try {
                         catalogs = await catalogReader.read( slotted.map( (id) => {
                             let items = (scope.programs || []).filter( (p) => ! p.isOffline && getShowData(p).showId === id );
@@ -278,9 +278,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 res.schedule = scope.schedule;
                 seasonConstraints.clearStartSeasons(res.schedule);
-                res.catalogOps = run.complete.map( (id) => ({ review: { showId: id, by: 'complete', source: catalogs[id].source,
-                    specials: id.startsWith('custom.') || showCatalog.specialsAllowed( (scope.programs || []).filter( (p) => getShowData(p).showId === id ) ),
-                    known: run.known[id], neverAir: [] } }) ).concat( [ { known: showCatalog.knownAfter(run, false) } ] );
+                res.catalogOps = showCatalog.opsAfterRun({ run, catalogs, lineupPool: scope.programs || [], leftOut: [], named: false,
+                    stateReadable: !! scope.catalogState && ! scope.catalogState.unreadable, getShowData: getShowData });
                 return res;
             }
 

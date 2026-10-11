@@ -24,6 +24,11 @@ function within(promise, ms, what) {
 async function readOne(show, servers, io, timeoutMs, dead) {
     if (show.showId.startsWith('custom.')) {
         let id = (show.source && show.source.custom) || show.showId.slice('custom.'.length);
+        // A custom show's id names its file in custom-shows: letters, digits
+        // and dashes only, so no id can reach a file anywhere else.
+        if ( (typeof(id) !== 'string') || ! /^[A-Za-z0-9-]+$/.test(id) ) {
+            throw new Error('not a custom show id');
+        }
         let custom = await within(Promise.resolve(io.getShow(id)), timeoutMs, 'reading the custom show');
         if (! custom || ! Array.isArray(custom.content)) {
             throw new Error('custom show not found');

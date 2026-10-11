@@ -144,6 +144,22 @@ module.exports = async function () {
             JSON.stringify(w && w.choices));
     }
 
+    {
+        // When the channel's catalog state couldn't be read, a run saves no catalog changes at all.
+        const run = catalog.poolFor({ lineupPool, slotted, catalogs: { 'tv.Doug': { items: lineupDoug, source: {} }, 'tv.Wings': catalogs['tv.Wings'] }, state: catalog.emptyState(), getShowData });
+        const leftOut = [catalog.neverAirEntry(wings[4], getShowData, 'new', 'never', undefined, NOW)];
+        const ok = catalog.opsAfterRun({ run, catalogs, lineupPool, leftOut, named: true, stateReadable: true, getShowData });
+        const refused = catalog.opsAfterRun({ run, catalogs, lineupPool, leftOut, named: true, stateReadable: false, getShowData });
+        suite.check('opsAfterRun saves nothing when the catalog state couldn\'t be read',
+            refused.length === 0 && ok.some((o) => o.review && o.review.by === 'complete') && ok.some((o) => o.neverAir && o.neverAir.length === 1),
+            JSON.stringify({ ok: ok.map((o) => Object.keys(o)[0]), refused }));
+        // And the server's ops never let an automatic "complete" replace a real review.
+        const reviewed = catalog.applyOps(catalog.emptyState(), [{ review: { showId: 'tv.Doug', by: 'review', source: { plex: 'srv' }, specials: true, known: ['a', 'b'], neverAir: [] } }], NOW);
+        const after = catalog.applyOps(reviewed, [{ review: { showId: 'tv.Doug', by: 'complete', source: {}, specials: false, known: ['a'], neverAir: [] } }], NOW);
+        suite.check('...and a "complete" review never replaces a real one',
+            after.shows['tv.Doug'].by === 'review' && after.shows['tv.Doug'].specials === true && after.shows['tv.Doug'].known.length === 2, JSON.stringify(after.shows['tv.Doug']));
+    }
+
     suite.log('-- the list --');
     {
         const ops = [

@@ -578,7 +578,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if (reading !== null) {
                     await reading;
                 }
-                await readMissing();
+                if (! scope.catalog.unreadable) {
+                    await readMissing();
+                }
                 let run = runNow();
                 lastRun = run;
                 if (typeof(scope.lineup) === 'function') {
@@ -624,9 +626,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
 
                 res.schedule = scope.schedule;
                 delete res.schedule.fake;
-                res.catalogOps = run.complete.map( (id) => ({ review: { showId: id, by: 'complete', source: catalogs[id].source,
-                    specials: id.startsWith('custom.') || showCatalog.specialsAllowed(lineupItemsOf(id)), known: run.known[id], neverAir: [] } }) )
-                    .concat( [ { neverAir: scope.catalog.leftOut.slice() }, { known: showCatalog.knownAfter(run, scope.catalog.named) } ] );
+                res.catalogOps = showCatalog.opsAfterRun({ run, catalogs, lineupPool: scope.programs || [], leftOut: scope.catalog.leftOut,
+                    named: scope.catalog.named, stateReadable: ! scope.catalog.unreadable, getShowData: getShowData });
                 seasonConstraints.clearStartSeasons(res.schedule);
                 return res;
             }
@@ -644,7 +645,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 lastRun = null;
                 //A re-roll shows no notes, so its newcomers stay new for next time.
                 scope.catalog = { state: catalogState || showCatalog.emptyState(), channelNumber: (catalogState && catalogState.channelNumber) || null,
-                    leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0, named: ! instant };
+                    leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0, named: ! instant,
+                    unreadable: (catalogState && catalogState.unreadable) || null };
                 orderOptionsByShow = new Map();
                 scope.lineup = lineup;
                 //The schedule the lineup on air was made from, as it was saved,
@@ -695,7 +697,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 refreshRepeats();
                 refreshRerunNotes();
                 applyFilter();
-                if (typeof(catalogState) === 'object' && catalogState !== null) {
+                if ( (typeof(catalogState) === 'object') && (catalogState !== null) && ! catalogState.unreadable ) {
                     readMissing();
                 }
 
