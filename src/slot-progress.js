@@ -857,14 +857,12 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
 }
 
 /*
- * What the editor says under a Rerun slot that will play as a Shuffle for
- * now, or null when it reruns as asked. `progress` is the planner's answer
- * for the lineup on air: its records say where each of the show's Play Next
- * positions is. The generator decides the same way, as it goes - see
- * createPositions in show-orderers.js.
+ * What a show's Play Next has aired as `progress` has it: every episode before
+ * each Play Next position's place, or its whole range once it has gone round.
+ * `any` says whether the show has a Play Next at all - in the schedule, or in
+ * the records of positions no longer in it.
  */
-function rerunNote({ schedule, progress, slot, pool, getShowData }) {
-    let showId = slot.showId;
+function playNextAired({ schedule, progress, showId, pool, getShowData }) {
     let records = ( (typeof(progress) === 'object') && (progress !== null) && (typeof(progress.positions) === 'object') )
         ? progress.positions
         : {};
@@ -882,6 +880,19 @@ function rerunNote({ schedule, progress, slot, pool, getShowData }) {
         let place = resolveRef(record.next, candidates, getShowData);
         (record.wrapped === true ? candidates : candidates.slice(0, place)).forEach( (p) => aired.add(rounds.fileKey(p)) );
     } );
+    return { any: any, aired: aired };
+}
+
+/*
+ * What the editor says under a Rerun slot that will play as a Shuffle for
+ * now, or null when it reruns as asked. `progress` is the planner's answer
+ * for the lineup on air: its records say where each of the show's Play Next
+ * positions is. The generator decides the same way, as it goes - see
+ * createPositions in show-orderers.js.
+ */
+function rerunNote({ schedule, progress, slot, pool, getShowData }) {
+    let showId = slot.showId;
+    let { any, aired } = playNextAired({ schedule, progress, showId, pool, getShowData });
     if (! any) {
         return "Plays as a Shuffle: this show has no Play Next slot, so there is nothing for a Rerun to stay behind.";
     }
@@ -1012,6 +1023,7 @@ module.exports = {
     candidatesFor: candidatesFor,
     planProgress: planProgress,
     rerunNote: rerunNote,
+    playNextAired: playNextAired,
     recentAirings: recentAirings,
     repeatSources: repeatSources,
     repeatProblem: repeatProblem,
