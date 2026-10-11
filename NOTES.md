@@ -2491,7 +2491,11 @@ on shows.
 
       Includes inserting individual items from a custom show into the
       programming lineup. Designed in the same Opus 5.5 session as swap
-      episodes and the Flex auto-adjust line below.
+      episodes and the Flex auto-adjust line below. *Designed Oct 11, 2026:
+      a swap or insert is pinned to its date and time, and Create Lineup keeps
+      it until it airs; whatever it pushes out airs at its show's next slot.
+      See "Swaps, inserts and Flex that keeps time" under Known issues, and
+      [docs/swaps-plan.md](docs/swaps-plan.md).*
 - [x] Program rows show the episode title, with a slot-fit gauge
 
       A slot-fit gauge built around how Ron schedules, in place of a plain
@@ -2838,8 +2842,17 @@ on shows.
       after it grow or shrink so the next show still starts on time.
       Deleting an item turns its time into Flex so everything after stays on
       time. Adding an item takes its time from the Flex after where it's
-      inserted, and if there isn't enough, the following shows move later to
-      the next clean start time (:00 or :30).
+      inserted. When there isn't room, Ron chooses: take over the slot it
+      runs into (that show's episode airs at its next slot), run late (the
+      shows after it start the moment it ends, and their breaks shorten until
+      the schedule is back on time), or pick something else - and, for an
+      insert, a break where it fits.
+
+      *Changed Oct 11, 2026 (Ron).* This line first had the following shows
+      move later to the next clean start time (:00 or :30). On Ron's channels
+      every half hour is a slot and no break in four weeks reaches 30 minutes,
+      so shows moved later would never get back on time. See "Swaps, inserts
+      and Flex that keeps time" under Known issues.
 - [x] Info panel and thumbnail per item - an "i" button, wherever
 
       a program is picked or reviewed. Shipped in c75cdf7: one shared
@@ -3163,6 +3176,10 @@ be built:
       (including individual items from a custom show), and Flex adjusts
       itself when lineup items are added, swapped or deleted - designed
       together in the same Opus 5.5 design session, built by Sonnet 5.
+      **Designed Oct 11, 2026**: see "Swaps, inserts and Flex that keeps time"
+      under Known issues, and [docs/swaps-plan.md](docs/swaps-plan.md), whose
+      first four steps let a Halloween episode be placed on channel 3 well
+      before Oct 31.
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
@@ -4616,6 +4633,219 @@ that day's 3am backup. Suite 1919 at the start, 2009/2009 at the end.
 - There is no way to keep a pick across closing the dialog, by design: it is a
   one-time jump, and a pick not used would be a stale surprise on the next
   Create Lineup.
+
+### Swaps, inserts and Flex that keeps time
+
+Designed Oct 11, 2026 (Opus 5.5) from Ron's brief and agreed the same day, with
+his decisions below; built on the `swaps` branch, from `blocks` at edeb025.
+Build plan in [docs/swaps-plan.md](docs/swaps-plan.md). Covers two roadmap
+lines under Library management, "Swap out episodes of a show, and plug library
+items in anywhere" and "Flex adjusts itself when lineup items are added, swapped
+or deleted", and their 1.0 line. Measured on a copy of `.dizquetv-dev` taken
+Sun Oct 11 at 2:44am Central (identical at 3:07am), with a read-only Plex
+catalog snapshot taken then (`scripts/catalog-snapshot.js`).
+
+#### What happens to hand edits today, measured
+
+- **A lineup has no clock times.** `channel.programs` is programs and Flex in
+  order; each airing starts at `startTime` plus everything before it, round a
+  loop of about a year (channel 1 322.7 days, 2 371.0, 3 364.9). Any change of
+  length moves every later airing, to the lineup's end:
+  - the trash button (`removeItem`, `finishDelete`) splices the airing out, so
+    everything after starts earlier by its length - 22:38 for Hey Arnold's
+    Best Man / Cool Party;
+  - the library's "Insert at current scroll position" (`importPrograms`) puts
+    items before the top visible row, so everything after starts later by
+    their length;
+  - drag to reorder moves everything between the two places.
+
+  Keeping times means editing the Flex after the change by hand, in whole
+  seconds. Clicking a row edits its details; there is no swap.
+- **Create Lineup drops every hand edit.** The generator builds from the slots
+  and the pool alone, which is how channel 1's NEXT promos went
+  (docs/blocks-spec.md). Nothing ahead in Ron's three lineups was placed by
+  hand: regenerated on today's code (edeb025, as on 18000), channels 1 and 2
+  match their saved lineups airing for airing for 310 days, and channel 3
+  until Apr 3, 2027, where the weekend Shuffles of The Proud Family, Lizzie
+  McGuire, Even Stevens and Kim Possible finish their carried rounds and start
+  their own (98 airings). A regeneration takes under a second in Node.
+- **A hand-placed episode throws stored progress off in a lineup without
+  labels.** None of Ron's three lineups has labels yet - all were made before
+  stored progress and not regenerated since - so places are read by slot
+  (`placeOf`): an airing counts for the slot it starts in when it is that
+  slot's show. On a copy of channel 2, "Arnold's Christmas" (Hey Arnold! S0E7,
+  24:06) put into Thu Dec 24's 7:30pm airing, the Flex after it trimmed so
+  nothing else moved, and Create Lineup's path run at 6pm that day
+  (`progress-check`):
+  - the weekday strip's next episodes go from S03E25, S03E27... to S01E01,
+    S01E03...: the special is read as the strip's place, and as order 7 it
+    sorts before S1E1;
+  - the Friday Shuffle's carried round goes from S03E32, S02E35, S04E29 to
+    S03E31, S05E20, S04E07: the special joined the pool
+    (`removeDuplicates(channel.programs)`), which changed the old shuffler's
+    count;
+  - the special joins Hey Arnold's rotation.
+
+  The untouched copy at the same moment continues both exactly. In a labelled
+  lineup a hand-placed airing has no label and is ignored as a place, but it
+  still joins the pool.
+- **Breaks are short.** Over four weeks from Oct 12 the median break is 6.5,
+  6.1 and 7.2 minutes on channels 1-3, the longest 18.0, 11.8 and 19.5; none
+  reaches 30. With slots back to back round the clock (335, 335 and 329 a
+  week), shows moved later "to the next clean start time (:00 or :30)", as the
+  Flex line first had it, would never get back on time.
+
+#### What Ron decided, Oct 11
+
+1. An episode a swap or insert pushes out isn't skipped: it airs at its show's
+   next slot, and every later airing of the show moves one along.
+2. When an item is too long for its place: take over the slot it runs into, run
+   late and catch up, or pick something else - and, for an insert, a break
+   where it fits. This replaces "the next :00 or :30".
+3. Each swap re-lays the lineup. Before a channel's first swap the editor says
+   plainly that it also drops anything placed in the list by hand, such as
+   bumpers.
+4. "Remove this airing only" leaves Flex that is kept. When the gap is longer
+   than about 2 minutes, the prompt says how long and offers Swap instead.
+
+And the order: Halloween first - the build lets a Halloween episode be placed on
+channel 3 well before Oct 31.
+
+#### The design
+
+**A swap or an insert is a pin**: one item fixed to a date and time. The mark
+(`pin`, shape below) is on the airing in `channel.programs`, so there is no
+separate list to keep in step with the lineup: delete the row and the pin goes
+with it. A swap is a pin at an airing's start; an insert, a pin in the break
+after an airing, at the moment it ends; "Remove this airing only" (decision 4),
+a pin of Flex the airing's length.
+
+**Create Lineup keeps pins.** The Time Slots editor reads the pins still to air
+from the lineup on air - airings with a `pin` that ends after now - and sends
+them with the schedule; the generator places them. One that has aired goes
+with the old lineup. A pin on air as Create Lineup runs starts again from its
+beginning, as any airing on air does.
+
+**The generator places pins** (`time-slots-service.js`), by four rules:
+
+1. A pin airs at its time - or, when a program is still on then, the moment
+   that program ends. It never cuts into one.
+2. From the pin's time to the end of its slot, the slot is the pin's. The
+   slot's own show airs after it only what fits whole before the next slot;
+   Flex fills the rest.
+3. A slot that begins while the pin is on and ends before the pin does is taken
+   over. The slot the pin ends in is the pin's choice (`then`): **take it over**
+   too, Flex to the next slot; or **run late**: its show starts the moment the
+   pin ends, programs one after another with the breaks after them shortened,
+   until one starts on time. Running late doesn't round starts to the channel's
+   5-minute pad, as the generator's own lateness does: that turned an 11-second
+   overrun into 5 minutes in the probe below.
+4. A position moves only when one of its episodes airs - the generator already
+   advances a position only when it places one - so whatever a pin pushes out
+   airs at its show's next slot, and every later airing moves one along.
+
+A pinned airing never counts as a position's place (`placeOf`) and never joins
+the pool, labelled lineup or not. A pinned Flex keeps its own entry rather than
+merging with the Flex around it, so the next run finds it. A Repeat that
+re-airs a pinned airing doesn't copy the pin.
+
+**Every swap, insert and undo re-lays the lineup** through the generator, as
+Regenerate does - the saved schedule, stored progress, full catalogs - so
+everything after keeps its time and nothing else changes. Like Create Lineup it
+changes the editor's copy until Update Channel, and Cancel drops it; and like
+Create Lineup it drops anything in the list that no slot made. While a lineup
+has no pins yet, and whenever a re-lay would drop something, the editor says so
+before going ahead, naming each item ("Thu Oct 15, 9:14pm NEXT - SGC2C, 0:10")
+or saying that nothing placed by hand would be lost.
+
+**Measured with a probe of these rules** - a throwaway copy of the generator
+in the session's scratchpad, never in the repo - on the copy, regenerated at
+Sun Oct 11 3am:
+
+| Pin | Result |
+|---|---|
+| Channel 2, Thu Dec 24 7:30pm: "Arnold's Christmas" (24:06) for Best Man / Cool Party (22:38, then 7:22 of Flex) | Fits: 5:54 of Flex, Are You Afraid of the Dark? at 8:00. Best Man airs Mon Dec 28 6:30pm, Arnold & Lila / Grand Prix Tue Dec 29, and on; the Friday Shuffle is untouched. Over 300 days only Hey Arnold! changes (132 airings). |
+| Channel 1, Thu Dec 24 5:30pm: "A Johnny Bravo Christmas" (22:38) in a slot of two halves, The Time Of My Life (10:51) and Run Johnny Run (10:56) | Fits the slot, 7:22 of Flex; the halves air Fri Dec 25 at 6:30 and 6:45. |
+| Channel 1, Thu Dec 24 8:00pm: "'Twas the Fight Before Christmas" (44:09) in Powerpuff's two halves, Curses and Bang For Your Buck | Runs 14:09 into Codename: Kids Next Door at 8:30. Take over: Flex 8:44-9:00, Pokémon at 9:00, Kids Next Door's "Operation: L.I.C.O.R.I.C.E." Fri Dec 25 8:00pm. Run late: Kids Next Door 8:44, Pokémon 9:07, no break between, Yu-Gi-Oh! on time at 9:30. Either way the halves air Fri Dec 25 at 7:00 and 7:15. |
+| Channel 3, Sat Oct 31 4:00pm: "A Hero for Halloween" (22:30) for the weekend Shuffle's There's Something about Rene | Fits, 7:30 of Flex. Rene airs Sun Nov 1 4:30pm and the round moves one along (Love Thy Neighbor to Sat Nov 7). Over 300 days only The Proud Family changes (80 airings). |
+| Channel 3, Thu Dec 24: the Silly Symphony "The Night Before Christmas (1933)" (7:54, a custom-show item) inserted after Sister, Sister (6:00pm, 7:43 break) | 11 seconds too long. Run late: That's So Raven at 6:30:10, its break 7:17 instead of 7:28, Boy Meets World on time at 7:00. After Boy Meets World (8:52 break) it fits, 0:58 of Flex left, The Jersey at 7:30. |
+
+Regenerated again from each result with its pins read back from the lineup -
+before a pin, while it is ahead, after it aired - the lineup is the same airing
+for airing to the end of the first.
+
+**In the channel editor's Programming tab**, on a channel with a Time Slots
+schedule:
+
+- **Go to** a date and time - the list is 35,000-40,000 rows.
+- **Swap…** and **Insert after…** on every airing. The picker offers the slot's
+  show's whole catalog from Plex, specials included, with likely holiday
+  episodes marked (show-catalog's holiday words) - none of Ron's shows is
+  reviewed yet, so this is where "Arnold's Christmas" is today; the Catalog
+  page's holiday episodes; any custom show's items; any show on the channel;
+  one item from the Plex library.
+- Once an item is picked, the dialog says whether it fits, in plain words:
+  "Arnold's Christmas runs 24:06. The space is 30:00 - Best Man / Cool Party and
+  the 7:22 of Flex after it. It fits: 5:54 of Flex after it, and Are You Afraid
+  of the Dark? starts at 8:00. Best Man / Cool Party airs Mon Dec 28, 6:30pm,
+  and Hey Arnold!'s later airings move one along." When it is too long, the
+  dialog shows each choice's exact effect, worked out by re-laying both ways.
+- Pinned rows are marked with what they replaced, and a short list shows the
+  pins still to air. Deleting a pinned row undoes it: the slot's own
+  programming comes back.
+- **Deleting an airing** asks as now, and says what each choice does on a Time
+  Slots channel. "Remove this airing only" leaves Flex that is kept, and the
+  episode airs at its show's next slot; when that is more than about 2 minutes
+  of Flex, the prompt says how long ("leaves 30:00 of Flex, 7:30-8:00pm") and
+  offers Swap instead. "Holiday" and "Never air" leave no gap: the slot airs
+  the show's next episode.
+- The Time Slots dialog lists the pins it keeps and names any now sitting in a
+  different show's slot; each row's "Next: ... when" (Episode start) skips a
+  slot a pin has taken.
+
+#### Shapes
+
+```js
+// on an airing in channel.programs: an episode, custom-show item or movie -
+// or Flex, for "Remove this airing only"
+program.pin = {
+  at: 1798162200000,                                  // the instant it is pinned to
+  kind: 'swap',                                       // 'swap' | 'insert' | 'remove'
+  then: 'take',                                       // 'take' | 'late': the slot it runs into, if it does
+  was: 'Hey Arnold! S03E23 Best Man / Cool Party',    // what it replaced; absent for an insert
+  slotShow: 'tv.Hey Arnold!',                         // the slot's show when pinned, to name a schedule change
+  made: '2026-10-11T08:00:00.000Z',
+};
+
+// Create Lineup and every re-lay
+POST /api/channel-tools/time-slots  { programs, schedule, history, pins: [ { at, then, program } ] }
+```
+
+`src/pins.js` holds what the editor needs, pure and tested in Node, bundled as
+`src/episode-start.js` is: the pins still to air in a lineup, what an item fits
+into at a moment, what a re-lay did (what moved along, what ran late and when it
+was back on time, what was dropped), and the breaks a length fits into.
+
+#### What this doesn't change
+
+- A lineup with no pins generates exactly as now.
+- Playback, the guide, filler, transitions and cards: a pinned airing is an
+  ordinary program and a pinned Flex is Flex. An insert goes right after the
+  show it follows, so the break after it still leads into the next show and
+  its Up Next.
+- Random Slots, and channels without a Time Slots schedule: the tools aren't
+  offered, and delete and the library insert work as now. Random Slots' Create
+  Lineup doesn't keep pins; none of Ron's channels uses it.
+- The library's insert, drag to reorder and the programming tools work as now;
+  what they change is still dropped at the next Create Lineup - and now at the
+  next swap, which says so first.
+- The lineup loops as now: never regenerated, a pinned airing comes round again
+  at the same point of the cycle, like every airing. Any Create Lineup after
+  it airs drops it.
+
+#### Build record
+
+To come; see docs/swaps-plan.md for the steps and their proofs.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 
