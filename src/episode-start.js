@@ -15,6 +15,7 @@
 const slotProgress = require('./slot-progress');
 const rounds = require('./shuffle-rounds');
 const constants = require('./constants');
+const pinTools = require('./pins');
 const orderers = require('./services/show-orderers');
 const orderersShowData = require('./services/get-show-data')();
 
@@ -32,8 +33,14 @@ const MONTH_NAMES = [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
  * late (the generator puts the first program in at once), else the next start
  * of any of its slots. A slot follows the wall clock, so across a change of
  * the clocks the instant moves with it. Null for a position with no slots.
+ *
+ * `pins` (src/pins.js pinsAhead's shape): an occurrence a pin takes - it
+ * starts as the pin does, or inside it - does not air the position's show, so
+ * the next one counts; except that a run-late pin ending inside the occurrence
+ * lets the show start the moment the pin ends. (A slot of two half-length
+ * episodes may still air one after the pin in the same slot: not worked out.)
  */
-function firstAiring({ slots, schedule, now }) {
+function firstAiring({ slots, schedule, now, pins }) {
     let timed = slots.filter( (s) => typeof(s.time) === 'number' );
     if (timed.length === 0) {
         return null;
@@ -50,14 +57,49 @@ function firstAiring({ slots, schedule, now }) {
             return { at: now, now: true };
         }
     }
-    let wait = Infinity;
-    timed.forEach( (s) => {
-        wait = Math.min(wait, ( (s.time - into) % period + period ) % period);
-    } );
-    let at = now + wait;
-    let offsetThen = (new Date(at)).getTimezoneOffset();
-    if (offsetThen !== offsetNow) {
-        at += (offsetThen - offsetNow) * MINUTE;
+    // The next start of any of the slots at or after `from`.
+    let nextStart = (from) => {
+        let offsetFrom = (new Date(from)).getTimezoneOffset();
+        let intoFrom = ( ( (from - offsetFrom * MINUTE) % period ) + period ) % period;
+        let wait = Infinity;
+        timed.forEach( (s) => {
+            wait = Math.min(wait, ( (s.time - intoFrom) % period + period ) % period);
+        } );
+        let at = from + wait;
+        let offsetThen = (new Date(at)).getTimezoneOffset();
+        if (offsetThen !== offsetFrom) {
+            at += (offsetThen - offsetFrom) * MINUTE;
+        }
+        return at;
+    };
+    let ahead = (Array.isArray(pins) ? pins : []).filter( (x) => x && (typeof(x.at) === 'number') && x.program && (x.program.duration > 0) );
+    let from = now;
+    let at = nextStart(from);
+    for (let n = 0; (n < 400) && (ahead.length > 0); n++) {
+        // Is this occurrence taken by a pin?
+        let verdict = null;
+        for (let i = 0; i < ahead.length; i++) {
+            let pin = ahead[i];
+            let end = pin.at + pin.program.duration;
+            if ( (at >= pin.at - constants.SLACK) && (at < end - constants.SLACK) ) {
+                let around = pinTools.slotAround({ schedule: schedule, at: at });
+                let ownSlot = Math.abs(at - pin.at) <= constants.SLACK;
+                if ( ! ownSlot && (pin.then === 'late') && (around !== null) && (end < around.end - constants.SLACK) ) {
+                    verdict = { at: end };
+                } else {
+                    verdict = { skip: true };
+                }
+                break;
+            }
+        }
+        if (verdict === null) {
+            break;
+        }
+        if (typeof(verdict.at) === 'number') {
+            return { at: verdict.at, now: false };
+        }
+        from = at + 1000;
+        at = nextStart(from);
     }
     return { at: at, now: false };
 }
@@ -79,7 +121,7 @@ function playsPosition(slot) {
  * key, so every row of a position gets the same answer.
  *   key -> { key, mode, showId, slots, program (or null), at, now }
  */
-function describe({ schedule, progress, pool, now }) {
+function describe({ schedule, progress, pool, now, pins }) {
     let shows = [];
     let byId = new Map();
     pool.forEach( (p) => {
@@ -111,7 +153,7 @@ function describe({ schedule, progress, pool, now }) {
         out.get(key).slots.push(slot);
     } );
     out.forEach( (entry) => {
-        let first = firstAiring({ slots: entry.slots, schedule: schedule, now: now });
+        let first = firstAiring({ slots: entry.slots, schedule: schedule, now: now, pins: pins });
         if (first !== null) {
             entry.at = first.at;
             entry.now = first.now;
@@ -321,7 +363,7 @@ function playsPositionForStart(slot) {
  *              has aired this round, or no longer a candidate)
  * `planArgs` is what slotProgress.planProgress takes, less `now` and `starts`.
  */
-function plan({ planArgs, starts, now }) {
+function plan({ planArgs, starts, now, pins }) {
     let schedule = planArgs.schedule;
     let { pending, dropped } = liveStarts(schedule, starts);
     let base = slotProgress.planProgress(Object.assign( {}, planArgs, { now: now, starts: undefined } ));
@@ -329,7 +371,7 @@ function plan({ planArgs, starts, now }) {
         ? base
         : slotProgress.planProgress(Object.assign( {}, planArgs, { now: now, starts: pending } ));
     let pool = Array.isArray(planArgs.catalog) ? planArgs.catalog : planArgs.pool;
-    let rows = describe({ schedule: schedule, progress: progress, pool: pool, now: now });
+    let rows = describe({ schedule: schedule, progress: progress, pool: pool, now: now, pins: pins });
     let ignored = Object.keys(pending).filter( (key) => {
         let [ , mode ] = JSON.parse(key);
         return slotProgress.startRecord({ key: key, mode: mode, record: base.positions[key], pick: pending[key],

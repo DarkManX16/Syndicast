@@ -609,7 +609,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 try {
                     let onAir = scope.lineup();
                     let now = Date.now();
+                    // The swaps and inserts Create Lineup will keep: a slot one takes doesn't
+                    // air its show, so a row's "when" counts the next slot instead.
+                    let pinsNow = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now });
                     model = episodeStart.plan({
+                        pins: pinsNow,
                         planArgs: {
                             programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(),
                             openedSchedule: scope.openedSchedule, schedule: scope.schedule,
@@ -864,6 +868,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //editor has them, read again when Create Lineup runs.
             //Everything the dialog needs, without showing it - shared by
             //startDialog and relay.
+            // The swaps and inserts to keep, and a note for each whose slot the schedule, as it is
+            // edited here, now gives to another show.
+            let keptPins = [];
+            scope.pinNoteList = () => (keptPins.length === 0) ? [] : pinTools.pinNotes({ pins: keptPins, schedule: scope.schedule, nameOf: (id) => nameOf(id) }).map( (n) => n.text );
             let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState) => {
                 scope.limit = limit;
                 scope.programs = programs;
@@ -933,11 +941,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     readMissing();
                 }
                 //The swaps and inserts Create Lineup will keep, for the note.
+                keptPins = [];
                 scope.keptPins = '';
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
-                    scope.keptPins = pinTools.sayKept(pinTools.pinsAhead({ programs: onAir.programs,
-                        startTime: new Date(onAir.startTime).getTime(), now: Date.now() }));
+                    let kept = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() });
+                    scope.keptPins = pinTools.sayKept(kept);
+                    keptPins = kept;
                 }
             }
 

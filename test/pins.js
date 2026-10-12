@@ -264,6 +264,27 @@ module.exports = async function () {
             ok);
     }
 
+    suite.log('-- a pin in a changed slot --');
+    {
+        const schedule = fixtureSchedule();
+        const christmas = episode('Hey Arnold!', 0, 7, { title: "Arnold's Christmas", duration: 24 * MIN + 6 * SEC });
+        const made = (at, slotShow) => ({ at, then: 'take', program: pins.makePin({ program: christmas, at, kind: 'swap', then: 'take', slotShow, now: NOW }) });
+        // Thu 7:30pm is Hey Arnold!'s slot in the fixture schedule.
+        suite.check('pinNotes says nothing when the slot is still the show\'s it was made in',
+            pins.pinNotes({ pins: [ made(thu(19, 30), 'tv.Hey Arnold!') ], schedule }).length === 0);
+        const other = { period: DAY, lateness: 24 * HOUR, slots: schedule.slots.map((s) => (s.time === 19 * HOUR + 30 * MIN) ? Object.assign({}, s, { showId: 'tv.Rocket Power' }) : s) };
+        const notes = pins.pinNotes({ pins: [ made(thu(19, 30), 'tv.Hey Arnold!') ], schedule: other });
+        suite.check('...and names a pin whose slot now holds another show',
+            notes.length === 1 && notes[0].text === "Arnold's Christmas, Thu Oct 8, 7:30pm: that slot is Rocket Power's now, not Hey Arnold!'s.",
+            notes.map((n) => n.text).join(' | '));
+        const flexed = { period: DAY, lateness: 24 * HOUR, slots: schedule.slots.map((s) => (s.time === 19 * HOUR + 30 * MIN) ? Object.assign({}, s, { showId: 'flex.' }) : s) };
+        suite.check('...a slot that has become Flex is named so',
+            pins.pinNotes({ pins: [ made(thu(19, 30), 'tv.Hey Arnold!') ], schedule: flexed })[0].text
+                === "Arnold's Christmas, Thu Oct 8, 7:30pm: that slot is Flex now, not Hey Arnold!'s.");
+        suite.check('...and a pin made before slots were recorded gets no note',
+            pins.pinNotes({ pins: [ made(thu(19, 30), undefined) ], schedule: other }).length === 0);
+    }
+
     suite.log('-- deleting an airing --');
     {
         const day = await generate(fixturePool(), fixtureSchedule(), NOON8);

@@ -162,6 +162,31 @@ function sayRemoval({ programs, startTime, index }) {
     };
 }
 
+/*
+ * Pins whose slot has changed since they were made: a pin records the show
+ * of the slot it sits in (`pin.slotShow`), and when the schedule now puts
+ * another show there - or Flex - the Time Slots dialog says so. A pin made
+ * before slots were recorded has none and gets no note. `nameOf` turns a
+ * show id into a name; the default drops the "tv." / "custom." prefix.
+ */
+function pinNotes({ pins, schedule, nameOf }) {
+    let name = (id) => (typeof(nameOf) === 'function' && nameOf(id)) || ( (id === 'flex.') ? 'Flex' : String(id).replace(/^(tv|custom|movie)\./, '') );
+    let notes = [];
+    pins.forEach( (x) => {
+        let made = x.program && x.program.pin && x.program.pin.slotShow;
+        if (typeof(made) !== 'string') {
+            return;
+        }
+        let slot = slotProgress.slotAt(schedule, x.at);
+        let now = (slot === null) ? null : slot.showId;
+        if ( (now !== null) && (now !== made) ) {
+            let what = x.program.isOffline ? 'Flex' : x.program.title;
+            notes.push({ pin: x, text: `${what}, ${dayClock(x.at)}: that slot is ${(now === 'flex.') ? 'Flex' : possessive(name(now))} now, not ${possessive(name(made))}.` });
+        }
+    } );
+    return notes;
+}
+
 // The program a re-made lineup leaves where it is (time-slots-service's
 // carry): the one on air, or the one whose break is on air - the last that
 // started at or before `now`, within a day.
@@ -504,6 +529,7 @@ module.exports = {
     walk: walk,
     airingAt: airingAt,
     carryAt: carryAt,
+    pinNotes: pinNotes,
     sayRemoval: sayRemoval,
     breaksThatFit: breaksThatFit,
     localInstant: localInstant,
