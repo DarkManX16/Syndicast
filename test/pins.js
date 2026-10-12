@@ -78,5 +78,119 @@ module.exports = async function () {
             pool.map((p) => p.title + (p.pin ? ' [pin]' : '')).join(', '));
     }
 
+    suite.log('-- where an item fits, and what a re-lay did --');
+    {
+        const lineup = async (pinList, extraBefore) => {
+            const res = await generate(fixturePool(), fixtureSchedule(), NOON8, pinList);
+            const programs = res.programs;
+            return { programs, startTime: Date.parse(res.startTime) };
+        };
+        const plain = await lineup();
+        const schedule = fixtureSchedule();
+        const christmas = episode('Hey Arnold!', 0, 7, { title: "Arnold's Christmas", duration: 24 * MIN + 6 * SEC });
+        const special = episode('Specials', 0, 1, { title: "'Twas the Fight Before Christmas", duration: 44 * MIN + 9 * SEC });
+
+        const fit = pins.fitAt({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19, 30), duration: christmas.duration });
+        suite.check('fitAt: fits, with the space to the slot\'s end',
+            fit.slotEnd === thu(20) && fit.space === 30 * MIN && fit.overrun === 0 && fit.runsInto.program.showTitle === 'Are You Afraid of the Dark?'
+                && fit.runsInto.start === thu(20),
+            JSON.stringify({ space: fit.space, overrun: fit.overrun }));
+        const over = pins.fitAt({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19), duration: special.duration });
+        suite.check('fitAt: runs into the next slot by 14:09, naming it',
+            over.slotEnd === thu(19, 30) && over.overrun === 14 * MIN + 9 * SEC && over.runsInto.program.showTitle === 'Hey Arnold!',
+            JSON.stringify({ overrun: over.overrun, into: over.runsInto && over.runsInto.program.title }));
+
+        const swapped = await lineup([mark(christmas, thu(19, 30), 'take')]);
+        const moved = pins.relayEffects({ before: plain, after: swapped, from: NOON8, to: NOON8 + 7 * DAY, schedule, getShowData });
+        suite.check('relayEffects names the episode that moved along and where it airs now',
+            moved.movedAlong.length === 1 && moved.movedAlong[0].name === 'Hey Arnold!' && moved.movedAlong[0].program.title === 'Best Man / Cool Party'
+                && moved.movedAlong[0].wasAt === thu(19, 30) && moved.movedAlong[0].nowAt === thu(19, 30) + DAY
+                && moved.late.length === 0 && moved.dropped.length === 0,
+            JSON.stringify(moved.movedAlong.map((m) => [m.name, m.program.title, new Date(m.nowAt).toString()])));
+
+        const late = await lineup([mark(special, thu(19), 'late')]);
+        const ran = pins.relayEffects({ before: plain, after: late, from: NOON8, to: NOON8 + 7 * DAY, schedule, getShowData });
+        suite.check('relayEffects names the shows that ran late and when the schedule is back on time',
+            ran.late.map((l) => l.program.showTitle + '@' + clock(l.nowAt)).join() === 'Hey Arnold!@7:44:09 PM,Are You Afraid of the Dark?@8:06:47 PM'
+                && ran.backOnTime === thu(20, 30) && ran.movedAlong.map((m) => m.name).join() === 'Rugrats',
+            ran.late.map((l) => l.program.showTitle + '@' + clock(l.nowAt)).join() + ' back ' + (ran.backOnTime && clock(ran.backOnTime)));
+
+        // The old way: a 10-second clip inserted by hand in the break after Thursday's 7:30.
+        const bumper = { type: 'movie', title: 'NEXT - SGC2C', duration: 10 * SEC, serverKey: 'srv', key: '/b/next' };
+        const byHand = { programs: plain.programs.slice(), startTime: plain.startTime };
+        let t = plain.startTime, i = 0;
+        while (t < thu(19, 52, 38)) { t += byHand.programs[i].duration; i++; }
+        const flex = byHand.programs[i];
+        byHand.programs.splice(i, 1, bumper, { isOffline: true, duration: flex.duration - bumper.duration });
+        const dropped = pins.relayEffects({ before: byHand, after: plain, from: NOON8, to: NOON8 + 7 * DAY, schedule, getShowData });
+        suite.check('relayEffects lists a hand-placed bumper the re-lay drops, and not the airings that moved along',
+            dropped.dropped.length === 1 && dropped.dropped[0].program.title === 'NEXT - SGC2C' && dropped.dropped[0].start === thu(19, 52, 38)
+                && dropped.movedAlong.length === 0,
+            JSON.stringify(dropped.dropped.map((d) => d.program.title)));
+
+        const fitText = pins.sayFit({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19, 30), item: christmas, kind: 'swap' });
+        const overText = pins.sayFit({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19), item: special, kind: 'swap' });
+        const movedText = pins.sayEffects(moved);
+        const lateText = pins.sayEffects(ran);
+        const droppedText = pins.sayDropped(dropped.dropped);
+        const firstText = pins.sayFirstSwap({ dropped: [] });
+        const keptText = pins.sayKept(pins.pinsAhead({ programs: swapped.programs, startTime: swapped.startTime, now: NOON8 }));
+        suite.check('the sentences read as the spec\'s examples',
+            fitText === "Arnold's Christmas runs 24:06. The space is 30:00 - Best Man / Cool Party and the 7:22 of Flex after it. It fits: 5:54 of Flex after it, and Are You Afraid of the Dark? starts at 8:00."
+                && overText === "'Twas the Fight Before Christmas runs 44:09. The space is 30:00 - Home Movies and the 6:12 of Flex after it. It runs 14:09 past 7:30, into Hey Arnold!'s slot."
+                && movedText === "Best Man / Cool Party airs Fri Oct 9, 7:30pm, and Hey Arnold!'s later airings move one along."
+                && lateText === "Home Movies airs Fri Oct 9, 7:00pm, and Rugrats' later airings move one along. Hey Arnold! starts at 7:44:09 and Are You Afraid of the Dark? at 8:06:47; back on time at 8:30."
+                && droppedText === 'This also drops what was placed in the list by hand: Thu Oct 8, 7:52pm NEXT - SGC2C (0:10).'
+                && firstText === 'Swapping re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
+                && keptText === "Keeping your swaps and inserts: Thu Oct 8, 7:30pm Arnold's Christmas (Hey Arnold!).",
+            [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
+    }
+
     return suite;
 };
+
+// A small lineup made by the real generator, for the readers above.
+const timeSlotsService = require('../src/services/time-slots-service');
+const SEC = 1000;
+const NOON8 = THU + 12 * HOUR;
+const thu = (hour, minute, second) => THU + hour * HOUR + (minute || 0) * MIN + (second || 0) * SEC;
+const clock = (t) => new Date(t).toLocaleTimeString('en-US');
+function fixtureSchedule() {
+    return {
+        period: DAY, lateness: 24 * HOUR, maxDays: 14, flexPreference: 'distribute', pad: 5 * MIN,
+        slots: [
+            { time: 19 * HOUR, showId: 'tv.Rugrats', order: 'next' },
+            { time: 19 * HOUR + 30 * MIN, showId: 'tv.Hey Arnold!', order: 'next' },
+            { time: 20 * HOUR, showId: 'tv.Are You Afraid of the Dark?', order: 'next' },
+            { time: 20 * HOUR + 30 * MIN, showId: 'tv.Shelby Woo', order: 'next' },
+            { time: 21 * HOUR, showId: 'flex.', order: 'next' },
+        ],
+    };
+}
+function fixturePool() {
+    const out = [];
+    for (let n = 1; n <= 30; n++) {
+        out.push(episode('Rugrats', 1, n, { title: n === 1 ? 'Home Movies' : `Rugrats ${n}`, duration: 23 * MIN + 48 * SEC }));
+        out.push(episode('Hey Arnold!', 1, n, { title: n === 1 ? 'Best Man / Cool Party' : `Hey Arnold ${n}`, duration: 22 * MIN + 38 * SEC }));
+        out.push(episode('Are You Afraid of the Dark?', 1, n, { duration: 22 * MIN }));
+        out.push(episode('Shelby Woo', 1, n, { duration: 22 * MIN }));
+    }
+    return out;
+}
+function mark(program, at, then) {
+    const p = pins.makePin({ program, at, kind: 'swap', then, slotShow: 'tv.' + program.showTitle, now: NOW });
+    return { at, then, program: p };
+}
+async function generate(programs, schedule, now, pinList) {
+    const RealDate = Date;
+    class FrozenDate extends RealDate {
+        constructor(...a) { if (a.length === 0) super(now); else super(...a); }
+        static now() { return now; }
+    }
+    global.Date = FrozenDate;
+    try {
+        return await timeSlotsService(JSON.parse(JSON.stringify(programs)), JSON.parse(JSON.stringify(schedule)), undefined, pinList);
+    } finally {
+        global.Date = RealDate;
+    }
+}
