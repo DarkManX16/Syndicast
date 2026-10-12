@@ -90,6 +90,32 @@ function walk(programs, startTime, from, to) {
     return out;
 }
 
+// The entry on air at an instant - a program or Flex - with its index in
+// `programs` and its start, round the loop. For Go to.
+function airingAt({ programs, startTime, at }) {
+    // A saved lineup can run a fraction of a second behind the minute: an
+    // airing starting just after `at` is the one meant.
+    let next = walk(programs, startTime, at, at + SAME + 1).find( (x) => (x.start > at) && (x.start <= at + SAME) );
+    if (typeof(next) !== 'undefined') {
+        at = next.start;
+    }
+    let found = walk(programs, startTime, at, at + 1);
+    if (found.length === 0) {
+        return null;
+    }
+    let total = programs.reduce( (a, p) => a + p.duration, 0 );
+    let into = mod(found[0].start - startTime, total);
+    let index = 0;
+    for (let t = 0; t < into; t += programs[index].duration, index++);
+    return { index: index, start: found[0].start, program: found[0].program };
+}
+
+// A date ("2026-10-31") and a time ("16:00") on the local clock as an
+// instant; on the fall-back night, the first of the two.
+function localInstant(date, time) {
+    return new Date(`${date}T${time.length === 5 ? time + ':00' : time}`).getTime();
+}
+
 // The slot occurrence holding `at`, by the wall clock.
 function slotAround({ schedule, at }) {
     let slot = slotProgress.slotAt(schedule, at);
@@ -129,6 +155,15 @@ function fitAt({ programs, startTime, schedule, at, duration }) {
  * that the re-lay drops.
  */
 function relayEffects({ before, after, from, to, schedule, getShowData }) {
+    // Not past two weeks before either lineup comes round its loop: a
+    // lineup's last days sit off the slots and end in Flex, so they'd read
+    // as hand-placed, and they're a year out, beyond what a re-lay keeps.
+    let loopEnd = (lineup) => {
+        let total = lineup.programs.reduce( (a, p) => a + p.duration, 0 );
+        let base = Math.max(from, lineup.startTime);
+        return base + total - mod(base - lineup.startTime, total);
+    };
+    to = Math.min(to, loopEnd(before) - 14 * DAY, loopEnd(after) - 14 * DAY);
     let starts = new Map();
     walk(after.programs, after.startTime, from - SAME, to + 3 * HOUR).forEach( (x) => {
         if (x.program.isOffline) {
@@ -300,12 +335,22 @@ function pinsAhead({ programs, startTime, now }) {
         .sort( (a, b) => a.at - b.at );
 }
 
+// The pins to keep (pinsAhead's shape) with one more, a pinned program from
+// makePin or removalPin, in the shape the generator takes.
+function withPin(ahead, program) {
+    return ahead.concat([ { at: program.pin.at, then: (program.pin.then === 'late') ? 'late' : 'take', program: program } ])
+        .sort( (a, b) => a.at - b.at );
+}
+
 module.exports = {
+    withPin: withPin,
     label: label,
     makePin: makePin,
     removalPin: removalPin,
     pinsAhead: pinsAhead,
     walk: walk,
+    airingAt: airingAt,
+    localInstant: localInstant,
     showName: showName,
     slotAround: slotAround,
     fitAt: fitAt,

@@ -66,6 +66,13 @@ module.exports = async function () {
                 && ahead[0].program === onAir,
             ahead.map((x) => x.program.title).join());
         suite.check('...and not one that has aired', ! ahead.some((x) => x.program.title === 'Aired'));
+
+        const fresh = pins.makePin({ program: episode('B', 0, 1), at: NOW + 3 * HOUR, kind: 'swap', then: 'late', slotShow: 'tv.B', now: NOW });
+        const keep = pins.withPin(ahead, fresh);
+        suite.check('withPin adds a new pin in the generator\'s shape, in time order',
+            keep.length === 4 && keep[2].program === fresh && keep[2].at === NOW + 3 * HOUR && keep[2].then === 'late'
+                && keep.map((x) => x.at).every((t, i, all) => i === 0 || all[i - 1] <= t),
+            JSON.stringify(keep.map((x) => [x.program.title, x.at, x.then])));
     }
 
     suite.log('-- the pool --');
@@ -128,6 +135,16 @@ module.exports = async function () {
                 && dropped.movedAlong.length === 0,
             JSON.stringify(dropped.dropped.map((d) => d.program.title)));
 
+        // Near a lineup's end its last day can sit off the slots: not hand-placed, and past any re-lay's reach.
+        const total = plain.programs.reduce((a, p) => a + p.duration, 0);
+        const nearEnd = { programs: plain.programs.slice(), startTime: plain.startTime };
+        let u = plain.startTime, j = 0;
+        while (u < plain.startTime + total - 2 * DAY) { u += nearEnd.programs[j].duration; j++; }
+        nearEnd.programs.splice(j, 0, bumper);
+        const atEnd = pins.relayEffects({ before: nearEnd, after: plain, from: NOON8, to: NOON8 + 400 * DAY, schedule, getShowData });
+        suite.check('relayEffects stops two weeks before either lineup comes round its loop',
+            atEnd.dropped.length === 0, JSON.stringify(atEnd.dropped.map((d) => [d.program.title, new Date(d.start).toString()])));
+
         const fitText = pins.sayFit({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19, 30), item: christmas, kind: 'swap' });
         const overText = pins.sayFit({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19), item: special, kind: 'swap' });
         const movedText = pins.sayEffects(moved);
@@ -146,6 +163,28 @@ module.exports = async function () {
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
     }
 
+    suite.log('-- go to --');
+    {
+        const a = episode('A', 1, 1, { duration: 20 * MIN });
+        const b = episode('B', 1, 1, { duration: 25 * MIN });
+        const programs = [a, { isOffline: true, duration: 15 * MIN }, b, { isOffline: true, duration: DAY - 60 * MIN }];
+        const start = THU;
+        const found = pins.airingAt({ programs, startTime: start, at: THU + 3 * DAY + 37 * MIN });
+        const flex = pins.airingAt({ programs, startTime: start, at: THU + 25 * MIN });
+        suite.check('airingAt finds the airing on at an instant, round the loop',
+            found && found.index === 2 && found.program === b && found.start === THU + 3 * DAY + 35 * MIN
+                && flex && flex.index === 1 && flex.start === THU + 20 * MIN,
+            JSON.stringify(found && { index: found.index, start: new Date(found.start).toString() }));
+        const late = pins.airingAt({ programs, startTime: start + 979, at: THU + 35 * MIN });
+        suite.check('...and the airing starting within 2 seconds of it, when a lineup runs a second behind the minute',
+            late && late.index === 2 && late.start === THU + 35 * MIN + 979,
+            JSON.stringify(late && { index: late.index, start: late.start - THU }));
+        suite.check('...and a local date and time on the fall-back night is the first of the two',
+            pins.localInstant('2026-11-01', '01:30') === Date.parse('2026-11-01T06:30:00.000Z')
+                && pins.localInstant('2026-10-31', '16:00') === new Date('2026-10-31T16:00:00').getTime(),
+            new Date(pins.localInstant('2026-11-01', '01:30')).toISOString());
+    }
+
     return suite;
 };
 
@@ -157,7 +196,7 @@ const thu = (hour, minute, second) => THU + hour * HOUR + (minute || 0) * MIN + 
 const clock = (t) => new Date(t).toLocaleTimeString('en-US');
 function fixtureSchedule() {
     return {
-        period: DAY, lateness: 24 * HOUR, maxDays: 14, flexPreference: 'distribute', pad: 5 * MIN,
+        period: DAY, lateness: 24 * HOUR, maxDays: 60, flexPreference: 'distribute', pad: 5 * MIN,
         slots: [
             { time: 19 * HOUR, showId: 'tv.Rugrats', order: 'next' },
             { time: 19 * HOUR + 30 * MIN, showId: 'tv.Hey Arnold!', order: 'next' },

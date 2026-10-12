@@ -66,6 +66,7 @@ app.directive('nameMember',  require('./directives/name-member'))
 app.directive('namesReview',  require('./directives/names-review'))
 app.directive('namesOverview',  require('./directives/names-overview'))
 app.directive('timeSlotsScheduleEditor',  require('./directives/time-slots-schedule-editor'))
+app.directive('airingSwap',  require('./directives/airing-swap'))
 app.directive('randomSlotsScheduleEditor',  require('./directives/random-slots-schedule-editor'))
 
 app.controller('settingsCtrl',  require('./controllers/settings'))

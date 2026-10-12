@@ -4,6 +4,7 @@ const transitions = require('../../src/transitions');
 const transitionsEditor = require('../../src/transitions-editor');
 const showCatalog = require('../../src/show-catalog');
 const slotRounds = require('../../src/shuffle-rounds');
+const pinTools = require('../../src/pins');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
     return {
@@ -1387,6 +1388,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.deletePrompt = null;
             scope.removeItem = (x) => {
                 let program = scope.channel.programs[x];
+                if ( (typeof(program) !== 'undefined') && program.pin && scope.hasTimeSlots() ) {
+                    scope.undoPrompt = { program: program, label: program.isOffline ? 'Flex' : pinTools.label(program),
+                        when: pinTools.dayClock(program.pin.at) };
+                    return;
+                }
                 if ( (typeof(program) === 'undefined') || program.isOffline || ! getShowData(program).hasShow ) {
                     scope.channel.programs.splice(x, 1)
                     updateChannelDuration()
@@ -2693,6 +2699,112 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 })
             }
 
+            /*
+             * Swaps and inserts (src/pins.js; NOTES.md, "Swaps, inserts and
+             * Flex that keeps time"): only on a channel with a Time Slots
+             * schedule, since every one re-lays the lineup through it.
+             */
+            scope.hasTimeSlots = () => ! scope.hasNoTimeSlots() && (scope.timeSlots !== null);
+            scope.canSwap = (x) => scope.hasTimeSlots() && (x !== null) && ! x.isOffline;
+            scope.swapRequest = null;
+            scope.startSwap = (index) => {
+                scope.swapRequest = {
+                    channel: scope.channel, index: index, mode: 'swap',
+                    relay: scope.timeSlots.relay, limit: scope.maxSize, catalogState: catalogFor,
+                };
+            };
+            // A re-lay's result, applied as Create Lineup's is.
+            let applyRelay = (result) => {
+                scope.channel.scheduleBackup = result.schedule;
+                readSlotsResult(result);
+                queueCatalogOps(result.catalogOps);
+            };
+            scope.finishSwap = (result) => {
+                scope.swapRequest = null;
+                if (result) {
+                    applyRelay(result);
+                }
+                $timeout();
+            };
+            scope.rowPinTitle = (x) => {
+                if (! x || ! x.pin) {
+                    return '';
+                }
+                let what = x.isOffline ? 'Flex' : 'Pinned';
+                return `${what} for ${pinTools.dayClock(x.pin.at)}` + (x.pin.was ? `, in place of ${x.pin.was}` : '')
+                    + ' - kept by Create Lineup until it airs';
+            };
+            // The pins still to air, worked out again only when the lineup changes.
+            let pinListOf = { version: -1, list: [] };
+            scope.pinList = () => {
+                let version = scope.flexTagVersion || 0;
+                if (pinListOf.version !== version) {
+                    let start = new Date(scope.channel.startTime).getTime();
+                    pinListOf = { version: version, list: pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: Date.now() })
+                        .map( (x) => ({ at: x.at, text: pinTools.dayClock(x.at) + ' ' + (x.program.isOffline ? 'Flex in place of ' + x.program.pin.was : pinTools.label(x.program)) }) ) };
+                }
+                return pinListOf.list;
+            };
+            scope.showPins = { open: false };
+
+            // Go to a date and time in the programming list.
+            scope.goTo = { date: null, time: null, row: -1 };
+            // The date and time inputs hold Date objects: read them on the local clock.
+            let goToInstant = () => {
+                let d = scope.goTo.date, t = scope.goTo.time;
+                if (! (d instanceof Date) || isNaN(d)) {
+                    return NaN;
+                }
+                let pad = (n) => String(n).padStart(2, '0');
+                let date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                let time = (t instanceof Date && ! isNaN(t)) ? `${pad(t.getHours())}:${pad(t.getMinutes())}` : '00:00';
+                return pinTools.localInstant(date, time);
+            };
+            scope.goToAiring = (at) => {
+                let instant = (typeof(at) === 'number') ? at : goToInstant();
+                if (isNaN(instant)) {
+                    return;
+                }
+                let found = pinTools.airingAt({ programs: scope.channel.programs, startTime: new Date(scope.channel.startTime).getTime(), at: instant });
+                if (found === null) {
+                    return;
+                }
+                scope.goTo.row = found.index;
+                let list = document.getElementById("channelConfigProgramList");
+                if (list) {
+                    $timeout( () => { list.scrollTop = found.index * scope.programRowHeight; }, 0 );
+                }
+            };
+
+            // Deleting a pinned row undoes it: the slot's own programming comes back.
+            scope.undoPrompt = null;
+            scope.finishUndo = async (yes) => {
+                let prompt = scope.undoPrompt;
+                scope.undoPrompt = null;
+                if (! yes || (prompt === null)) {
+                    return;
+                }
+                scope.undoWorking = true;
+                $timeout();
+                try {
+                    let start = new Date(scope.channel.startTime).getTime();
+                    let keep = pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: Date.now() })
+                        .filter( (x) => x.program !== prompt.program );
+                    let result = await scope.timeSlots.relay({
+                        programs: commonProgramTools.slotPool(scope.channel.programs), limit: scope.maxSize,
+                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: await catalogFor(), pins: keep,
+                    });
+                    applyRelay(result);
+                } catch (err) {
+                    console.error(err);
+                    scope.error.programs = 'Could not undo the swap.';
+                } finally {
+                    scope.undoWorking = false;
+                    $timeout();
+                }
+            };
+
+
 
           },
 
@@ -2702,6 +2814,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.registerTimeSlots = (timeSlots) => {
                 scope.timeSlots = timeSlots;
             }
+
             scope.registerRandomSlots = (randomSlots) => {
                 scope.randomSlots = randomSlots;
             }
