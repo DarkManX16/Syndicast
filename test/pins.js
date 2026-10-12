@@ -236,6 +236,19 @@ module.exports = async function () {
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
     }
 
+    suite.log('-- the program on air --');
+    {
+        const a = episode('A', 1, 1);
+        const b = episode('B', 1, 1);
+        const programs = [a, { isOffline: true, duration: 8 * MIN }, b, { isOffline: true, duration: 8 * MIN }, { isOffline: true, duration: 3 * DAY }];
+        const on = pins.carryAt({ programs, startTime: THU, now: THU + 40 * MIN });
+        const brk = pins.carryAt({ programs, startTime: THU, now: THU + 55 * MIN });
+        const none = pins.carryAt({ programs, startTime: THU, now: THU + 2 * DAY });
+        suite.check('carryAt is the program on air, the one whose break is on air, or none a day after the last',
+            on && on.program === b && on.start === THU + 30 * MIN && brk && brk.program === b && none === null,
+            JSON.stringify({ on: on && on.program.showTitle, brk: brk && brk.program.showTitle, none }));
+    }
+
     suite.log('-- one re-lay at a time --');
     {
         const gate = pins.oneAtATime();

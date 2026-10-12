@@ -3502,7 +3502,10 @@ from the lineup it has loaded. In order, the first that applies:
    two of its slots ask for different seeks, the one airing first from now
    wins.
 2. **Its first airing on air or ahead** in the lineup. The airing on air counts
-   as not yet aired, as today, so nothing is skipped. Lineups without labels -
+   as not yet aired, as today, so nothing is skipped. *(Changed Oct 12, 2026 for
+   Time Slots: the program on air is now kept where it is and counts as aired -
+   see "Swaps, inserts and Flex that keeps time", "The program on air is left
+   alone".)* Lineups without labels -
    every channel saved before this - are read by matching each airing to the
    slot it starts in, with the same `findSlot` arithmetic the generator uses:
    3,450 of 3,450 airings over three weeks on channels 1-3 (and 1,362 of 1,362
@@ -4723,8 +4726,20 @@ a pin of Flex the airing's length.
 **Create Lineup keeps pins.** The Time Slots editor reads the pins still to air
 from the lineup on air - airings with a `pin` that ends after now - and sends
 them with the schedule; the generator places them. One that has aired goes
-with the old lineup. A pin on air as Create Lineup runs starts again from its
-beginning, as any airing on air does.
+with the old lineup.
+
+**The program on air is left alone** (Ron, Oct 11, at the Halloween checkpoint;
+built as Task 4b). Every re-lay - and Create Lineup, which takes the same path -
+keeps the program on air, or the one whose break is on air, exactly where it is
+(`carry`, from `src/pins.js` `carryAt`), counts it as aired (`planProgress`'s
+`placesFrom`, its end), and makes the lineup from its end: its own slot gets only
+what fits whole after it, and slots it ran into fill as the generator always
+filled them. A program on air from before the schedule's period start is kept
+too: the lineup then starts with it, still a whole number of periods long. Before,
+the program on air started again from its beginning and its show's later
+airings moved one along (stored progress's "the airing on air counts as not
+yet aired"); and a re-make during a break, at a 5-minute mark, put the slot's
+next episode in at once, late. A pin on air is carried like any program.
 
 **The generator places pins** (`time-slots-service.js`), by four rules:
 
@@ -4845,7 +4860,72 @@ was back on time, what was dropped), and the breaks a length fits into.
 
 #### Build record
 
-To come; see docs/swaps-plan.md for the steps and their proofs.
+**Steps 1-4 and the Halloween checkpoint, Oct 11-12, 2026** (`swaps`, 599d061..).
+Proofs on copies of `.dizquetv-dev` taken Sun Oct 11 at 9:44pm Central (channels,
+custom shows, filler, aliases; identical at 12:01am Oct 12) and 9:57pm (a full
+data folder for the preview), with a Plex catalog snapshot taken then. Suite 2009
+at the start, 2066 at the end. Steps 5-8 go on on the branch.
+
+- **What shipped.** The generator places pins (Task 1); a pinned airing is never
+  a place and never joins a pool - `slotPool` at all nine pool sites (Task 2);
+  Create Lineup and Regenerate keep pins and the editor can re-lay, saying what
+  a re-lay moved, ran late or dropped (Task 3); Go to, Swap, the fit and the
+  too-long choices, pinned rows and their list, undo (Task 4); and the program on
+  air left alone (Task 4b, above).
+- **Additive.** With no pins, channels 1-3 regenerated at Sun 10pm, Sat Oct 31
+  noon and Mon Dec 21 10am are identical program for program to `blocks` - before
+  Task 4b. After it, channels 1 and 2 are still identical airing for airing over
+  300 days at all three moments (a slot starts at each); channel 3 differs only
+  where `blocks` restarted the program on air: at Sun 10pm, mid "The Jim Henson
+  Hour" (`blocks` moves its 43 later airings, Task 4b none), and at Sat noon, mid
+  "Mickey's House of Villains" (`blocks` restarts it at noon and moves
+  W.I.T.C.H. along, 85 airings; Task 4b keeps the saved lineup exactly).
+- **The design's examples, by the real generator** - every figure in the table
+  above, as the probe gave it; regenerated again with pins read back, before,
+  while ahead and after airing: identical to the end of the first lineup.
+- **The hazard, reproduced and closed.** On `blocks`, "Arnold's Christmas"
+  hand-placed in channel 2's Dec 24 7:30pm airing sends the weekday strip to
+  S01E01; pinned, 164 of 164 positions continue.
+- **Live, on the preview.** Channel 3, Go to Sat Oct 31 4:00pm, Swap, "A Hero
+  for Halloween": "It fits: 7:30 of Flex after it, and Lizzie McGuire starts at
+  4:30", "There's Something about Rene airs Sun Nov 1, 4:30pm, and The Proud
+  Family's later airings move one along"; saved, 155 of 155 continue. Channel 1's
+  'Twas the Fight Before Christmas showed both choices as designed; Run late
+  saved; undo restored the slot. Ron tried the Halloween swap himself and it read
+  right. A re-lay takes 6.5-12.8 s in the browser, two or three per pick.
+- **Found live and fixed:** the Swap code first sat in the channel page's pre-link,
+  out of reach of its catalog state; the dialog passed the new pin in the wrong
+  shape, so the re-lay had none; Go to landed on the Flex a second before an
+  airing; and a lineup's last day, off its slots, read as hundreds of hand-placed
+  airings.
+- **The checkpoint review** (Opus 5.5, fresh): with fixes. Fixed, each with a test
+  that failed first: undo now works out and says what it does before it applies;
+  re-lays run one at a time and nothing that saves or changes the lineup runs
+  meanwhile (one could otherwise save a schedule Ron cancelled); the cut-off for
+  "placed by hand" follows a lineup's real end, its longest Flex (on Oct 28 the
+  old one named 377 of channel 3's airings); a re-lay without the new pin is never
+  applied. Found while fixing: a show moving along within a night read as late;
+  and two re-lays seconds apart could count different programs as on air -
+  re-lays compared with each other are now planned as of one moment. The review's
+  point that every re-lay restarted the program on air became Task 4b.
+- **Left for later** (none affects Ron's channels today): the 1:30am fit check on
+  the fall-back night overstates the space; running late turns a redirect slot
+  into Flex; Run late is offered when lateness is below the overrun; a pin more
+  than 10 s after a slot's start lets the slot's own episode go first; Swap is
+  offered on a Random Slots lineup with an old Time Slots schedule; each re-lay
+  re-reads catalogs from Plex (most of its time); the pinned-row tooltip on an
+  aired pin, and "waits for its next airing" for a hand-placed episode in a lineup
+  without labels.
+
+### Random Slots' Create Lineup restarts the program on air
+
+Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time
+Slots' Create Lineup and every re-lay keep the program on air where it is; Random
+Slots has its own generator (`random-slots-service.js`) and its editor its own
+Create Lineup path, so it still starts the program on air again and moves its
+show along, as every Create Lineup did before. None of Ron's channels uses Random
+Slots. The fix is the same shape: `carryAt` in the Random Slots editor, the
+planner's `placesFrom`, and a `carry` the generator places first.
 
 ### Slot times count from the epoch week, day-parts from the calendar week
 

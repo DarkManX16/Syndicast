@@ -56,7 +56,7 @@ function pool(first, firstDuration) {
     return seasons(first || 'A', 40, firstDuration).concat(seasons('B', 40), seasons('C', 40), seasons('D', 40));
 }
 
-async function generate(programs, schedule, now, pins) {
+async function generate(programs, schedule, now, pins, carry) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(now); else super(...a); }
@@ -65,8 +65,11 @@ async function generate(programs, schedule, now, pins) {
     global.Date = FrozenDate;
     try {
         const args = [JSON.parse(JSON.stringify(programs)), JSON.parse(JSON.stringify(schedule)), undefined];
-        if (typeof pins !== 'undefined') {
-            args.push(JSON.parse(JSON.stringify(pins)));
+        if ( (typeof pins !== 'undefined') || (typeof carry !== 'undefined') ) {
+            args.push( (typeof pins === 'undefined') ? undefined : JSON.parse(JSON.stringify(pins)) );
+        }
+        if (typeof carry !== 'undefined') {
+            args.push(JSON.parse(JSON.stringify(carry)));
         }
         return await timeSlotsService(...args);
     } finally {
@@ -199,6 +202,40 @@ module.exports = async function () {
         suite.check('a pin that has aired is gone; one on air starts again now',
             startOf(ores, 'Done') === null && startOf(ores, 'On Air') === now,
             `done ${startOf(ores, 'Done')}, on air ${startOf(ores, 'On Air') && clock(startOf(ores, 'On Air'))}`);
+    }
+
+    suite.log('-- the program on air is left alone --');
+    {
+        const onAir = shows(plain).find((a) => a.start === thu(19, 30)).program;
+        const programAt = (res, from, to) => shows(res).filter((a) => a.start >= from && a.start < to);
+        const mid = await generate(pool(), daily(), thu(19, 40), undefined, { start: thu(19, 30), program: onAir });
+        suite.check('a lineup made while a program is on air carries it at its real start, and its slot\'s next episode waits',
+            startOf(mid, onAir.title) === thu(19, 30) && programAt(mid, thu(19, 31), thu(20)).length === 0 && firstAt(mid, thu(19, 31)).start === thu(20),
+            `${onAir.title} at ${startOf(mid, onAir.title) && clock(startOf(mid, onAir.title))}; next ${clock(firstAt(mid, thu(19, 31)).start)}`);
+        const brk = await generate(pool(), daily(), thu(19, 55), undefined, { start: thu(19, 30), program: onAir });
+        suite.check('...and during the break after it, nothing starts before the next slot',
+            programAt(brk, thu(19, 31), thu(20)).length === 0 && firstAt(brk, thu(19, 31)).start === thu(20),
+            programAt(brk, thu(19, 31), thu(20)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
+        // A daily schedule's period starts at its first slot, 7pm: a program from before then,
+        // still on air, is kept all the same, and the lineup's length stays whole days.
+        const late = { period: DAY, lateness: 24 * HOUR, maxDays: 14, flexPreference: 'distribute', pad: 5 * MIN,
+            slots: [ { time: 0, showId: 'tv.A', order: 'next' }, { time: 19 * HOUR, showId: 'tv.B', order: 'next' }, { time: 19 * HOUR + 30 * MIN, showId: 'flex.', order: 'next' } ] };
+        const overnight = Object.assign({}, item('Overnight Movie', 90 * MIN, 'A'));
+        const across = await generate(pool(), late, thu(0, 20), undefined, { start: thu(0) - 30 * MIN, program: overnight });
+        const acrossTotal = across.programs.reduce((x, q) => x + q.duration, 0);
+        suite.check('...and one that began before the lineup\'s period, still on air, is kept, the length whole days',
+            startOf(across, 'Overnight Movie') === thu(0) - 30 * MIN && acrossTotal % DAY === 0,
+            `movie at ${startOf(across, 'Overnight Movie') && new Date(startOf(across, 'Overnight Movie')).toString()}, length ${acrossTotal / DAY} days`);
+        const longOne = item('Long One', 44 * MIN + 9 * SEC, 'A');
+        const ranInto = await generate(pool(), daily(), thu(19, 40), undefined, { start: thu(19), program: longOne });
+        suite.check('...and a show it ran into starts as the generator always made it, on the 5-minute mark',
+            startOf(ranInto, 'Long One') === thu(19) && startOf(ranInto, bThu) === thu(19, 45),
+            `B at ${startOf(ranInto, bThu) && clock(startOf(ranInto, bThu))}`);
+        const pinned = Object.assign({}, item('Pinned Special', 24 * MIN, 'B'), { pin: { at: thu(19, 30), kind: 'swap', then: 'take' } });
+        const pres = await generate(pool(), daily(), thu(19, 40), undefined, { start: thu(19, 30), program: pinned });
+        const placed = shows(pres).find((a) => a.program.title === 'Pinned Special');
+        suite.check('...a carried pinned airing keeps its pin',
+            placed && placed.start === thu(19, 30) && placed.program.pin && placed.program.pin.at === thu(19, 30));
     }
 
     suite.log('-- a Repeat --');

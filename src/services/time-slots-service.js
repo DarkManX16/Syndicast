@@ -76,8 +76,13 @@ function addProgramToShow(show, program) {
  * `pins`, optional, are swaps and inserts fixed to a date and time -
  * [{ at, then, program }], `program` carrying its `pin` mark - placed by the
  * four rules in NOTES.md ("Swaps, inserts and Flex that keeps time").
+ *
+ * `carry`, optional, is the program on air as the lineup is made - or the
+ * one whose break is on air - { start, program }: it stays where it is, and
+ * the lineup is made from its end, as after a run-late pin (src/pins.js
+ * carryAt; the planner counts it as aired).
  */
-module.exports = async( programs, schedule, history, pinsIn ) => {
+module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     if (! Array.isArray(programs) ) {
         return { userError: 'Expected a programs array' };
     }
@@ -350,6 +355,12 @@ module.exports = async( programs, schedule, history, pinsIn ) => {
     let ts = (new Date() ).getTime();
     let curr = ts - localMsIntoPeriod(ts);
     let t0 = curr + s[0].time;
+    // A program still on air from before the period's start is kept: the
+    // lineup starts with it, still a whole number of periods long.
+    if ( (typeof(carryIn) === 'object') && (carryIn !== null) && (typeof(carryIn.start) === 'number')
+        && (carryIn.start < t0) && (carryIn.start > t0 - schedule.period) && (carryIn.start <= ts) ) {
+        t0 = carryIn.start;
+    }
     let p = [];
     let t = t0;
     let hardLimit = t0 + schedule.maxDays * DAY;
@@ -416,7 +427,21 @@ module.exports = async( programs, schedule, history, pinsIn ) => {
         runningLate = false;
     };
 
-    if (ts > t0) {
+    let carry = ( (typeof(carryIn) === 'object') && (carryIn !== null) && (typeof(carryIn.start) === 'number')
+        && (typeof(carryIn.program) === 'object') && (carryIn.program !== null) && ! carryIn.program.isOffline
+        && (carryIn.start >= t0) && (carryIn.start <= ts) ) ? carryIn : null;
+    if (carry !== null) {
+        // The program on air keeps its place: everything from its end is made anew.
+        if (carry.start > t0) {
+            pushFlex( carry.start - t0 );
+        }
+        pushProgram( Object.assign( {}, carry.program ) );
+        // Its own slot gets only what fits whole after it (rule 2); slots it ran into
+        // are filled as the generator always has, so what follows is what it was.
+        lastPin = { start: carry.start, end: t, then: 'carry' };
+        // A pin the program on air is itself was carried, not placed again.
+        pins = pins.filter( (x) => ! ( x.program.pin && carry.program.pin && (x.program.pin.at === carry.program.pin.at) ) );
+    } else if (ts > t0) {
         pushFlex( ts - t0 );
     }
     while ( (t < hardLimit) && (p.length < LIMIT) ) {
@@ -497,7 +522,7 @@ module.exports = async( programs, schedule, history, pinsIn ) => {
         let pinInside = (nextPin < pins.length) && (pins[nextPin].at < occEnd);
         let ownSlot = (lastPin !== null) && (occStart <= lastPin.start + SLACK) && (lastPin.start < occEnd);
         // rule 3: a slot that began while the last pin was on
-        if ( (lastPin !== null) && (occStart > lastPin.start + SLACK) && (occStart < lastPin.end - SLACK) ) {
+        if ( (lastPin !== null) && (lastPin.then !== 'carry') && (occStart > lastPin.start + SLACK) && (occStart < lastPin.end - SLACK) ) {
             if ( (occEnd <= lastPin.end + SLACK) || (lastPin.then === 'take') ) {
                 pushFlex( pinInside ? Math.max(0, pins[nextPin].at - t) : remaining );
                 continue;

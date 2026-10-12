@@ -110,6 +110,19 @@ function airingAt({ programs, startTime, at }) {
     return { index: index, start: found[0].start, program: found[0].program };
 }
 
+// The program a re-made lineup leaves where it is (time-slots-service's
+// carry): the one on air, or the one whose break is on air - the last that
+// started at or before `now`, within a day.
+function carryAt({ programs, startTime, now }) {
+    let last = null;
+    walk(programs, startTime, now - DAY, now + 1).forEach( (x) => {
+        if (! x.program.isOffline && (x.start <= now)) {
+            last = { start: x.start, program: x.program };
+        }
+    } );
+    return last;
+}
+
 // A date ("2026-10-31") and a time ("16:00") on the local clock as an
 // instant; on the fall-back night, the first of the two.
 function localInstant(date, time) {
@@ -438,6 +451,7 @@ module.exports = {
     pinsAhead: pinsAhead,
     walk: walk,
     airingAt: airingAt,
+    carryAt: carryAt,
     localInstant: localInstant,
     showName: showName,
     slotAround: slotAround,

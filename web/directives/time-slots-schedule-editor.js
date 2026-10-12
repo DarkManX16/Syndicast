@@ -784,12 +784,17 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 let run = runNow();
                 lastRun = run;
+                //The program on air - or the one whose break is on air - stays
+                //where it is: it counts as aired, and the lineup is made from its end.
+                let carry = null;
                 if (typeof(scope.lineup) === 'function') {
                     let onAir = scope.lineup();
+                    carry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0 });
                     scope.schedule.progress = slotProgress.planProgress({
                         programs: onAir.programs,
                         startTime: new Date(onAir.startTime).getTime(),
                         now: t0,
+                        placesFrom: (carry !== null) ? Math.max(t0, carry.start + carry.program.duration) : undefined,
                         openedSchedule: scope.openedSchedule,
                         schedule: scope.schedule,
                         pool: scope.programs,
@@ -825,7 +830,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     let onAir = scope.lineup();
                     keep = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0 });
                 }
-                let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history, keep );
+                if ( (carry !== null) && carry.program.pin ) {
+                    keep = keep.filter( (x) => x.program !== carry.program );
+                }
+                let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history, keep, carry );
                 let t1 = new Date().getTime();
 
                 let w = Math.max(0, 250 - (t1 - t0) );

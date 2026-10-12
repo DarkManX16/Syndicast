@@ -519,7 +519,7 @@ function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
  * rules above gave a position, the pick replaces it (startRecord). The editor
  * holds the picks while its dialog is open; nothing saves them.
  */
-function planProgress({ programs, startTime, now, openedSchedule, schedule, pool, catalog, starts, getShowData }) {
+function planProgress({ programs, startTime, now, openedSchedule, schedule, pool, catalog, starts, placesFrom, getShowData }) {
     // Every candidate list comes from the full catalog when the editor has one
     // (see src/show-catalog.js); a round the old shuffler started is rebuilt
     // from the lineup's own list, the one that shuffler shuffled.
@@ -534,7 +534,9 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         : NaN;
     let readWith = (Array.isArray(opened.slots) && (opened.slots.length > 0)) ? opened : schedule;
     let start = (typeof(startTime) === 'number') ? startTime : new Date(startTime).getTime();
-    let places = readPlaces({ programs, startTime: start, now, schedule: readWith, getShowData });
+    // `placesFrom`: the end of the program on air, which the lineup keeps where it is
+    // (time-slots-service carry), so it counts as aired; else now, and it counts as not.
+    let places = readPlaces({ programs, startTime: start, now: (typeof(placesFrom) === "number") ? placesFrom : now, schedule: readWith, getShowData });
     let labelled = programs.some( (p) => typeof(p.slotPosition) === 'string' );
     let total = cycleLength(programs);
 

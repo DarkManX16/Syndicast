@@ -28,6 +28,7 @@
  *                                 the pool. Pins already in the lineup (--from) are always kept.
  *       [--around "<local time>"]  the three hours either side, saved and regenerated, Flex after each
  *       [--changed <days>]        airings whose start or episode differ over that many days, by show
+ *       [--restart-on-air]        as before Oct 12, 2026: the program on air starts again, and counts as not aired
  *       [--start <show|mode|seasons=episode>]  Episode start, repeatable: the position of <show> in <mode>
  *                                 (next, shuffle, rerun) leaving out <seasons> (comma-separated, may be
  *                                 empty) plays <episode> next - S01E34, or #12 for the 12th item of a
@@ -78,6 +79,7 @@ function parseArgs(argv) {
         else if (a === '--pin') (args.pins = args.pins || []).push(next());
         else if (a === '--around') args.around = Date.parse(next());
         else if (a === '--changed') args.changed = Number(next());
+        else if (a === '--restart-on-air') args.restartOnAir = true;
         else throw new Error('Unknown argument ' + a);
     }
     if (isNaN(args.at)) throw new Error('--at <ISO instant> is required');
@@ -114,7 +116,7 @@ function rotate(programs, startTime, at) {
 }
 
 // test/dst-fall-back.js's generate: the real generator with `new Date()` frozen.
-async function generate(programs, schedule, at, history, pins) {
+async function generate(programs, schedule, at, history, pins, carry) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(at); else super(...a); }
@@ -122,7 +124,7 @@ async function generate(programs, schedule, at, history, pins) {
     }
     global.Date = FrozenDate;
     try {
-        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history, pins);
+        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history, pins, carry);
     } finally {
         global.Date = RealDate;
     }
@@ -224,9 +226,12 @@ async function main() {
         console.log('start: ' + describe(key) + ' -> ' + wanted + ' ' + found.title);
     } );
     // The editor's doIt: every position's place, read from the lineup on air at this moment.
+    // The editor's carry: the program on air, or the one whose break is on air, stays where it is.
+    let carry = args.restartOnAir ? null : pinTools.carryAt({ programs: channel.programs, startTime: savedStart, now: at });
     if (! args.today) {
         schedule.progress = slotProgress.planProgress({
             programs: channel.programs, startTime: savedStart, now: at,
+            placesFrom: carry ? Math.max(at, carry.start + carry.program.duration) : undefined,
             openedSchedule: channel.scheduleBackup, schedule: schedule, pool: lineupPool, catalog: pool,
             starts: Object.keys(starts).length ? starts : undefined, getShowData,
         });
@@ -267,7 +272,8 @@ async function main() {
         console.log(`pin: ${when(t)} ${program.title} (${Math.round(program.duration / 1000)}s), ${program.pin.then}`);
     } );
     if (total0 <= 0) pins = [];
-    let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined);
+    if (carry && carry.program.pin) pins = pins.filter( (x) => x.program !== carry.program );
+    let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
     seasonConstraints.clearStartSeasons(schedule);
 
@@ -279,6 +285,12 @@ async function main() {
         programs: res.programs, startTime: newStart, from: at, to: at + horizon,
         schedule: schedule, getShowData,
     });
+    // Compared from the end of the program left on air, as the planner reads places.
+    if (carry) {
+        let from = Math.max(at, carry.start + carry.program.duration) - 2000;
+        before = before.filter( (x) => x.start >= from );
+        after = after.filter( (x) => x.start >= from );
+    }
 
     let b = byPosition(before), a = byPosition(after);
     let keys = [ ...new Set([ ...b.keys(), ...a.keys() ]) ].sort();

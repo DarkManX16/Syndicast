@@ -157,6 +157,19 @@ Behaviour:
 - [ ] **Step 5: Proof, live on the preview** (a fresh full copy): channel 3 - Go to Sat Oct 31 4:00pm, Swap, This show, "A Hero for Halloween": "It fits: 7:30 of Flex after it, and Lizzie McGuire starts at 4:30", "There's Something about Rene airs Sun Nov 1, 4:30pm..."; the first-swap note says nothing placed by hand would be lost; Swap, Update Channel. The saved file, checked by script: the pin at Oct 31 4:00pm with 7:30 of Flex after it, Rene Sun Nov 1 4:30pm, 155 of 155 positions continue, over 300 days only The Proud Family changes. Channel 1's 'Twas the Fight Before Christmas shows both choices with the spec's times; Run late applied and saved. Deleting the Halloween row undoes it: the saved lineup is Step 1's no-pin lineup again. Re-lay time per channel recorded. No console or server errors.
 - [ ] **Step 6:** Commit `Swaps: swap an airing from the Programming tab`.
 
+### Task 4b: A re-lay leaves the program on air alone (Ron, Oct 11, at the checkpoint)
+
+Every re-lay - and Create Lineup, which takes the same path - keeps the program on air, or the one whose break is on air, exactly where it is, and re-makes the lineup only after it ends: it counts as aired, and the rest of its slot gets only what fits whole. Before, the program on air started again from its beginning and its show's later airings moved one along; and during a break, the slot's next episode went in at once, late.
+
+**Files:** `src/services/time-slots-service.js` (`carry`), `src/api.js`, `web/services/dizquetv.js`, `src/slot-progress.js` (`planProgress({ placesFrom })`), `src/pins.js` (`carryAt`), `web/directives/time-slots-schedule-editor.js` (`doIt`), `scripts/progress-check.js`; tests in `test/pins-generator.js`, `test/slot-progress.js`, `test/pins.js`.
+
+**Interfaces:** `pins.carryAt({ programs, startTime, now }) -> { start, program } | null` - the last program started at or before `now`, within a day; `timeSlotsService(programs, schedule, history, pins, carry)` - the lineup holds `carry.program` at `carry.start` (when at or after the generator's period start) and continues from its end as after a run-late pin; `planProgress({ ..., placesFrom })` - places read from `placesFrom` (the carried program's end) instead of `now`. A carried pinned airing keeps its pin and is left out of the pins sent.
+
+- [ ] Failing tests: the generator carries a program on air at its real start and its slot's next episode waits; during a break, nothing starts before the next slot; a carried pin keeps its mark; `planProgress` reads places from `placesFrom`; `carryAt` on air, in a break, and none within a day.
+- [ ] Implement; `npm test`.
+- [ ] Proof on a copy: channel 3 regenerated Sun Oct 11 10pm, mid "The Jim Henson Hour": with the rule, Henson's airings continue (none of the 43 moves), and the lineup from 9:35pm is the saved one; at a break; channels 1-3 with no pins at three moments against `blocks`: differences only around the moment of the run.
+- [ ] Random Slots doesn't share the path: Known issue.
+
 **Halloween checkpoint.** A fresh review of Steps 1-4 (Opus 5.5), its fixes each with a test that failed first; then Steps 1-4 can merge into `blocks`, when Ron says. The server's generator changes, so the bundle is rebuilt and 18000 restarted together - Ron's to restart. Ron's first swap on a channel is also its first regeneration with the new code: measured, nothing changes on channels 1 and 2 for the year, and on channel 3 nothing before Apr 3, 2027.
 
 ## Step 5 - Insert
