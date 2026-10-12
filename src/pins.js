@@ -129,6 +129,39 @@ function breaksThatFit({ programs, startTime, near, within, duration }) {
     return found.slice(0, 5);
 }
 
+// "7:30-8:00pm", "11:40am-12:10pm": a time range to the minute, saying am or
+// pm once when both ends agree.
+function range(from, to) {
+    let at = (t) => {
+        let d = new Date(Math.round(t / MINUTE) * MINUTE);
+        let h = d.getHours() % 12 || 12;
+        return { text: `${h}:${pad2(d.getMinutes())}`, half: (d.getHours() < 12) ? 'am' : 'pm' };
+    };
+    let a = at(from), b = at(to);
+    return (a.half === b.half) ? `${a.text}-${b.text}${b.half}` : `${a.text}${a.half}-${b.text}${b.half}`;
+}
+
+/*
+ * What deleting the airing at `index` of `programs` (which starts at
+ * `startTime`) leaves: the Flex from where it began to where the next program
+ * does - its own length and the break after it. `offerSwap` when that is
+ * longer than about two minutes: the prompt then offers Swap instead.
+ */
+function sayRemoval({ programs, startTime, index }) {
+    let from = startTime;
+    for (let i = 0; i < index; i++) {
+        from += programs[i].duration;
+    }
+    let flexMs = programs[index].duration;
+    for (let j = index + 1; (j < programs.length) && programs[j].isOffline && (programs[j].type !== 'redirect'); j++) {
+        flexMs += programs[j].duration;
+    }
+    return {
+        flexMs: flexMs, from: from, to: from + flexMs, offerSwap: flexMs > 2 * MINUTE,
+        text: `Leaves ${length(flexMs)} of Flex, ${range(from, from + flexMs)}.`,
+    };
+}
+
 // The program a re-made lineup leaves where it is (time-slots-service's
 // carry): the one on air, or the one whose break is on air - the last that
 // started at or before `now`, within a day.
@@ -471,6 +504,7 @@ module.exports = {
     walk: walk,
     airingAt: airingAt,
     carryAt: carryAt,
+    sayRemoval: sayRemoval,
     breaksThatFit: breaksThatFit,
     localInstant: localInstant,
     showName: showName,

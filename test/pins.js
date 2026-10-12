@@ -264,6 +264,26 @@ module.exports = async function () {
             ok);
     }
 
+    suite.log('-- deleting an airing --');
+    {
+        const day = await generate(fixturePool(), fixtureSchedule(), NOON8);
+        const lineupNow = { programs: day.programs, startTime: Date.parse(day.startTime) };
+        const arnold = pins.airingAt({ programs: lineupNow.programs, startTime: lineupNow.startTime, at: thu(19, 30) });
+        const gap = pins.sayRemoval({ programs: lineupNow.programs, startTime: lineupNow.startTime, index: arnold.index });
+        suite.check('sayRemoval: a 22:38 airing with 7:22 of Flex leaves 30:00, 7:30-8:00pm, and offers Swap',
+            gap.flexMs === 30 * MIN && gap.from === thu(19, 30) && gap.to === thu(20) && gap.offerSwap === true
+                && gap.text === 'Leaves 30:00 of Flex, 7:30-8:00pm.',
+            JSON.stringify({ flexMs: gap.flexMs, text: gap.text, offerSwap: gap.offerSwap }));
+        const clip = { type: 'movie', title: 'NEXT - SGC2C', duration: 10 * SEC, serverKey: 'srv', key: '/b/next' };
+        const tiny = [ clip, { isOffline: true, duration: 50 * SEC }, episode('A', 1, 1), { isOffline: true, duration: 20 * MIN } ];
+        const small = pins.sayRemoval({ programs: tiny, startTime: thu(19, 52, 38), index: 0 });
+        suite.check('...a 10-second clip with 50 seconds of Flex leaves 1:00 and no offer of Swap',
+            small.flexMs === MIN && small.offerSwap === false && small.text === 'Leaves 1:00 of Flex, 7:53-7:54pm.', JSON.stringify(small));
+        const noon = pins.sayRemoval({ programs: [ episode('A', 1, 1), { isOffline: true, duration: 8 * MIN }, episode('B', 1, 1) ], startTime: thu(11, 40), index: 0 });
+        suite.check('...and a range across noon says am and pm',
+            noon.text === 'Leaves 30:00 of Flex, 11:40am-12:10pm.', noon.text);
+    }
+
     suite.log('-- the program on air --');
     {
         const a = episode('A', 1, 1);

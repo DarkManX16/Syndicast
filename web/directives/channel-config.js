@@ -1405,6 +1405,13 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let label = commonProgramTools.getProgramDisplayTitle(program);
                 scope.deletePrompt = { index: x, program: program, label: label, others: others,
                     holiday: showCatalog.holidayOf(program.title) || 'Christmas' };
+                // On a Time Slots channel, each choice re-lays the lineup: the prompt says what
+                // gap the airing leaves, and offers a swap when it is more than a couple of minutes.
+                if (scope.hasTimeSlots()) {
+                    scope.deletePrompt.timeSlots = true;
+                    scope.deletePrompt.gap = pinTools.sayRemoval({ programs: scope.channel.programs,
+                        startTime: new Date(scope.channel.startTime).getTime(), index: x });
+                }
             }
             scope.finishDelete = (choice) => {
                 let prompt = scope.deletePrompt;
@@ -1415,6 +1422,14 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 // The row the prompt was opened for, even if the list moved meanwhile.
                 let x = (scope.channel.programs[prompt.index] === prompt.program) ? prompt.index : scope.channel.programs.indexOf(prompt.program);
                 if (x === -1) {
+                    return;
+                }
+                if (choice === 'swap') {
+                    openPlacing(x, 'swap');
+                    return;
+                }
+                if (prompt.timeSlots) {
+                    deleteByRelay(prompt, choice);
                     return;
                 }
                 scope.channel.programs.splice(x, 1)
@@ -2848,8 +2863,71 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.undoPrompt = null;
                 if (yes && (prompt !== null) && (prompt.result !== null)) {
                     applyRelay(prompt.result);
+                    if (typeof(prompt.afterApply) === 'function') {
+                        prompt.afterApply();
+                    }
                 }
                 $timeout();
+            };
+
+            /*
+             * Deleting an airing on a Time Slots channel re-lays the lineup, on the lineup
+             * as it is - the airing still in it, so its show's place is read before it:
+             *   only    a pinned Flex of the airing's length keeps its time; the episode airs
+             *           at its show's next slot;
+             *   holiday / never   the episode goes on the never-air list for the re-lay, and
+             *           the slot airs its show's next episode: no gap.
+             * It applies at once, unless the re-lay would drop something placed by hand: then
+             * the prompt names each item and asks.
+             */
+            let deleteByRelay = async (prompt, choice) => {
+                let program = prompt.program;
+                scope.undoPrompt = { program: program, working: true, title: 'Delete ' + prompt.label, go: 'Delete it',
+                    text: 'Working out what deleting it does...', result: null };
+                $timeout();
+                try {
+                    let start = new Date(scope.channel.startTime).getTime();
+                    let now = Date.now();
+                    let ops = (choice === 'only') ? [] : [ { neverAir: [ showCatalog.neverAirEntry(program, getShowData, 'deleted', choice,
+                        (choice === 'holiday') ? prompt.holiday : undefined, now) ] } ];
+                    let base = await catalogFor();
+                    let state = showCatalog.applyOps(base, ops, now);
+                    state.channelNumber = base.channelNumber;
+                    state.unreadable = base.unreadable;
+                    let keep = pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: now });
+                    if (choice === 'only') {
+                        let schedule = scope.channel.scheduleBackup;
+                        let at = program.start.valueOf();
+                        let around = pinTools.slotAround({ schedule: schedule, at: at });
+                        if ( (around !== null) && (Math.abs(at - around.start) <= 10000) ) {
+                            at = around.start;
+                        }
+                        keep = pinTools.withPin(keep, pinTools.removalPin({ airing: program, at: at, slotShow: around ? around.showId : undefined, now: now }));
+                    }
+                    let result = await guardedRelay({
+                        programs: commonProgramTools.slotPool(scope.channel.programs), limit: scope.maxSize,
+                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: state, pins: keep, now: now,
+                    });
+                    let effects = pinTools.relayEffects({ before: { programs: scope.channel.programs, startTime: start },
+                        after: { programs: result.programs, startTime: new Date(result.startTime).getTime() },
+                        from: now, to: now + 400 * 24 * 60 * 60 * 1000, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
+                    let apply = () => { applyRelay(result); queueCatalogOps(ops); };
+                    if (effects.dropped.length === 0) {
+                        scope.undoPrompt = null;
+                        apply();
+                    } else {
+                        scope.undoPrompt = { program: program, working: false, result: result, title: 'Delete ' + prompt.label, go: 'Delete it',
+                            text: pinTools.sayDropped(effects.dropped), afterApply: () => queueCatalogOps(ops) };
+                    }
+                } catch (err) {
+                    console.error(err);
+                    scope.undoPrompt = null;
+                    scope.error.programs = (err && err.serverStale) ? err.message : (err && err.message === 'busy')
+                        ? 'Another swap is still being worked out - try again in a moment.'
+                        : 'Could not delete it: ' + ( (err && (err.data || err.message)) || err );
+                } finally {
+                    $timeout();
+                }
             };
 
 
