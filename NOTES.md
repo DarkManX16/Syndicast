@@ -4864,7 +4864,7 @@ was back on time, what was dropped), and the breaks a length fits into.
 Proofs on copies of `.dizquetv-dev` taken Sun Oct 11 at 9:44pm Central (channels,
 custom shows, filler, aliases; identical at 12:01am Oct 12) and 9:57pm (a full
 data folder for the preview), with a Plex catalog snapshot taken then. Suite 2009
-at the start, 2066 at the end. Steps 5-8 go on on the branch.
+at the start, 2061 at the end. Steps 5-8 go on on the branch.
 
 - **What shipped.** The generator places pins (Task 1); a pinned airing is never
   a place and never joins a pool - `slotPool` at all nine pool sites (Task 2);
