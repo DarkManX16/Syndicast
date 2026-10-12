@@ -210,6 +210,9 @@
                                 <button class="btn btn-sm btn-link" ng-if="canSwap(x)" title="Swap..." ng-disabled="relaying()" ng-click="startSwap(x.$index); $event.stopPropagation()">
                                     <i class="fas fa-exchange-alt"></i>
                                 </button>
+                                <button class="btn btn-sm btn-link" ng-if="canSwap(x)" title="Insert after..." ng-disabled="relaying()" ng-click="startInsert(x.$index); $event.stopPropagation()">
+                                    <i class="fas fa-plus-square"></i>
+                                </button>
                                 <button class="btn btn-sm btn-link" ng-disabled="relaying()" ng-click="removeItem(x.$index);  $event.stopPropagation()">
                                     <i class="text-danger fa fa fa-trash-alt"></i>
                                 </button>

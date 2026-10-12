@@ -2714,7 +2714,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.relaying = () => relayGate.busy();
             let guardedRelay = (args) => relayGate.run( () => scope.timeSlots.relay(args) );
             scope.swapRequest = null;
-            scope.startSwap = async (index) => {
+            let openPlacing = async (index, mode) => {
                 if (relayGate.busy()) {
                     return;
                 }
@@ -2728,11 +2728,13 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
                 scope.swapRequest = {
-                    channel: scope.channel, index: index, mode: 'swap',
+                    channel: scope.channel, index: index, mode: mode,
                     relay: guardedRelay, limit: scope.maxSize, catalogState: catalogFor,
                 };
                 $timeout();
             };
+            scope.startSwap = (index) => openPlacing(index, 'swap');
+            scope.startInsert = (index) => openPlacing(index, 'insert');
             // A re-lay's result, applied as Create Lineup's is.
             let applyRelay = (result) => {
                 scope.channel.scheduleBackup = result.schedule;

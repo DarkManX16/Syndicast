@@ -231,9 +231,37 @@ module.exports = async function () {
                 && movedText === "Best Man / Cool Party airs Fri Oct 9, 7:30pm, and Hey Arnold!'s later airings move one along."
                 && lateText === "Home Movies airs Fri Oct 9, 7:00pm, and Rugrats' later airings move one along. Hey Arnold! starts at 7:44:09 and Are You Afraid of the Dark? at 8:06:47; back on time at 8:30."
                 && droppedText === 'This also drops what was placed in the list by hand: Thu Oct 8, 7:52pm NEXT - SGC2C (0:10).'
-                && firstText === 'Swapping re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
+                && firstText === 'A swap or an insert re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
                 && keptText === "Keeping your swaps and inserts: Thu Oct 8, 7:30pm Arnold's Christmas (Hey Arnold!).",
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
+    }
+
+    suite.log('-- inserts --');
+    {
+        const day = await generate(fixturePool(), fixtureSchedule(), NOON8);
+        const lineupNow = { programs: day.programs, startTime: Date.parse(day.startTime) };
+        const schedule = fixtureSchedule();
+        const near = thu(19, 52, 38);
+        const fits = pins.breaksThatFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, near, within: 2 * HOUR, duration: 7 * MIN + 30 * SEC });
+        suite.check('breaksThatFit lists the nearest breaks long enough, nearest first',
+            fits.length === 2 && fits[0].after.program.showTitle === 'Are You Afraid of the Dark?' && fits[0].start === thu(20, 22)
+                && fits[0].length === 8 * MIN && fits[1].after.program.showTitle === 'Shelby Woo' && fits[1].start === thu(20, 52),
+            JSON.stringify(fits.map((f) => [f.after.program.showTitle, new Date(f.start).toString(), f.length])));
+        suite.check('...none when nothing is long enough',
+            pins.breaksThatFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, near, within: 2 * HOUR, duration: 30 * HOUR }).length === 0);
+        const many = pins.breaksThatFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, near, within: 4 * DAY, duration: 2 * MIN });
+        suite.check('...at most five, still nearest first',
+            many.length === 5 && many.every((f, i, all) => i === 0 || Math.abs(all[i - 1].start - near) <= Math.abs(f.start - near)));
+        const clip = episode('Specials', 0, 1, { title: 'Silly Symphony', duration: 8 * MIN + 11 * SEC });
+        const over = pins.sayFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, schedule, at: near, item: clip, kind: 'insert' });
+        suite.check('sayFit for an insert 49 seconds too long names the break and the show whose slot it runs into',
+            over === "Silly Symphony runs 8:11. The space is 7:22 - the break after Best Man / Cool Party. It runs 0:49 past 8:00, into Are You Afraid of the Dark?'s slot.",
+            over);
+        const small = episode('Specials', 0, 2, { title: 'Short', duration: 5 * MIN });
+        const ok = pins.sayFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, schedule, at: near, item: small, kind: 'insert' });
+        suite.check('...and for one that fits, what is left and when the next show starts',
+            ok === 'Short runs 5:00. The space is 7:22 - the break after Best Man / Cool Party. It fits: 2:22 of Flex after it, and Are You Afraid of the Dark? starts at 8:00.',
+            ok);
     }
 
     suite.log('-- the program on air --');

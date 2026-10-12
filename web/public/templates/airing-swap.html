@@ -1,8 +1,9 @@
+<div>
 <div class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
     <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Swap {{title}}</h5>
+                <h5 class="modal-title">{{verb}} {{title}}</h5>
             </div>
             <div class="modal-body">
                 <div class="alert alert-warning py-1 px-2 small" ng-show="error">{{error}}</div>
@@ -12,6 +13,8 @@
                         <button type="button" class="btn" ng-class="source === 'show' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('show')">This show</button>
                         <button type="button" class="btn" ng-class="source === 'other' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('other')">Other shows on this channel</button>
                         <button type="button" class="btn" ng-class="source === 'custom' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('custom')">Custom shows</button>
+                        <button type="button" class="btn" ng-class="source === 'holiday' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('holiday')">Holiday episodes</button>
+                        <button type="button" class="btn btn-outline-primary" ng-click="openLibrary()">From the library...</button>
                     </div>
                     <div ng-show="source === 'other'" style="margin-bottom: 8px;">
                         <select class="form-control form-control-sm" ng-model="pick.show" ng-change="reload()"
@@ -51,6 +54,10 @@
                             <div class="small text-muted" ng-show="o.onAir">{{o.onAir}}</div>
                         </div>
                     </div>
+                    <div ng-show="breaks.length > 0" style="margin-bottom: 8px;">
+                        <div class="small">Or put it in a break where it fits:</div>
+                        <div ng-repeat="b in breaks"><button class="btn btn-sm btn-link" ng-click="putInBreak(b)">{{b.text}}</button></div>
+                    </div>
                     <button class="btn btn-sm btn-outline-secondary" ng-click="back()">Pick something else</button>
                 </div>
             </div>
@@ -59,4 +66,6 @@
             </div>
         </div>
     </div>
+</div>
+<plex-library height="300" limit="1" visible="library.open" on-finish="libraryDone"></plex-library>
 </div>

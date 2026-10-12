@@ -110,6 +110,25 @@ function airingAt({ programs, startTime, at }) {
     return { index: index, start: found[0].start, program: found[0].program };
 }
 
+// The breaks - Flex after a program, not counting a pinned Flex - of at least
+// `duration` that start within `within` of `near`, nearest first, at most
+// five: where an insert too long for its own break would fit. `start` is
+// where the break begins, the end of the program before it.
+function breaksThatFit({ programs, startTime, near, within, duration }) {
+    let found = [];
+    walk(programs, startTime, near - within - DAY, near + within).forEach( (x) => {
+        if (x.program.isOffline || (x.flex < duration)) {
+            return;
+        }
+        let start = x.start + x.program.duration;
+        if (Math.abs(start - near) <= within) {
+            found.push({ after: { start: x.start, program: x.program }, start: start, length: x.flex });
+        }
+    } );
+    found.sort( (a, b) => Math.abs(a.start - near) - Math.abs(b.start - near) );
+    return found.slice(0, 5);
+}
+
 // The program a re-made lineup leaves where it is (time-slots-service's
 // carry): the one on air, or the one whose break is on air - the last that
 // started at or before `now`, within a day.
@@ -335,7 +354,7 @@ function sayDropped(dropped) {
 }
 
 function sayFirstSwap({ dropped }) {
-    return 'Swapping re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand'
+    return 'A swap or an insert re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand'
         + ' - bumpers, promos, episodes inserted from the library - is dropped. '
         + ( (dropped.length > 0) ? sayDropped(dropped) : 'Nothing placed by hand from now on would be lost.' );
 }
@@ -452,6 +471,7 @@ module.exports = {
     walk: walk,
     airingAt: airingAt,
     carryAt: carryAt,
+    breaksThatFit: breaksThatFit,
     localInstant: localInstant,
     showName: showName,
     slotAround: slotAround,
