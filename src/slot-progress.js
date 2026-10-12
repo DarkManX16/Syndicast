@@ -454,7 +454,8 @@ function recentAirings({ programs, startTime, now, spanMs, since }) {
 }
 
 function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
-    if (program.isOffline) {
+    // A swap or insert pinned by hand (src/pins.js) never counts for a position.
+    if (program.isOffline || program.pin) {
         return null;
     }
     let show = getShowData(program);

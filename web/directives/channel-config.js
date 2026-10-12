@@ -2250,7 +2250,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
              * from every other day of the week.
              */
             let openSlotEditor = async (slotScope) => {
-                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
                     progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir, state
@@ -2587,20 +2587,20 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
 
             scope.onTimeSlotsButtonClick = async () => {
-                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state );
                 $timeout();
             }
             scope.onRandomSlotsButtonClick = async () => {
-                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.randomSlots.startDialog(progs, scope.maxSize, scope.channel.randomScheduleBackup, false, lineupOnAir, state );
                 $timeout();
             }
 
             scope.rerollRandomSlots = async () => {
-                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.randomSlots.startDialog(
                     progs, scope.maxSize, scope.channel.randomScheduleBackup,
@@ -2617,7 +2617,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
 
             scope.rerollTimeSlots = async () => {
-                let progs = commonProgramTools.removeDuplicates( scope.channel.programs );
+                let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
                     progs, scope.maxSize, scope.channel.scheduleBackup,

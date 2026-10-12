@@ -133,7 +133,7 @@ module.exports = function ($scope, $routeParams, $timeout, dizquetv, getShowData
         try {
             $scope.channel = await dizquetv.getChannel(channelNumber);
             state = await dizquetv.getChannelCatalog(channelNumber);
-            lineupPool = commonProgramTools.removeDuplicates($scope.channel.programs);
+            lineupPool = commonProgramTools.slotPool($scope.channel.programs);
             let groups = new Map();
             lineupPool.forEach( (p) => {
                 if (p.isOffline) return;

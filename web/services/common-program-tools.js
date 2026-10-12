@@ -496,6 +496,9 @@ module.exports = function (getShowData) {
         sortShows: sortShows,
         shuffle: shuffle,
         removeDuplicates: removeDuplicates,
+        // What the slot editors draw on: one copy of each episode in the
+        // lineup, never a pinned swap or insert (src/pins.js).
+        slotPool: (progs) => removeDuplicates( progs.filter( (p) => ! p.pin ) ),
         removeSpecials: removeSpecials,
         sortByDate: sortByDate,
         getProgramDisplayTitle: getProgramDisplayTitle,

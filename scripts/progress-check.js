@@ -48,6 +48,7 @@ const commonProgramTools = require('../web/services/common-program-tools')(getSh
 const seasonConstraints = require('../web/services/season-constraints')();
 const showCatalog = require('../src/show-catalog');
 const rounds = require('../src/shuffle-rounds');
+const pinTools = require('../src/pins');
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -164,7 +165,7 @@ async function main() {
     }
     let rotated = rotate(channel.programs, savedStart, at);
     // A pinned airing never joins the pool.
-    let pool = commonProgramTools.removeDuplicates(rotated.programs.filter( (p) => ! p.pin ));
+    let pool = commonProgramTools.slotPool(rotated.programs);
     let schedule = JSON.parse(JSON.stringify(channel.scheduleBackup));
     if (args.edit) {
         require(path.resolve(args.edit))(schedule);
@@ -259,10 +260,9 @@ async function main() {
             return p.title === which;
         } );
         if (! found || isNaN(t)) throw new Error('--pin: nothing found for ' + spec);
-        let program = JSON.parse(JSON.stringify(found));
-        delete program.slotPosition;
-        delete program.shuffleOrder;
-        program.pin = { at: t, kind: kind || 'swap', then: then || 'take', made: new Date(at).toISOString() };
+        let slot = slotProgress.slotAt(schedule, t);
+        let program = pinTools.makePin({ program: found, at: t, kind: kind || 'swap', then: then || 'take',
+            slotShow: slot ? slot.showId : undefined, now: at });
         pins.push({ at: t, then: program.pin.then, program });
         console.log(`pin: ${when(t)} ${program.title} (${Math.round(program.duration / 1000)}s), ${program.pin.then}`);
     } );

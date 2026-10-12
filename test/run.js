@@ -47,6 +47,7 @@ const suites = [
     './slot-progress',
     './progress-generators',
     './pins-generator',
+    './pins',
     './multi-part',
     './shuffle-rounds',
     './progress-rerun',
