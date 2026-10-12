@@ -145,6 +145,79 @@ module.exports = async function () {
         suite.check('relayEffects stops two weeks before either lineup comes round its loop',
             atEnd.dropped.length === 0, JSON.stringify(atEnd.dropped.map((d) => [d.program.title, new Date(d.start).toString()])));
 
+        // As Ron's saved lineups are: content, then days of Flex where the loop
+        // comes round, and the editor rotates its start to now. Past that Flex the
+        // loop's first day sits off the slots.
+        const seamed = plain.programs.concat([{ isOffline: true, duration: 5 * DAY }]);
+        seamed.unshift(Object.assign({}, bumper, { title: 'Off-slot opener' }));
+        const seamedStart = plain.startTime - bumper.duration;
+        const nowLater = NOON8 + 20 * DAY;
+        const rotatedAt = pins.airingAt({ programs: seamed, startTime: seamedStart, at: nowLater });
+        const rotated = { programs: seamed.slice(rotatedAt.index).concat(seamed.slice(0, rotatedAt.index)), startTime: rotatedAt.start };
+        const fresh = await generate(fixturePool(), fixtureSchedule(), nowLater);
+        const seamCheck = pins.relayEffects({ before: rotated, after: { programs: fresh.programs, startTime: Date.parse(fresh.startTime) },
+            from: nowLater, to: nowLater + 400 * DAY, schedule, getShowData });
+        suite.check('relayEffects stops before a rotated lineup\'s real end, its longest Flex',
+            ! seamCheck.dropped.some((d) => d.program.title === 'Off-slot opener'),
+            JSON.stringify(seamCheck.dropped.map((d) => [d.program.title, new Date(d.start).toString()])));
+
+        // Undo: the swap's lineup re-laid without it.
+        const undone = pins.relayEffects({ before: swapped, after: plain, from: NOON8, to: NOON8 + 7 * DAY, schedule, getShowData });
+        suite.check('relayEffects names an episode moving back to its own slot when a swap is undone',
+            undone.movedAlong.length === 1 && undone.movedAlong[0].program.title === 'Best Man / Cool Party'
+                && undone.movedAlong[0].wasAt === thu(19, 30) + DAY && undone.movedAlong[0].nowAt === thu(19, 30) && undone.movedAlong[0].back === true,
+            JSON.stringify(undone.movedAlong.map((m) => [m.program.title, new Date(m.nowAt).toString(), m.back])));
+        const undoText = pins.sayUndo({ label: "Hey Arnold! S00E07 Arnold's Christmas", at: thu(19, 30), effects: undone, anyway: '',
+            dropped: [ { start: thu(19, 52, 38), program: bumper } ] });
+        suite.check('sayUndo says what comes back and what is dropped',
+            undoText === "Undo Hey Arnold! S00E07 Arnold's Christmas, pinned to Thu Oct 8, 7:30pm? The slot's own programming comes back: "
+                + "Best Man / Cool Party airs Thu Oct 8, 7:30pm instead, and Hey Arnold!'s later airings move back one. "
+                + 'This also drops what was placed in the list by hand: Thu Oct 8, 7:52pm NEXT - SGC2C (0:10).',
+            undoText);
+
+        // Undoing a run-late pin: the shows that ran late are back on time.
+        const unlate = pins.relayEffects({ before: late, after: plain, from: NOON8, to: NOON8 + 7 * DAY, schedule, getShowData });
+        suite.check('relayEffects names shows back on time when a run-late pin is undone',
+            unlate.early.map((e) => e.program.showTitle + '@' + clock(e.nowAt)).join() === 'Hey Arnold!@7:30:00 PM,Are You Afraid of the Dark?@8:00:00 PM'
+                && unlate.late.length === 0 && unlate.movedAlong.map((m) => m.name + (m.back ? ' back' : '')).join() === 'Rugrats back',
+            JSON.stringify({ early: unlate.early.map((e) => e.program.title + '@' + clock(e.nowAt)), late: unlate.late.length,
+                moved: unlate.movedAlong.map((m) => m.name + ' ' + new Date(m.nowAt).toString()) }));
+        suite.check('...in plain words',
+            pins.sayEffects(unlate) === "Home Movies airs Thu Oct 8, 7:00pm instead, and Rugrats' later airings move back one. "
+                + 'Hey Arnold! and Are You Afraid of the Dark? are back on time, at 7:30 and 8:00.',
+            pins.sayEffects(unlate));
+
+        // A slot of two halves whose show moved one along: each half airs 15 minutes later the
+        // same night, which is moving along, not running late - something else starts at its time.
+        const halfA = episode('Rugrats', 1, 1, { title: 'Half A', duration: 11 * MIN });
+        const halfB = episode('Rugrats', 1, 2, { title: 'Half B', duration: 11 * MIN });
+        const halfZ = episode('Rugrats', 1, 3, { title: 'Half Z', duration: 11 * MIN });
+        // Three weeks, as a real lineup is shaped: a show every evening, then days of Flex.
+        const build = (entries) => {
+            const all = entries.slice();
+            for (let d = 0; d < 21; d++) {
+                all.push([thu(20, 30) + d * DAY, episode('Shelby Woo', 1, d + 1)]);
+            }
+            all.sort((a, b) => a[0] - b[0]);
+            const programs = [];
+            let t = THU;
+            all.forEach(([when, p]) => {
+                if (when > t) { programs.push({ isOffline: true, duration: when - t }); t = when; }
+                programs.push(p); t += p.duration;
+            });
+            programs.push({ isOffline: true, duration: THU + 26 * DAY - t });
+            return { programs, startTime: THU };
+        };
+        const halvesBefore = build([[thu(19), halfA], [thu(19, 15), halfB], [thu(19) + DAY, halfZ]]);
+        const halvesAfter = build([[thu(19), halfZ], [thu(19, 15), halfA], [thu(19) + DAY, halfB]]);
+        const shifted = pins.relayEffects({ before: halvesBefore, after: halvesAfter, from: THU, to: THU + 2 * DAY, schedule, getShowData });
+        suite.check('relayEffects calls a same-night shift of a show moving along, not running late',
+            shifted.late.length === 0 && shifted.movedAlong.length === 1 && shifted.movedAlong[0].program.title === 'Half A',
+            JSON.stringify({ late: shifted.late.map((l) => l.program.title), moved: shifted.movedAlong.map((m) => m.program.title) }));
+
+        suite.check('placedIn finds a re-lay that holds the pin, and not one that dropped it',
+            pins.placedIn(swapped, thu(19, 30)) && ! pins.placedIn(plain, thu(19, 30)) && ! pins.placedIn(swapped, thu(20)));
+
         const fitText = pins.sayFit({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19, 30), item: christmas, kind: 'swap' });
         const overText = pins.sayFit({ programs: plain.programs, startTime: plain.startTime, schedule, at: thu(19), item: special, kind: 'swap' });
         const movedText = pins.sayEffects(moved);
@@ -161,6 +234,28 @@ module.exports = async function () {
                 && firstText === 'Swapping re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
                 && keptText === "Keeping your swaps and inserts: Thu Oct 8, 7:30pm Arnold's Christmas (Hey Arnold!).",
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
+    }
+
+    suite.log('-- one re-lay at a time --');
+    {
+        const gate = pins.oneAtATime();
+        let release;
+        const first = gate.run(() => new Promise((r) => { release = r; }));
+        let refused = null;
+        try {
+            await gate.run(async () => 'second');
+        } catch (err) {
+            refused = err.message;
+        }
+        const busyDuring = gate.busy();
+        release('first');
+        const firstResult = await first;
+        const third = await gate.run(async () => 'third');
+        suite.check('oneAtATime refuses a second run while one is under way, and frees up after',
+            busyDuring && refused === 'busy' && firstResult === 'first' && third === 'third' && ! gate.busy(),
+            JSON.stringify({ busyDuring, refused, firstResult, third }));
+        const failing = await gate.run(async () => { throw new Error('boom'); }).catch((e) => e.message);
+        suite.check('...and frees up after a run that fails', failing === 'boom' && ! gate.busy());
     }
 
     suite.log('-- go to --');

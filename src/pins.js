@@ -158,17 +158,39 @@ function relayEffects({ before, after, from, to, schedule, getShowData }) {
     // Not past two weeks before either lineup comes round its loop: a
     // lineup's last days sit off the slots and end in Flex, so they'd read
     // as hand-placed, and they're a year out, beyond what a re-lay keeps.
+    // A lineup's real end is where its loop comes round - and, since the
+    // editor rotates a lineup's start to now, that is found as its longest
+    // Flex (a day or more: generators end a lineup in days of it), not from
+    // its start.
     let loopEnd = (lineup) => {
         let total = lineup.programs.reduce( (a, p) => a + p.duration, 0 );
         let base = Math.max(from, lineup.startTime);
-        return base + total - mod(base - lineup.startTime, total);
+        let end = base + total - mod(base - lineup.startTime, total);
+        let longest = { start: null, length: 0 };
+        let run = { start: null, length: 0 };
+        walk(lineup.programs, lineup.startTime, base, base + total).forEach( (x) => {
+            if (x.program.isOffline && (x.program.type !== 'redirect') && ! x.program.pin) {
+                if (run.start === null) {
+                    run = { start: x.start, length: 0 };
+                }
+                run.length += x.program.duration;
+                if (run.length > longest.length) {
+                    longest = { start: run.start, length: run.length };
+                }
+            } else {
+                run = { start: null, length: 0 };
+            }
+        } );
+        return (longest.length >= DAY) ? Math.min(end, longest.start) : end;
     };
     to = Math.min(to, loopEnd(before) - 14 * DAY, loopEnd(after) - 14 * DAY);
     let starts = new Map();
-    walk(after.programs, after.startTime, from - SAME, to + 3 * HOUR).forEach( (x) => {
+    let anyStart = new Set();
+    walk(after.programs, after.startTime, from - 3 * HOUR, to + 3 * HOUR).forEach( (x) => {
         if (x.program.isOffline) {
             return;
         }
+        anyStart.add(Math.round(x.start / SECOND));
         let k = fileOf(x.program);
         if (! starts.has(k)) {
             starts.set(k, []);
@@ -176,7 +198,19 @@ function relayEffects({ before, after, from, to, schedule, getShowData }) {
         starts.get(k).push(x.start);
     } );
     let has = (x) => (starts.get(fileOf(x.program)) || []).some( (s) => Math.abs(s - x.start) <= SAME );
-    let effects = { movedAlong: [], late: [], backOnTime: null, dropped: [] };
+    // Whether some program starts in `after` at an instant: a show that only
+    // shifted - ran late, or came back on time - leaves its old time to the
+    // program before it, still on; one that moved along leaves it to another.
+    let startsNear = (t) => {
+        let s = Math.round(t / SECOND);
+        for (let d = -2; d <= 2; d++) {
+            if (anyStart.has(s + d)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    let effects = { movedAlong: [], late: [], early: [], backOnTime: null, dropped: [] };
     let seen = new Set();
     let lastLate = null;
     let found = slotProgress.airings({ programs: before.programs, startTime: before.startTime, from, to, schedule, getShowData });
@@ -196,13 +230,22 @@ function relayEffects({ before, after, from, to, schedule, getShowData }) {
             }
             continue;
         }
-        let later = (starts.get(fileOf(x.program)) || []).filter( (s) => s > x.start + SLACK );
-        if ( (later.length > 0) && (later[0] <= x.start + 3 * HOUR) ) {
-            effects.late.push({ program: x.program, wasAt: x.start, nowAt: later[0] });
-            lastLate = x.start;
+        let elsewhere = (starts.get(fileOf(x.program)) || []).filter( (s) => Math.abs(s - x.start) > SLACK );
+        let nearest = elsewhere.slice().sort( (a, b) => Math.abs(a - x.start) - Math.abs(b - x.start) )[0];
+        if ( (typeof(nearest) !== 'undefined') && (Math.abs(nearest - x.start) <= 3 * HOUR) && ! startsNear(x.start) ) {
+            if (nearest > x.start) {
+                effects.late.push({ program: x.program, wasAt: x.start, nowAt: nearest });
+                lastLate = x.start;
+            } else {
+                effects.early.push({ program: x.program, wasAt: x.start, nowAt: nearest });
+            }
         } else if (! seen.has(x.key)) {
             seen.add(x.key);
-            effects.movedAlong.push({ name: showName(x.program), program: x.program, wasAt: x.start, nowAt: (later.length > 0) ? later[0] : null });
+            // The episode's nearest airing now: later when a swap pushed it out,
+            // earlier when undoing one brought it back.
+            effects.movedAlong.push({ name: showName(x.program), program: x.program, wasAt: x.start,
+                nowAt: (typeof(nearest) === 'undefined') ? null : nearest,
+                back: (typeof(nearest) !== 'undefined') && (nearest < x.start) });
         }
     }
     return effects;
@@ -251,13 +294,21 @@ function sayFit({ programs, startTime, schedule, at, item, kind, after }) {
 function sayEffects(effects) {
     let parts = effects.movedAlong.map( (m) => (m.nowAt === null)
         ? `${m.program.title} waits for ${possessive(m.name)} next airing.`
-        : `${m.program.title} airs ${dayClock(m.nowAt)}, and ${possessive(m.name)} later airings move one along.` );
+        : (m.back
+            ? `${m.program.title} airs ${dayClock(m.nowAt)} instead, and ${possessive(m.name)} later airings move back one.`
+            : `${m.program.title} airs ${dayClock(m.nowAt)}, and ${possessive(m.name)} later airings move one along.`) );
     if (effects.late.length > 0) {
         let names = effects.late.map( (l, i) => (i === 0)
             ? `${showName(l.program)} starts at ${clock(l.nowAt)}`
             : `${showName(l.program)} at ${clock(l.nowAt)}` );
         let joined = (names.length === 1) ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
         parts.push(joined + ( (effects.backOnTime !== null) ? `; back on time at ${clock(effects.backOnTime)}.` : '.' ));
+    }
+    let early = effects.early || [];
+    if (early.length > 0) {
+        let and = (list) => (list.length === 1) ? list[0] : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+        parts.push(`${and(early.map( (e) => showName(e.program) ))} ${ (early.length === 1) ? 'is' : 'are' } back on time, at `
+            + `${and(early.map( (e) => clock(e.nowAt) ))}.`);
     }
     return (parts.length > 0) ? parts.join(' ') : 'Nothing else changes.';
 }
@@ -274,6 +325,15 @@ function sayFirstSwap({ dropped }) {
     return 'Swapping re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand'
         + ' - bumpers, promos, episodes inserted from the library - is dropped. '
         + ( (dropped.length > 0) ? sayDropped(dropped) : 'Nothing placed by hand from now on would be lost.' );
+}
+
+// The undo prompt, from the re-lay without the pin, worked out before asking.
+function sayUndo({ label, at, effects, anyway, dropped }) {
+    let changed = (effects.movedAlong.length + effects.late.length + (effects.early || []).length) > 0;
+    return `Undo ${label}, pinned to ${dayClock(at)}? The slot's own programming comes back`
+        + (changed ? ': ' + sayEffects(effects) : '.')
+        + (anyway ? ' ' + anyway : '')
+        + ( (dropped.length > 0) ? ' ' + sayDropped(dropped) : '' );
 }
 
 function sayKept(ahead) {
@@ -342,7 +402,35 @@ function withPin(ahead, program) {
         .sort( (a, b) => a.at - b.at );
 }
 
+// Whether a re-laid lineup holds a pin made for `at` - the generator leaves
+// out one it can't place (past its horizon, or with no length).
+function placedIn(lineup, at) {
+    return lineup.programs.some( (p) => p.pin && (typeof(p.pin.at) === 'number') && (Math.abs(p.pin.at - at) <= SAME) );
+}
+
+// Re-lays share the Time Slots editor's state, so they run one at a time:
+// a second asked for while one is under way is refused, never interleaved.
+function oneAtATime() {
+    let running = false;
+    return {
+        busy: () => running,
+        run: async (fn) => {
+            if (running) {
+                throw new Error('busy');
+            }
+            running = true;
+            try {
+                return await fn();
+            } finally {
+                running = false;
+            }
+        },
+    };
+}
+
 module.exports = {
+    oneAtATime: oneAtATime,
+    placedIn: placedIn,
     withPin: withPin,
     label: label,
     makePin: makePin,
@@ -360,6 +448,7 @@ module.exports = {
     sayDropped: sayDropped,
     sayFirstSwap: sayFirstSwap,
     sayKept: sayKept,
+    sayUndo: sayUndo,
     length: length,
     clock: clock,
     dayClock: dayClock,

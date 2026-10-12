@@ -107,7 +107,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                         let id = (scope.source === 'show') ? scope.showId : scope.pick.show;
                         list = (await readShow(id)).slice().sort(order);
                     }
-                    scope.items = list.filter( (p) => ! p.isOffline ).map(describe);
+                    scope.items = list.filter( (p) => ! p.isOffline && (p.duration > 0) ).map(describe);
                 } catch (err) {
                     console.error(err);
                     scope.error = 'Something went wrong reading that show.';
@@ -126,11 +126,13 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 return (f === '') || row.label.toLowerCase().includes(f) || (row.holiday && row.holiday.toLowerCase().includes(f));
             };
 
+            // Every re-lay of this dialog is planned as of the moment it opened (see relay).
+            let relayNow = Date.now();
             let relayPins = async (keep) => {
                 let t0 = Date.now();
                 let result = await req.relay({
                     programs: commonProgramTools.slotPool(channel.programs), limit: req.limit,
-                    backup: schedule, lineup: lineupNow, catalogState: await req.catalogState(), pins: keep,
+                    backup: schedule, lineup: lineupNow, catalogState: await req.catalogState(), pins: keep, now: relayNow,
                 });
                 console.log(`Swap: re-laid the lineup in ${Date.now() - t0} ms`);
                 return { result, after: { programs: result.programs, startTime: new Date(result.startTime).getTime() } };
@@ -147,10 +149,10 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let baselineOf = () => {
                 if (baseline === null) {
                     baseline = relayPins(ahead()).then( (base) => {
-                        let now = Date.now();
+                        let now = relayNow;
                         let anyway = pins.relayEffects({ before: { programs: channel.programs, startTime: startTime() }, after: base.after,
                             from: now, to: now + YEAR, schedule, getShowData });
-                        base.anyway = ( (anyway.movedAlong.length + anyway.late.length) > 0 )
+                        base.anyway = ( (anyway.movedAlong.length + anyway.late.length + anyway.early.length) > 0 )
                             ? 'Re-making the lineup now also changes, with or without this swap: ' + pins.sayEffects(anyway) : '';
                         base.dropped = anyway.dropped;
                         return base;
@@ -162,7 +164,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let relayWith = async (pin) => {
                 let base = await baselineOf();
                 let mine = await relayPins(pins.withPin(ahead(), pin));
-                let now = Date.now();
+                let now = relayNow;
                 let own = pins.relayEffects({ before: base.after, after: mine.after, from: Math.max(now, at - SAME), to: now + YEAR, schedule, getShowData });
                 return { result: mine.result, after: mine.after, effects: pins.sayEffects(own), onAir: base.anyway, dropped: base.dropped };
             };
@@ -182,6 +184,12 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     let make = (then) => pins.makePin({ program: p, at, kind: 'swap', then, was: pins.label(airing),
                         slotShow: scope.showId, now: Date.now() });
                     let take = await relayWith(make('take'));
+                    if (! pins.placedIn(take.after, at)) {
+                        // The generator leaves out a pin it can't place: never apply a re-lay without it.
+                        scope.error = `The lineup can't hold ${p.title} at ${pins.dayClock(at)}: it is past the end of what Create Lineup makes (${schedule.maxDays} days), or the lineup is full. Nothing was changed.`;
+                        scope.state = 'pick';
+                        return;
+                    }
                     let fit = pins.fitAt({ programs: channel.programs, startTime: startTime(), schedule, at, duration: p.duration });
                     scope.fitText = pins.sayFit({ programs: channel.programs, startTime: startTime(), schedule, at, item: p, kind: 'swap', after: take.after });
                     scope.options = [];
@@ -191,7 +199,9 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                         let late = await relayWith(make('late'));
                         let into = fit.runsInto ? ` ${pins.clock(fit.slotEnd)} slot` : ' next slot';
                         scope.options.push(Object.assign({ label: `Take over the${into}` }, take));
-                        scope.options.push(Object.assign({ label: 'Run late' }, late));
+                        if (pins.placedIn(late.after, at)) {
+                            scope.options.push(Object.assign({ label: 'Run late' }, late));
+                        }
                     }
                     let dropped = scope.options[0].dropped;
                     let firstSwap = ahead().length === 0 && ! channel.programs.some( (x) => x.pin );
@@ -200,7 +210,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     scope.state = 'choose';
                 } catch (err) {
                     console.error(err);
-                    scope.error = 'The lineup could not be re-made: ' + ( (err && (err.data || err.message)) || err );
+                    scope.error = (err && err.message === 'busy') ? 'Another swap or undo is still being worked out - try again in a moment.' : 'The lineup could not be re-made: ' + ( (err && (err.data || err.message)) || err );
                     scope.state = 'pick';
                 } finally {
                     $timeout();

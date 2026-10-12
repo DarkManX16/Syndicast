@@ -1389,8 +1389,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.removeItem = (x) => {
                 let program = scope.channel.programs[x];
                 if ( (typeof(program) !== 'undefined') && program.pin && scope.hasTimeSlots() ) {
-                    scope.undoPrompt = { program: program, label: program.isOffline ? 'Flex' : pinTools.label(program),
-                        when: pinTools.dayClock(program.pin.at) };
+                    if (! scope.relaying()) {
+                        startUndo(program);
+                    }
                     return;
                 }
                 if ( (typeof(program) === 'undefined') || program.isOffline || ! getShowData(program).hasShow ) {
@@ -2706,11 +2707,19 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
              */
             scope.hasTimeSlots = () => ! scope.hasNoTimeSlots() && (scope.timeSlots !== null);
             scope.canSwap = (x) => scope.hasTimeSlots() && (x !== null) && ! x.isOffline;
+            // Re-lays share the Time Slots editor's state: one at a time, and
+            // nothing else that changes the lineup or saves it while one runs.
+            let relayGate = pinTools.oneAtATime();
+            scope.relaying = () => relayGate.busy();
+            let guardedRelay = (args) => relayGate.run( () => scope.timeSlots.relay(args) );
             scope.swapRequest = null;
             scope.startSwap = (index) => {
+                if (relayGate.busy()) {
+                    return;
+                }
                 scope.swapRequest = {
                     channel: scope.channel, index: index, mode: 'swap',
-                    relay: scope.timeSlots.relay, limit: scope.maxSize, catalogState: catalogFor,
+                    relay: guardedRelay, limit: scope.maxSize, catalogState: catalogFor,
                 };
             };
             // A re-lay's result, applied as Create Lineup's is.
@@ -2776,32 +2785,58 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
             };
 
-            // Deleting a pinned row undoes it: the slot's own programming comes back.
+            /*
+             * Deleting a pinned row undoes it: the lineup is re-laid without the
+             * pin first, and the prompt says what comes back, what a re-lay
+             * changes anyway and what it drops; only "Undo it" applies it.
+             */
             scope.undoPrompt = null;
-            scope.finishUndo = async (yes) => {
-                let prompt = scope.undoPrompt;
-                scope.undoPrompt = null;
-                if (! yes || (prompt === null)) {
-                    return;
-                }
-                scope.undoWorking = true;
+            let startUndo = async (program) => {
+                let label = program.isOffline ? `Flex in place of ${program.pin.was}` : pinTools.label(program);
+                scope.undoPrompt = { program: program, working: true, text: `Working out what undoing ${label} does...`, result: null };
                 $timeout();
                 try {
                     let start = new Date(scope.channel.startTime).getTime();
-                    let keep = pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: Date.now() })
-                        .filter( (x) => x.program !== prompt.program );
-                    let result = await scope.timeSlots.relay({
+                    let now = Date.now();
+                    let ahead = pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: now });
+                    let relayKeeping = async (keep) => guardedRelay({
                         programs: commonProgramTools.slotPool(scope.channel.programs), limit: scope.maxSize,
-                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: await catalogFor(), pins: keep,
+                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: await catalogFor(), pins: keep, now: now,
                     });
-                    applyRelay(result);
+                    // As the swap dialog does: the undo's own effects are the re-lay
+                    // without the pin against the same re-lay with it, made back to
+                    // back; what re-making the lineup changes anyway is said apart.
+                    let baseline = await relayKeeping(ahead);
+                    let result = await relayKeeping(ahead.filter( (x) => x.program !== program ));
+                    let lineupOf = (r) => ({ programs: r.programs, startTime: new Date(r.startTime).getTime() });
+                    let year = 400 * 24 * 60 * 60 * 1000;
+                    let own = pinTools.relayEffects({ before: lineupOf(baseline), after: lineupOf(result), from: Math.max(now, program.pin.at - 2000),
+                        to: now + year, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
+                    let all = pinTools.relayEffects({ before: { programs: scope.channel.programs, startTime: start }, after: lineupOf(baseline),
+                        from: now, to: now + year, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
+                    let anywayText = ( (all.movedAlong.length + all.late.length + all.early.length) > 0 )
+                        ? 'Re-making the lineup now also changes, with or without this undo: ' + pinTools.sayEffects(all) : '';
+                    if (scope.undoPrompt && (scope.undoPrompt.program === program)) {
+                        scope.undoPrompt = { program: program, working: false, result: result,
+                            text: pinTools.sayUndo({ label: label, at: program.pin.at, effects: own, anyway: anywayText, dropped: all.dropped }) };
+                    }
                 } catch (err) {
                     console.error(err);
-                    scope.error.programs = 'Could not undo the swap.';
+                    scope.undoPrompt = null;
+                    scope.error.programs = (err && err.message === 'busy')
+                        ? 'Another swap is still being worked out - try again in a moment.'
+                        : 'Could not work out the undo: ' + ( (err && (err.data || err.message)) || err );
                 } finally {
-                    scope.undoWorking = false;
                     $timeout();
                 }
+            };
+            scope.finishUndo = (yes) => {
+                let prompt = scope.undoPrompt;
+                scope.undoPrompt = null;
+                if (yes && (prompt !== null) && (prompt.result !== null)) {
+                    applyRelay(prompt.result);
+                }
+                $timeout();
             };
 
 

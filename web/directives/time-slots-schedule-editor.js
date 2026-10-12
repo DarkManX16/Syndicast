@@ -766,9 +766,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
 
             //`pinsToKeep`, when given, are the swaps and inserts to keep
             //instead of the lineup's own (src/pins.js) - for a re-lay.
-            let doIt = async(fromInstant, pinsToKeep) => {
+            let doIt = async(fromInstant, pinsToKeep, atNow) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
-                let t0 = new Date().getTime();
+                //A re-lay compared with another plans both as of one moment, `atNow`:
+                //a moment apart, each can count a different program as on air.
+                let t0 = (typeof(atNow) === "number") ? atNow : new Date().getTime();
                 /*
                  * Every position's place, read from the lineup on air at this
                  * moment, so the generator continues each one where it is -
@@ -937,10 +939,17 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
              * is never shown and onDone is not called: the result is handed
              * back, for the Programming tab to compare and apply.
              */
-            let relay = async ({ programs, limit, backup, lineup, catalogState, pins }) => {
+            let relay = async ({ programs, limit, backup, lineup, catalogState, pins, now }) => {
+                // It re-uses the dialog's state: never while the dialog is open.
+                if (scope.visible) {
+                    throw new Error('The Time Slots dialog is open');
+                }
                 prepare(programs, limit, backup, true, null, lineup, catalogState);
                 scope.visible = false;
-                return await doIt(false, pins);
+                let res = await doIt(false, pins, now);
+                // Its own copy: the dialog's schedule object is used again by the next opening.
+                res.schedule = JSON.parse(JSON.stringify(res.schedule));
+                return res;
             };
 
 
