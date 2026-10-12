@@ -402,8 +402,10 @@ module.exports = function ($http, $q) {
         /*======================================================================
         * Channel Tool Services
         */
-        //`history` is what the lineup on air aired before now, for Repeat slots.
-        calculateTimeSlots: async( programs, schedule, history) => {
+        //`history` is what the lineup on air aired before now, for Repeat slots;
+        //`pins` the swaps and inserts to keep (src/pins.js pinsAhead); `carry` the
+        //program on air, kept where it is (src/pins.js carryAt).
+        calculateTimeSlots: async( programs, schedule, history, pins, carry) => {
             let d = await $http( {
                 method: "POST",
                 url : "/api/channel-tools/time-slots",
@@ -411,6 +413,8 @@ module.exports = function ($http, $q) {
                     programs: programs,
                     schedule: schedule,
                     history: history,
+                    pins: pins,
+                    carry: carry,
                 },
                 headers: { 'Content-Type': 'application/json; charset=utf-8' },
             } );

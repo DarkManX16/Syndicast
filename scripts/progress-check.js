@@ -23,6 +23,12 @@
  *                                 channel's own catalog state, and --save keeps that state
  *       [--review <regex|all>]    with --catalog: review the matching shows first, everything ticked
  *       [--never-air <keys.json>] with --catalog: an array of file keys put on the never-air list
+ *       [--pin "<local time>|<showId>|<S0E7 | #12 | exact title>|<take|late>[|insert]"]  a swap or insert
+ *                                 pinned at that time, repeatable; the item from --catalog's snapshot, else
+ *                                 the pool. Pins already in the lineup (--from) are always kept.
+ *       [--around "<local time>"]  the three hours either side, saved and regenerated, Flex after each
+ *       [--changed <days>]        airings whose start or episode differ over that many days, by show
+ *       [--restart-on-air]        as before Oct 12, 2026: the program on air starts again, and counts as not aired
  *       [--start <show|mode|seasons=episode>]  Episode start, repeatable: the position of <show> in <mode>
  *                                 (next, shuffle, rerun) leaving out <seasons> (comma-separated, may be
  *                                 empty) plays <episode> next - S01E34, or #12 for the 12th item of a
@@ -43,6 +49,7 @@ const commonProgramTools = require('../web/services/common-program-tools')(getSh
 const seasonConstraints = require('../web/services/season-constraints')();
 const showCatalog = require('../src/show-catalog');
 const rounds = require('../src/shuffle-rounds');
+const pinTools = require('../src/pins');
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -69,6 +76,10 @@ function parseArgs(argv) {
         else if (a === '--review') args.review = next();
         else if (a === '--never-air') args.neverAir = next();
         else if (a === '--start') (args.starts = args.starts || []).push(next());
+        else if (a === '--pin') (args.pins = args.pins || []).push(next());
+        else if (a === '--around') args.around = Date.parse(next());
+        else if (a === '--changed') args.changed = Number(next());
+        else if (a === '--restart-on-air') args.restartOnAir = true;
         else throw new Error('Unknown argument ' + a);
     }
     if (isNaN(args.at)) throw new Error('--at <ISO instant> is required');
@@ -105,7 +116,7 @@ function rotate(programs, startTime, at) {
 }
 
 // test/dst-fall-back.js's generate: the real generator with `new Date()` frozen.
-async function generate(programs, schedule, at, history) {
+async function generate(programs, schedule, at, history, pins, carry) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(at); else super(...a); }
@@ -113,7 +124,7 @@ async function generate(programs, schedule, at, history) {
     }
     global.Date = FrozenDate;
     try {
-        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history);
+        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history, pins, carry);
     } finally {
         global.Date = RealDate;
     }
@@ -155,7 +166,8 @@ async function main() {
         console.log('added ' + show.content.length + ' items of ' + show.name);
     }
     let rotated = rotate(channel.programs, savedStart, at);
-    let pool = commonProgramTools.removeDuplicates(rotated.programs);
+    // A pinned airing never joins the pool.
+    let pool = commonProgramTools.slotPool(rotated.programs);
     let schedule = JSON.parse(JSON.stringify(channel.scheduleBackup));
     if (args.edit) {
         require(path.resolve(args.edit))(schedule);
@@ -214,9 +226,12 @@ async function main() {
         console.log('start: ' + describe(key) + ' -> ' + wanted + ' ' + found.title);
     } );
     // The editor's doIt: every position's place, read from the lineup on air at this moment.
+    // The editor's carry: the program on air, or the one whose break is on air, stays where it is.
+    let carry = args.restartOnAir ? null : pinTools.carryAt({ programs: channel.programs, startTime: savedStart, now: at });
     if (! args.today) {
         schedule.progress = slotProgress.planProgress({
             programs: channel.programs, startTime: savedStart, now: at,
+            placesFrom: carry ? Math.max(at, carry.start + carry.program.duration) : undefined,
             openedSchedule: channel.scheduleBackup, schedule: schedule, pool: lineupPool, catalog: pool,
             starts: Object.keys(starts).length ? starts : undefined, getShowData,
         });
@@ -232,7 +247,33 @@ async function main() {
     if (schedule.progress) {
         schedule.progress.history = h.keep;
     }
-    let res = await generate(pool, schedule, at, history);
+    // Pins: the lineup's own still to air, and any asked for.
+    let pins = [];
+    let total0 = channel.programs.reduce( (a, p) => a + p.duration, 0 );
+    channel.programs.forEach( (p) => {
+        if (p.pin && (p.pin.at + p.duration > at)) pins.push({ at: p.pin.at, then: p.pin.then, program: p });
+    } );
+    let catalogItems = args.catalog ? (JSON.parse(fs.readFileSync(args.catalog, 'utf8'))[String(channel.number)] || {}) : {};
+    (args.pins || []).forEach( (spec) => {
+        let [ when0, showId, which, then, kind ] = spec.split('|');
+        let t = Date.parse(when0);
+        let items = (catalogItems[showId] && catalogItems[showId].items) || pool.filter( (p) => getShowData(p).showId === showId );
+        let found = items.find( (p, i) => {
+            let m = which.match(/^S(\d+)E(\d+)$/);
+            if (m) return (p.season === Number(m[1])) && (p.episode === Number(m[2]));
+            if (which.startsWith('#')) return ( (typeof(p.customOrder) === 'number') ? p.customOrder : i ) + 1 === Number(which.slice(1));
+            return p.title === which;
+        } );
+        if (! found || isNaN(t)) throw new Error('--pin: nothing found for ' + spec);
+        let slot = slotProgress.slotAt(schedule, t);
+        let program = pinTools.makePin({ program: found, at: t, kind: kind || 'swap', then: then || 'take',
+            slotShow: slot ? slot.showId : undefined, now: at });
+        pins.push({ at: t, then: program.pin.then, program });
+        console.log(`pin: ${when(t)} ${program.title} (${Math.round(program.duration / 1000)}s), ${program.pin.then}`);
+    } );
+    if (total0 <= 0) pins = [];
+    if (carry && carry.program.pin) pins = pins.filter( (x) => x.program !== carry.program );
+    let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
     seasonConstraints.clearStartSeasons(schedule);
 
@@ -244,6 +285,12 @@ async function main() {
         programs: res.programs, startTime: newStart, from: at, to: at + horizon,
         schedule: schedule, getShowData,
     });
+    // Compared from the end of the program left on air, as the planner reads places.
+    if (carry) {
+        let from = Math.max(at, carry.start + carry.program.duration) - 2000;
+        before = before.filter( (x) => x.start >= from );
+        after = after.filter( (x) => x.start >= from );
+    }
 
     let b = byPosition(before), a = byPosition(after);
     let keys = [ ...new Set([ ...b.keys(), ...a.keys() ]) ].sort();
@@ -280,6 +327,56 @@ async function main() {
                     + episodeOf(x.program) + (seen[e] > 1 ? '   <- airs again' : ''));
             }
         }
+    }
+
+    // Every entry on air in [from, to), with its start and, for a program, the Flex after it.
+    let walk = (programs, startTime, from, to) => {
+        let out = [];
+        let total = programs.reduce( (a, p) => a + p.duration, 0 );
+        let t = startTime + Math.floor( (from - startTime) / total ) * total;
+        let i = 0;
+        while (t + programs[i].duration <= from) { t += programs[i].duration; i = (i + 1) % programs.length; }
+        while (t < to) {
+            let p = programs[i];
+            let flex = 0;
+            for (let j = (i + 1) % programs.length; programs[j].isOffline && (programs[j].type !== 'redirect') && ! programs[j].pin; j = (j + 1) % programs.length) {
+                flex += programs[j].duration;
+            }
+            if (! p.isOffline || p.pin) out.push({ start: t, program: p, flex: flex });
+            t += p.duration;
+            i = (i + 1) % programs.length;
+        }
+        return out;
+    };
+    let mmss = (ms) => { let s = Math.round(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+    let clockOf = (t) => new Date(t).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    let lineOf = (x) => x ? `${clockOf(x.start)} ${x.program.pin ? '[PIN] ' : ''}${x.program.isOffline ? 'Flex' : (x.program.showTitle || '') + ' ' + episodeOf(x.program) + ' ' + x.program.title} ${mmss(x.program.duration)} +${mmss(x.flex)}` : '';
+    if (args.around) {
+        let from = args.around - 3 * 60 * MIN, to = args.around + 3 * 60 * MIN;
+        let b = walk(channel.programs, savedStart, from, to), a = walk(res.programs, newStart, from, to);
+        console.log(`AROUND ${clockOf(args.around)}`);
+        console.log('  SAVED');
+        b.forEach( (x) => console.log('    ' + lineOf(x)) );
+        console.log('  REGENERATED');
+        a.forEach( (x) => console.log('    ' + lineOf(x)) );
+    }
+    if (args.changed) {
+        let to = at + args.changed * DAY;
+        let b = walk(channel.programs, savedStart, at, to).filter( (x) => ! x.program.isOffline );
+        let a = walk(res.programs, newStart, at, to).filter( (x) => ! x.program.isOffline );
+        let fileOf = (p) => (p.serverKey || '') + '|' + (p.key || '') + '|' + p.title;
+        let j = 0, same = 0, byShow = {};
+        for (let x of b) {
+            while ( (j < a.length) && (a[j].start < x.start - 2000) ) j++;
+            if ( (j < a.length) && (Math.abs(a[j].start - x.start) <= 2000) && (fileOf(a[j].program) === fileOf(x.program)) ) {
+                same++;
+            } else {
+                let s = x.program.showTitle || x.program.title;
+                byShow[s] = (byShow[s] || 0) + 1;
+            }
+        }
+        console.log(`CHANGED over ${args.changed} days: ${b.length} saved airings, ${a.length} regenerated; ${b.length - same} saved airings moved or changed:`
+            + ` ${JSON.stringify(byShow)}`);
     }
 
     if (args.save) {

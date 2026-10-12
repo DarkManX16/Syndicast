@@ -44,7 +44,7 @@ function audit(channel, showFilter) {
     let schedule = channel.scheduleBackup || { slots: [] };
     let records = (schedule.progress && schedule.progress.positions) || {};
     let all = slotProgress.airings({ programs: channel.programs, startTime: start, from: start, to: start + total, schedule, getShowData });
-    let pool = commonProgramTools.removeDuplicates(channel.programs);
+    let pool = commonProgramTools.slotPool(channel.programs);
 
     let byKey = new Map();
     all.forEach( (a) => {

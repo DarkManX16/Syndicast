@@ -220,6 +220,37 @@ module.exports = async function () {
             titleOf(kept) === `${JB} S4E2` && kept.legacyShuffleOrder === 12);
     }
 
+    suite.log('-- pinned airings --');
+    {
+        // Friday's no-S1 slot holds a pinned special of the show; Saturday's is the range's next episode.
+        const special = episode(JB, 0, 7, { title: 'JB Christmas', pin: { at: at(Fri, 21), kind: 'swap', then: 'take' } });
+        const unlabelled = lineup(THU, [[at(Fri, 21), special], [at(Sat, 21), episode(JB, 2, 3)], [at(Sun, 21), episode(JB, 1, 5)]]);
+        suite.check('a pinned airing is never a place, in a lineup without labels',
+            titleOf(read(unlabelled, THU, THU, jbSlots()).get(NO1)) === `${JB} S2E3`,
+            titleOf(read(unlabelled, THU, THU, jbSlots()).get(NO1)));
+        const labelledSpecial = Object.assign({}, special, { slotPosition: 'next|1' });
+        const labelled = lineup(THU, [[at(Fri, 21), labelledSpecial], [at(Sat, 21), episode(JB, 2, 3, { slotPosition: 'next|1' })],
+            [at(Sun, 21), episode(JB, 1, 5, { slotPosition: 'next|2' })]]);
+        suite.check('...nor in a labelled one, even carrying a label',
+            titleOf(read(labelled, THU, THU, jbSlots()).get(NO1)) === `${JB} S2E3`,
+            titleOf(read(labelled, THU, THU, jbSlots()).get(NO1)));
+    }
+
+    suite.log('-- the program on air counts as aired when places are read after it --');
+    {
+        const onAir = episode(JB, 2, 3, { slotPosition: 'next|1' });
+        const lineupJB = lineup(THU, [[at(Fri, 21), onAir], [at(Sat, 21), episode(JB, 2, 4, { slotPosition: 'next|1' })],
+            [at(Sun, 21), episode(JB, 1, 5, { slotPosition: 'next|2' })]]);
+        const now = at(Fri, 21, 10);
+        const planWith = (placesFrom) => slotProgress.planProgress({ programs: lineupJB, startTime: THU, now, openedSchedule: jbSlots(),
+            schedule: jbSlots(), pool: [onAir, episode(JB, 2, 4), episode(JB, 1, 5)], placesFrom, getShowData });
+        const nextOf = (progress) => progress.positions[NO1] && progress.positions[NO1].next && progress.positions[NO1].next.key;
+        suite.check('planProgress reads places from placesFrom, so the program on air counts as aired',
+            nextOf(planWith(undefined)) === `srv|/e/${JB}/2/3` && nextOf(planWith(at(Fri, 21, 22))) === `srv|/e/${JB}/2/4`
+                && planWith(at(Fri, 21, 22)).asOf === new Date(now).toISOString(),
+            [nextOf(planWith(undefined)), nextOf(planWith(at(Fri, 21, 22)))].join(' / '));
+    }
+
     suite.log('-- season start is a seek --');
     {
         const seasonConstraints = require('../web/services/season-constraints')();

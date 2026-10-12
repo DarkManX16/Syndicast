@@ -104,6 +104,10 @@ function evalCondition(expr, x) {
         case 'rowSlotLabel(x)': return !!commonProgramTools.rowSlotLabel(x);
         // The filler editor's Names tag comes from its directive, which has the show names; a fixture supplies it.
         case 'rowNames(x)': return !!x.$$names;
+        // Swaps (src/pins.js): the pin mark, and the Swap button - shown
+        // wherever it can be, as on a Time Slots channel's row.
+        case 'x.pin': return !!x.pin;
+        case 'canSwap(x)': return !x.isOffline;
         default:
             throw new Error(`program-row-heights.js doesn't know how to evaluate ng-if="${expr}" - update evalCondition`);
     }
@@ -123,6 +127,7 @@ function evalInterpolation(expr, x) {
         case 'rowFillerName(x)': return commonProgramTools.rowFillerName(x);
         case 'rowNames(x)': return x.$$names;
         case 'rowNamesTitle(x)': return x.$$namesTitle;
+        case 'rowPinTitle(x)': return x.pin ? 'Pinned' : '';
         default:
             throw new Error(`program-row-heights.js doesn't know how to interpolate "{{ ${expr} }}" - update evalInterpolation`);
     }

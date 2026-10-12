@@ -166,6 +166,19 @@
                 <div class="modal-body programming-panes" ng-show="tab == 'programming'"
                      ng-style="{'max-height':programmingHeight()}"
                 >
+                    <div class="small d-flex flex-wrap align-items-center" ng-if="hasTimeSlots() && hasPrograms()" style="margin-bottom: 6px;">
+                        <span style="margin-right: 6px;">Go to</span>
+                        <input type="date" class="form-control form-control-sm" style="width: auto; margin-right: 4px;" ng-model="goTo.date">
+                        <input type="time" class="form-control form-control-sm" style="width: auto; margin-right: 4px;" ng-model="goTo.time">
+                        <button class="btn btn-sm btn-outline-secondary" ng-click="goToAiring()">Go</button>
+                        <span style="margin-left: 12px;" ng-show="pinList().length > 0">
+                            <a href="" ng-click="showPins.open = ! showPins.open"><i class="fas fa-thumbtack"></i> Your swaps and inserts still to air ({{pinList().length}})</a>
+                        </span>
+                        <span style="margin-left: 12px;" class="text-muted" ng-show="relaying()">Re-making the lineup...</span>
+                    </div>
+                    <div class="small" ng-if="hasTimeSlots() && showPins.open" style="margin-bottom: 6px;">
+                        <div ng-repeat="p in pinList() track by $index"><a href="" ng-click="goToAiring(p.at)">{{p.text}}</a></div>
+                    </div>
                     <div class='row' ng-class="{'reverse': reverseTools }" >
                         <div vs-repeat="{size: programRowHeight}" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
                             dnd-drop="dropFunction(index , item)"
@@ -180,7 +193,8 @@
                                 class="list-group-item flex-container psr-row" dnd-draggable="x" dnd-moved="" dnd-effect-allowed="move"
                                 style="height: {{ programRowHeight }}px"
                             >
-                                <span class="psr-start">{{ rowStartTime(x) }}</span>
+                                <span class="psr-start" ng-class="{'font-weight-bold': goTo.row === x.$index}">{{ rowStartTime(x) }}</span>
+                                <span ng-if="x.pin" title="{{ rowPinTitle(x) }}" style="margin-right: 4px;"><i class="fas fa-thumbtack text-info"></i></span>
                                 <span class="psr-square" ng-style="programSquareStyle(x)"></span>
                                 <span class="psr-show" ng-if="!x.isOffline">{{ rowShow(x) }}</span>
                                 <span class="psr-tag" ng-if="rowTag(x)">{{ rowTag(x) }}</span>
@@ -193,7 +207,10 @@
                                 <button class="btn btn-sm btn-link" ng-if="!x.isOffline" ng-click="showProgramInfo(x); $event.stopPropagation()">
                                     <i class="fas fa-info-circle"></i>
                                 </button>
-                                <button class="btn btn-sm btn-link" ng-click="removeItem(x.$index);  $event.stopPropagation()">
+                                <button class="btn btn-sm btn-link" ng-if="canSwap(x)" title="Swap..." ng-disabled="relaying()" ng-click="startSwap(x.$index); $event.stopPropagation()">
+                                    <i class="fas fa-exchange-alt"></i>
+                                </button>
+                                <button class="btn btn-sm btn-link" ng-disabled="relaying()" ng-click="removeItem(x.$index);  $event.stopPropagation()">
                                     <i class="text-danger fa fa fa-trash-alt"></i>
                                 </button>
                             </div>
@@ -466,14 +483,14 @@
                                             <button class="btn btn-sm btn-warning form-control"
                                                 type="button"
                                                 ng-click="rerollTimeSlots()"
-                                                ng-disabled="hasNoTimeSlots()"
+                                                ng-disabled="hasNoTimeSlots() || relaying()"
                                                 title = "Regenerate time slots..."
                                             >
                                                 <i class='fas fa-redo'></i>
                                             </button>
                                         </div>
     
-                                        <button class='btn btn-sm btn-warning form-control' ng-click="onTimeSlotsButtonClick()"
+                                        <button class='btn btn-sm btn-warning form-control' ng-click="onTimeSlotsButtonClick()" ng-disabled="relaying()"
                                                 title="Time Slots..."
                                             >
                                                 <i class='fas fa-blender'></i> Time Slots...
@@ -491,14 +508,14 @@
                                             <button class="btn btn-sm btn-warning form-control"
                                                 type="button"
                                                 ng-click="rerollRandomSlots()"
-                                                ng-disabled="hasNoRandomSlots()"
+                                                ng-disabled="hasNoRandomSlots() || relaying()"
                                                 title = "Regenerate random slots..."
                                             >
                                                 <i class='fas fa-redo'></i>
                                             </button>
                                         </div>
     
-                                        <button class='btn btn-sm btn-warning form-control' ng-click="onRandomSlotsButtonClick()"
+                                        <button class='btn btn-sm btn-warning form-control' ng-click="onRandomSlotsButtonClick()" ng-disabled="relaying()"
                                                 title="Random Slots..."
                                             >
                                                 <i class='fas fa-flask'></i> Random Slots...
@@ -1200,7 +1217,7 @@
                         <button class="btn btn-sm btn-link" ng-click="_onDone()">
                             Cancel
                         </button>
-                        <button class="btn btn-sm btn-primary" ng-click="_onDone(channel)" ng-disabled='! hasPrograms()'>
+                        <button class="btn btn-sm btn-primary" ng-click="_onDone(channel)" ng-disabled="! hasPrograms() || relaying()">
                             {{ isNewChannel ? 'Add Channel' : 'Update Channel' }}
                         </button>
                     </div>
@@ -1252,5 +1269,20 @@
         </div>
     </div>
     <time-slots-schedule-editor linker="registerTimeSlots" on-done="onTimeSlotsDone"></time-slots-schedule-editor>
+    <airing-swap ng-if="swapRequest" request="swapRequest" on-done="finishSwap"></airing-swap>
+    <div ng-if="undoPrompt" class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Undo this swap?</h5></div>
+                <div class="modal-body small">
+                    {{undoPrompt.text}}
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-link" ng-click="finishUndo(false)">Cancel</button>
+                    <button class="btn btn-sm btn-primary" ng-disabled="undoPrompt.working || !undoPrompt.result" ng-click="finishUndo(true)">Undo it</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <random-slots-schedule-editor linker="registerRandomSlots" on-done="onRandomSlotsDone"></random-slots-schedule-editor>
 </div>

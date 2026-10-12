@@ -46,7 +46,7 @@ async function main() {
     for (let n of args.channels) {
         let channel = JSON.parse(fs.readFileSync(path.join(args.data, 'channels', n + '.json'), 'utf8'));
         let groups = new Map();
-        commonProgramTools.removeDuplicates(channel.programs).forEach( (p) => {
+        commonProgramTools.slotPool(channel.programs).forEach( (p) => {
             let d = getShowData(p);
             if (! d.hasShow || (d.showId === 'movie.') || p.isOffline) return;
             if (! groups.has(d.showId)) groups.set(d.showId, []);
