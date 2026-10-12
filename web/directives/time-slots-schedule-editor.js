@@ -5,6 +5,7 @@ const slotRounds = require('../../src/shuffle-rounds');
 const showCatalog = require('../../src/show-catalog');
 const episodeStart = require('../../src/episode-start');
 const pinTools = require('../../src/pins');
+const buildCheck = require('../../src/build-check');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
@@ -766,7 +767,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
 
             //`pinsToKeep`, when given, are the swaps and inserts to keep
             //instead of the lineup's own (src/pins.js) - for a re-lay.
-            let doIt = async(fromInstant, pinsToKeep, atNow) => {
+            let makeLineup = async(fromInstant, pinsToKeep, atNow) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
                 //A re-lay compared with another plans both as of one moment, `atNow`:
                 //a moment apart, each can count a different program as on air.
@@ -848,6 +849,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 seasonConstraints.clearStartSeasons(res.schedule);
                 return res;
             }
+
+            //Create Lineup, Regenerate, Swap, Insert and undo all come through here: none
+            //is made against a server still running older code than this page (src/build-check.js).
+            let doIt = (fromInstant, pinsToKeep, atNow) => buildCheck.guard({
+                fetchVersion: () => dizquetv.getVersion(),
+                run: () => makeLineup(fromInstant, pinsToKeep, atNow),
+            });
 
 
 
@@ -952,6 +960,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if (scope.visible) {
                     throw new Error('The Time Slots dialog is open');
                 }
+                await buildCheck.guard({ fetchVersion: () => dizquetv.getVersion(), run: async () => null });
                 prepare(programs, limit, backup, true, null, lineup, catalogState);
                 scope.visible = false;
                 let res = await doIt(false, pins, now);
@@ -990,7 +999,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                         scope.visible = false;
                     } catch(err) {
                         console.error("Unable to generate channel lineup", err);
-                        scope.error  = "There was an error processing the schedule";
+                        scope.error  = err && err.serverStale ? err.message : "There was an error processing the schedule";
                         return;
                     } finally {
                         scope.loading = false;

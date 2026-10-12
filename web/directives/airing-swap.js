@@ -210,7 +210,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     scope.state = 'choose';
                 } catch (err) {
                     console.error(err);
-                    scope.error = (err && err.message === 'busy') ? 'Another swap or undo is still being worked out - try again in a moment.' : 'The lineup could not be re-made: ' + ( (err && (err.data || err.message)) || err );
+                    scope.error = (err && err.serverStale) ? err.message : (err && err.message === 'busy') ? 'Another swap or undo is still being worked out - try again in a moment.' : 'The lineup could not be re-made: ' + ( (err && (err.data || err.message)) || err );
                     scope.state = 'pick';
                 } finally {
                     $timeout();

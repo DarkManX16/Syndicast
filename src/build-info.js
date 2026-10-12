@@ -1,6 +1,7 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const constants = require('./constants');
+const { codeFingerprint } = require('./code-fingerprint');
 
 // Captured once, when this module is first required (i.e. at server startup),
 // so a long-running process keeps reporting the build and commit it started
@@ -31,6 +32,12 @@ function readGitDirty() {
     }
 }
 
+// The server's own source as it started, and as it is on disk now: the editor
+// refuses to make lineups against a server whose two differ (src/build-check.js).
+const codeRoot = path.join(__dirname, '..');
+const codeRunning = codeFingerprint(codeRoot);
+const codeNow = () => codeFingerprint(codeRoot);
+
 const gitCommit = readGitCommit();
 const gitDirty = readGitDirty();
 
@@ -39,4 +46,6 @@ module.exports = {
     gitCommit,
     gitDirty,
     startTime,
+    codeRunning,
+    codeNow,
 };

@@ -5,6 +5,7 @@ const transitionsEditor = require('../../src/transitions-editor');
 const showCatalog = require('../../src/show-catalog');
 const slotRounds = require('../../src/shuffle-rounds');
 const pinTools = require('../../src/pins');
+const buildCheck = require('../../src/build-check');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
     return {
@@ -2713,14 +2714,24 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.relaying = () => relayGate.busy();
             let guardedRelay = (args) => relayGate.run( () => scope.timeSlots.relay(args) );
             scope.swapRequest = null;
-            scope.startSwap = (index) => {
+            scope.startSwap = async (index) => {
                 if (relayGate.busy()) {
+                    return;
+                }
+                // Not opened for a server still running older code (src/build-check.js).
+                try {
+                    await buildCheck.guard({ fetchVersion: () => dizquetv.getVersion(), run: async () => null });
+                } catch (err) {
+                    scope.error.programs = err.message;
+                    scope.error.tab = "programming";
+                    $timeout();
                     return;
                 }
                 scope.swapRequest = {
                     channel: scope.channel, index: index, mode: 'swap',
                     relay: guardedRelay, limit: scope.maxSize, catalogState: catalogFor,
                 };
+                $timeout();
             };
             // A re-lay's result, applied as Create Lineup's is.
             let applyRelay = (result) => {
@@ -2823,7 +2834,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 } catch (err) {
                     console.error(err);
                     scope.undoPrompt = null;
-                    scope.error.programs = (err && err.message === 'busy')
+                    scope.error.programs = (err && err.serverStale) ? err.message : (err && err.message === 'busy')
                         ? 'Another swap is still being worked out - try again in a moment.'
                         : 'Could not work out the undo: ' + ( (err && (err.data || err.message)) || err );
                 } finally {

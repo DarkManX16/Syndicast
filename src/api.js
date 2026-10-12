@@ -49,6 +49,8 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
             "gitDirty" : buildInfo.gitDirty,
             "startTime" : buildInfo.startTime,
             "bundleStale" : bundleChecker ? bundleChecker.isStale() : false,
+            "codeRunning" : buildInfo.codeRunning,
+            "codeOnDisk" : buildInfo.codeNow(),
         } );
       } catch(err) {
           console.error(err);
