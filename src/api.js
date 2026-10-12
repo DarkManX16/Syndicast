@@ -1231,7 +1231,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     //tool services
     router.post('/api/channel-tools/time-slots', async (req, res) => {
       try {
-        let toolRes = await timeSlotsService(req.body.programs, req.body.schedule, req.body.history);
+        let toolRes = await timeSlotsService(req.body.programs, req.body.schedule, req.body.history, req.body.pins);
         if ( typeof(toolRes.userError) !=='undefined') {
           console.error("time slots error: " + toolRes.userError);
           return res.status(400).send(toolRes.userError);

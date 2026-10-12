@@ -72,8 +72,12 @@ function addProgramToShow(show, program) {
  * `history`, optional, is what the lineup on air aired before now -
  * [{ start, program }] - for a Repeat slot whose source aired before this
  * lineup begins.
+ *
+ * `pins`, optional, are swaps and inserts fixed to a date and time -
+ * [{ at, then, program }], `program` carrying its `pin` mark - placed by the
+ * four rules in NOTES.md ("Swaps, inserts and Flex that keeps time").
  */
-module.exports = async( programs, schedule, history ) => {
+module.exports = async( programs, schedule, history, pinsIn ) => {
     if (! Array.isArray(programs) ) {
         return { userError: 'Expected a programs array' };
     }
@@ -209,6 +213,8 @@ module.exports = async( programs, schedule, history ) => {
                 }
                 let copy = Object.assign( {}, state.list[state.index] );
                 delete copy.shuffleOrder;
+                // A repeat of a pinned airing is not itself pinned.
+                delete copy.pin;
                 copy.slotPosition = slotProgress.label('repeat');
                 return copy;
             },
@@ -351,7 +357,7 @@ module.exports = async( programs, schedule, history ) => {
     let pushFlex = (d) => {
         if (d > 0) {
             t += d;
-            if ( (p.length > 0) && p[p.length-1].isOffline && (p[p.length-1].type != 'redirect') ) {
+            if ( (p.length > 0) && p[p.length-1].isOffline && (p[p.length-1].type != 'redirect') && ! p[p.length-1].pin ) {
                 p[p.length-1].duration += d;
             } else {
                 p.push( {
@@ -374,15 +380,63 @@ module.exports = async( programs, schedule, history ) => {
         }
     };
 
+    /*
+     * Pins. Rule 1: a pin airs at its time, or the moment a program still on
+     * then ends - it never cuts into one. Rule 2: from its time to the end of
+     * its slot the slot is the pin's; the slot's own show airs after it only
+     * what fits whole. Rule 3: a slot that begins while the pin is on and ends
+     * before it is taken over; the one it ends in is taken over too ('take')
+     * or runs late ('late'): programs one after another from the pin's end,
+     * unpadded and unrounded, until one starts on time. Rule 4 needs nothing
+     * here: a position advances only when its episode is placed, so what a pin
+     * pushes out airs at its show's next slot.
+     */
+    const SLACK = constants.SLACK;
+    let pins = (Array.isArray(pinsIn) ? pinsIn : [])
+        .filter( (x) => (x !== null) && (typeof(x) === 'object') && (typeof(x.at) === 'number')
+            && (typeof(x.program) === 'object') && (x.program !== null) && (x.at + x.program.duration > ts) )
+        .sort( (a, b) => a.at - b.at );
+    let nextPin = 0;
+    let lastPin = null;
+    let runningLate = false;
+    let placePin = () => {
+        let pin = pins[nextPin++];
+        let program = Object.assign( {}, pin.program );
+        delete program.slotPosition;
+        delete program.shuffleOrder;
+        let start = t;
+        if (program.isOffline) {
+            // its own entry, never merged, so the next run finds it again
+            p.push(program);
+            t += program.duration;
+        } else {
+            pushProgram(program);
+        }
+        lastPin = { start: start, end: t, then: (pin.then === 'late') ? 'late' : 'take' };
+        runningLate = false;
+    };
+
     if (ts > t0) {
         pushFlex( ts - t0 );
     }
     while ( (t < hardLimit) && (p.length < LIMIT) ) {
         await throttle();
-        //ensure t is padded
+        //ensure t is padded - except while running late after a pin (rule 3)
         let m = t % schedule.pad;
-        if ( (t % schedule.pad > constants.SLACK) && (schedule.pad - m > constants.SLACK) )  {
-            pushFlex( schedule.pad - m );
+        let afterLatePin = (lastPin !== null) && (lastPin.then === 'late') && (t === lastPin.end);
+        if ( ! runningLate && ! afterLatePin && (t % schedule.pad > constants.SLACK) && (schedule.pad - m > constants.SLACK) )  {
+            let d = schedule.pad - m;
+            if ( (nextPin < pins.length) && (pins[nextPin].at - t < d) ) {
+                d = Math.max(0, pins[nextPin].at - t);
+            }
+            if (d > 0) {
+                pushFlex( d );
+                continue;
+            }
+        }
+        // rule 1: a pin that is due
+        if ( (nextPin < pins.length) && (pins[nextPin].at <= t + SLACK) ) {
+            placePin();
             continue;
         }
 
@@ -438,6 +492,48 @@ module.exports = async( programs, schedule, history ) => {
             }
         }
 
+        let occStart = t - late;
+        let occEnd = t + remaining;
+        let pinInside = (nextPin < pins.length) && (pins[nextPin].at < occEnd);
+        let ownSlot = (lastPin !== null) && (occStart <= lastPin.start + SLACK) && (lastPin.start < occEnd);
+        // rule 3: a slot that began while the last pin was on
+        if ( (lastPin !== null) && (occStart > lastPin.start + SLACK) && (occStart < lastPin.end - SLACK) ) {
+            if ( (occEnd <= lastPin.end + SLACK) || (lastPin.then === 'take') ) {
+                pushFlex( pinInside ? Math.max(0, pins[nextPin].at - t) : remaining );
+                continue;
+            }
+            runningLate = true;
+        }
+        if (runningLate && (late <= SLACK)) {
+            runningLate = false;
+        }
+        if (pinInside) {
+            remaining = Math.max(0, pins[nextPin].at - t);
+        }
+        if (runningLate && ! pinInside && ! ownSlot) {
+            // rule 3, running late: one after another from where we are
+            let next = getNextForSlot(slot, remaining);
+            if ( (next === null) || next.isOffline || (late >= schedule.lateness + SLACK) ) {
+                pushFlex(remaining);
+                continue;
+            }
+            let first = true;
+            while ( (next !== null) && ! next.isOffline && (first || (t + next.duration <= occEnd)) ) {
+                let fits = (t + next.duration <= occEnd);
+                pushProgram(next);
+                advanceSlot(slot);
+                first = false;
+                if (! fits) {
+                    break;
+                }
+                next = getNextForSlot(slot, occEnd - t);
+            }
+            if (t < occEnd) {
+                pushFlex(occEnd - t);
+            }
+            continue;
+        }
+
         let item = getNextForSlot(slot, remaining);
         if (item === null) {
             // A repeat whose source occurrence is used up: Flex for the rest.
@@ -456,6 +552,33 @@ module.exports = async( programs, schedule, history ) => {
             //flex or redirect. We can just use the whole duration
             item.duration = remaining;
             pushProgram(item);
+            continue;
+        }
+        if (ownSlot && (item.duration > remaining)) {
+            // rule 2: after a pin, only what fits whole
+            pushFlex(remaining);
+            continue;
+        }
+        if (pinInside) {
+            // rule 1: programs that start before the pin; the pin waits for the last to end
+            let pads = [];
+            let total = 0;
+            while ( (item !== null) && ! item.isOffline && (total < remaining - SLACK) ) {
+                let padded = makePadded(item);
+                pads.push(padded);
+                advanceSlot(slot);
+                total += padded.totalDuration;
+                item = getNextForSlot(slot, remaining);
+            }
+            for (let k = 0; k < pads.length; k++) {
+                pushProgram(pads[k].item);
+                if (k < pads.length - 1) {
+                    pushFlex(pads[k].pad);
+                }
+            }
+            if (t < pins[nextPin].at) {
+                pushFlex(pins[nextPin].at - t);
+            }
             continue;
         }
         if (item.duration > remaining) {
