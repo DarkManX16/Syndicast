@@ -58,6 +58,12 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
       }
     });
 
+    // The server's code as it started and as it is on disk now - what the editor asks before it
+    // makes a lineup (src/build-check.js). Light: /api/version also runs ffmpeg.
+    router.get('/api/code-build', (req, res) => {
+      res.send( { "codeRunning" : buildInfo.codeRunning, "codeOnDisk" : buildInfo.codeNow() } );
+    });
+
     // Plex Servers
     router.get('/api/plex-servers', (req, res) => {
       try {

@@ -1390,7 +1390,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.removeItem = (x) => {
                 let program = scope.channel.programs[x];
                 if ( (typeof(program) !== 'undefined') && program.pin && scope.hasTimeSlots() ) {
-                    if (! scope.relaying()) {
+                    let why = pinTools.whyNot({ airing: program, now: Date.now(), what: 'undo' });
+                    if (why !== null) {
+                        scope.error.programs = why;
+                        scope.error.tab = "programming";
+                    } else if (! scope.relaying()) {
                         startUndo(program);
                     }
                     return;
@@ -1410,7 +1414,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (scope.hasTimeSlots()) {
                     scope.deletePrompt.timeSlots = true;
                     scope.deletePrompt.gap = pinTools.sayRemoval({ programs: scope.channel.programs,
-                        startTime: new Date(scope.channel.startTime).getTime(), index: x });
+                        startTime: new Date(scope.channel.startTime).getTime(), index: x, schedule: scope.channel.scheduleBackup });
+                    // On air or aired: it can't be removed or swapped, but Holiday and Never air still work.
+                    scope.deletePrompt.blocked = pinTools.whyNot({ airing: program, now: Date.now(), what: 'remove' });
                 }
             }
             scope.finishDelete = (choice) => {
@@ -2733,9 +2739,16 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (relayGate.busy()) {
                     return;
                 }
+                let why = pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
+                if (why !== null) {
+                    scope.error.programs = why;
+                    scope.error.tab = "programming";
+                    $timeout();
+                    return;
+                }
                 // Not opened for a server still running older code (src/build-check.js).
                 try {
-                    await buildCheck.guard({ fetchVersion: () => dizquetv.getVersion(), run: async () => null });
+                    await buildCheck.guard({ fetchVersion: () => dizquetv.getCodeBuild(), run: async () => null });
                 } catch (err) {
                     scope.error.programs = err.message;
                     scope.error.tab = "programming";
@@ -2912,6 +2925,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         after: { programs: result.programs, startTime: new Date(result.startTime).getTime() },
                         from: now, to: now + 400 * 24 * 60 * 60 * 1000, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
                     let apply = () => { applyRelay(result); queueCatalogOps(ops); };
+                    if (! pinTools.stillWanted(scope.undoPrompt, program)) {
+                        // Cancelled while it was being worked out: nothing is applied or asked.
+                        return;
+                    }
                     if (effects.dropped.length === 0) {
                         scope.undoPrompt = null;
                         apply();
@@ -2921,7 +2938,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     }
                 } catch (err) {
                     console.error(err);
+                    let wanted = pinTools.stillWanted(scope.undoPrompt, program);
                     scope.undoPrompt = null;
+                    if (! wanted) {
+                        return;
+                    }
                     scope.error.programs = (err && err.serverStale) ? err.message : (err && err.message === 'busy')
                         ? 'Another swap is still being worked out - try again in a moment.'
                         : 'Could not delete it: ' + ( (err && (err.data || err.message)) || err );

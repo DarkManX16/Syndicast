@@ -285,6 +285,21 @@ module.exports = async function () {
         const none = episodeStart.plan({ planArgs: planArgs(), starts: {}, now: NOW });
         suite.check('with no starts the picture is the plain plan', none.progress === none.base && none.rows.size === 4);
 
+        // While Friday's S1E9 is on air, the rows read places after it - as Create Lineup does.
+        const midShow = at(Fri, 21, 10);
+        const twoDays = [
+            { isOffline: true, duration: at(Fri, 21) - THU },
+            Object.assign(episode(JB, 1, 9), { slotPosition: 'next|2' }),
+            { isOffline: true, duration: at(Sat, 21) - at(Fri, 21) - 22 * MIN },
+            Object.assign(episode(JB, 1, 10), { slotPosition: 'next|2' }),
+            { isOffline: true, duration: WEEK - (at(Sat, 21) - THU) - 22 * MIN },
+        ];
+        const during = episodeStart.plan({ planArgs: Object.assign(planArgs(), { programs: twoDays }), starts: {}, now: midShow });
+        const after = episodeStart.plan({ planArgs: Object.assign(planArgs(), { programs: twoDays, placesFrom: at(Fri, 21) + 22 * MIN }), starts: {}, now: midShow });
+        suite.check('the rows read places after the program on air when told where it ends (placesFrom)',
+            during.rows.get(NO2).program.title === `${JB} S1E9` && after.rows.get(NO2).program.title === `${JB} S1E10`,
+            `${during.rows.get(NO2).program.title} / ${after.rows.get(NO2).program.title}`);
+
         const gone = episodeStart.plan({ planArgs: planArgs(), starts: { [SHUF]: { ref: { key: 'srv|/e/nobody', order: 1 }, label: 'x' } }, now: NOW });
         suite.check('a Shuffle start that is no episode of the round is told apart as ignored',
             same(gone.ignored, [SHUF]) && gone.rows.get(SHUF).program !== null);

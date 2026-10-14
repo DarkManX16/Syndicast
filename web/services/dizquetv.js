@@ -1,5 +1,15 @@
 module.exports = function ($http, $q) {
     return {
+        // Is the server running the code on disk? A server older than this route has none:
+        // its 404 answers "no", which is what it is.
+        getCodeBuild: () => {
+            return $http.get('/api/code-build').then((d) => { return d.data }).catch((err) => {
+                if (err && (err.status === 404)) {
+                    return {};
+                }
+                throw err;
+            });
+        },
         getVersion: () => {
             return $http.get('/api/version').then((d) => { return d.data })
         },

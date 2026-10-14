@@ -1244,11 +1244,12 @@
             <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Delete {{deletePrompt.label}}</h5></div>
                 <div class="modal-body">
-                    <button class="btn btn-outline-primary btn-block text-left" ng-if="deletePrompt.gap.offerSwap" ng-click="finishDelete('swap')">
+                    <div class="alert alert-warning py-1 px-2 small" ng-if="deletePrompt.blocked">{{deletePrompt.blocked}} Holiday and Never air still work: they take effect once it has aired.</div>
+                    <button class="btn btn-outline-primary btn-block text-left" ng-if="deletePrompt.gap.offerSwap" ng-disabled="deletePrompt.blocked" ng-click="finishDelete('swap')">
                         <b>Swap it for another episode instead...</b>
                         <div class="small text-muted">Removing it leaves a gap; a swap fills it.</div>
                     </button>
-                    <button class="btn btn-outline-secondary btn-block text-left" ng-click="finishDelete('only')">
+                    <button class="btn btn-outline-secondary btn-block text-left" ng-disabled="deletePrompt.blocked" ng-click="finishDelete('only')">
                         <b>Remove this airing only</b>
                         <div class="small text-muted" ng-if="!deletePrompt.timeSlots">As before: the next Create Lineup may schedule it again.</div>
                         <div class="small text-muted" ng-if="deletePrompt.timeSlots">{{deletePrompt.gap.text}} Create Lineup keeps that Flex until it airs, and the episode airs at its show's next slot.</div>

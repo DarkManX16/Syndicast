@@ -31,14 +31,26 @@ function verdict(version) {
  * goes ahead - its own error will say what is wrong. A refusal carries
  * `serverStale`, so the editor shows the message as it is.
  */
-async function guard({ fetchVersion, run }) {
-    let version;
-    try {
-        version = await fetchVersion();
-    } catch (err) {
-        version = UNKNOWN;
+async function guard({ fetchVersion, run, retryMs, timeoutMs }) {
+    // One ask, never for ever: a server that does not answer in time is as good as one that can't be asked.
+    let ask = async () => {
+        let timer = null;
+        let limit = new Promise( (resolve) => { timer = setTimeout( () => resolve(UNKNOWN), (typeof(timeoutMs) === 'number') ? timeoutMs : 8000 ); } );
+        try {
+            return await Promise.race([ fetchVersion(), limit ]);
+        } catch (err) {
+            return UNKNOWN;
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+    let said = verdict(await ask());
+    if (! said.ok) {
+        // A fingerprint read that failed for a moment (a file busy) is a one-off mismatch:
+        // ask again once before refusing.
+        await new Promise( (resolve) => setTimeout(resolve, (typeof(retryMs) === 'number') ? retryMs : 400) );
+        said = verdict(await ask());
     }
-    let said = verdict(version);
     if (! said.ok) {
         let refusal = new Error(said.message);
         refusal.serverStale = true;

@@ -355,11 +355,25 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     let ts = (new Date() ).getTime();
     let curr = ts - localMsIntoPeriod(ts);
     let t0 = curr + s[0].time;
+    /*
+     * The carry, if it is one: a program with a length that started by now, and is
+     * on air or whose slot - the one it began in - is still going. Otherwise what is
+     * on air is some other slot's Flex, nobody's break, and the lineup is made from
+     * now as it always was: its end would put episodes in the past.
+     */
+    let carryChecked = null;
+    if ( (typeof(carryIn) === 'object') && (carryIn !== null) && (typeof(carryIn.start) === 'number') && (carryIn.start <= ts)
+        && (typeof(carryIn.program) === 'object') && (carryIn.program !== null) && ! carryIn.program.isOffline
+        && Number.isFinite(carryIn.program.duration) && (carryIn.program.duration > 0) ) {
+        let ownSlot = findSlot(localMsIntoPeriod(carryIn.start));
+        if ( (carryIn.start + carryIn.program.duration > ts) || ( (ownSlot !== null) && (carryIn.start + ownSlot.remaining > ts) ) ) {
+            carryChecked = carryIn;
+        }
+    }
     // A program still on air from before the period's start is kept: the
     // lineup starts with it, still a whole number of periods long.
-    if ( (typeof(carryIn) === 'object') && (carryIn !== null) && (typeof(carryIn.start) === 'number')
-        && (carryIn.start < t0) && (carryIn.start > t0 - schedule.period) && (carryIn.start <= ts) ) {
-        t0 = carryIn.start;
+    if ( (carryChecked !== null) && (carryChecked.start < t0) && (carryChecked.start > t0 - schedule.period) ) {
+        t0 = carryChecked.start;
     }
     let p = [];
     let t = t0;
@@ -423,13 +437,11 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         } else {
             pushProgram(program);
         }
-        lastPin = { start: start, end: t, then: (pin.then === 'late') ? 'late' : 'take' };
+        lastPin = { start: start, end: t, then: (pin.then === 'late') ? 'late' : 'take', kind: program.pin ? program.pin.kind : undefined };
         runningLate = false;
     };
 
-    let carry = ( (typeof(carryIn) === 'object') && (carryIn !== null) && (typeof(carryIn.start) === 'number')
-        && (typeof(carryIn.program) === 'object') && (carryIn.program !== null) && ! carryIn.program.isOffline
-        && (carryIn.start >= t0) && (carryIn.start <= ts) ) ? carryIn : null;
+    let carry = ( (carryChecked !== null) && (carryChecked.start >= t0) ) ? carryChecked : null;
     if (carry !== null) {
         // The program on air keeps its place: everything from its end is made anew.
         if (carry.start > t0) {
@@ -579,8 +591,10 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             pushProgram(item);
             continue;
         }
-        if (ownSlot && (item.duration > remaining)) {
-            // rule 2: after a pin, only what fits whole
+        if (ownSlot && ( (lastPin.kind === 'remove') || (item.duration > remaining) )) {
+            // rule 2: after a pin, only what fits whole - and after a removal nothing: its
+            // slot stays Flex to the end, so the removed episode (and what follows it in
+            // the slot) airs at its show's next slot, not straight after the Flex
             pushFlex(remaining);
             continue;
         }

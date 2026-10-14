@@ -119,7 +119,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                             let stub = describe({ title: e.title, duration: e.duration });
                             scope.items.push(Object.assign(stub, {
                                 program: null, entry: e, holiday: group.holiday,
-                                label: `${group.holiday} - ${showName} S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')} ${e.title}`,
+                                label: `${group.holiday} - ${showName}${ (typeof(e.season) === 'number') ? ' S' + String(e.season).padStart(2, '0') + 'E' + String(e.episode).padStart(2, '0') : '' } ${e.title}`,
                             }));
                         } ) ) );
                         scope.items = scope.items.filter( (r) => r.entry.duration > 0 );
@@ -269,9 +269,9 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                         let ordered = isInsert ? [ runLate, takeOver ] : [ takeOver, runLate ];
                         ordered.forEach( (o) => { if (o !== null) { scope.options.push(o); } } );
                         if (isInsert) {
-                            scope.breaks = pins.breaksThatFit({ programs: channel.programs, startTime: startTime(), near: at, within: 12 * 60 * 60 * 1000, duration: p.duration })
+                            scope.breaks = pins.breaksThatFit({ programs: channel.programs, startTime: startTime(), near: at, within: 12 * 60 * 60 * 1000, duration: p.duration, notBefore: Date.now() })
                                 .filter( (b) => Math.abs(b.start - at) > SAME )
-                                .map( (b) => ({ start: b.start, text: `${pins.dayClock(b.start)}, after ${pins.label(b.after.program)} - a break of ${pins.length(b.length)}`, after: b.after.program, length: b.length }) );
+                                .map( (b) => ({ start: b.start, text: `${pins.dayClock(b.start)}, after ${pins.label(b.after.program)} - a break of ${pins.length(b.length)}`, after: b.after.program, afterStart: b.after.start, length: b.length }) );
                         }
                     }
                     let dropped = scope.options[0].dropped;
@@ -289,14 +289,24 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 }
             };
             // "A break where it fits": the insert moves to that break and is worked out again.
-            scope.putInBreak = (b) => {
+            scope.putInBreak = async (b) => {
+                let was = { at: at, afterStart: afterStart, afterProgram: scope.afterProgram, breakLength: scope.breakLength };
                 at = b.start;
-                afterStart = b.after.start;
+                afterStart = b.afterStart;
                 scope.afterProgram = b.after;
                 scope.breakLength = b.length;
                 retitle();
                 // The dialog's own re-lays are planned from the lineup as it is; only the pin moves.
-                return scope.choose(scope.chosen);
+                await scope.choose(scope.chosen);
+                if (scope.state !== 'choose') {
+                    // Refused or failed: the dialog stays pointed at the break it was.
+                    at = was.at;
+                    afterStart = was.afterStart;
+                    scope.afterProgram = was.afterProgram;
+                    scope.breakLength = was.breakLength;
+                    retitle();
+                    $timeout();
+                }
             };
             scope.apply = (option) => {
                 scope.onDone(option.result);

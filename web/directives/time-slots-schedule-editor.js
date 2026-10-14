@@ -612,9 +612,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     // The swaps and inserts Create Lineup will keep: a slot one takes doesn't
                     // air its show, so a row's "when" counts the next slot instead.
                     let pinsNow = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now });
+                    let rowCarry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now, schedule: scope.schedule });
                     model = episodeStart.plan({
                         pins: pinsNow,
                         planArgs: {
+                            placesFrom: (rowCarry !== null) ? Math.max(now, rowCarry.start + rowCarry.program.duration) : undefined,
                             programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(),
                             openedSchedule: scope.openedSchedule, schedule: scope.schedule,
                             pool: scope.programs, catalog: scope.catalogPool(), getShowData: getShowData,
@@ -794,7 +796,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 let carry = null;
                 if (typeof(scope.lineup) === 'function') {
                     let onAir = scope.lineup();
-                    carry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0 });
+                    carry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0, schedule: scope.schedule });
                     scope.schedule.progress = slotProgress.planProgress({
                         programs: onAir.programs,
                         startTime: new Date(onAir.startTime).getTime(),
@@ -857,7 +859,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //Create Lineup, Regenerate, Swap, Insert and undo all come through here: none
             //is made against a server still running older code than this page (src/build-check.js).
             let doIt = (fromInstant, pinsToKeep, atNow) => buildCheck.guard({
-                fetchVersion: () => dizquetv.getVersion(),
+                fetchVersion: () => dizquetv.getCodeBuild(),
                 run: () => makeLineup(fromInstant, pinsToKeep, atNow),
             });
 
@@ -922,10 +924,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 scope.openProgress = null;
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
+                    let openCarry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now(), schedule: scope.schedule });
                     scope.openProgress = slotProgress.planProgress({
                         programs: onAir.programs,
                         startTime: new Date(onAir.startTime).getTime(),
                         now: Date.now(),
+                        placesFrom: (openCarry !== null) ? Math.max(Date.now(), openCarry.start + openCarry.program.duration) : undefined,
                         openedSchedule: scope.openedSchedule,
                         schedule: scope.schedule,
                         pool: scope.programs,
@@ -970,10 +974,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if (scope.visible) {
                     throw new Error('The Time Slots dialog is open');
                 }
-                await buildCheck.guard({ fetchVersion: () => dizquetv.getVersion(), run: async () => null });
+                await buildCheck.guard({ fetchVersion: () => dizquetv.getCodeBuild(), run: async () => null });
                 prepare(programs, limit, backup, true, null, lineup, catalogState);
                 scope.visible = false;
-                let res = await doIt(false, pins, now);
+                let res = await makeLineup(false, pins, now);
                 // Its own copy: the dialog's schedule object is used again by the next opening.
                 res.schedule = JSON.parse(JSON.stringify(res.schedule));
                 return res;

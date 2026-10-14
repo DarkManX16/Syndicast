@@ -81,6 +81,22 @@ module.exports = async function () {
         const unreachable = await buildCheck.guard({ fetchVersion: async () => { throw new Error('no answer'); }, run: generate });
         suite.check('...and when the server cannot be asked, runs it: its own error will say what is wrong',
             unreachable === 'lineup' && generated === 2);
+        // A read that failed for a moment (a file busy) makes a one-off mismatch: asked again.
+        let asked = 0;
+        const flaky = await buildCheck.guard({ retryMs: 1, run: generate, fetchVersion: async () => (++asked === 1) ? { codeRunning: 'a', codeOnDisk: 'x' } : { codeRunning: 'a', codeOnDisk: 'a' } });
+        suite.check('a mismatch is asked again once before it refuses: a one-off read problem does not lock Ron out',
+            flaky === 'lineup' && asked === 2, `asked ${asked}`);
+        let askedStale = 0, refusedAgain = null;
+        try {
+            await buildCheck.guard({ retryMs: 1, run: generate, fetchVersion: async () => { askedStale++; return { codeRunning: 'a', codeOnDisk: 'b' }; } });
+        } catch (err) {
+            refusedAgain = err;
+        }
+        suite.check('...and a real one still refuses', refusedAgain && refusedAgain.serverStale === true && askedStale === 2);
+        const before = generated;
+        const slow = await buildCheck.guard({ timeoutMs: 20, run: generate, fetchVersion: () => new Promise(() => {}) });
+        suite.check('a server that does not answer in time is not asked for ever: the guard goes ahead, as when it cannot be asked',
+            slow === 'lineup' && generated === before + 1);
         let thrown = null;
         try {
             await buildCheck.guard({ fetchVersion: async () => ({ codeRunning: 'a', codeOnDisk: 'a' }), run: async () => { throw new Error('boom'); } });
