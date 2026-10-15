@@ -1,0 +1,23 @@
+<div class="nr-series">
+  <span class="nr-kind small" ng-if="radios">
+    <label><input type="radio" ng-model="part.kind" value="all" ng-change="changed()"> The whole custom show</label>
+    <label><input type="radio" ng-model="part.kind" value="series" ng-change="changed()"> Some of its series</label>
+  </span>
+  <div class="nr-seasons small" ng-if="part.kind === 'series'">
+    <label class="nr-season" ng-repeat="s in source.list(part) track by s.key">
+      <input type="checkbox" ng-model="part.series[s.title]" ng-change="changed()"> {{s.title}}<span class="text-muted"> ({{s.count}} episode{{s.count === 1 ? '' : 's'}})</span>
+    </label>
+  </div>
+  <div class="nr-seasons small" ng-if="part.kind === 'series' &amp;&amp; source.seasonChoices(part).length > 0">
+    <span class="nr-kind">
+      Seasons:
+      <label><input type="radio" ng-model="part.seriesSeasons" value="all" ng-change="changed()"> every season</label>
+      <label><input type="radio" ng-model="part.seriesSeasons" value="some" ng-change="changed()"> some seasons</label>
+    </span>
+    <span ng-if="part.seriesSeasons === 'some'">
+      <label class="nr-season" ng-repeat="c in source.seasonChoices(part) track by c.index">
+        <input type="checkbox" ng-model="part.picked[c.index]" ng-change="changed()"> {{c.label}}
+      </label>
+    </span>
+  </div>
+</div>

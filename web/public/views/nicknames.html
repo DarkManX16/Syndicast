@@ -75,6 +75,7 @@
                                 <span class="nr-kind small">
                                     <label><input type="radio" ng-model="panel.kind" value="all" ng-change="kindChanged()"> One show</label>
                                     <label ng-if="hasSeasons()"><input type="radio" ng-model="panel.kind" value="seasons" ng-change="kindChanged()"> Some seasons of it</label>
+                                    <label ng-if="hasSeriesParts()"><input type="radio" ng-model="panel.kind" value="series" ng-change="kindChanged()"> Some of its series</label>
                                     <label><input type="radio" ng-model="panel.kind" value="anyOf" ng-change="kindChanged()"> Any one of several</label>
                                 </span>
                                 <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="panel.filter"></input>
@@ -95,6 +96,10 @@
                                     <span class="text-muted" ng-if="seasonState().loading">reading the seasons&hellip;</span>
                                     <span class="text-warning" ng-if="seasonState().error">{{seasonState().error}}</span>
                                 </span>
+                            </div>
+                            <div class="nr-slot" ng-if="panel.kind === 'series' &amp;&amp; hasSeriesParts()">
+                                <span class="nr-slot-label small"></span>
+                                <series-part part="panel" source="memberSource" on-change="changed(false)"></series-part>
                             </div>
                             <div class="nr-slot" ng-if="panel.kind === 'anyOf'">
                                 <span class="nr-slot-label small"></span>

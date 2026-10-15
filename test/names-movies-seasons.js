@@ -549,7 +549,7 @@ module.exports = async function run() {
             suite.check('names that are not valid, a movie or a show no channel has, and nicknames that are not valid or are everyday words are refused',
                 refusals.every( (e) => e instanceof ShowMatchService.ReviewError ), refusals.map( (e) => e && e.message ).join(' | '));
             suite.check('a nickname that is not a name at all says so, in words',
-                /does not mean a show, a movie or a season/.test(refusals[3].message), refusals[3].message);
+                /does not mean a show, a movie, a season of a show or a series of a custom show/.test(refusals[3].message), refusals[3].message);
             suite.check('and a refused save writes nothing', read() === bytesBefore && ! fs.existsSync(path.join(dir, 'show-aliases.json')));
             const saved = await service.saveNames('a', {
                 clips: [

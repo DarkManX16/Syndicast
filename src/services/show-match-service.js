@@ -59,13 +59,18 @@ class ShowMatchService {
      * and what the title says it names (`proposal`).
      */
     rowsOf(filler, vocabulary, aliases) {
-        return (filler.content || []).map( (clip, index) => ({
-            index: index,
-            title: clip.title,
-            names: showMatch.namesOf(clip),
-            reviewed: showMatch.isReviewedNone(clip),
-            proposal: showMatch.propose(clip.title, vocabulary, aliases),
-        }) );
+        return (filler.content || []).map( (clip, index) => {
+            const row = {
+                index: index,
+                title: clip.title,
+                names: showMatch.namesOf(clip),
+                reviewed: showMatch.isReviewedNone(clip),
+                proposal: showMatch.propose(clip.title, vocabulary, aliases),
+            };
+            // A clip saved as a whole custom show whose title reads as one series of it: shown, never applied.
+            row.narrower = namesReview.narrowerOf(row);
+            return row;
+        } );
     }
 
     /*
@@ -94,6 +99,7 @@ class ShowMatchService {
         for (const row of clips) {
             remember(row.names);
             remember(row.proposal.names);
+            remember(row.narrower || []);
             remember(row.proposal.unresolved != null ? row.proposal.unresolved.recognised : []);
             for (const hit of row.proposal.found) {
                 remember(hit.alsoKeys || []);
@@ -115,6 +121,7 @@ class ShowMatchService {
             aliasCount: Object.keys(aliases).length,
             showNames: showNames,
             shows: shows,
+            series: vocabulary.series,
             clips: clips,
         };
     }
@@ -291,7 +298,7 @@ class ShowMatchService {
             shows.push( { key: m.key, name: m.name, custom: false, movie: true, inCustomShow: m.custom, group: 'Movies' } );
             showNames[m.key] = m.name;
         }
-        return { nicknames: nicknamesLogic.listNicknames(aliases, vocabulary, clips), shows: shows, showNames: showNames };
+        return { nicknames: nicknamesLogic.listNicknames(aliases, vocabulary, clips), shows: shows, showNames: showNames, series: vocabulary.series };
     }
 
     /*
@@ -392,7 +399,9 @@ class ShowMatchService {
             for (const name of c.names) {
                 for (const key of clipNames.showsOf(name) ) {
                     if (typeof(vocabulary.names[key]) === 'undefined') {
-                        throw new ReviewError(`“${c.title}”: ${key} is not a show or movie on any channel.`);
+                        const series = clipNames.parseSeriesKey(key);
+                        throw new ReviewError(series !== null ? `“${c.title}”: “${series.series}” is not a series of a custom show that joins two or more.`
+                            : `“${c.title}”: ${key} is not a show or movie on any channel.`);
                     }
                 }
             }
@@ -403,7 +412,7 @@ class ShowMatchService {
         const everyClip = Object.keys(wanted).length > 0 ? await this.everyClip() : [];
         for (const text of Object.keys(wanted) ) {
             if (! clipNames.validName(wanted[text]) ) {
-                throw new ReviewError(`Nickname “${text}” was not saved: it does not mean a show, a movie or a season of a show, or any one of several shows.`);
+                throw new ReviewError(`Nickname “${text}” was not saved: it does not mean a show, a movie, a season of a show or a series of a custom show, or any one of several shows.`);
             }
             const checked = showMatch.checkNickname(text, wanted[text], vocabulary, known, everyClip);
             if (! checked.ok) {

@@ -78,6 +78,9 @@ function marksOf(proposal) {
     if (has( (h) => h.standalone === true )) {
         marks.push( { id: 'standalone', label: 'less certain: one word found on its own', uncertain: true } );
     }
+    if (has( (h) => (typeof(h.alsoShow) === 'string') && (h.via === 'title') )) {
+        marks.push( { id: 'seriesOverlap', label: 'less certain: a series found by its title, which its custom show answers to as well', uncertain: true } );
+    }
     if (has( (h) => Array.isArray(h.alsoKeys) && (h.alsoKeys.length > 0) )) {
         marks.push( { id: 'ambiguous', label: 'less certain: more than one show has this title', uncertain: true } );
     }
@@ -180,6 +183,34 @@ function acceptAll(rows, pending) {
 }
 
 /*
+ * The names a saved clip's title reads as when they are narrower than what it has: a clip saved as a
+ * whole custom show whose title (with the nicknames now taught) reads as one series of that custom
+ * show. Display only: the screen offers it as "use this" and nothing changes until it is picked and
+ * saved. Returns the suggested names (the whole list, in the clip's order) or null when there is no
+ * such narrowing: nothing saved, a different number of places, or any place that is neither the same
+ * name nor a series of the custom show saved there.
+ */
+function narrowerOf(row) {
+    const saved = Array.isArray(row.names) ? row.names : [];
+    const proposed = ( (row.proposal != null) && Array.isArray(row.proposal.names) ) ? row.proposal.names : [];
+    if ( (saved.length === 0) || (proposed.length !== saved.length) ) {
+        return null;
+    }
+    let narrows = false;
+    for (let i = 0; i < saved.length; i++) {
+        if (clipNames.sameName(saved[i], proposed[i]) ) {
+            continue;
+        }
+        if ( (typeof(saved[i]) === 'string') && saved[i].startsWith('custom.') && clipNames.isSeriesName(proposed[i]) && (proposed[i].show === saved[i]) ) {
+            narrows = true;
+            continue;
+        }
+        return null;
+    }
+    return narrows ? proposed.slice() : null;
+}
+
+/*
  * A list of picked names (a show or movie key, or a season or an episode of a show),
  * cleaned: blanks dropped, at most four, and the same name not twice in a row (a clip
  * that names "TMNT, TMNT" would never fit a break). The same name may come back later
@@ -225,9 +256,15 @@ function picksProblem(keys) {
  * slotName turns a slot back into a name; slotProblem says why a slot cannot be one yet.
  */
 function emptySlot() {
-    return { key: null, kind: 'all', picked: {}, special: '', any: false, members: [] };
+    return { key: null, kind: 'all', picked: {}, special: '', any: false, members: [], series: {}, seriesSeasons: 'all' };
 }
 
+/*
+ * A custom show offers "which part": the whole custom show (kind 'all'), or kind 'series' with the
+ * series ticked in `series` ({ "Mobile Suit Gundam Wing": true }). When exactly one series is ticked
+ * it may also be narrowed to some of its seasons: `seriesSeasons` 'some' and the seasons ticked in
+ * `picked`, as for a show. Several series ticked are any one of those series.
+ */
 function slotOfName(name) {
     const slot = emptySlot();
     if (typeof(name) === 'string') {
@@ -235,6 +272,17 @@ function slotOfName(name) {
     } else if (clipNames.isAnyOfName(name) ) {
         slot.any = true;
         slot.members = name.anyOf.map(slotOfName);
+    } else if (clipNames.isSeriesName(name) ) {
+        slot.key = name.show;
+        slot.kind = 'series';
+        slot.series[name.series] = true;
+        const seasons = clipNames.seasonsOf(name);
+        if (seasons.length > 0) {
+            slot.seriesSeasons = 'some';
+            for (const n of seasons) {
+                slot.picked[n] = true;
+            }
+        }
     } else if (clipNames.isSeasonName(name) || clipNames.isSeasonsName(name) ) {
         slot.key = name.show;
         slot.kind = 'seasons';
@@ -253,6 +301,24 @@ function pickedSeasons(slot) {
     return Object.keys(slot.picked || {}).filter( (k) => slot.picked[k] ).map(Number).sort( (a, b) => a - b );
 }
 
+function pickedSeries(slot) {
+    return Object.keys(slot.series || {}).filter( (k) => slot.series[k] );
+}
+
+// The names a slot stands for, as the members of an any-of: a row with several series ticked is several members.
+function memberNames(slot) {
+    const names = [];
+    for (const m of (slot.members || []) ) {
+        const name = slotName(m);
+        if (clipNames.isAnyOfName(name) ) {
+            names.push(...name.anyOf);
+        } else {
+            names.push(name);
+        }
+    }
+    return names;
+}
+
 function slotProblem(slot) {
     if (slot.any === true) {
         const members = slot.members || [];
@@ -263,10 +329,20 @@ function slotProblem(slot) {
                 return why;
             }
         }
-        return clipNames.anyOfProblem(members.map(slotName));
+        return clipNames.anyOfProblem(memberNames(slot));
     }
     if (! slot.key) {
         return 'a show has not been picked';
+    }
+    if ( /^custom[.]/.test(slot.key) && (slot.kind === 'series') ) {
+        const ticked = pickedSeries(slot);
+        if (ticked.length === 0) {
+            return 'no series is ticked';
+        }
+        if ( (ticked.length === 1) && (slot.seriesSeasons === 'some') && (pickedSeasons(slot).length === 0) ) {
+            return 'no season is ticked';
+        }
+        return (ticked.length === 1) ? null : clipNames.anyOfProblem(ticked.map( (t) => clipNames.seriesName(slot.key, t, []) ));
     }
     if (/^tv[.]/.test(slot.key) ) {
         if ( (slot.kind === 'seasons') && (pickedSeasons(slot).length === 0) ) {
@@ -284,7 +360,14 @@ function slotName(slot) {
         return null;
     }
     if (slot.any === true) {
-        return clipNames.anyOfName(slot.members.map(slotName));
+        return clipNames.anyOfName(memberNames(slot));
+    }
+    if (/^custom[.]/.test(slot.key) && (slot.kind === 'series') ) {
+        const ticked = pickedSeries(slot);
+        if (ticked.length === 1) {
+            return clipNames.seriesName(slot.key, ticked[0], (slot.seriesSeasons === 'some') ? pickedSeasons(slot) : []);
+        }
+        return clipNames.anyOfName(ticked.map( (t) => clipNames.seriesName(slot.key, t, []) ));
     }
     if (/^tv[.]/.test(slot.key) && (slot.kind === 'seasons') ) {
         return clipNames.seasonsName(slot.key, pickedSeasons(slot) );
@@ -380,6 +463,7 @@ module.exports = {
     effective: effective,
     acceptAllPlan: acceptAllPlan,
     acceptAll: acceptAll,
+    narrowerOf: narrowerOf,
     cleanPicks: cleanPicks,
     picksProblem: picksProblem,
     emptySlot: emptySlot,

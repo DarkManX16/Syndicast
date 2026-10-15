@@ -549,11 +549,12 @@ first). It is proposed automatically and fixed on a review screen:
   | One season | `{ "show": "tv.Dragon Ball Z", "season": 3 }` | episodes of that season of the show; season 0 is its specials |
   | Several seasons | `{ "show": "tv.Justice League", "seasons": [3, 4, 5] }` | episodes of any of those seasons of the show (Justice League Unlimited is seasons 3 to 5 of Justice League in Plex) |
   | One special | `{ "show": "tv.Dragon Ball Z", "episode": "Bardock - The Father of Goku" }` | the episode of that title |
+  | One series of a custom show | `{ "show": "custom.<id>", "series": "Mobile Suit Gundam Wing" }`, with `"season": 2` or `"seasons": [2, 3]` | episodes of that series inside the custom show, and wherever the same show airs on its own (see "A series of a custom show") |
   | Any one of several | `{ "anyOf": ["tv.Even Stevens", "movie.Halloweentown"] }` | a program that fits any one of its members (see below) |
 
-  The movie, the seasons and the special are *specific*; an any-of name is neither, it ranks by the member that fits. A show key does not
+  The movie, the seasons, the special and the series are *specific*; an any-of name is neither, it ranks by the member that fits. A show key does not
   fit a movie, and a movie key does not fit the show's episodes: a clip for DBZ plays before DBZ episodes and not before its films. Only a
-  `tv.` show has seasons and specials; a custom show is one show. A name is valid when it is one of
+  `tv.` show has seasons and specials; a custom show is one show, unless it joins two or more series, when a name may be one of them. A name is valid when it is one of
   these exactly (no extra fields, a whole season from 0 up; several seasons are two or more, ascending
   and without repeats, since one season is the shape above); `namesProblem` warns at save about
   anything else and `namesOf` reads it as naming nothing, so an unusable name never turns a clip
@@ -653,6 +654,60 @@ first). It is proposed automatically and fixed on a review screen:
   `source: 'lineup'` and no hints. Read-only. **A hint is only a hint**: clicking one fills the
   nickname box and picks the season, and the nickname then goes through the same checks and the
   same "would also name" list as any other before it can be saved.
+
+- **A series of a custom show (built Oct 14, 2026).** A custom show can join several series: "G Gundam/Gundam
+  Wing/Gundam SEED+Destiny" holds Mobile Fighter G Gundam, Mobile Suit Gundam Wing and two SEED series, and
+  "Mobile Suit Gundam Series" holds seven. A clip for "Gundam Wing Intro" is for one of them, and until now the
+  most it could name was the whole custom show, so it played before every series in it. `{ "show": "custom.<id>",
+  "series": "Mobile Suit Gundam Wing" }` names one series (with `season`, or `seasons` for several, when the series
+  has more than one).
+
+  *What a series is.* The show title the custom show's episodes carry: the same "series" Ordered shuffle plays
+  (`clipNames.seriesOf`: an item's show title, else its title). Only episodes count, and only a custom show whose
+  episodes join **two or more** series offers them: a custom show of one series is that show, and one of movies
+  (Looney Tunes shorts, each its own title) has none, since a movie is named by its own title. The series come from
+  every custom show's own catalog, as its movies do (`vocabulary.series`), whether or not a lineup airs them now.
+
+  *What it fits.* An episode of that series **inside the custom show, and wherever the same show airs on its own**
+  (a plain `tv.` episode of that show title): it is the same series, the way a movie name fits the movie
+  wherever it airs. Not an episode of the same show title inside some other custom show. A series with seasons
+  fits an episode of those seasons only (a custom show's items carry their Plex season). It is *specific*: it
+  ranks above a clip for the whole custom show, which still fits every series of it as the show, and shares the
+  specific tier with season and special clips. Before a Wing episode "Gundam Wing Intro" plays and "G Gundam
+  Intro" does not; before a SEED episode, which has no clip of its own, the clip for the whole custom show does.
+  An "any one of" name may hold series as members, and several series ticked in a picker are such a name; a
+  whole custom show beside one of its series, or a whole series beside its own seasons, is refused as redundant.
+
+  *What the matcher suggests.* A series' show title is read like a show's, in the same vocabulary, longest title
+  first, so "Mobile Suit Gundam Wing Intro" is the Wing series and not the shorter "Mobile Suit Gundam". It
+  carries a key of its own, `series.custom.<id>|<title>`, which is what `showOf` and `showsOf` give for a series
+  name, so the nickname checks tell one series from another: a nickname for a series is not blocked by a clip
+  saved as the whole custom show (the wider name of the same thing) or as the show of that title on its own, and
+  is blocked by one saved under another series of it. Three rules keep it from being looser than a show:
+  (1) a title a show or a movie also has is theirs first, and the tie is reported as ambiguous, as for two
+  shows; a series with the title of its own custom show ("Tom and Jerry" in "Tom & Jerry") is no second
+  owner of it; (2) a **one-word** series title ("Peanuts") counts only as a segment of its own, in brackets or
+  on its own, and then as less certain, like a bare "Jeffersons", and a series' one-word shortened form
+  ("Batman" for "Batman: The Animated Series") is never offered; (3) a series found by a title that its custom
+  show answers to as well ("Mobile Suit Gundam" is the series' title and the custom show's name without
+  "Series"; "Ben 10" and "Ben 10 series") is **less certain**, so "accept all" skips it and the person looks
+  once. A series found by a taught nickname is confident. Initials make no abbreviation of a series, and a
+  series is never a movie's parent. A nickname may mean a series, with or without seasons, in the alias file as
+  the stored name; nicknames taught before still mean what they meant (a custom show stays the whole custom show
+  until the nickname is edited).
+
+  *The picker.* A custom show that joins several series offers "which part", the way a show offers seasons:
+  **The whole custom show** or **Some of its series**, with a box per series (and its episodes), and when
+  exactly one is ticked that has two or more seasons, **every season / some seasons**. One series ticked is
+  saved as that series; several are any one of them. It is one directive, `series-part`
+  (`web/directives/series-part.js`, `web/series-source.js`), in the picker, in each member row of "Any one of",
+  in the nickname panel on the review screen and in the Nicknames page's editor, which reads a nickname for a
+  series as "a series of a custom show". Slot logic is `src/names-review.js`.
+
+  *A clip saved as the whole custom show* keeps it, and plays as it did. When its title, read with today's
+  nicknames, is one series of that custom show, the review screen says so under the clip ("its title reads as
+  ... narrower than the custom show it is saved under") with **Use this**: display only, nothing changes
+  until it is used and Saved (`namesReview.narrowerOf`).
 
 Our stamp, against the two programs we took the idea from: the clip knows
 what it is about, so one list serves every show and every pair, and the
