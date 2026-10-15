@@ -20,7 +20,7 @@
 
     <div ng-if="!loading &amp;&amp; !error">
         <div class="nr-toolbar">
-            <input type="text" class="form-control form-control-sm nr-search" placeholder="Search nicknames..." ng-model="search"></input>
+            <input type="text" class="form-control form-control-sm nr-search" placeholder="Search nicknames..." ng-model="ui.search"></input>
             <span class="small text-muted">{{visible().length}} of {{rows.length}} nickname{{rows.length === 1 ? '' : 's'}}</span>
         </div>
 
