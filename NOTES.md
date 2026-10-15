@@ -1150,6 +1150,96 @@ for the full spec, stages and acceptance tests.
         `test/names-seasons-anyof.js` changed because they said a movie or a season was refused in an any-of
         or named "shows" in a message. 1,477 to 1,545 tests.
 
+      **A series of a custom show as a name, Oct 14, 2026 (Sonnet 5.5), on branch `names-series`.** Ron's
+      ask: several of his custom shows join series ("G Gundam/Gundam Wing/Gundam SEED+Destiny" holds Mobile
+      Fighter G Gundam, Mobile Suit Gundam Wing and the two SEED series; "Mobile Suit Gundam Series" holds
+      seven), and a clip belongs to one. In "Toonami Show Intros" "G Gundam Intro" must play only before G
+      Gundam and "Gundam Wing Intro [1]" only before Wing, but both were saved as the whole custom show; in
+      "Toonami AcTN Show Intros" "Mobile Suit Gundam Intro", "Gundam 0080 Intro" and "Gundam 0083 Intro" were
+      suggested as the whole "Mobile Suit Gundam Series". Full rules are in the spec's "A series of a custom
+      show". Ron decided, after a plan with a sketch and a check on a copy: (1) a series name fits that
+      series' episodes inside the custom show **and wherever the same show airs on its own**, the way a movie
+      name fits the movie wherever it airs (my first plan had it inside the custom show only); (2) a series
+      found by a title its custom show answers to as well is less certain, and "accept all" skips it; (3) a
+      display-only hint on clips saved as the whole custom show.
+
+      - **The shape.** `{ show: "custom.<id>", series, season? | seasons? }`, a new shape beside the old ones
+        (`clipNames.isSeriesName`, `seriesName`, `validName`), so no name saved before reads differently. It
+        is specific, may be a member of an any-of (a whole custom show beside one of its series, or a whole
+        series beside its seasons, is refused as redundant) and has a key of its own for the checks that ask
+        which show a name is about: `series.custom.<id>|<title>` (`showOf`, `showsOf`). Only episodes count
+        and only a custom show whose episodes join two or more series offers them: 14 of the 38 on the copy,
+        43 series; a custom show of one series, and the ones of shorts (Looney Tunes, Phineas and Ferb: 127
+        "series", 126 of them movie items that are their own show title) offer none.
+      - **The matcher.** A series is a vocabulary key read by the same title code as a show (longest first,
+        shortened forms, ambiguity), from every custom show's own catalog, and a taught nickname may mean
+        one. Rules that keep it from being looser than a show: a title a show or a movie also has is theirs
+        first and the tie is reported; a **one-word** series title (Peanuts) counts only as a segment of its
+        own and then as less certain, and a series' one-word shortened form is never offered; the overlap with
+        its custom show's shortened name is less certain (`alsoShow`, mark `seriesOverlap`); initials make no
+        abbreviation of a series; a series is never a movie's parent; a series with the title of its own
+        custom show is no second owner of it.
+      - **What I had claimed and was wrong about.** The plan said "Peanuts" would be held to the one-word
+        rule. There was no such rule for a plain show (only for "The X" with one word left), and a first
+        rehearsal showed "Amanda Bynes 'Selling Peanuts' Web Clip" read as the series; the rule above is new.
+        Rehearsing the matcher on a copy also missed two things the old-versus-new comparison caught: "Tom
+        and Jerry" (a series with its custom show's own title) made 70 clips' reasons differ with the same
+        names ("more than one show has this title"), and the series "Mobile Suit Gundam" became the parent of
+        the movie "Mobile Suit Gundam: The 08th MS Team - Miller's Report". Both fixed and tested.
+      - **Proved additive**, `node scripts/compare-names-engines.js <data copy> <old checkout> --control` against
+        the checkout before the change, on a copy of `.dizquetv-dev` taken Wed Oct 14 10:18pm Central (and
+        identical to the copy of 9:33pm; 10,104 clips in 151 lists, 59 nicknames): channel 1's **3,520 breaks
+        over 8 weeks with `show`, `pair` and `any` steps from the 69 lists that carry saved names: 0 plans
+        differ**. Controls, so the comparison can see a change: every saved show name narrowed to one season
+        differs on 2,895; 93 saved custom-show names narrowed to their first series differ on 568. Proposals:
+        **47 of 10,104 clips are suggested differently**, 12 of them with saved names (which no proposal
+        changes); 6 unsaved clips go from no suggestion to a confident one (5 "Saved by the Bell" teasers,
+        "Josie & The Pussycats promo"). The rest: 29 "Ben 10" clips, 27 on their own and 2 with Super Friends
+        (the original series, not the whole "Ben 10 series"; less certain, 9 of them saved), "Mobile Suit Gundam
+        Intro" and two saved "NEXT" clips (less certain), Spider-Man and His Amazing Friends (2), Family Double
+        Dare (3), Super Sloppy Double Dare, Double Dare 2000 (2), Pinky and the Brain (saved).
+      - **On channel 1's real lineup**, 26 weeks from Oct 18, "Toonami Show Intros" with a step keyed on the
+        next show: 44 breaks come before a G Gundam episode and 8 before a Wing episode. With the names saved
+        today the one clip that plays is "G Gundam Intro (2003)" before **all 8 Wing breaks** too. With the
+        five Gundam clips narrowed to their series, G Gundam breaks keep it and Wing breaks play "Gundam Wing
+        Intro [2]". Checked in a browser on a scratch server (port 18190, a copy of the data, no Plex): the
+        picker on "G Gundam Intro" (custom show, "Some of its series", Mobile Fighter G Gundam ticked: "reads
+        as Mobile Fighter G Gundam (in G Gundam/...)", saved as `{ show, series }`), the teach panel (it
+        refused "g gundam": it already means the whole custom show), the Nicknames page (edit "gundam wing" to
+        the series: it says one unsaved clip would read differently and 8 keep their saved names), and the hint
+        on the two saved Wing clips, used and saved for one.
+      - **Ron's data.** Nothing was edited. The five saved clips stay as the whole custom show, and the six
+        Gundam nicknames ("g gundam", "gundam seed", "gundam wing", "gundam 0080", "gundam 0083", "gundam
+        08th") still mean whole custom shows, so "Gundam 0080 Intro" and "Gundam 0083 Intro" are still
+        suggested as the whole "Mobile Suit Gundam Series" until each nickname is edited on the Nicknames page
+        to its series (0080 is Mobile Suit Gundam 0080: War in the Pocket, 0083 Stardust Memory); the review
+        screen then shows the hint on a saved clip whose title reads as one series of its custom show, and
+        applying one is a click and Save. "Mobile Suit Gundam Intro" is suggested as the series by its title.
+      - **Writers and readers of a name, enumerated** (the rule for this kind of change): writers are the review
+        save (`validName`; every series must be in the vocabulary), the alias file (the reader keeps what
+        `validName` accepts; `change` writes the Nicknames page's edit), the filler editor and `carryNames`
+        (pass through). Readers: `namesOf`/`namesProblem`, `fits` (all plans, through `buildPlan`), `propose` and
+        `nameOfHit`, `aliasEntries`, the nickname checks through `showsOf`/`namesShow`/`nicknameProblems`,
+        `learnAliases`, `labelOf`, `kindOf` and the Nicknames page, `slotOfName`/`slotName`/`slotProblem`,
+        `narrowerOf`, and the three screens through `series-part`. Every reader of the season shapes now
+        excludes a name that carries `series` (`isSeasonName`, `isSeasonsName`, `isEpisodeName`), which a series
+        name with `season` would otherwise have been read as.
+      - **Not done, and limits.** "Season N" in a title does not narrow a series (only a taught nickname does);
+        a season clip and a series clip share the specific tier, so before a season-2 episode either may play;
+        series seasons are the custom show's own items' (Tom and Jerry's are years); the series of a custom
+        show that Ordered shuffle plays are unchanged (it reads the same field). Found on the way and left:
+        the Nicknames page's search box does not filter (a bare `ng-model="search"` inside a child scope, the
+        same bug the review screen's box had, `web/public/views/nicknames.html`).
+      - **Tests.** `test/names-series.js`, 88 checks, mutation-checked with 25 deliberate breaks, all caught
+        (a series fitting another custom show or a movie or ignoring seasons, the plain show not fitting, a
+        season name read for a series, a series winning a tie, no one-word rule, the overlap not noticed or not
+        carried, one-series custom shows or movie items offering series, a nickname hit without its own key, the
+        related-keys rule, several series dropped or not flattened in an any-of, the hint, the alias reader, the
+        screen not given the series, an unknown series saved, the two comparison-found fixes). 2,114 to 2,202
+        tests; one early run of the full suite stopped at 2,104 of 2,105 with a suite ending early (the output's
+        last suite was episode-start-model) and did not repeat in the three later full runs that passed, cause not found. Not
+        automated: the screens' clicking (checked by hand as above).
+
       **Step 7 built Oct 7, 2026 (Sonnet 5.5), confirmed in TiviMate by Ron on Oct 8: end to end on
       channel 1.** Nothing was changed: this step is a check, run on a snapshot of `.dizquetv-dev`
       taken Oct 7 at 7:29 PM Central (Ron saved Wand ID names and nicknames while it ran, so the
@@ -5542,6 +5632,16 @@ by a 48-hour soak" item in the 1.0 list above) - a card-service hang during
 the soak should surface this the same way a streaming crash would, and the
 fix (bounded timeouts on both) belongs with whatever else that soak turns up.
 
+### The Nicknames page's search box does not filter
+
+Found Oct 14, 2026, while checking series names in a browser. `web/public/views/nicknames.html` binds the
+"Search nicknames..." box with a bare `ng-model="search"`, and `web/controllers/nicknames.js` filters on
+`$scope.search`. The box sits inside a block Angular gives a child scope, so a keystroke writes a `search`
+property on that child and the list never narrows ("59 of 59 nicknames" whatever is typed). It is the same
+bug the review screen's search box had (see "The names review search box didn't filter" under Resolved), and
+the fix is the same: bind through an object path (`ui.search`) in the view and the controller. Not fixed in
+the series work.
+
 ## Testing notes
 
 ### `npm test` runs the blocks suite
@@ -5612,6 +5712,17 @@ checks as of the fall-back fixes). Nine files:
   Dragon Ball Z lineup (the most specific clip wins, from the list or its fallback), the screen's logic,
   folder hints and Plex's seasons through a fake client, and the service and routes against real files
   under the OS temp directory. Fixtures only.
+
+- `names-series.js` - a series of a custom show as a name: the shape and its key, how it fits an episode
+  (inside the custom show and on its own, seasons, the any-of ranking), plan rows (the series clip beats the
+  whole custom show's before its series, and only there), the vocabulary (which custom shows offer series),
+  the matcher (a title, a nickname, the one-word rule, the tie with a show, the overlap with the custom
+  show's name, nothing disturbed: a movie's parent, a custom show's own title), the nickname checks, the
+  picker's slots and the hint on saved clips, the alias file, and the service and Nicknames page against real
+  files under the OS temp directory. Fixtures only. The real-data check is
+  `scripts/compare-names-engines.js --control` (which now gives both engines the custom shows' catalogs, lists
+  how many suggestions change and which move group, and has a second control narrowing saved custom-show
+  names to a series; `--proposals-only` skips the 3-minute plan walk).
 
 - `blocks-schedule-view.js` - `dayParts.weeklySegments`, the function the
   Schedule tab and the Day-Parts strip both draw from: a hand-derived Saturday

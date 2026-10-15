@@ -309,7 +309,7 @@ module.exports = function ($timeout, $rootScope, dizquetv, namesReview) {
                     : (trouble === 'an any-of needs two names') ? `${ANY} needs at least two names.`
                     : (trouble === 'a whole show and a part of the same show are both in an any-of') ? `${ANY} has a whole show and a part of the same show: keep just one of them.`
                     : (trouble === 'a whole series and some of its seasons are both in an any-of') ? `${ANY} has a whole series and some of its seasons: keep just one of them.`
-                    : (trouble === 'no series is ticked') ? `Tick at least one series of ${of}, or choose “The whole custom show”.`
+                    : (trouble === 'no series is ticked') ? `Tick at least one series of ${of}.`
                     : (trouble === 'no season is ticked') ? ( (culprit.kind === 'series') ? 'Tick at least one season of the series, or choose “every season”.'
                         : `Tick at least one season of ${of}, or choose “Any episode”.` )
                     : (trouble === 'no special is picked') ? `Pick which special of ${of}, or choose “Any episode”.`

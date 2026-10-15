@@ -103,7 +103,7 @@ module.exports = function ($scope, $timeout, dizquetv) {
             : (trouble === 'an any-of needs two names') ? 'Pick at least two names.'
             : (trouble === 'a whole show and a part of the same show are both in an any-of') ? 'A whole show and a part of the same show are both picked: keep just one of them.'
             : (trouble === 'a whole series and some of its seasons are both in an any-of') ? 'A whole series and some of its seasons are both picked: keep just one of them.'
-            : (trouble === 'no series is ticked') ? `Tick at least one series of ${of}, or choose “The whole custom show”.`
+            : (trouble === 'no series is ticked') ? `Tick at least one series of ${of}.`
             : (trouble === 'no season is ticked') ? `Tick at least one season of ${of}, or choose “Any episode”.`
             : (trouble === 'no special is picked') ? `Pick which special of ${of}, or choose “Any episode”.`
             : trouble.charAt(0).toUpperCase() + trouble.slice(1) + '.';
