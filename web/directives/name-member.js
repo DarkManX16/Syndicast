@@ -6,7 +6,8 @@
  *
  * `member` is a slot (src/names-review.js: { key, kind, picked, special }) that the screen owns;
  * `source` is what the screen offers: options(current) is the list to pick from, label(option)
- * its text, and ensure/hasParts/choices/specials/state are web/season-source.js. `onChange`
+ * its text, and ensure/hasParts/choices/specials/state are web/season-source.js (and hasSeries/list/
+ * ticked/seasonChoices web/series-source.js, for a custom show that joins several series). `onChange`
  * runs after anything in the row is changed, `onRemove` when the row is removed.
  */
 module.exports = function () {
@@ -25,6 +26,8 @@ module.exports = function () {
                 scope.member.kind = 'all';
                 scope.member.picked = {};
                 scope.member.special = '';
+                scope.member.series = {};
+                scope.member.seriesSeasons = 'all';
                 scope.source.ensure(scope.member.key);
                 scope.onChange();
             };

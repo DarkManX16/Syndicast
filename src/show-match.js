@@ -449,7 +449,7 @@ function buildVocabulary(channels, customShowNames, customShows) {
     // clip that names both is read as naming the movie alone (see propose).
     const wholeOwner = {};
     for (const e of entries) {
-        if (! e.shortened && ! e.key.startsWith('movie.') && (typeof(wholeOwner[e.folded]) === 'undefined') ) {
+        if (! e.shortened && ! e.key.startsWith('movie.') && ! clipNames.isSeriesKey(e.key) && (typeof(wholeOwner[e.folded]) === 'undefined') ) {
             wholeOwner[e.folded] = e.key;
         }
     }
@@ -519,6 +519,16 @@ function buildVocabulary(channels, customShowNames, customShows) {
     }
     entries.sort(byLength);
     standalone.sort(byLength);
+    // A series that has the title of its own custom show ("Tom and Jerry" in the custom show "Tom & Jerry") is
+    // not a second owner of it: the custom show is the answer and nothing is ambiguous.
+    for (const folded of Object.keys(owners)) {
+        for (const key of Array.from(owners[folded]) ) {
+            const series = clipNames.parseSeriesKey(key);
+            if ( (series !== null) && owners[folded].has(series.show) ) {
+                owners[folded].delete(key);
+            }
+        }
+    }
     const ambiguous = {};
     for (const folded of Object.keys(owners)) {
         if (owners[folded].size > 1) {

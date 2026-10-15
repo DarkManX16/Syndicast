@@ -63,6 +63,12 @@
                   <span class="small text-muted" ng-if="view(r).state === 'pending' &amp;&amp; r.proposal.names.length > 0 &amp;&amp; (view(r).text !== r.proposal.names.map(nameLabel).join('  →  '))">(your pick; the title suggested {{r.proposal.names.map(nameLabel).join(', ')}})</span>
                 </div>
 
+                <div class="small nr-narrower" ng-if="hasNarrower(r)">
+                  Its title reads as <b>{{r.narrower.map(nameLabel).join('  →  ')}}</b>, narrower than the custom show it is saved under.
+                  Nothing changes unless you use it and Save.
+                  <button type="button" class="btn btn-sm btn-outline-primary" ng-click="useNarrower(r)">Use this</button>
+                </div>
+
                 <div class="nr-marks" ng-if="marksOf(r).length > 0">
                   <span class="badge badge-warning" ng-repeat="m in marksOf(r)">{{m.label}}</span>
                 </div>
@@ -83,7 +89,7 @@
                 </div>
 
                 <div class="nr-panel" ng-if="picker.index === r.index">
-                  <div class="small text-muted">Pick the show{{picker.slots.length > 1 ? 's, in the order they air' : ''}}, or a movie, and for a show with seasons its season or a special. A clip for one movie, season or special plays only before that one. A clip that names several plays only when they air one after another, starting with the one coming up. &ldquo;Any one of these&rdquo; is one place in that list that any of its names can fill, each a show, a movie, some seasons of a show or a special: an actor&rsquo;s clip that stands for a show and for a movie they were in plays before either, and before the exact movie or season it counts as a closer fit than before the show.</div>
+                  <div class="small text-muted">Pick the show{{picker.slots.length > 1 ? 's, in the order they air' : ''}}, or a movie, and for a show with seasons its season or a special, and for a custom show that joins several series one or more of its series. A clip for one movie, season, special or series plays only before that one. A clip that names several plays only when they air one after another, starting with the one coming up. &ldquo;Any one of these&rdquo; is one place in that list that any of its names can fill, each a show, a movie, some seasons of a show or a special: an actor&rsquo;s clip that stands for a show and for a movie they were in plays before either, and before the exact movie or season it counts as a closer fit than before the show.</div>
                   <input type="text" class="form-control form-control-sm nr-narrow" placeholder="Type to narrow the shows..." ng-model="picker.filter"></input>
                   <div class="nr-slot" ng-repeat="slot in picker.slots track by $index">
                     <span class="nr-slot-label small">{{slotLabel($index, picker.slots.length)}}</span>
@@ -121,6 +127,7 @@
                         <option value="">Pick a special...</option>
                       </select>
                     </div>
+                    <series-part ng-if="!slot.any &amp;&amp; hasSeries(slot)" part="slot" source="memberSource" radios="true"></series-part>
                     <div class="nr-reads small text-muted" ng-if="slotReads(slot)">reads as: <b>{{slotReads(slot)}}</b></div>
                   </div>
                   <button type="button" class="btn btn-sm btn-link" ng-if="canAddSlot()" ng-click="addSlot()">+ another show after it</button>
@@ -147,6 +154,7 @@
                     <span class="nr-kind small">
                       <label><input type="radio" ng-model="teach.kind" value="all" ng-change="teachSeasonChanged()"> One show</label>
                       <label ng-if="teachHasSeasons()"><input type="radio" ng-model="teach.kind" value="seasons" ng-change="teachSeasonChanged()"> Some seasons of it</label>
+                      <label ng-if="teachHasSeries()"><input type="radio" ng-model="teach.kind" value="series" ng-change="teachSeasonChanged()"> Some of its series</label>
                       <label><input type="radio" ng-model="teach.kind" value="anyOf" ng-change="teachSeasonChanged()"> Any one of several</label>
                     </span>
                   </div>
@@ -165,6 +173,10 @@
                           on-remove="removeMember(teach.members, $index); teachMemberChanged()"></name-member>
                       <button type="button" class="btn btn-sm btn-link" ng-if="canAddMember(teach.members)" ng-click="addMember(teach.members)">+ add another</button>
                     </div>
+                  </div>
+                  <div class="nr-slot" ng-if="teachHasSeries() &amp;&amp; teach.kind === 'series'">
+                    <span class="nr-slot-label small"></span>
+                    <series-part part="teach" source="memberSource" on-change="teachSeasonChanged()"></series-part>
                   </div>
                   <div class="nr-slot" ng-if="teachHasSeasons() &amp;&amp; teach.kind === 'seasons'">
                     <span class="nr-slot-label small"></span>

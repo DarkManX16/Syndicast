@@ -16,15 +16,14 @@ const LISTED = 60;
 
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
-// What a nickname is for, as the page groups it: a show, some seasons of one, or any one of several.
-// (A series of a custom show, whole or in seasons, is a show with a part picked: it groups as 'show'
-// when whole and as 'seasons' when it has seasons, the page's two ways of saying "part of a show".)
+// What a nickname is for, as the page groups it: a show, some seasons of one, a series of a custom
+// show, or any one of several.
 function kindOf(target) {
     if (clipNames.isAnyOfName(target) ) {
         return 'anyOf';
     }
     if (clipNames.isSeriesName(target) ) {
-        return (clipNames.seasonsOf(target).length > 0) ? 'seasons' : 'show';
+        return 'series';
     }
     if (clipNames.isSeasonName(target) || clipNames.isSeasonsName(target) ) {
         return 'seasons';

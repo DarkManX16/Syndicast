@@ -16,6 +16,7 @@
       <input type="checkbox" ng-model="member.picked[c.index]" ng-change="onChange()"> {{c.label}}<span class="text-muted" ng-if="c.folder" title="{{c.folder}}"> (folder: {{folderText(c)}})</span>
     </label>
   </div>
+  <series-part ng-if="source.hasSeries(member)" part="member" source="source" radios="true" on-change="onChange()"></series-part>
   <div class="nr-seasons small" ng-if="source.hasParts(member) &amp;&amp; member.kind === 'special'">
     <select class="custom-select custom-select-sm nr-part" ng-model="member.special" ng-change="onChange()"
         ng-options="o.title as o.title for o in source.specials(member)">

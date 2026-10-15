@@ -1,6 +1,7 @@
 const clipNames = require('../../src/clip-names');
 const review = require('../../src/names-review');
 const seasonSource = require('../season-source');
+const seriesSource = require('../series-source');
 
 /*
  * The Nicknames page (docs/blocks-spec.md, Stage 5, "Which shows a clip names"): every
@@ -20,6 +21,9 @@ module.exports = function ($scope, $timeout, dizquetv) {
     $scope.rows = [];
     $scope.shows = [];
     $scope.showNames = {};
+    // The custom shows that join several series, and each one's series (web/series-source.js).
+    $scope.seriesCatalog = {};
+    const seriesSrc = seriesSource(() => $scope.seriesCatalog);
     $scope.search = '';
     $scope.panel = null;
     $scope.shownChanges = SHOWN;
@@ -34,6 +38,7 @@ module.exports = function ($scope, $timeout, dizquetv) {
             $scope.rows = data.nicknames;
             $scope.shows = data.shows;
             $scope.showNames = data.showNames;
+            $scope.seriesCatalog = data.series || {};
             $scope.error = '';
         } catch (err) {
             console.error(err);
@@ -49,7 +54,7 @@ module.exports = function ($scope, $timeout, dizquetv) {
         const q = ($scope.search || '').trim().toLowerCase();
         return $scope.rows.filter( (r) => (q === '') || (r.alias.indexOf(q) !== -1) || (r.label.toLowerCase().indexOf(q) !== -1) );
     };
-    $scope.kindLabel = (row) => ({ show: 'a show', seasons: 'some seasons', anyOf: 'any one of several' }[row.kind]);
+    $scope.kindLabel = (row) => ({ show: 'a show', seasons: 'some seasons', series: 'a series of a custom show', anyOf: 'any one of several' }[row.kind]);
 
     // ---- one open panel: edit or delete ---------------------------------------------------
     const pickedOf = (target) => {
@@ -61,10 +66,12 @@ module.exports = function ($scope, $timeout, dizquetv) {
     };
     $scope.openEdit = (row) => {
         const anyOf = clipNames.isAnyOfName(row.target);
+        const series = clipNames.isSeriesName(row.target) ? review.slotOfName(row.target) : null;
         $scope.panel = {
             mode: 'edit', alias: row.alias, text: row.alias, filter: '',
-            kind: anyOf ? 'anyOf' : (clipNames.seasonsOf(row.target).length > 0 ? 'seasons' : 'all'),
-            showKey: anyOf ? null : clipNames.showOf(row.target), picked: pickedOf(row.target),
+            kind: anyOf ? 'anyOf' : (series !== null ? 'series' : (clipNames.seasonsOf(row.target).length > 0 ? 'seasons' : 'all')),
+            showKey: anyOf ? null : (series !== null ? series.key : clipNames.showOf(row.target)), picked: pickedOf(row.target),
+            series: (series !== null) ? series.series : {}, seriesSeasons: (series !== null) ? series.seriesSeasons : 'all',
             members: anyOf ? row.target.anyOf.map(review.slotOfName) : [ review.emptySlot(), review.emptySlot() ],
             preview: null, busy: false, saving: false, error: '',
         };
@@ -95,6 +102,8 @@ module.exports = function ($scope, $timeout, dizquetv) {
             : (trouble === 'the same name is picked twice in an any-of') ? 'The same name is picked twice.'
             : (trouble === 'an any-of needs two names') ? 'Pick at least two names.'
             : (trouble === 'a whole show and a part of the same show are both in an any-of') ? 'A whole show and a part of the same show are both picked: keep just one of them.'
+            : (trouble === 'a whole series and some of its seasons are both in an any-of') ? 'A whole series and some of its seasons are both picked: keep just one of them.'
+            : (trouble === 'no series is ticked') ? `Tick at least one series of ${of}, or choose “The whole custom show”.`
             : (trouble === 'no season is ticked') ? `Tick at least one season of ${of}, or choose “Any episode”.`
             : (trouble === 'no special is picked') ? `Pick which special of ${of}, or choose “Any episode”.`
             : trouble.charAt(0).toUpperCase() + trouble.slice(1) + '.';
@@ -111,6 +120,19 @@ module.exports = function ($scope, $timeout, dizquetv) {
                 return { problem: troubleWords(trouble, panel.members) };
             }
             body.anyOf = panel.members.map(review.slotName);
+        } else if (panel.kind === 'series') {
+            if (! panel.showKey) {
+                return { problem: 'Pick the show it means.' };
+            }
+            // one series, or several (any one of them): sent as a list of names, which one name makes one
+            const slot = Object.assign(review.emptySlot(), { key: panel.showKey, kind: 'series', picked: panel.picked,
+                series: panel.series, seriesSeasons: panel.seriesSeasons });
+            const trouble = review.slotProblem(slot);
+            if (trouble !== null) {
+                return { problem: troubleWords(trouble, [slot]) };
+            }
+            const name = review.slotName(slot);
+            body.anyOf = clipNames.isAnyOfName(name) ? name.anyOf.slice() : [name];
         } else {
             if (! panel.showKey) {
                 return { problem: 'Pick the show it means.' };
@@ -197,6 +219,8 @@ module.exports = function ($scope, $timeout, dizquetv) {
         const panel = $scope.panel;
         panel.kind = 'all';
         panel.picked = {};
+        panel.series = {};
+        panel.seriesSeasons = 'all';
         seasons.ensure(panel.showKey);
         $scope.changed(false);
     };
@@ -233,7 +257,9 @@ module.exports = function ($scope, $timeout, dizquetv) {
     $scope.showLabel = (s) => s.custom ? `${s.name} (custom show)` : ( s.inCustomShow ? `${s.name} (in ${s.inCustomShow})` : s.name );
     // What every member row of an any-of is given (web/directives/name-member.js).
     $scope.memberSource = { options: (current) => optionsOf(current, true), label: $scope.showLabel, ensure: seasons.ensure,
-        hasParts: seasons.hasParts, choices: seasons.choices, specials: seasons.specials, state: seasons.state };
+        hasParts: seasons.hasParts, choices: seasons.choices, specials: seasons.specials, state: seasons.state,
+        hasSeries: seriesSrc.hasSeries, list: seriesSrc.list, ticked: seriesSrc.ticked, seasonChoices: seriesSrc.seasonChoices };
+    $scope.hasSeriesParts = () => ($scope.panel != null) && seriesSrc.hasSeries( { showKey: $scope.panel.showKey } );
 
     // ---- a show's seasons, from Plex or the lineups (web/season-source.js) ------------------
     $scope.seasonChoices = () => {
@@ -265,6 +291,7 @@ module.exports = function ($scope, $timeout, dizquetv) {
             $scope.rows = data.nicknames;
             $scope.shows = data.shows;
             $scope.showNames = data.showNames;
+            $scope.seriesCatalog = data.series || {};
             $scope.panel = null;
             $scope.notice = deleted ? `Deleted “${alias}”.` : `Saved “${alias}”.`;
             $scope.notice += ' No name saved on a clip was changed.';

@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 
 function parseArgs(argv) {
-    const args = { folder: null, old: null, channel: '1', from: '2026-10-18', weeks: 8, control: false };
+    const args = { folder: null, old: null, channel: '1', from: '2026-10-18', weeks: 8, control: false, list: 20 };
     const rest = [];
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === '--channel' && i + 1 < argv.length) {
@@ -37,6 +37,10 @@ function parseArgs(argv) {
             args.from = argv[++i];
         } else if (argv[i] === '--weeks' && i + 1 < argv.length) {
             args.weeks = parseInt(argv[++i], 10);
+        } else if (argv[i] === '--list' && i + 1 < argv.length) {
+            args.list = parseInt(argv[++i], 10);
+        } else if (argv[i] === '--proposals-only') {
+            args.proposalsOnly = true;
         } else if (argv[i] === '--control') {
             args.control = true;
         } else {
@@ -56,6 +60,7 @@ if ( (args.folder === null) || (args.old === null) ) {
 const engine = (root) => ({
     showMatch: require(path.join(root, 'src', 'show-match')),
     transitions: require(path.join(root, 'src', 'transitions')),
+    review: require(path.join(root, 'src', 'names-review')),
 });
 const oldE = engine(path.resolve(args.old));
 const newE = engine(path.join(__dirname, '..'));
@@ -64,8 +69,12 @@ const readJsonFiles = (dir) => fs.existsSync(dir) ? fs.readdirSync(dir).filter( 
     .map( (f) => ({ id: f.slice(0, -5), json: JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) }) ) : [];
 const channels = readJsonFiles(path.join(args.folder, 'channels')).map( (c) => c.json );
 const customShowNames = {};
+// Every custom show's own catalog, as the service gives it to the vocabulary (a custom show's movies and,
+// since series became names, its series). Both engines are given the same, so what differs is the code.
+const customShows = [];
 for (const show of readJsonFiles(path.join(args.folder, 'custom-shows')) ) {
     customShowNames[show.id] = show.json.name;
+    customShows.push(Object.assign({ id: show.id }, show.json));
 }
 const fillers = readJsonFiles(path.join(args.folder, 'filler'));
 const aliasFile = path.join(args.folder, 'show-aliases.json');
@@ -73,25 +82,51 @@ const aliases = fs.existsSync(aliasFile) ? (JSON.parse(fs.readFileSync(aliasFile
 
 // ---- 1. proposals ------------------------------------------------------------------
 {
-    const oldVocab = oldE.showMatch.buildVocabulary(channels, customShowNames);
-    const newVocab = newE.showMatch.buildVocabulary(channels, customShowNames);
+    const oldVocab = oldE.showMatch.buildVocabulary(channels, customShowNames, customShows);
+    const newVocab = newE.showMatch.buildVocabulary(channels, customShowNames, customShows);
     let clips = 0;
     const differ = [];
+    let savedDiffer = 0;
+    let namesDiffer = 0;
+    let reasonsOnly = 0;
+    let regrouped = 0;
+    const groups = {};
     for (const f of fillers) {
         for (const clip of (f.json.content || []) ) {
             clips++;
-            const a = JSON.stringify(oldE.showMatch.propose(clip.title, oldVocab, aliases));
-            const b = JSON.stringify(newE.showMatch.propose(clip.title, newVocab, aliases));
+            const pa = oldE.showMatch.propose(clip.title, oldVocab, aliases);
+            const pb = newE.showMatch.propose(clip.title, newVocab, aliases);
+            const a = JSON.stringify(pa);
+            const b = JSON.stringify(pb);
             if (a !== b) {
-                differ.push(`${f.json.name} | ${clip.title}\n      old ${a}\n      new ${b}`);
+                const saved = Array.isArray(clip.names) && (clip.names.length > 0);
+                savedDiffer += saved ? 1 : 0;
+                // what the suggestion is (the names, and whether the title is flagged) apart from the reasons it gives
+                const same = JSON.stringify([pa.names, pa.unresolved || null]) === JSON.stringify([pb.names, pb.unresolved || null]);
+                reasonsOnly += same ? 1 : 0;
+                namesDiffer += same ? 0 : 1;
+                const ga = oldE.review.groupOf({ names: [], proposal: pa });
+                const gb = newE.review.groupOf({ names: [], proposal: pb });
+                if ( (ga !== gb) && ! saved ) {
+                    regrouped++;
+                    const k = `${ga} -> ${gb}`;
+                    groups[k] = (groups[k] || 0) + 1;
+                }
+                differ.push(`${f.json.name} | ${clip.title}${saved ? '   [saved names, which stay]' : ''}${same ? '   [same names, other reasons]' : ''}\n      old ${a}\n      new ${b}`);
             }
         }
     }
-    console.log(`proposals: ${clips} clips in ${fillers.length} lists, ${Object.keys(aliases).length} nicknames saved: ${differ.length} differ`);
-    differ.slice(0, 20).forEach( (d) => console.log('    ' + d) );
+    console.log(`proposals: ${clips} clips in ${fillers.length} lists, ${Object.keys(aliases).length} nicknames saved: ${differ.length} differ`
+        + ` (${namesDiffer} suggest other names or flag differently, ${reasonsOnly} only give other reasons; ${savedDiffer} have saved names, which no proposal changes;`
+        + ` ${regrouped} unsaved ones change group: ${Object.keys(groups).map( (k) => k + ' ' + groups[k] ).join(', ') || 'none'})`);
+    differ.sort( (x, y) => (/same names/.test(x.split('\n')[0]) ? 1 : 0) - (/same names/.test(y.split('\n')[0]) ? 1 : 0) );
+    differ.slice(0, args.list).forEach( (d) => console.log('    ' + d) );
 }
 
 // ---- 2. plans ----------------------------------------------------------------------
+if (args.proposalsOnly) {
+    process.exit(0);
+}
 {
     const channel = channels.find( (c) => String(c.number) === String(args.channel) );
     if (typeof(channel) === 'undefined') {
@@ -151,5 +186,40 @@ const aliases = fs.existsSync(aliasFile) ? (JSON.parse(fs.readFileSync(aliasFile
             }
         }
         console.log(`control (every saved show name narrowed to one season): ${controlDiffer} of ${a.length} differ`);
+
+        // The same for series: every saved name of a custom show that joins several series narrowed to its
+        // first series. The plans must be able to see that, or "0 differ" for the real names proves nothing.
+        const firstSeries = {};
+        for (const show of customShows) {
+            const titles = [];
+            for (const item of (show.content || []) ) {
+                if ( (item != null) && (item.type === 'episode') && (typeof(item.showTitle) === 'string') && (item.showTitle !== '') && ! titles.includes(item.showTitle) ) {
+                    titles.push(item.showTitle);
+                }
+            }
+            if (titles.length >= 2) {
+                firstSeries['custom.' + show.id] = titles[0];
+            }
+        }
+        const bySeries = {};
+        let narrowedNames = 0;
+        for (const id of Object.keys(lists)) {
+            bySeries[id] = lists[id].map( (c) => Array.isArray(c.names) ? Object.assign({}, c, {
+                names: c.names.map( (n) => {
+                    if ( (typeof(n) === 'string') && (typeof(firstSeries[n]) === 'string') ) {
+                        narrowedNames++;
+                        return { show: n, series: firstSeries[n] };
+                    }
+                    return n;
+                } ) }) : c );
+        }
+        const s = run(newE, copy, { getList: (id) => bySeries[id] || null, lastPlayed: () => 0, featuresShows: () => false });
+        let seriesDiffer = 0;
+        for (let i = 0; i < a.length; i++) {
+            if (a[i] !== s[i]) {
+                seriesDiffer++;
+            }
+        }
+        console.log(`control (${narrowedNames} saved custom-show names narrowed to their first series): ${seriesDiffer} of ${a.length} differ`);
     }
 }
