@@ -5632,16 +5632,6 @@ by a 48-hour soak" item in the 1.0 list above) - a card-service hang during
 the soak should surface this the same way a streaming crash would, and the
 fix (bounded timeouts on both) belongs with whatever else that soak turns up.
 
-### The Nicknames page's search box does not filter
-
-Found Oct 14, 2026, while checking series names in a browser. `web/public/views/nicknames.html` binds the
-"Search nicknames..." box with a bare `ng-model="search"`, and `web/controllers/nicknames.js` filters on
-`$scope.search`. The box sits inside a block Angular gives a child scope, so a keystroke writes a `search`
-property on that child and the list never narrows ("59 of 59 nicknames" whatever is typed). It is the same
-bug the review screen's search box had (see "The names review search box didn't filter" under Resolved), and
-the fix is the same: bind through an object path (`ui.search`) in the view and the controller. Not fixed in
-the series work.
-
 ## Testing notes
 
 ### `npm test` runs the blocks suite
@@ -6786,3 +6776,16 @@ directly, and nothing in `test/` compiles Angular directives (no
 a show?" > a list with 138 saved clips, typed "Batman" into Search clips,
 confirmed it narrowed to the 4 matching rows, then cleared the box and
 confirmed all 138 came back.
+
+### The Nicknames page's search box didn't filter
+
+Found Oct 14, 2026 while checking series names in a browser, fixed Oct 15. `web/public/views/nicknames.html`
+bound the "Search nicknames..." box with a bare `ng-model="search"` while `web/controllers/nicknames.js`
+filtered on `$scope.search`. The box sits inside a block Angular gives a child scope, so a keystroke wrote a
+`search` property on that child and the list never narrowed ("59 of 59 nicknames" whatever was typed): the
+same bug the review screen's box had (previous entry), and the same fix. The field is now `ui.search`, bound
+through an object in the view and read as `$scope.ui.search` in the controller.
+
+No test compiles Angular templates, so it was checked by hand, on a copy of `.dizquetv-dev` on a spare port
+with the rebuilt bundle served: typing "gundam" narrowed the list to the six Gundam nicknames ("6 of 59
+nicknames"), and clearing the box brought all 59 back.

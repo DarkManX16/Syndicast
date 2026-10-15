@@ -24,7 +24,8 @@ module.exports = function ($scope, $timeout, dizquetv) {
     // The custom shows that join several series, and each one's series (web/series-source.js).
     $scope.seriesCatalog = {};
     const seriesSrc = seriesSource(() => $scope.seriesCatalog);
-    $scope.search = '';
+    // Bound through an object: the box sits in a child scope, where a bare `search` would shadow this one.
+    $scope.ui = { search: '' };
     $scope.panel = null;
     $scope.shownChanges = SHOWN;
 
@@ -51,7 +52,7 @@ module.exports = function ($scope, $timeout, dizquetv) {
     load();
 
     $scope.visible = () => {
-        const q = ($scope.search || '').trim().toLowerCase();
+        const q = ($scope.ui.search || '').trim().toLowerCase();
         return $scope.rows.filter( (r) => (q === '') || (r.alias.indexOf(q) !== -1) || (r.label.toLowerCase().indexOf(q) !== -1) );
     };
     $scope.kindLabel = (row) => ({ show: 'a show', seasons: 'some seasons', series: 'a series of a custom show', anyOf: 'any one of several' }[row.kind]);
