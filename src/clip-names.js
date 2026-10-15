@@ -17,6 +17,11 @@
  *                                     (an actor's Wand ID: a show, or a movie the actor was in)
  *   { show: "tv.Dragon Ball Z", episode: "Bardock - The Father of Goku" }
  *                                     one episode of the show, by title: a special
+ *   { show: "custom.<id>", series: "Mobile Suit Gundam Wing" }
+ *   { show: "custom.<id>", series: "...", season: 2 }  or  seasons: [2, 3]
+ *                                     one series of a custom show (the show title its items carry),
+ *                                     with a season or several: it fits that series' episodes inside
+ *                                     the custom show and wherever the same show airs on its own
  *
  * A show key is every name a clip had before movies and seasons, so every `names`
  * saved earlier reads unchanged. The other three are *specific*: they fit one movie,
@@ -41,12 +46,31 @@ function isListableMovie(program) {
 // A show a season or an episode belongs to is one with seasons: a series from Plex.
 const SEASONED_SHOW = /^tv\..+/;
 
+// A name of a series carries `series` beside `show`; the season shapes below are the ones without it.
+function hasSeries(n) {
+    return (n != null) && (typeof(n) === 'object') && Object.prototype.hasOwnProperty.call(n, 'series');
+}
+
+/*
+ * A series of a custom show: { show: "custom.<id>", series: "Mobile Suit Gundam Wing" }, and
+ * with a season, or several, of it. The series is the show title the custom show's items carry
+ * (the same "series" Ordered shuffle uses).
+ */
+function isSeriesName(n) {
+    return hasSeries(n) && (typeof(n.show) === 'string') && (typeof(n.series) === 'string');
+}
+
+// A series, the way Ordered shuffle reads it: an item's show title, else its title.
+function seriesOf(program) {
+    return ( (program != null) && (typeof(program.showTitle) === 'string') && (program.showTitle !== '') ) ? program.showTitle : (program == null ? undefined : program.title);
+}
+
 function isSeasonName(n) {
-    return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'season');
+    return (n != null) && (typeof(n) === 'object') && ! hasSeries(n) && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'season');
 }
 
 function isSeasonsName(n) {
-    return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'seasons');
+    return (n != null) && (typeof(n) === 'object') && ! hasSeries(n) && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'seasons');
 }
 
 function isAnyOfName(n) {
@@ -60,7 +84,29 @@ const MAX_ANY_OF = 8;
 const ANY_OF_MEMBER = /^(tv|custom|movie)\..+/;
 
 function isEpisodeName(n) {
-    return (n != null) && (typeof(n) === 'object') && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'episode');
+    return (n != null) && (typeof(n) === 'object') && ! hasSeries(n) && (typeof(n.show) === 'string') && Object.prototype.hasOwnProperty.call(n, 'episode');
+}
+
+// Seasons are whole numbers from 0 up, ascending and without repeats (one way to write each set).
+function seasonListOk(list) {
+    return Array.isArray(list) && (list.length >= 2)
+        && list.every( (x, i) => Number.isInteger(x) && (x >= 0) && ( (i === 0) || (x > list[i - 1]) ) );
+}
+
+// Whether `n` is a stored series name: a custom show, a series, and nothing but a season or seasons besides.
+function validSeriesName(n) {
+    if ( (n == null) || (typeof(n) !== 'object') || Array.isArray(n) || (typeof(n.show) !== 'string') || ! /^custom\..+/.test(n.show)
+        || (typeof(n.series) !== 'string') || (n.series === '') ) {
+        return false;
+    }
+    const fields = Object.keys(n).sort().join(',');
+    if (fields === 'series,show') {
+        return true;
+    }
+    if (fields === 'season,series,show') {
+        return Number.isInteger(n.season) && (n.season >= 0);
+    }
+    return (fields === 'seasons,series,show') && seasonListOk(n.seasons);
 }
 
 /*
@@ -77,6 +123,9 @@ function validName(n) {
         // Two to eight different names (a show, a custom show, a movie, seasons of a show or a
         // special; never another any-of), and nothing else in the object.
         return (Object.keys(n).length === 1) && (anyOfProblem(n.anyOf) === null);
+    }
+    if (hasSeries(n) ) {
+        return validSeriesName(n);
     }
     if ( (n == null) || (typeof(n) !== 'object') || Array.isArray(n) || (typeof(n.show) !== 'string') || ! SEASONED_SHOW.test(n.show) ) {
         return false;
@@ -133,6 +182,13 @@ function anyOfProblem(members) {
     if (members.some( (m) => (typeof(m) !== 'string') && whole.has(m.show) )) {
         return 'a whole show and a part of the same show are both in an any-of';
     }
+    // A whole series next to some seasons of that series is just the series.
+    const wholeSeries = new Set(members.filter( (m) => isSeriesName(m) && ! Object.prototype.hasOwnProperty.call(m, 'season') && ! Object.prototype.hasOwnProperty.call(m, 'seasons') )
+        .map( (m) => m.show + '#' + m.series ));
+    if (members.some( (m) => isSeriesName(m) && (Object.prototype.hasOwnProperty.call(m, 'season') || Object.prototype.hasOwnProperty.call(m, 'seasons'))
+        && wholeSeries.has(m.show + '#' + m.series) )) {
+        return 'a whole series and some of its seasons are both in an any-of';
+    }
     return null;
 }
 
@@ -140,6 +196,11 @@ function anyOfProblem(members) {
 function nameId(n) {
     if (typeof(n) === 'string') {
         return n;
+    }
+    if (isSeriesName(n) ) {
+        const part = Object.prototype.hasOwnProperty.call(n, 'season') ? `#season:${n.season}`
+            : (Array.isArray(n.seasons) ? `#seasons:${n.seasons.join(',')}` : '');
+        return `${n.show}#series:${n.series}${part}`;
     }
     if (isSeasonName(n) ) {
         return `${n.show}#season:${n.season}`;
@@ -161,8 +222,30 @@ function sameName(a, b) {
     return nameId(a) === nameId(b);
 }
 
-// The show key a name belongs to: itself for a show or a movie, the show of a season or episode.
+/*
+ * A series of a custom show has a key of its own, "series.custom.<id>|<title>", which is what the
+ * matcher's vocabulary calls it and what `showOf` and `showsOf` give for a series name: a series
+ * is a show of its own to the checks that compare which show a name is about.
+ */
+function seriesKey(show, series) {
+    return `series.${show}|${series}`;
+}
+
+// { show, series } for a series key, else null.
+function parseSeriesKey(key) {
+    const found = (typeof(key) === 'string') ? /^series\.(custom\.[^|]+)\|([\s\S]+)$/.exec(key) : null;
+    return (found === null) ? null : { show: found[1], series: found[2] };
+}
+
+function isSeriesKey(key) {
+    return parseSeriesKey(key) !== null;
+}
+
+// The show key a name belongs to: itself for a show or a movie, the show of a season or episode, the series key of a series.
 function showOf(n) {
+    if (isSeriesName(n) ) {
+        return seriesKey(n.show, n.series);
+    }
     return (typeof(n) === 'string') ? n : ( (n != null) && (typeof(n.show) === 'string') ? n.show : null );
 }
 
@@ -216,6 +299,19 @@ function fits(name, program, showKey) {
         }
         return (showKey(program) === name) ? 'show' : false;
     }
+    if (isSeriesName(name) ) {
+        // The episodes of that series inside the custom show, and wherever the same show airs on
+        // its own (it is the same series, the way a movie name fits the movie wherever it airs).
+        if ( (program.type !== 'episode') || (typeof(program.showTitle) !== 'string') || (program.showTitle !== name.series) ) {
+            return false;
+        }
+        const inside = (typeof(program.customShowId) !== 'undefined') && (('custom.' + program.customShowId) === name.show);
+        if (! inside && (typeof(program.customShowId) !== 'undefined') ) {
+            return false;
+        }
+        const seasons = seasonsOf(name);
+        return ( (seasons.length === 0) || seasons.includes(program.season) ) ? 'specific' : false;
+    }
     if ( (program.type !== 'episode') || (('tv.' + program.showTitle) !== name.show) ) {
         return false;
     }
@@ -266,8 +362,26 @@ function seasonsName(show, seasons) {
     return (list.length === 1) ? { show: show, season: list[0] } : { show: show, seasons: list };
 }
 
-// The seasons a season or seasons name is for, ascending; [] for any other name.
+/*
+ * The name for a series of a custom show, in the one shape that is stored: { show, series } when
+ * no seasons are given, with `season` for one, `seasons` (sorted, no repeats) for several.
+ */
+function seriesName(show, series, seasons) {
+    const list = Array.from(new Set((Array.isArray(seasons) ? seasons : []).filter( (x) => Number.isInteger(x) && (x >= 0) ))).sort( (a, b) => a - b );
+    if (list.length === 0) {
+        return { show: show, series: series };
+    }
+    return (list.length === 1) ? { show: show, series: series, season: list[0] } : { show: show, series: series, seasons: list };
+}
+
+// The seasons a season or seasons name (of a show or of a series) is for, ascending; [] for any other name.
 function seasonsOf(n) {
+    if (isSeriesName(n) ) {
+        if (Object.prototype.hasOwnProperty.call(n, 'season') ) {
+            return [n.season];
+        }
+        return Array.isArray(n.seasons) ? n.seasons.slice() : [];
+    }
     if (isSeasonName(n) ) {
         return [n.season];
     }
@@ -309,8 +423,15 @@ function labelOf(n, showNames) {
     if (isAnyOfName(n) ) {
         // A member that is part of a show reads "Kim Possible (Seasons 1–2)", so the part is not
         // taken for the whole list's.
-        const each = Array.isArray(n.anyOf) ? n.anyOf.map( (m) => labelOf(m, showNames).replace(/ · (.*)$/, ' ($1)') ) : [];
+        const each = Array.isArray(n.anyOf) ? n.anyOf.map( (m) => labelOf(m, showNames).replace(/ · ([^·]*)$/, ' ($1)') ) : [];
         return (each.length < 2) ? each.join('') : each.slice(0, -1).join(', ') + ' or ' + each[each.length - 1];
+    }
+    if (isSeriesName(n) ) {
+        // "Mobile Suit Gundam Wing (in G Gundam/Gundam Wing/...)", then its seasons after a dot.
+        const own = names[seriesKey(n.show, n.series)];
+        const whole = (typeof(own) === 'string') ? own : `${n.series} (in ${text(n.show)})`;
+        const seasons = seasonsOf(n);
+        return (seasons.length === 0) ? whole : `${whole} · ${seasonsLabel(seasons)}`;
     }
     if (isSeasonName(n) ) {
         return `${text(n.show)} · ${n.season === 0 ? 'Specials' : 'Season ' + n.season}`;
@@ -336,6 +457,12 @@ module.exports = {
     MAX_ANY_OF: MAX_ANY_OF,
     showsOf: showsOf,
     seasonsName: seasonsName,
+    isSeriesName: isSeriesName,
+    seriesName: seriesName,
+    seriesOf: seriesOf,
+    seriesKey: seriesKey,
+    parseSeriesKey: parseSeriesKey,
+    isSeriesKey: isSeriesKey,
     seasonsOf: seasonsOf,
     seasonsLabel: seasonsLabel,
     isEpisodeName: isEpisodeName,

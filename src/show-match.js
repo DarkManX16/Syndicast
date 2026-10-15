@@ -19,7 +19,8 @@
 
 const clipNames = require('./clip-names');
 
-const KIND_ORDER = { custom: 0, tv: 1, audio: 2, movie: 3 };
+// A series of a custom show ranks last: a title a show or a movie has too is theirs first, and the tie is reported.
+const KIND_ORDER = { custom: 0, tv: 1, audio: 2, movie: 3, series: 4 };
 
 /*
  * The most shows one clip names. "Miguzi - Next Bumper (TMNT-Static Shock-Teen
@@ -309,6 +310,45 @@ function buildVocabulary(channels, customShowNames, customShows) {
         }
     }
 
+    // The series of a custom show: the show titles its episodes carry, for a custom show that joins
+    // two or more (a custom show of one series is just that show). Read from every custom show's own
+    // catalog, since its rotation moves on long before a lineup is regenerated. A series is a key of
+    // its own in the vocabulary and its title is read like a show's.
+    const seriesByShow = {};           // custom show key -> [{ key, title, count, seasons }]
+    const seriesKeys = new Set();
+    for (const show of (customShows || []) ) {
+        if ( (show == null) || (typeof(show.id) !== 'string') ) {
+            continue;
+        }
+        const customKey = 'custom.' + show.id;
+        const customName = (typeof(customNames[show.id]) === 'string') ? customNames[show.id] : ( (typeof(show.name) === 'string') ? show.name : 'a custom show' );
+        const bySeries = new Map();
+        for (const item of (show.content || []) ) {
+            if ( (item == null) || (item.type !== 'episode') || (typeof(item.showTitle) !== 'string') || (item.showTitle === '') ) {
+                continue;
+            }
+            if (! bySeries.has(item.showTitle) ) {
+                bySeries.set(item.showTitle, { title: item.showTitle, count: 0, seasons: new Set() });
+            }
+            const entry = bySeries.get(item.showTitle);
+            entry.count++;
+            if (Number.isInteger(item.season) && (item.season >= 0) ) {
+                entry.seasons.add(item.season);
+            }
+        }
+        if (bySeries.size < 2) {
+            continue;
+        }
+        seriesByShow[customKey] = [];
+        for (const s of bySeries.values()) {
+            const key = clipNames.seriesKey(customKey, s.title);
+            add(key, s.title);
+            display[key] = `${s.title} (in ${customName})`;
+            seriesKeys.add(key);
+            seriesByShow[customKey].push( { key: key, title: s.title, count: s.count, seasons: Array.from(s.seasons).sort( (a, b) => a - b ) } );
+        }
+    }
+
     const entries = [];
     const standalone = [];
     const owners = {};
@@ -356,6 +396,15 @@ function buildVocabulary(channels, customShowNames, customShows) {
                 forms.push(withoutYear);
             }
             for (const folded of forms) {
+                if (seriesKeys.has(key) && (folded.indexOf(' ') === -1) ) {
+                    // A series is a looser vocabulary than a show (any custom show's show title), so a
+                    // one-word title ("Peanuts") counts only as a segment of its own, the way a bare
+                    // "Jeffersons" does, and never inside a phrase.
+                    if (folded.length >= STANDALONE_MIN_LENGTH) {
+                        offer(name, folded, true);
+                    }
+                    continue;
+                }
                 offer(name, folded, false);
                 const bare = folded.replace(/^(the|a|an) /, '');
                 if (bare === folded) {
@@ -378,6 +427,9 @@ function buildVocabulary(channels, customShowNames, customShows) {
         const once = key + '|' + folded;
         if ( (folded.length < MIN_TITLE_LENGTH) || wholeTitles.has(folded) || shortSeen.has(once) ) {
             return;
+        }
+        if (seriesKeys.has(key) && (folded.indexOf(' ') === -1) ) {
+            return;     // a series' one-word shortened form ("Batman" for "Batman: The Animated Series") is too loose
         }
         shortSeen.add(once);
         entries.push( { key: key, name: name, folded: folded, shortened: true } );
@@ -443,6 +495,28 @@ function buildVocabulary(channels, customShowNames, customShows) {
             (owners[folded] = owners[folded] || new Set()).add(key);
         }
     }
+    // A series whose title is also a shortened name of its own custom show ("Mobile Suit Gundam" for
+    // the custom show "Mobile Suit Gundam Series", "Ben 10" for "Ben 10 series"): the custom show
+    // answers to the title too, so a hit by that title alone is less certain (`alsoShow`).
+    const shortNamesOf = new Map();
+    for (const form of shortenedForms) {
+        if (form.key.startsWith('custom.') ) {
+            for (const text of [form.folded, form.folded.replace(/^(the|a|an) /, '')]) {
+                if (! shortNamesOf.has(text) ) {
+                    shortNamesOf.set(text, new Set());
+                }
+                shortNamesOf.get(text).add(form.key);
+            }
+        }
+    }
+    for (const e of entries.concat(standalone) ) {
+        if (seriesKeys.has(e.key) && ! e.shortened) {
+            const answering = shortNamesOf.get(e.folded);
+            if ( (typeof(answering) !== 'undefined') && answering.has(clipNames.parseSeriesKey(e.key).show) ) {
+                e.alsoShow = clipNames.parseSeriesKey(e.key).show;
+            }
+        }
+    }
     entries.sort(byLength);
     standalone.sort(byLength);
     const ambiguous = {};
@@ -488,8 +562,10 @@ function buildVocabulary(channels, customShowNames, customShows) {
     for (const [showKey, set] of seasonsSeen) {
         seasons[showKey] = Array.from(set).sort( (a, b) => a - b );
     }
+    // Initials make abbreviations of shows, not of the series inside a custom show.
+    const showsOnly = new Map(Array.from(found).filter( ([key]) => ! seriesKeys.has(key) ));
     return { entries: entries, standalone: standalone, names: display, ambiguous: ambiguous, squashed: squashed,
-        abbreviations: abbreviationsOf(found), movies: movieList, specials: specials, seasons: seasons };
+        abbreviations: abbreviationsOf(showsOnly), movies: movieList, specials: specials, seasons: seasons, series: seriesByShow };
 }
 
 /*
@@ -512,6 +588,9 @@ function consumeTitles(title, vocabulary, known, taken) {
         }
         if (entry.abbreviation) {
             hit.abbreviation = true;    // found by the initials of the title ("from an abbreviation"): less certain
+        }
+        if (typeof(entry.alsoShow) === 'string') {
+            hit.alsoShow = entry.alsoShow;      // a series found by a title its custom show answers to as well: less certain
         }
         if (entry.specific) {
             hit.specific = entry.specific;      // a movie, by its title or its subtitle: for that movie alone
@@ -839,6 +918,20 @@ function aliasEntries(known) {
             entries.push( { folded: folded, key: known[word].show, keys: [known[word].show], season: known[word].season, narrows: true, words: folded.split(' ').length } );
         } else if ( (folded !== '') && clipNames.isSeasonsName(known[word]) && clipNames.validName(known[word]) ) {
             entries.push( { folded: folded, key: known[word].show, keys: [known[word].show], seasons: known[word].seasons.slice(), narrows: true, words: folded.split(' ').length } );
+        } else if ( (folded !== '') && clipNames.isSeriesName(known[word]) && clipNames.validName(known[word]) ) {
+            // A nickname for a series of a custom show, or some seasons of it. Its hit has the series' own key,
+            // so a title that names the series itself and a nickname for its seasons narrow one another.
+            const key = clipNames.showOf(known[word]);
+            const seasons = clipNames.seasonsOf(known[word]);
+            const entry = { folded: folded, key: key, keys: [key], words: folded.split(' ').length };
+            if (seasons.length === 1) {
+                entry.season = seasons[0];
+                entry.narrows = true;
+            } else if (seasons.length > 1) {
+                entry.seasons = seasons;
+                entry.narrows = true;
+            }
+            entries.push(entry);
         } else if ( (folded !== '') && clipNames.isAnyOfName(known[word]) && clipNames.validName(known[word]) ) {
             // A nickname for any one of several names. A hit needs a key: this one is made up from the
             // names, and never a show's own, so nothing else reads it as one (see nameOfHit). `keys` are
@@ -931,10 +1024,15 @@ function refineHits(title, hits, vocabulary) {
     return out;
 }
 
-// The name a refined hit stands for: the show or movie key, or a season or an episode of a show.
+// The name a refined hit stands for: the show or movie key, a season or an episode of a show, or a series of a custom show.
 function nameOfHit(hit) {
     if (Array.isArray(hit.anyOf) ) {
         return clipNames.anyOfName(hit.anyOf);
+    }
+    const series = clipNames.parseSeriesKey(hit.key);
+    if (series !== null) {
+        const seasons = (typeof(hit.season) === 'number') ? [hit.season] : (Array.isArray(hit.seasons) ? hit.seasons : []);
+        return clipNames.seriesName(series.show, series.series, seasons);
     }
     if ( (typeof(hit.special) === 'string') && /^tv\./.test(hit.key) ) {
         return { show: hit.key, episode: hit.special };
@@ -984,7 +1082,7 @@ function propose(title, vocabulary, aliases) {
     // What the hits recognised, as names: a show's key, or the any-of name a nickname stands for.
     const keys = [];
     for (const hit of hits) {
-        const recognised = Array.isArray(hit.anyOf) ? clipNames.anyOfName(hit.anyOf) : hit.key;
+        const recognised = Array.isArray(hit.anyOf) ? clipNames.anyOfName(hit.anyOf) : (clipNames.isSeriesKey(hit.key) ? nameOfHit({ key: hit.key }) : hit.key);
         if (! keys.some( (k) => clipNames.sameName(k, recognised) )) {
             keys.push(recognised);
         }
@@ -1128,7 +1226,24 @@ function learnAliases(title, showKey, vocabulary, aliases, corpus) {
 // any-of name that includes it. `showKey` may be a list of keys: whether any of them is named.
 function namesShow(names, showKey) {
     const keys = Array.isArray(showKey) ? showKey : [showKey];
-    return names.some( (n) => clipNames.showsOf(n).some( (k) => keys.includes(k) ) );
+    return names.some( (n) => clipNames.showsOf(n).some( (k) => keys.some( (target) => sameOrRelatedKey(k, target) ) ) );
+}
+
+/*
+ * Whether two show keys are the same show, or a series and the show it belongs to: the custom show that
+ * holds it, or the show of that name that airs on its own. A clip saved as the whole custom show is not
+ * in conflict with a nickname for one of its series (it is the wider name of the same thing), where a clip
+ * saved as a different series of it is.
+ */
+function sameOrRelatedKey(a, b) {
+    if (a === b) {
+        return true;
+    }
+    const related = (series, other) => {
+        const parsed = clipNames.parseSeriesKey(series);
+        return (parsed !== null) && ( (other === parsed.show) || (other === 'tv.' + parsed.series) );
+    };
+    return related(a, b) || related(b, a);
 }
 
 /*
@@ -1158,7 +1273,7 @@ function nicknameProblems(text, alias, target, vocabulary, known) {
     // shows (`target` is its key, or { show, season }, { show, seasons }, { anyOf }).
     const targetKeys = clipNames.showsOf(target);
     if ( (targetKeys.length === 0) || targetKeys.some( (k) => typeof(vocabulary.names[k]) === 'undefined' )
-        || ( (typeof(target) !== 'string') && ! ( (clipNames.isSeasonName(target) || clipNames.isSeasonsName(target) || clipNames.isAnyOfName(target)) && clipNames.validName(target)) ) ) {
+        || ( (typeof(target) !== 'string') && ! ( (clipNames.isSeasonName(target) || clipNames.isSeasonsName(target) || clipNames.isAnyOfName(target) || clipNames.isSeriesName(target)) && clipNames.validName(target)) ) ) {
         problems.push('Pick the show it names first.');
     }
     if (words.length > MAX_NICKNAME_WORDS) {
@@ -1324,7 +1439,7 @@ function nicknameSuggestions(title, target, vocabulary, aliases, corpus) {
     // For some seasons of a show, the show's own title with the word next to it ("justice
     // league unlimited"): such a nickname is matched against the whole title, so the
     // title's words are part of it.
-    if ( (typeof(target) !== 'string') && ! clipNames.isAnyOfName(target) ) {
+    if ( (typeof(target) !== 'string') && ! clipNames.isAnyOfName(target) && (clipNames.seasonsOf(target).length > 0) ) {
         const folded = ' ' + fold(title) + ' ';
         const own = vocabulary.entries.filter( (e) => (e.key === showKey) && (e.specific !== true) && (folded.indexOf(' ' + e.folded + ' ') !== -1) )[0];
         if (typeof(own) !== 'undefined') {
