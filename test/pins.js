@@ -231,9 +231,78 @@ module.exports = async function () {
                 && movedText === "Best Man / Cool Party airs Fri Oct 9, 7:30pm, and Hey Arnold!'s later airings move one along."
                 && lateText === "Home Movies airs Fri Oct 9, 7:00pm, and Rugrats' later airings move one along. Hey Arnold! starts at 7:44:09 and Are You Afraid of the Dark? at 8:06:47; back on time at 8:30."
                 && droppedText === 'This also drops what was placed in the list by hand: Thu Oct 8, 7:52pm NEXT - SGC2C (0:10).'
-                && firstText === 'Swapping re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
+                && firstText === 'A swap or an insert re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
                 && keptText === "Keeping your swaps and inserts: Thu Oct 8, 7:30pm Arnold's Christmas (Hey Arnold!).",
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
+    }
+
+    suite.log('-- inserts --');
+    {
+        const day = await generate(fixturePool(), fixtureSchedule(), NOON8);
+        const lineupNow = { programs: day.programs, startTime: Date.parse(day.startTime) };
+        const schedule = fixtureSchedule();
+        const near = thu(19, 52, 38);
+        const fits = pins.breaksThatFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, near, within: 2 * HOUR, duration: 7 * MIN + 30 * SEC });
+        suite.check('breaksThatFit lists the nearest breaks long enough, nearest first',
+            fits.length === 2 && fits[0].after.program.showTitle === 'Are You Afraid of the Dark?' && fits[0].start === thu(20, 22)
+                && fits[0].length === 8 * MIN && fits[1].after.program.showTitle === 'Shelby Woo' && fits[1].start === thu(20, 52),
+            JSON.stringify(fits.map((f) => [f.after.program.showTitle, new Date(f.start).toString(), f.length])));
+        suite.check('...none when nothing is long enough',
+            pins.breaksThatFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, near, within: 2 * HOUR, duration: 30 * HOUR }).length === 0);
+        const many = pins.breaksThatFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, near, within: 4 * DAY, duration: 2 * MIN });
+        suite.check('...at most five, still nearest first',
+            many.length === 5 && many.every((f, i, all) => i === 0 || Math.abs(all[i - 1].start - near) <= Math.abs(f.start - near)));
+        const clip = episode('Specials', 0, 1, { title: 'Silly Symphony', duration: 8 * MIN + 11 * SEC });
+        const over = pins.sayFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, schedule, at: near, item: clip, kind: 'insert' });
+        suite.check('sayFit for an insert 49 seconds too long names the break and the show whose slot it runs into',
+            over === "Silly Symphony runs 8:11. The space is 7:22 - the break after Best Man / Cool Party. It runs 0:49 past 8:00, into Are You Afraid of the Dark?'s slot.",
+            over);
+        const small = episode('Specials', 0, 2, { title: 'Short', duration: 5 * MIN });
+        const ok = pins.sayFit({ programs: lineupNow.programs, startTime: lineupNow.startTime, schedule, at: near, item: small, kind: 'insert' });
+        suite.check('...and for one that fits, what is left and when the next show starts',
+            ok === 'Short runs 5:00. The space is 7:22 - the break after Best Man / Cool Party. It fits: 2:22 of Flex after it, and Are You Afraid of the Dark? starts at 8:00.',
+            ok);
+    }
+
+    suite.log('-- a pin in a changed slot --');
+    {
+        const schedule = fixtureSchedule();
+        const christmas = episode('Hey Arnold!', 0, 7, { title: "Arnold's Christmas", duration: 24 * MIN + 6 * SEC });
+        const made = (at, slotShow) => ({ at, then: 'take', program: pins.makePin({ program: christmas, at, kind: 'swap', then: 'take', slotShow, now: NOW }) });
+        // Thu 7:30pm is Hey Arnold!'s slot in the fixture schedule.
+        suite.check('pinNotes says nothing when the slot is still the show\'s it was made in',
+            pins.pinNotes({ pins: [ made(thu(19, 30), 'tv.Hey Arnold!') ], schedule }).length === 0);
+        const other = { period: DAY, lateness: 24 * HOUR, slots: schedule.slots.map((s) => (s.time === 19 * HOUR + 30 * MIN) ? Object.assign({}, s, { showId: 'tv.Rocket Power' }) : s) };
+        const notes = pins.pinNotes({ pins: [ made(thu(19, 30), 'tv.Hey Arnold!') ], schedule: other });
+        suite.check('...and names a pin whose slot now holds another show',
+            notes.length === 1 && notes[0].text === "Arnold's Christmas, Thu Oct 8, 7:30pm: that slot is Rocket Power's now, not Hey Arnold!'s.",
+            notes.map((n) => n.text).join(' | '));
+        const flexed = { period: DAY, lateness: 24 * HOUR, slots: schedule.slots.map((s) => (s.time === 19 * HOUR + 30 * MIN) ? Object.assign({}, s, { showId: 'flex.' }) : s) };
+        suite.check('...a slot that has become Flex is named so',
+            pins.pinNotes({ pins: [ made(thu(19, 30), 'tv.Hey Arnold!') ], schedule: flexed })[0].text
+                === "Arnold's Christmas, Thu Oct 8, 7:30pm: that slot is Flex now, not Hey Arnold!'s.");
+        suite.check('...and a pin made before slots were recorded gets no note',
+            pins.pinNotes({ pins: [ made(thu(19, 30), undefined) ], schedule: other }).length === 0);
+    }
+
+    suite.log('-- deleting an airing --');
+    {
+        const day = await generate(fixturePool(), fixtureSchedule(), NOON8);
+        const lineupNow = { programs: day.programs, startTime: Date.parse(day.startTime) };
+        const arnold = pins.airingAt({ programs: lineupNow.programs, startTime: lineupNow.startTime, at: thu(19, 30) });
+        const gap = pins.sayRemoval({ programs: lineupNow.programs, startTime: lineupNow.startTime, index: arnold.index });
+        suite.check('sayRemoval: a 22:38 airing with 7:22 of Flex leaves 30:00, 7:30-8:00pm, and offers Swap',
+            gap.flexMs === 30 * MIN && gap.from === thu(19, 30) && gap.to === thu(20) && gap.offerSwap === true
+                && gap.text === 'Leaves 30:00 of Flex, 7:30-8:00pm.',
+            JSON.stringify({ flexMs: gap.flexMs, text: gap.text, offerSwap: gap.offerSwap }));
+        const clip = { type: 'movie', title: 'NEXT - SGC2C', duration: 10 * SEC, serverKey: 'srv', key: '/b/next' };
+        const tiny = [ clip, { isOffline: true, duration: 50 * SEC }, episode('A', 1, 1), { isOffline: true, duration: 20 * MIN } ];
+        const small = pins.sayRemoval({ programs: tiny, startTime: thu(19, 52, 38), index: 0 });
+        suite.check('...a 10-second clip with 50 seconds of Flex leaves 1:00 and no offer of Swap',
+            small.flexMs === MIN && small.offerSwap === false && small.text === 'Leaves 1:00 of Flex, 7:53-7:54pm.', JSON.stringify(small));
+        const noon = pins.sayRemoval({ programs: [ episode('A', 1, 1), { isOffline: true, duration: 8 * MIN }, episode('B', 1, 1) ], startTime: thu(11, 40), index: 0 });
+        suite.check('...and a range across noon says am and pm',
+            noon.text === 'Leaves 30:00 of Flex, 11:40am-12:10pm.', noon.text);
     }
 
     suite.log('-- the program on air --');
@@ -247,6 +316,70 @@ module.exports = async function () {
         suite.check('carryAt is the program on air, the one whose break is on air, or none a day after the last',
             on && on.program === b && on.start === THU + 30 * MIN && brk && brk.program === b && none === null,
             JSON.stringify({ on: on && on.program.showTitle, brk: brk && brk.program.showTitle, none }));
+    }
+
+    suite.log('-- the program on air: the schedule says whose break it is --');
+    {
+        // A 8:30pm (22 min), then a Flex slot from 9:00, D at 11pm.
+        const sched = { period: DAY, slots: [ { time: 20 * HOUR + 30 * MIN, showId: 'tv.A', order: 'next' },
+            { time: 21 * HOUR, showId: 'flex.', order: 'next' }, { time: 23 * HOUR, showId: 'tv.D', order: 'next' } ] };
+        const a = episode('A', 1, 1);
+        const programs = [ a, { isOffline: true, duration: 2 * HOUR + 8 * MIN }, episode('D', 1, 1), { isOffline: true, duration: DAY - 3 * HOUR } ];
+        const startTime = thu(20, 30);
+        const inBreak = pins.carryAt({ programs, startTime, now: thu(20, 55), schedule: sched });
+        const inFlexSlot = pins.carryAt({ programs, startTime, now: thu(21, 15), schedule: sched });
+        suite.check('with the schedule, a program whose slot is over is not carried - the Flex slot on air is nobody\'s break',
+            inBreak && inBreak.program === a && inFlexSlot === null
+                && pins.carryAt({ programs, startTime, now: thu(21, 15) }).program === a,
+            JSON.stringify({ inBreak: !!inBreak, inFlexSlot }));
+    }
+
+    suite.log('-- an airing that is on air, or has aired --');
+    {
+        const airing = episode('A', 1, 1, { title: 'Pilot', start: new Date(thu(19, 30)), duration: 22 * MIN });
+        const ahead = pins.whyNot({ airing: Object.assign({}, airing, { start: new Date(thu(20)) }), now: thu(19, 40), what: 'swap' });
+        const onAir = pins.whyNot({ airing, now: thu(19, 40), what: 'swap' });
+        suite.check('whyNot: nothing against an airing still ahead; against one on air, in plain words',
+            ahead === null && onAir === "A S01E01 Pilot is on air now, so it can't be swapped - it finishes airing first. Pick an airing after it.",
+            String(onAir));
+        suite.check('...removing and undoing say so too',
+            /can't be removed/.test(pins.whyNot({ airing, now: thu(19, 40), what: 'remove' })) && /can't be undone/.test(pins.whyNot({ airing, now: thu(19, 40), what: 'undo' })));
+        suite.check('...an airing that has aired cannot be swapped or removed',
+            pins.whyNot({ airing, now: thu(20), what: 'swap' }) === 'A S01E01 Pilot has already aired.');
+        suite.check('...an insert after one on air is fine, and after one whose break has begun is not',
+            pins.whyNot({ airing, now: thu(19, 40), what: 'insert' }) === null
+                && pins.whyNot({ airing, now: thu(19, 55), what: 'insert' }) === 'The break after A S01E01 Pilot has already begun - insert after a later airing.');
+        suite.check('...Holiday and Never air are never refused', pins.whyNot({ airing, now: thu(19, 40), what: 'leaveOut' }) === null);
+
+        const waiting = { program: airing, working: true };
+        suite.check('stillWanted: a prompt still working on that program, and not one cancelled or replaced',
+            pins.stillWanted(waiting, airing) === true && pins.stillWanted(null, airing) === false
+                && pins.stillWanted({ program: airing, working: false }, airing) === false
+                && pins.stillWanted({ program: episode('B', 1, 1), working: true }, airing) === false);
+    }
+
+    suite.log('-- breaks that have not begun --');
+    {
+        const day = await generate(fixturePool(), fixtureSchedule(), NOON8);
+        const l = { programs: day.programs, startTime: Date.parse(day.startTime) };
+        const all = pins.breaksThatFit({ programs: l.programs, startTime: l.startTime, near: thu(20, 22), within: 2 * HOUR, duration: 7 * MIN });
+        const later = pins.breaksThatFit({ programs: l.programs, startTime: l.startTime, near: thu(20, 22), within: 2 * HOUR, duration: 7 * MIN, notBefore: thu(20, 30) });
+        suite.check('breaksThatFit leaves out breaks that began before notBefore',
+            all.some((b) => b.start < thu(20, 30)) && later.length > 0 && later.every((b) => b.start >= thu(20, 30)),
+            JSON.stringify(later.map((b) => new Date(b.start).toString())));
+    }
+
+    suite.log('-- a removal leaves its slot --');
+    {
+        const sched = { period: DAY, lateness: 24 * HOUR, slots: [ { time: 19 * HOUR, showId: 'tv.H', order: 'next' }, { time: 19 * HOUR + 30 * MIN, showId: 'flex.', order: 'next' } ] };
+        const h1 = episode('H', 1, 1, { duration: 11 * MIN });
+        const h2 = episode('H', 1, 2, { duration: 11 * MIN });
+        const programs = [ h1, { isOffline: true, duration: 4 * MIN }, h2, { isOffline: true, duration: 4 * MIN }, { isOffline: true, duration: DAY - 30 * MIN } ];
+        const gap = pins.sayRemoval({ programs, startTime: thu(19), index: 0, schedule: sched });
+        suite.check('sayRemoval with the schedule: removing one half of a two-halves slot leaves the whole slot',
+            gap.flexMs === 30 * MIN && gap.text === 'Leaves 30:00 of Flex, 7:00-7:30pm.' && gap.to === thu(19, 30), JSON.stringify(gap));
+        const long = pins.sayRemoval({ programs: [ episode('H', 1, 3, { duration: 44 * MIN }), { isOffline: true, duration: 8 * MIN }, h1 ], startTime: thu(19), index: 0, schedule: sched });
+        suite.check('...and one that overran its slot leaves until the next program, as before', long.flexMs === 52 * MIN, JSON.stringify(long));
     }
 
     suite.log('-- one re-lay at a time --');

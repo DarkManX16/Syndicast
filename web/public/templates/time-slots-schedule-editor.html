@@ -46,6 +46,9 @@
                     <div class="small" ng-show="keptPins" style="margin-bottom: 6px;">
                         <i class="fas fa-thumbtack"></i> {{keptPins}}
                     </div>
+                    <div class="alert alert-warning py-1 px-2 small" ng-show="pinNoteList().length > 0" style="margin-bottom: 6px;">
+                        <div ng-repeat="n in pinNoteList() track by $index">{{n}}</div>
+                    </div>
                     <div class="alert alert-warning py-1 px-2 small" ng-show="droppedStarts.length > 0" style="margin-bottom: 6px;">
                         <div ng-repeat="m in droppedStarts track by $index">{{m}}</div>
                         <button type="button" class='btn btn-sm btn-link' style="padding: 0;" ng-click="dismissDroppedStarts()">dismiss</button>

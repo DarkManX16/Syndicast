@@ -210,6 +210,9 @@
                                 <button class="btn btn-sm btn-link" ng-if="canSwap(x)" title="Swap..." ng-disabled="relaying()" ng-click="startSwap(x.$index); $event.stopPropagation()">
                                     <i class="fas fa-exchange-alt"></i>
                                 </button>
+                                <button class="btn btn-sm btn-link" ng-if="canSwap(x)" title="Insert after..." ng-disabled="relaying()" ng-click="startInsert(x.$index); $event.stopPropagation()">
+                                    <i class="fas fa-plus-square"></i>
+                                </button>
                                 <button class="btn btn-sm btn-link" ng-disabled="relaying()" ng-click="removeItem(x.$index);  $event.stopPropagation()">
                                     <i class="text-danger fa fa fa-trash-alt"></i>
                                 </button>
@@ -1241,13 +1244,19 @@
             <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Delete {{deletePrompt.label}}</h5></div>
                 <div class="modal-body">
-                    <button class="btn btn-outline-secondary btn-block text-left" ng-click="finishDelete('only')">
+                    <div class="alert alert-warning py-1 px-2 small" ng-if="deletePrompt.blocked">{{deletePrompt.blocked}} Holiday and Never air still work: they take effect once it has aired.</div>
+                    <button class="btn btn-outline-primary btn-block text-left" ng-if="deletePrompt.gap.offerSwap" ng-disabled="deletePrompt.blocked" ng-click="finishDelete('swap')">
+                        <b>Swap it for another episode instead...</b>
+                        <div class="small text-muted">Removing it leaves a gap; a swap fills it.</div>
+                    </button>
+                    <button class="btn btn-outline-secondary btn-block text-left" ng-disabled="deletePrompt.blocked" ng-click="finishDelete('only')">
                         <b>Remove this airing only</b>
-                        <div class="small text-muted">As before: the next Create Lineup may schedule it again.</div>
+                        <div class="small text-muted" ng-if="!deletePrompt.timeSlots">As before: the next Create Lineup may schedule it again.</div>
+                        <div class="small text-muted" ng-if="deletePrompt.timeSlots">{{deletePrompt.gap.text}} Create Lineup keeps that Flex until it airs, and the episode airs at its show's next slot.</div>
                     </button>
                     <div class="btn btn-outline-primary btn-block text-left" style="cursor: default;">
                         <b>Holiday: I'll place it myself</b>
-                        <div class="small text-muted">Out of the rotation, listed under its holiday on the Catalog page.</div>
+                        <div class="small text-muted">Out of the rotation, listed under its holiday on the Catalog page.<span ng-if="deletePrompt.timeSlots"> No gap: the slot airs the show's next episode.</span></div>
                         <div class="form-inline" style="margin-top: 4px;">
                             <select class="form-control form-control-sm" ng-model="deletePrompt.holiday"
                                 ng-options="h for h in holidayNames"></select>
@@ -1256,10 +1265,12 @@
                     </div>
                     <button class="btn btn-outline-danger btn-block text-left" ng-click="finishDelete('never')">
                         <b>Never air this episode on this channel</b>
+                        <div class="small text-muted" ng-if="deletePrompt.timeSlots">No gap: the slot airs the show's next episode.</div>
                     </button>
                     <div class="small" style="margin-top: 8px;" ng-show="deletePrompt.others > 0">
                         It airs {{deletePrompt.others}} more {{deletePrompt.others === 1 ? 'time' : 'times'}} in this lineup;
-                        if you leave it out, the next Create Lineup leaves those out too.
+                        <span ng-if="!deletePrompt.timeSlots">if you leave it out, the next Create Lineup leaves those out too.</span>
+                        <span ng-if="deletePrompt.timeSlots">if you leave it out, those come out too, as the lineup is re-made now.</span>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1273,13 +1284,13 @@
     <div ng-if="undoPrompt" class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Undo this swap?</h5></div>
+                <div class="modal-header"><h5 class="modal-title">{{undoPrompt.title || 'Undo this swap?'}}</h5></div>
                 <div class="modal-body small">
                     {{undoPrompt.text}}
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-sm btn-link" ng-click="finishUndo(false)">Cancel</button>
-                    <button class="btn btn-sm btn-primary" ng-disabled="undoPrompt.working || !undoPrompt.result" ng-click="finishUndo(true)">Undo it</button>
+                    <button class="btn btn-sm btn-primary" ng-disabled="undoPrompt.working || !undoPrompt.result" ng-click="finishUndo(true)">{{undoPrompt.go || 'Undo it'}}</button>
                 </div>
             </div>
         </div>

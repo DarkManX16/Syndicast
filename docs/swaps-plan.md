@@ -172,6 +172,19 @@ Every re-lay - and Create Lineup, which takes the same path - keeps the program 
 
 **Halloween checkpoint.** A fresh review of Steps 1-4 (Opus 5.5), its fixes each with a test that failed first; then Steps 1-4 can merge into `blocks`, when Ron says. The server's generator changes, so the bundle is rebuilt and 18000 restarted together - Ron's to restart. Ron's first swap on a channel is also its first regeneration with the new code: measured, nothing changes on channels 1 and 2 for the year, and on channel 3 nothing before Apr 3, 2027.
 
+## Step 4c - The editor refuses a server that is running older code (Ron, Oct 12)
+
+### Task 4c: A fingerprint of the server's code, and the editor's check
+
+Merging changes the editor at once (the bundle rebuilds on request) but not a server already running; a new editor against an old generator ran an evening late. The server fingerprints its own source at startup and reports it beside a fresh one from disk; the editor refuses Create Lineup, Regenerate, Swap, Insert and undo when they differ - or when the server reports neither, an older build - with "restart your server first".
+
+**Files:** create `src/code-fingerprint.js`, `src/build-check.js`, `test/build-check.js` (add to `test/run.js`); modify `src/build-info.js`, `src/api.js` (`/api/version`), `web/directives/time-slots-schedule-editor.js` (`doIt`), `web/directives/channel-config.js` (`startSwap`, undo), `web/directives/airing-swap.js`.
+
+**Interfaces:** `codeFingerprint(root) -> string` - sha1 over `index.js` and every `.js` under `src` (paths and contents, sorted), cached by file sizes and mtimes; `/api/version` gains `codeRunning` (at startup) and `codeOnDisk` (now); `buildCheck.verdict(version) -> { ok, message }`.
+
+- [ ] Failing tests: the fingerprint changes with a file's content and with a new file, and not otherwise; `verdict` agrees, differs, and a server reporting neither is stale; `doIt` refuses with the message and never calls the generator.
+- [ ] Proof: the preview refuses after a source file changes on disk, accepts after restart.
+
 ## Step 5 - Insert
 
 ### Task 5: Insert after, a break where it fits, the library and the Catalog page's holiday episodes

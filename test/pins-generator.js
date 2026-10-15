@@ -231,11 +231,41 @@ module.exports = async function () {
         suite.check('...and a show it ran into starts as the generator always made it, on the 5-minute mark',
             startOf(ranInto, 'Long One') === thu(19) && startOf(ranInto, bThu) === thu(19, 45),
             `B at ${startOf(ranInto, bThu) && clock(startOf(ranInto, bThu))}`);
+        // A carry that isn't one is ignored: the same lineup as with none.
+        const same = (x, y) => JSON.stringify(x.programs) === JSON.stringify(y.programs) && x.startTime === y.startTime;
+        const bad = await generate(pool(), daily(), thu(19, 40), undefined, { start: thu(19, 30), program: { type: 'episode', duration: 'long' } });
+        const none = await generate(pool(), daily(), thu(19, 40));
+        suite.check('...a carry with no length is ignored, as is no carry', same(bad, none));
+        const sched = { period: DAY, lateness: 24 * HOUR, maxDays: 14, flexPreference: 'distribute', pad: 5 * MIN, slots: [
+            { time: 19 * HOUR, showId: 'tv.A', order: 'next' }, { time: 19 * HOUR + 30 * MIN, showId: 'flex.', order: 'next' },
+            { time: 21 * HOUR, showId: 'tv.D', order: 'next' } ] };
+        const longOver = await generate(pool(), sched, thu(21, 15), undefined, { start: thu(19), program: onAir });
+        const noCarry = await generate(pool(), sched, thu(21, 15));
+        suite.check('...and so is a program whose own slot is long over, with Flex on air: nothing is laid in the past',
+            same(longOver, noCarry) && ! shows(longOver).some((a) => a.start < thu(21, 15) - 2 * SEC && a.start >= thu(19, 30)),
+            shows(longOver).filter((a) => a.start < thu(21, 15)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
         const pinned = Object.assign({}, item('Pinned Special', 24 * MIN, 'B'), { pin: { at: thu(19, 30), kind: 'swap', then: 'take' } });
         const pres = await generate(pool(), daily(), thu(19, 40), undefined, { start: thu(19, 30), program: pinned });
         const placed = shows(pres).find((a) => a.program.title === 'Pinned Special');
         suite.check('...a carried pinned airing keeps its pin',
             placed && placed.start === thu(19, 30) && placed.program.pin && placed.program.pin.at === thu(19, 30));
+    }
+
+    suite.log('-- a removal keeps its slot --');
+    {
+        const halves = pool('H', 11 * MIN);
+        const plainH = await generate(halves, daily('H'), NOON);
+        const [h1, h2] = titlesOf(plainH, 'H', thu(19));
+        const removal = { at: thu(19), then: 'take', program: { isOffline: true, duration: 11 * MIN,
+            pin: { at: thu(19), kind: 'remove', then: 'take', was: h1, slotShow: 'tv.H', made: '2026-10-08T12:00:00.000Z' } } };
+        const res = await generate(halves, daily('H'), NOON, [removal]);
+        suite.check('a removed half of a two-halves slot is not refilled: no H airs in that slot, and both halves air the next day',
+            titlesOf(res, 'H', thu(19)).length > 0 && ! shows(res).some((a) => a.program.showTitle === 'H' && a.start < thu(19, 30))
+                && startOf(res, h1) === thu(19) + DAY && startOf(res, h2) === thu(19, 15) + DAY,
+            `${h1} ${startOf(res, h1) && new Date(startOf(res, h1)).toString()}`);
+        const kept = res.programs.find((p) => p.pin);
+        suite.check('...the pinned Flex is kept as its own entry, its slot Flex to the end',
+            kept && kept.pin.kind === 'remove' && kept.duration === 11 * MIN && flexBetween(res, thu(19), thu(19, 30)) === 30 * MIN);
     }
 
     suite.log('-- a Repeat --');

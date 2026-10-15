@@ -2487,11 +2487,16 @@ on shows.
 
 ### Library management
 
-- [ ] Swap out episodes of a show, and plug library items in anywhere
+- [x] Swap out episodes of a show, and plug library items in anywhere
 
       Includes inserting individual items from a custom show into the
       programming lineup. Designed in the same Opus 5.5 session as swap
-      episodes and the Flex auto-adjust line below. *Designed Oct 11, 2026:
+      episodes and the Flex auto-adjust line below. **Built Oct 11-12, 2026**
+      on the `swaps` branch (steps 1-4 merged into `blocks` at the Halloween
+      checkpoint): Swap and Insert after on every airing of a Time Slots
+      channel, from the slot show's whole catalog, other shows, custom shows,
+      the Catalog page's holiday episodes or one item from the Plex library.
+      *Designed Oct 11, 2026:
       a swap or insert is pinned to its date and time, and Create Lineup keeps
       it until it airs; whatever it pushes out airs at its show's next slot.
       See "Swaps, inserts and Flex that keeps time" under Known issues, and
@@ -2836,7 +2841,11 @@ on shows.
       programming list). **Confirmed by Ron in his own browser before this
       merged:** one-line rows, the gauge, scrolling to the bottom of both
       lists, drag to reorder, and a narrow window all right.
-- [ ] Flex adjusts itself when lineup items are added, swapped or deleted.
+- [x] Flex adjusts itself when lineup items are added, swapped or deleted.
+      **Built Oct 11-12, 2026** (see the line above): the generator places a
+      pinned swap or insert and the Flex around it grows or shrinks so
+      everything after keeps its time; deleting an airing leaves Flex that is
+      kept, or - as Holiday or Never air - no gap at all.
 
       Swapping an item for one of a different length makes the Flex right
       after it grow or shrink so the next show still starts on time.
@@ -3172,11 +3181,12 @@ be built:
       2026** on the `episode-start` branch, on top of `blocks` (which holds
       stored progress and full catalogs); merged when Ron says. See its
       Scheduling roadmap line above and "Episode start" under Known issues.
-- [ ] Swap out episodes of a show, and plug library items in anywhere
+- [x] Swap out episodes of a show, and plug library items in anywhere
       (including individual items from a custom show), and Flex adjusts
       itself when lineup items are added, swapped or deleted - designed
       together in the same Opus 5.5 design session, built by Sonnet 5.
-      **Designed Oct 11, 2026**: see "Swaps, inserts and Flex that keeps time"
+      **Built Oct 11-12, 2026** on the `swaps` branch, steps 1-4 first, for
+      Halloween. **Designed Oct 11, 2026**: see "Swaps, inserts and Flex that keeps time"
       under Known issues, and [docs/swaps-plan.md](docs/swaps-plan.md), whose
       first four steps let a Halloween episode be placed on channel 3 well
       before Oct 31.
@@ -3372,6 +3382,13 @@ Worth doing: surface the running build's commit, or at least its start time,
 somewhere in the UI - the footer, the Version page, anywhere - so "is this
 the process I think it is" is answerable without shelling out to compare
 timestamps.
+
+*Done for the footer (eee8ac1), and, Oct 12, 2026, for the editor's own tools:*
+the server fingerprints its own source at start (`src/code-fingerprint.js`) and
+`/api/code-build` reports it beside a fresh one from disk; Create Lineup,
+Regenerate, Swap, Insert and undo refuse, with "restart your server first",
+when they differ - or when the server reports neither, an older build. See
+"Swaps, inserts and Flex that keeps time", Task 4c.
 
 ### Per-position stored progress, and the shuffles built on it
 
@@ -4436,7 +4453,9 @@ catalog ops run one at a time, and custom-show ids are checked.
   through its own link to the Catalog page counts from the next opening.
 - **The delete prompt's "As before" is wrong for a reviewed show:** removing
   a reviewed show's airing alone lets the episode come back from its catalog
-  at the next Create Lineup, where before it could not.
+  at the next Create Lineup, where before it could not. *(On a channel with a
+  Time Slots schedule the prompt no longer says "As before": it says what gap
+  the airing leaves - see "Swaps, inserts and Flex that keeps time".)*
 - **The Catalog page shows "SE" with blank numbers** for a left-out entry with
   no season or episode.
 - **Random Slots records what it read without naming newcomers** (it has no
@@ -4841,6 +4860,34 @@ POST /api/channel-tools/time-slots  { programs, schedule, history, pins: [ { at,
 into at a moment, what a re-lay did (what moved along, what ran late and when it
 was back on time, what was dropped), and the breaks a length fits into.
 
+#### Built differently from the first design, or beyond it
+
+- **The airing on air can't be swapped, removed or undone** (`pins.whyNot`): the
+  program on air stays where it is (the carry) and a pin on it would only
+  start after it, taking over the next slot. The prompts say so in plain words;
+  Holiday and Never air still work - they take effect once it has aired - and an
+  insert after it is fine while its break is ahead.
+- **"Remove this airing only" keeps its slot**: after a removal pin the slot is
+  Flex to its end, so on one half of a two-halves slot the whole slot is Flex and
+  both halves air the next day, rather than the removed episode straight
+  back. The prompt says what it leaves to the slot's end ("Leaves 30:00 of
+  Flex, 1:00-1:30am.") and offers Swap above about two minutes.
+- **A delete applies at once**, and asks only when its re-lay would drop
+  something placed by hand, naming each item - not a generic first-time
+  warning (nothing is lost, and the first-swap warning is about swaps). Cancel
+  while it is being worked out cancels it.
+- **An insert's choices run late first**, then take over the slot, then breaks
+  where it fits (nearest first, at most five, none that has begun), then pick
+  something else; a swap's run take over first.
+- **The picker** for both has the slot show's catalog, other shows on the
+  channel, custom shows, the Catalog page's holiday episodes and one item from
+  the Plex library (the library's own dialog on top, as the fallback picker uses it).
+- **The editor refuses a server running older code** (Task 4c): see "A
+  long-running server keeps serving the build it started with" above.
+- **The Time Slots dialog's rows** count the next slot when a pin has taken the
+  position's, read places after the program on air (as Create Lineup does),
+  and a note names any pin whose slot the schedule now gives to another show.
+
 #### What this doesn't change
 
 - A lineup with no pins generates exactly as now.
@@ -4916,6 +4963,63 @@ at the start, 2061 at the end. Steps 5-8 go on on the branch.
   re-reads catalogs from Plex (most of its time); the pinned-row tooltip on an
   aired pin, and "waits for its next airing" for a hand-placed episode in a lineup
   without labels.
+
+**Steps 4c-8, Oct 12, 2026** (`swaps`, 16cb81b..). Proofs on copies of
+`.dizquetv-dev` taken Mon Oct 12 at 6:18am Central (channels, custom shows,
+filler, aliases; identical when taken), including Ron's own Catalog review and
+his channel 1 save of that morning; the Plex snapshot is the Oct 11 one. Suite
+2114 at the end.
+
+- **Task 4c, the build check.** `/api/code-build` and `/api/version` report
+  `codeRunning` and `codeOnDisk`; on the preview a temporary file under `src`
+  made Swap and Create Lineup refuse with the message, and removing it made
+  them work again without a restart. Ron's server on 18000, restarted at 4:27am
+  at `ad32c74`, predates the check and reports neither, so it will say
+  "restart" until it is restarted once on a build with it.
+- **Task 5, Insert.** Channel 3, Thu Dec 24: "The Night Before Christmas (1933)"
+  after Sister, Sister is 11 seconds too long (run late: That's So Raven at
+  6:30:10, back on time at 7:00; or take over the 6:30 slot). Moved to the 7:21pm
+  break after Boy Meets World it fits with 0:59 of Flex and The Jersey stays at
+  7:30; saved with the pin recording Boy Meets World's slot, and a further
+  Create Lineup continues 155/155.
+- **Task 6, deleting.** Channel 2, Dec 24 7:30pm Best Man / Cool Party: "Leaves 30:00
+  of Flex, 7:30-8:00pm." and a Swap offer; Remove only keeps a pinned Flex of
+  22:38 that Create Lineup keeps, Best Man airs Mon Dec 28 6:30pm, 164/164.
+  Channel 3, Oct 15 10am "Madeline and the Easter Bonnet" deleted as Holiday
+  (Easter): no gap, the slot airs S1E10, the entry is on the Catalog page's
+  holiday list as deleted/Easter, none of its airings remain. A clip placed by
+  hand is named before a delete goes ahead.
+- **Task 7, the dialog.** Channel 2's kept Flex is named when the dialog opens;
+  changing Thursday 7:30pm to Rocket Power adds the note at once; in Node, planned
+  on Dec 24 at 7am, Hey Arnold!'s strip first airs Mon Dec 28 6:30pm with the pin
+  and Thursday's slot without it.
+- **The final review** (Opus 5.5, fresh; tasks 4b-7) said "with fixes". Fixed in
+  one pass, each with a test that failed first: **Cancel on a delete did not
+  cancel it** (the lineup changed seconds after Cancel, and Update Channel saved
+  it - `pins.stillWanted`; live: cancelled mid-work leaves no pin, no queued op,
+  the same lineup); **the airing on air** could be swapped or removed, leaving it on
+  air and the pin taking over the next slot for the year (`pins.whyNot`; live:
+  Swap refused, the delete prompt disables Swap and Remove-only for it);
+  **removing one half of a two-halves slot brought it straight back** (live,
+  channel 1 Robot Chicken Wed Oct 14 1:00am: both halves air Thu Oct 15 1:00 and
+  1:15, 11 minutes of Flex kept); **the Time Slots dialog read places from now,
+  so the episode on air showed as next** (Hey Arnold!, Wed Oct 14 6:40pm: S1E13
+  on air, S1E13 shown; now S1E15); **a carry could be a program that ended up to a
+  day ago** when Flex was on air, so the generator laid episodes in the past
+  (now it needs the program on air or its own slot still going, `carryAt` with
+  the schedule and the generator's own check). Also fixed: breaks that had
+  already begun were offered; moving an insert to a break kept stale state after
+  a refusal; the build check now asks again once before refusing, gives up on a
+  server that doesn't answer in 8 s, asks a light route (not `/api/version`,
+  which runs ffmpeg) once per re-lay; a carry with no length is ignored.
+- **Left for later**, none affecting Ron's channels today: after a carry,
+  `schedule.lateness` (0 is the editor's default; Ron's channels use a day) still
+  turns the second half of a two-halves slot into Flex; the Time Slots dialog's
+  "right away" for a slot under way doesn't say the program on air finishes
+  first; the checkpoint's deferred minors above; the dialog's new code
+  (`makeLineup`'s carry wiring, `deleteByRelay`, `putInBreak`, the library and
+  holiday pick) is proven live and by the pure helpers it uses, with no
+  directive-level test harness.
 
 ### Random Slots' Create Lineup restarts the program on air
 

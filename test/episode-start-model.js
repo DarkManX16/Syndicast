@@ -72,6 +72,34 @@ module.exports = async function () {
         suite.check('a position with no slots never airs',
             episodeStart.firstAiring({ slots: [], schedule: sched(0), now: at(Fri, 10) }) === null);
 
+        // Swaps and inserts (src/pins.js): a slot a pin takes does not air its show, and a
+        // slot a run-late pin ends inside airs when the pin ends.
+        const special = { title: 'Special', duration: 24 * MIN };
+        const takes = [ { at: at(Fri, 21), then: 'take', program: special } ];
+        r = episodeStart.firstAiring({ slots: slotsOf(sched(0), 'tv.A'), schedule: sched(0), now: at(Fri, 10), pins: takes });
+        suite.check('a slot a pin takes is skipped: the next start of the position\'s slots after it',
+            r.at === at(Sun, 9) && r.now === false, new Date(r.at).toString());
+        r = episodeStart.firstAiring({ slots: slotsOf(sched(0), 'tv.A'), schedule: sched(0), now: at(Fri, 10), pins: [] });
+        suite.check('...and no pins is as before', r.at === at(Fri, 21));
+        r = episodeStart.firstAiring({ slots: slotsOf(sched(0), 'tv.A'), schedule: sched(0), now: at(Fri, 10),
+            pins: [ { at: at(Sat, 12), then: 'take', program: special } ] });
+        suite.check('...a pin in nobody\'s way leaves it', r.at === at(Fri, 21));
+        const two = { period: WEEK, lateness: 0, slots: [
+            { time: slotTime(Fri, 21), showId: 'tv.A', order: 'next' },
+            { time: slotTime(Fri, 21, 30), showId: 'tv.B', order: 'next' },
+            { time: slotTime(Fri, 22), showId: 'flex.', order: 'next' },
+        ] };
+        const longOne = { title: 'Long', duration: 44 * MIN + 9 * 1000 };
+        const runsLate = [ { at: at(Fri, 21), then: 'late', program: longOne } ];
+        r = episodeStart.firstAiring({ slots: two.slots.filter((x) => x.showId === 'tv.B'), schedule: two, now: at(Fri, 10), pins: runsLate });
+        suite.check('a slot a run-late pin ends inside airs when the pin ends',
+            r.at === at(Fri, 21, 44) + 9000, new Date(r.at).toString());
+        r = episodeStart.firstAiring({ slots: two.slots.filter((x) => x.showId === 'tv.B'), schedule: two, now: at(Fri, 10),
+            pins: [ { at: at(Fri, 21), then: 'take', program: longOne } ] });
+        suite.check('...and one a take-over pin runs into does not air that week', r.at === at(Fri, 21, 30) + WEEK, new Date(r.at).toString());
+        r = episodeStart.firstAiring({ slots: two.slots.filter((x) => x.showId === 'tv.A'), schedule: two, now: at(Fri, 10), pins: runsLate });
+        suite.check('...the pin\'s own slot still does not', r.at === at(Fri, 21) + WEEK, new Date(r.at).toString());
+
         // The wall clock is what a slot follows, across the autumn change.
         const fall = { period: WEEK, lateness: 0, slots: [{ time: slotTime(Sun, 21), showId: 'tv.A', order: 'next' }] };
         const from = new Date('2026-10-31T12:00:00').getTime();
@@ -130,6 +158,12 @@ module.exports = async function () {
             `${new Date(rows.get(ALL).at)} ${new Date(rows.get(NO2).at)}`);
         suite.check('...the first of the position\'s slots, not the row\'s own',
             rows.get(NO2).at === Math.min(at(Fri, 21), at(Sat, 21)));
+        // A swap pinned over Friday's slot: that position's first airing is its next slot (Saturday).
+        const swapped = episodeStart.describe({ schedule: sched, progress: plan({}), pool, now: NOW,
+            pins: [ { at: at(Fri, 21), then: 'take', program: { title: 'Special', duration: 24 * MIN } } ] });
+        suite.check('a row\'s first airing skips a slot a pin has taken',
+            swapped.get(NO2).at === at(Sat, 21) && swapped.get(ALL).at === rows.get(ALL).at,
+            new Date(swapped.get(NO2).at).toString());
         suite.check('a Shuffle shows the first story of its round',
             rows.has(SHUF) && rounds.fileKey(rows.get(SHUF).program) === rounds.fileKey(
                 rounds.roundOrder({ seed: SHUF, round: 0, stories: multiPart.stories(pool.filter((p) => p.showTitle === 'Doug').sort((a, b) => getShowData(a).order - getShowData(b).order)), laterHalf: new Set() })[0][0]));
@@ -250,6 +284,21 @@ module.exports = async function () {
 
         const none = episodeStart.plan({ planArgs: planArgs(), starts: {}, now: NOW });
         suite.check('with no starts the picture is the plain plan', none.progress === none.base && none.rows.size === 4);
+
+        // While Friday's S1E9 is on air, the rows read places after it - as Create Lineup does.
+        const midShow = at(Fri, 21, 10);
+        const twoDays = [
+            { isOffline: true, duration: at(Fri, 21) - THU },
+            Object.assign(episode(JB, 1, 9), { slotPosition: 'next|2' }),
+            { isOffline: true, duration: at(Sat, 21) - at(Fri, 21) - 22 * MIN },
+            Object.assign(episode(JB, 1, 10), { slotPosition: 'next|2' }),
+            { isOffline: true, duration: WEEK - (at(Sat, 21) - THU) - 22 * MIN },
+        ];
+        const during = episodeStart.plan({ planArgs: Object.assign(planArgs(), { programs: twoDays }), starts: {}, now: midShow });
+        const after = episodeStart.plan({ planArgs: Object.assign(planArgs(), { programs: twoDays, placesFrom: at(Fri, 21) + 22 * MIN }), starts: {}, now: midShow });
+        suite.check('the rows read places after the program on air when told where it ends (placesFrom)',
+            during.rows.get(NO2).program.title === `${JB} S1E9` && after.rows.get(NO2).program.title === `${JB} S1E10`,
+            `${during.rows.get(NO2).program.title} / ${after.rows.get(NO2).program.title}`);
 
         const gone = episodeStart.plan({ planArgs: planArgs(), starts: { [SHUF]: { ref: { key: 'srv|/e/nobody', order: 1 }, label: 'x' } }, now: NOW });
         suite.check('a Shuffle start that is no episode of the round is told apart as ignored',

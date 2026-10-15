@@ -5,6 +5,7 @@ const slotRounds = require('../../src/shuffle-rounds');
 const showCatalog = require('../../src/show-catalog');
 const episodeStart = require('../../src/episode-start');
 const pinTools = require('../../src/pins');
+const buildCheck = require('../../src/build-check');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
@@ -608,8 +609,14 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 try {
                     let onAir = scope.lineup();
                     let now = Date.now();
+                    // The swaps and inserts Create Lineup will keep: a slot one takes doesn't
+                    // air its show, so a row's "when" counts the next slot instead.
+                    let pinsNow = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now });
+                    let rowCarry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now, schedule: scope.schedule });
                     model = episodeStart.plan({
+                        pins: pinsNow,
                         planArgs: {
+                            placesFrom: (rowCarry !== null) ? Math.max(now, rowCarry.start + rowCarry.program.duration) : undefined,
                             programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(),
                             openedSchedule: scope.openedSchedule, schedule: scope.schedule,
                             pool: scope.programs, catalog: scope.catalogPool(), getShowData: getShowData,
@@ -766,7 +773,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
 
             //`pinsToKeep`, when given, are the swaps and inserts to keep
             //instead of the lineup's own (src/pins.js) - for a re-lay.
-            let doIt = async(fromInstant, pinsToKeep, atNow) => {
+            let makeLineup = async(fromInstant, pinsToKeep, atNow) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
                 //A re-lay compared with another plans both as of one moment, `atNow`:
                 //a moment apart, each can count a different program as on air.
@@ -789,7 +796,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 let carry = null;
                 if (typeof(scope.lineup) === 'function') {
                     let onAir = scope.lineup();
-                    carry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0 });
+                    carry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0, schedule: scope.schedule });
                     scope.schedule.progress = slotProgress.planProgress({
                         programs: onAir.programs,
                         startTime: new Date(onAir.startTime).getTime(),
@@ -849,6 +856,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 return res;
             }
 
+            //Create Lineup, Regenerate, Swap, Insert and undo all come through here: none
+            //is made against a server still running older code than this page (src/build-check.js).
+            let doIt = (fromInstant, pinsToKeep, atNow) => buildCheck.guard({
+                fetchVersion: () => dizquetv.getCodeBuild(),
+                run: () => makeLineup(fromInstant, pinsToKeep, atNow),
+            });
+
 
 
             
@@ -856,6 +870,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //editor has them, read again when Create Lineup runs.
             //Everything the dialog needs, without showing it - shared by
             //startDialog and relay.
+            // The swaps and inserts to keep, and a note for each whose slot the schedule, as it is
+            // edited here, now gives to another show.
+            let keptPins = [];
+            scope.pinNoteList = () => (keptPins.length === 0) ? [] : pinTools.pinNotes({ pins: keptPins, schedule: scope.schedule, nameOf: (id) => nameOf(id) }).map( (n) => n.text );
             let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState) => {
                 scope.limit = limit;
                 scope.programs = programs;
@@ -906,10 +924,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 scope.openProgress = null;
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
+                    let openCarry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now(), schedule: scope.schedule });
                     scope.openProgress = slotProgress.planProgress({
                         programs: onAir.programs,
                         startTime: new Date(onAir.startTime).getTime(),
                         now: Date.now(),
+                        placesFrom: (openCarry !== null) ? Math.max(Date.now(), openCarry.start + openCarry.program.duration) : undefined,
                         openedSchedule: scope.openedSchedule,
                         schedule: scope.schedule,
                         pool: scope.programs,
@@ -925,11 +945,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     readMissing();
                 }
                 //The swaps and inserts Create Lineup will keep, for the note.
+                keptPins = [];
                 scope.keptPins = '';
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
-                    scope.keptPins = pinTools.sayKept(pinTools.pinsAhead({ programs: onAir.programs,
-                        startTime: new Date(onAir.startTime).getTime(), now: Date.now() }));
+                    let kept = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() });
+                    scope.keptPins = pinTools.sayKept(kept);
+                    keptPins = kept;
                 }
             }
 
@@ -952,9 +974,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if (scope.visible) {
                     throw new Error('The Time Slots dialog is open');
                 }
+                await buildCheck.guard({ fetchVersion: () => dizquetv.getCodeBuild(), run: async () => null });
                 prepare(programs, limit, backup, true, null, lineup, catalogState);
                 scope.visible = false;
-                let res = await doIt(false, pins, now);
+                let res = await makeLineup(false, pins, now);
                 // Its own copy: the dialog's schedule object is used again by the next opening.
                 res.schedule = JSON.parse(JSON.stringify(res.schedule));
                 return res;
@@ -990,7 +1013,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                         scope.visible = false;
                     } catch(err) {
                         console.error("Unable to generate channel lineup", err);
-                        scope.error  = "There was an error processing the schedule";
+                        scope.error  = err && err.serverStale ? err.message : "There was an error processing the schedule";
                         return;
                     } finally {
                         scope.loading = false;

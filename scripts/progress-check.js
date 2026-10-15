@@ -227,7 +227,7 @@ async function main() {
     } );
     // The editor's doIt: every position's place, read from the lineup on air at this moment.
     // The editor's carry: the program on air, or the one whose break is on air, stays where it is.
-    let carry = args.restartOnAir ? null : pinTools.carryAt({ programs: channel.programs, startTime: savedStart, now: at });
+    let carry = args.restartOnAir ? null : pinTools.carryAt({ programs: channel.programs, startTime: savedStart, now: at, schedule: channel.scheduleBackup });
     if (! args.today) {
         schedule.progress = slotProgress.planProgress({
             programs: channel.programs, startTime: savedStart, now: at,

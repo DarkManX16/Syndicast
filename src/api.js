@@ -49,11 +49,19 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
             "gitDirty" : buildInfo.gitDirty,
             "startTime" : buildInfo.startTime,
             "bundleStale" : bundleChecker ? bundleChecker.isStale() : false,
+            "codeRunning" : buildInfo.codeRunning,
+            "codeOnDisk" : buildInfo.codeNow(),
         } );
       } catch(err) {
           console.error(err);
           res.status(500).send("error");
       }
+    });
+
+    // The server's code as it started and as it is on disk now - what the editor asks before it
+    // makes a lineup (src/build-check.js). Light: /api/version also runs ffmpeg.
+    router.get('/api/code-build', (req, res) => {
+      res.send( { "codeRunning" : buildInfo.codeRunning, "codeOnDisk" : buildInfo.codeNow() } );
     });
 
     // Plex Servers

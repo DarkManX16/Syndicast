@@ -110,17 +110,143 @@ function airingAt({ programs, startTime, at }) {
     return { index: index, start: found[0].start, program: found[0].program };
 }
 
+// The breaks - Flex after a program, not counting a pinned Flex - of at least
+// `duration` that start within `within` of `near`, nearest first, at most
+// five: where an insert too long for its own break would fit. `start` is
+// where the break begins, the end of the program before it.
+function breaksThatFit({ programs, startTime, near, within, duration, notBefore }) {
+    let found = [];
+    walk(programs, startTime, near - within - DAY, near + within).forEach( (x) => {
+        if (x.program.isOffline || (x.flex < duration)) {
+            return;
+        }
+        let start = x.start + x.program.duration;
+        if ( (Math.abs(start - near) <= within) && ! (start < notBefore) ) {
+            found.push({ after: { start: x.start, program: x.program }, start: start, length: x.flex });
+        }
+    } );
+    found.sort( (a, b) => Math.abs(a.start - near) - Math.abs(b.start - near) );
+    return found.slice(0, 5);
+}
+
+// "7:30-8:00pm", "11:40am-12:10pm": a time range to the minute, saying am or
+// pm once when both ends agree.
+function range(from, to) {
+    let at = (t) => {
+        let d = new Date(Math.round(t / MINUTE) * MINUTE);
+        let h = d.getHours() % 12 || 12;
+        return { text: `${h}:${pad2(d.getMinutes())}`, half: (d.getHours() < 12) ? 'am' : 'pm' };
+    };
+    let a = at(from), b = at(to);
+    return (a.half === b.half) ? `${a.text}-${b.text}${b.half}` : `${a.text}${a.half}-${b.text}${b.half}`;
+}
+
+/*
+ * What deleting the airing at `index` of `programs` (which starts at
+ * `startTime`) leaves: the Flex from where it began to where the next program
+ * does - its own length and the break after it. `offerSwap` when that is
+ * longer than about two minutes: the prompt then offers Swap instead.
+ */
+function sayRemoval({ programs, startTime, index, schedule }) {
+    let from = startTime;
+    for (let i = 0; i < index; i++) {
+        from += programs[i].duration;
+    }
+    let flexMs = programs[index].duration;
+    for (let j = index + 1; (j < programs.length) && programs[j].isOffline && (programs[j].type !== 'redirect'); j++) {
+        flexMs += programs[j].duration;
+    }
+    // The airing's slot stays Flex to its end - what follows in the slot is not refilled,
+    // so a half of a two-halves slot leaves the whole slot (the generator's remove rule).
+    if ( (typeof(schedule) === 'object') && (schedule !== null) ) {
+        let slot = slotAround({ schedule: schedule, at: from });
+        if ( (slot !== null) && (slot.end > from + flexMs) ) {
+            flexMs = slot.end - from;
+        }
+    }
+    return {
+        flexMs: flexMs, from: from, to: from + flexMs, offerSwap: flexMs > 2 * MINUTE,
+        text: `Leaves ${length(flexMs)} of Flex, ${range(from, from + flexMs)}.`,
+    };
+}
+
+/*
+ * Pins whose slot has changed since they were made: a pin records the show
+ * of the slot it sits in (`pin.slotShow`), and when the schedule now puts
+ * another show there - or Flex - the Time Slots dialog says so. A pin made
+ * before slots were recorded has none and gets no note. `nameOf` turns a
+ * show id into a name; the default drops the "tv." / "custom." prefix.
+ */
+function pinNotes({ pins, schedule, nameOf }) {
+    let name = (id) => (typeof(nameOf) === 'function' && nameOf(id)) || ( (id === 'flex.') ? 'Flex' : String(id).replace(/^(tv|custom|movie)\./, '') );
+    let notes = [];
+    pins.forEach( (x) => {
+        let made = x.program && x.program.pin && x.program.pin.slotShow;
+        if (typeof(made) !== 'string') {
+            return;
+        }
+        let slot = slotProgress.slotAt(schedule, x.at);
+        let now = (slot === null) ? null : slot.showId;
+        if ( (now !== null) && (now !== made) ) {
+            let what = x.program.isOffline ? 'Flex' : x.program.title;
+            notes.push({ pin: x, text: `${what}, ${dayClock(x.at)}: that slot is ${(now === 'flex.') ? 'Flex' : possessive(name(now))} now, not ${possessive(name(made))}.` });
+        }
+    } );
+    return notes;
+}
+
 // The program a re-made lineup leaves where it is (time-slots-service's
 // carry): the one on air, or the one whose break is on air - the last that
 // started at or before `now`, within a day.
-function carryAt({ programs, startTime, now }) {
+function carryAt({ programs, startTime, now, schedule }) {
     let last = null;
     walk(programs, startTime, now - DAY, now + 1).forEach( (x) => {
         if (! x.program.isOffline && (x.start <= now)) {
             last = { start: x.start, program: x.program };
         }
     } );
+    // With the schedule: it is on air, or the slot it began in is still going - else
+    // what is on air is some other slot's Flex, not its break.
+    if ( (last !== null) && (typeof(schedule) === 'object') && (schedule !== null) && (last.start + last.program.duration <= now) ) {
+        let slot = slotAround({ schedule: schedule, at: last.start });
+        if ( (slot === null) || (slot.end <= now) ) {
+            return null;
+        }
+    }
     return last;
+}
+
+/*
+ * Why an airing can't have `what` done to it now - 'swap', 'remove', 'undo' or
+ * 'insert' - in plain words, or null. The airing on air stays as it is while a
+ * lineup is re-made around it (carry), so it can't be swapped, removed or
+ * undone; one that has aired is over; an insert needs its break not yet begun.
+ * Holiday and Never air ('leaveOut') work whenever: they act from then on.
+ */
+function whyNot({ airing, now, what }) {
+    if (what === 'leaveOut') {
+        return null;
+    }
+    let start = (airing.start instanceof Date) ? airing.start.getTime() : Number(airing.start);
+    let end = start + airing.duration;
+    let name = label(airing);
+    if (what === 'insert') {
+        return (end <= now) ? `The break after ${name} has already begun - insert after a later airing.` : null;
+    }
+    if (end <= now) {
+        return `${name} has already aired.`;
+    }
+    if (start <= now) {
+        let verb = ( { swap: 'swapped', remove: 'removed', undo: 'undone' } )[what] || 'changed';
+        return `${name} is on air now, so it can't be ${verb} - it finishes airing first. Pick an airing after it.`;
+    }
+    return null;
+}
+
+// A prompt that is still working out `program`'s re-lay and has not been
+// cancelled or replaced: only then may its result be applied.
+function stillWanted(prompt, program) {
+    return (typeof(prompt) === 'object') && (prompt !== null) && (prompt.program === program) && (prompt.working === true);
 }
 
 // A date ("2026-10-31") and a time ("16:00") on the local clock as an
@@ -335,7 +461,7 @@ function sayDropped(dropped) {
 }
 
 function sayFirstSwap({ dropped }) {
-    return 'Swapping re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand'
+    return 'A swap or an insert re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand'
         + ' - bumpers, promos, episodes inserted from the library - is dropped. '
         + ( (dropped.length > 0) ? sayDropped(dropped) : 'Nothing placed by hand from now on would be lost.' );
 }
@@ -452,6 +578,11 @@ module.exports = {
     walk: walk,
     airingAt: airingAt,
     carryAt: carryAt,
+    whyNot: whyNot,
+    stillWanted: stillWanted,
+    pinNotes: pinNotes,
+    sayRemoval: sayRemoval,
+    breaksThatFit: breaksThatFit,
     localInstant: localInstant,
     showName: showName,
     slotAround: slotAround,
