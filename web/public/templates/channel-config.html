@@ -1239,11 +1239,12 @@
     <channel-redirect visible="_displayRedirect" on-done="finishRedirect" form-title="_redirectTitle" program="_selectedRedirect" ></channel-redirect>
     <!-- Deleting an airing: this airing only, or out of the rotation for good.
          See NOTES.md, "Full catalogs, and a never-air list". -->
-    <div ng-if="deletePrompt" class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
+    <div ng-if="deletePrompt" class="modal" tabindex="-1" role="dialog" style="display: block; overflow-y: auto; background-color: rgba(0, 0, 0, .5);" ng-click="$event.target === $event.currentTarget && finishDelete(null)">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Delete {{deletePrompt.label}}</h5></div>
-                <div class="modal-body">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div class="alert alert-info py-1 px-2 small" ng-if="deletePrompt.byHand">This list holds items placed by hand, so deleting only takes the airing out of the list; the lineup is not re-made, and what comes after it moves earlier.</div>
                     <div class="alert alert-warning py-1 px-2 small" ng-if="deletePrompt.blocked">{{deletePrompt.blocked}} Holiday and Never air still work: they take effect once it has aired.</div>
                     <button class="btn btn-outline-primary btn-block text-left" ng-if="deletePrompt.gap.offerSwap" ng-disabled="deletePrompt.blocked" ng-click="finishDelete('swap')">
                         <b>Swap it for another episode instead...</b>
@@ -1281,12 +1282,19 @@
     </div>
     <time-slots-schedule-editor linker="registerTimeSlots" on-done="onTimeSlotsDone"></time-slots-schedule-editor>
     <airing-swap ng-if="swapRequest" request="swapRequest" on-done="finishSwap"></airing-swap>
-    <div ng-if="undoPrompt" class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
+    <div ng-if="undoPrompt" class="modal" tabindex="-1" role="dialog" style="display: block; overflow-y: auto; background-color: rgba(0, 0, 0, .5);">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">{{undoPrompt.title || 'Undo this swap?'}}</h5></div>
-                <div class="modal-body small">
+                <div class="modal-body small" style="max-height: 60vh; overflow-y: auto;">
                     {{undoPrompt.text}}
+                    <div ng-if="undoPrompt.items.length > 0">
+                        <a href="" ng-click="undoPrompt.showItems = !undoPrompt.showItems; $event.preventDefault()">{{undoPrompt.showItems ? 'hide them' : 'show them'}}</a>
+                        <ul ng-if="undoPrompt.showItems" class="pl-3 mb-0">
+                            <li ng-repeat="line in undoPrompt.items | limitTo:300 track by $index">{{line}}</li>
+                            <li ng-if="undoPrompt.items.length > 300">...and {{undoPrompt.items.length - 300}} more</li>
+                        </ul>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-sm btn-link" ng-click="finishUndo(false)">Cancel</button>

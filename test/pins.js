@@ -234,6 +234,79 @@ module.exports = async function () {
                 && firstText === 'A swap or an insert re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
                 && keptText === "Keeping your swaps and inserts: Thu Oct 8, 7:30pm Arnold's Christmas (Hey Arnold!).",
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
+
+        // Ron, Oct 16: House of Mouse re-added from the library - 212 episodes in one go - and then
+        // an episode deleted. Every one of them is "placed by hand" to a re-lay.
+        suite.log('-- hand-added items: what the prompt says, and whether a delete re-lays --');
+        const mouse = [];
+        for (let n = 1; n <= 212; n++) {
+            mouse.push(episode('House of Mouse', 1, n, { title: `House of Mouse - S01E${String(n).padStart(2, '0')}`, duration: 22 * MIN }));
+        }
+        const withMouse = { programs: plain.programs.slice(), startTime: plain.startTime };
+        let at2 = plain.startTime, k = 0;
+        while (at2 < thu(20, 30) + DAY) { at2 += withMouse.programs[k].duration; k++; }
+        withMouse.programs.splice(k, 0, ...mouse);
+        const reach = { from: NOON8, to: NOON8 + 400 * DAY, schedule, getShowData };
+
+        const held = pins.handPlaced(Object.assign({ programs: withMouse.programs, startTime: withMouse.startTime }, reach));
+        suite.check('handPlaced finds every airing in the list that no slot made, in order',
+            held.length === 212 && held[0].program.title === 'House of Mouse - S01E01' && held[211].program.title === 'House of Mouse - S01E212'
+                && held.every((h, i) => i === 0 || held[i - 1].start < h.start),
+            held.length + ' ' + (held[0] && held[0].program.title));
+        suite.check('...and nothing in a lineup the generator made',
+            pins.handPlaced(Object.assign({ programs: plain.programs, startTime: plain.startTime }, reach)).length === 0);
+        suite.check('...a pinned airing, a repeat and Flex are not hand-placed',
+            pins.handPlaced(Object.assign({ programs: swapped.programs, startTime: swapped.startTime }, reach)).length === 0);
+        const oneBumper = pins.handPlaced(Object.assign({ programs: byHand.programs, startTime: byHand.startTime }, reach));
+        suite.check('...and one bumper is found as before', oneBumper.length === 1 && oneBumper[0].program.title === 'NEXT - SGC2C');
+
+        const droppedAll = pins.relayEffects({ before: withMouse, after: plain, from: NOON8, to: NOON8 + 400 * DAY, schedule, getShowData }).dropped;
+        const shortText = pins.sayDropped(droppedAll);
+        suite.check('212 hand-placed airings are a short summary, not 212 times and titles',
+            shortText === 'This also drops 212 airings placed in the list by hand.' && shortText.length < 100,
+            shortText.slice(0, 160));
+        const lines = pins.droppedLines(droppedAll);
+        suite.check('...and the list is there to show: one line each, the way the short list reads',
+            lines.length === 212 && lines[0] === 'Fri Oct 9, 8:30pm House of Mouse - S01E01 (22:00)' && lines[211].includes('House of Mouse - S01E212'),
+            String(lines[0]));
+        const few = [ { start: thu(19, 52, 38), program: bumper }, { start: thu(20, 52, 38), program: bumper } ];
+        suite.check('a few are still named in the sentence, as before',
+            pins.sayDropped(few) === 'This also drops what was placed in the list by hand: Thu Oct 8, 7:52pm NEXT - SGC2C (0:10); Thu Oct 8, 8:52pm NEXT - SGC2C (0:10).');
+        suite.check('...and the first-swap warning and the undo prompt stay short too',
+            pins.sayFirstSwap({ dropped: droppedAll }).length < 400 && pins.sayUndo({ label: 'x', at: thu(19, 30), effects: undone, anyway: '', dropped: droppedAll }).length < 400);
+
+        suite.check('only a long list goes behind "show them"; a few are named in the sentence',
+            pins.droppedBehind(droppedAll).length === 212 && pins.droppedBehind(few).length === 0);
+        suite.check('a delete does not re-lay while the list holds something added by hand',
+            pins.deleteMode(Object.assign({ programs: withMouse.programs, startTime: withMouse.startTime }, reach)) === 'splice'
+                && pins.deleteMode(Object.assign({ programs: byHand.programs, startTime: byHand.startTime }, reach)) === 'splice');
+        suite.check('...and re-lays when nothing was',
+            pins.deleteMode(Object.assign({ programs: plain.programs, startTime: plain.startTime }, reach)) === 'relay'
+                && pins.deleteMode(Object.assign({ programs: swapped.programs, startTime: swapped.startTime }, reach)) === 'relay');
+
+        suite.check('Escape closes the delete prompt, or the undo prompt on top of it, and nothing else',
+            pins.escapeAction({ key: 'Escape', deletePrompt: {}, undoPrompt: null }) === 'delete'
+                && pins.escapeAction({ key: 'Escape', deletePrompt: null, undoPrompt: {} }) === 'undo'
+                && pins.escapeAction({ key: 'Escape', deletePrompt: {}, undoPrompt: {} }) === 'undo'
+                && pins.escapeAction({ key: 'Esc', deletePrompt: {}, undoPrompt: null }) === 'delete'
+                && pins.escapeAction({ key: 'Enter', deletePrompt: {}, undoPrompt: null }) === null
+                && pins.escapeAction({ key: 'Escape', deletePrompt: null, undoPrompt: null }) === null);
+    }
+
+    suite.log('-- the dialogs can always be left --');
+    {
+        const template = require('fs').readFileSync(require('path').join(__dirname, '../web/public/templates/channel-config.html'), 'utf8');
+        const modalOf = (marker) => {
+            const from = template.indexOf(marker);
+            return from === -1 ? '' : template.slice(from, template.indexOf('\n    </div>\n', from));
+        };
+        const deleteModal = modalOf('<div ng-if="deletePrompt" class="modal"');
+        const undoModal = modalOf('<div ng-if="undoPrompt" class="modal"');
+        suite.check('the delete prompt scrolls, so its buttons are always reachable',
+            /class="modal"[^>]*overflow-y:\s*auto/.test(deleteModal) && /modal-body[^>]*max-height/.test(deleteModal), deleteModal.slice(0, 200));
+        suite.check('the undo and delete-confirm prompt scrolls and keeps its list behind "show them"',
+            /class="modal"[^>]*overflow-y:\s*auto/.test(undoModal) && /modal-body[^>]*max-height/.test(undoModal)
+                && /ng-if="undoPrompt\.items\.length/.test(undoModal) && /show them/.test(undoModal), undoModal.slice(0, 200));
     }
 
     suite.log('-- inserts --');

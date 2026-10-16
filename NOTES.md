@@ -5111,6 +5111,54 @@ his channel 1 save of that morning; the Plex snapshot is the Oct 11 one. Suite
   holiday pick) is proven live and by the pure helpers it uses, with no
   directive-level test harness.
 
+**Deleting while the list holds items placed by hand, Oct 16, 2026**
+(`delete-handplaced`, from `blocks` at ea15189). Ron re-added House of Mouse to
+channel 3 from the library and deleted one of its episodes: the delete prompt
+read "This also drops what was placed in the list by hand:" and then every
+airing, hundreds, with no way off the screen.
+
+- **Why the buttons were out of reach.** The prompt's `.modal` is shown by hand
+  (`display: block`), so Bootstrap's `modal-open` never switches on its scrolling:
+  `overflow-y` computed `hidden`. With 212 lines the Cancel button sat at
+  y=2927 on a 768px page, Escape did nothing (no key handling anywhere in the
+  editor), and the only way out was a refresh, losing the unsaved list.
+- **Why hundreds of airings counted.** Not a counting fault: every episode added
+  by hand is an airing that no slot made, and a re-lay really would drop each.
+  Reproduced on a copy of `.dizquetv-dev` (taken Fri Oct 16 about 5:37pm Central,
+  identical to the live files when compared at the end): House of Mouse is 12 episodes in
+  Plex today, added at the scroll position, one delete: the prompt named the other
+  11. Run in Node with 212 episodes, `relayEffects` returns 212 `dropped`. How
+  many Ron added is in his unsaved editor, so not checkable. The saved channel 3
+  is clean: 1 airing in the next 400 days reads as hand-placed (Tick-Tick-Tick,
+  Oct 22 2027, the lineup's far seam, which the re-lay's own cut-off ignores).
+- **What else was wrong, found while measuring.** Channel 1 has no labels (made
+  before stored progress, never regenerated), so its Shuffle airings carry no
+  number and read as hand-placed: 5,467 of its next 24,886 airings. It would
+  have shown the same prompt on any delete with nothing added. Under the new rule
+  a delete there splices (as before the swaps); re-running Time Slots on channel 1
+  labels it. Channel 2 reads 0.
+- **The fix.** `pins.handPlaced` (the airings no slot made, within a re-lay's
+  reach) and `pins.deleteMode`: while any exist, a delete on a Time Slots
+  channel takes the airing out of the list and re-makes nothing, as before the
+  swaps; Holiday and Never air are still recorded. The prompt says so and
+  drops the Flex and Swap lines, which belong to a re-lay. With none, a delete
+  re-lays as before. `pins.sayDropped` names up to three and otherwise counts
+  ("This also drops 212 airings placed in the list by hand."), with the list one
+  click away ("show them", `pins.droppedBehind`) in the delete-confirm and undo
+  prompts and the swap dialog. The prompts scroll (`overflow-y: auto`, body
+  `max-height`), Escape closes the top one (`pins.escapeAction`, a document
+  key listener in the channel editor), and clicking outside the delete prompt
+  cancels it.
+- **Proof.** Failing first: the new tests of `handPlaced`, `deleteMode`,
+  `sayDropped`'s count, `droppedLines`, `escapeAction` and the two templates
+  (2216 passed in all). Live on the preview, on the copy, channel 3 with the 12
+  episodes: the delete prompt names the by-hand rule, Escape closes it, Never
+  air removes the airing (37,531 to 37,530) with no re-lay and no prompt; a
+  212-line confirm prompt (state set directly) shows one sentence and "show them", its list scrolls
+  inside the dialog and Cancel stays on screen, and Escape closes it. The swap dialog's "show them" is not exercised live.
+- **Not changed.** A re-lay still drops hand-placed items when asked for by
+  Swap, Insert, Undo and Create Lineup, which name them first.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time

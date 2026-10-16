@@ -278,6 +278,8 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     let firstSwap = ahead().length === 0 && ! channel.programs.some( (x) => x.pin );
                     scope.warning = (firstSwap || dropped.length > 0)
                         ? (firstSwap ? pins.sayFirstSwap({ dropped }) : pins.sayDropped(dropped)) : '';
+                    scope.warningItems = pins.droppedBehind(dropped);
+                    scope.showWarningItems = false;
                     scope.error = null;
                     scope.state = 'choose';
                 } catch (err) {

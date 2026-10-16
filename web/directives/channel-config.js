@@ -1411,7 +1411,14 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     holiday: showCatalog.holidayOf(program.title) || 'Christmas' };
                 // On a Time Slots channel, each choice re-lays the lineup: the prompt says what
                 // gap the airing leaves, and offers a swap when it is more than a couple of minutes.
-                if (scope.hasTimeSlots()) {
+                // While the list holds something placed by hand (a show just added from the library),
+                // a re-lay would drop it: the delete takes the airing out of the list, as before, and
+                // Holiday and Never air are still recorded.
+                let byHand = scope.hasTimeSlots() && (pinTools.deleteMode({ programs: scope.channel.programs,
+                    startTime: new Date(scope.channel.startTime).getTime(), from: Date.now(), to: Date.now() + 400 * 24 * 60 * 60 * 1000,
+                    schedule: scope.channel.scheduleBackup, getShowData: getShowData }) === 'splice');
+                scope.deletePrompt.byHand = byHand;
+                if (scope.hasTimeSlots() && ! byHand) {
                     scope.deletePrompt.timeSlots = true;
                     scope.deletePrompt.gap = pinTools.sayRemoval({ programs: scope.channel.programs,
                         startTime: new Date(scope.channel.startTime).getTime(), index: x, schedule: scope.channel.scheduleBackup });
@@ -2859,7 +2866,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         ? 'Re-making the lineup now also changes, with or without this undo: ' + pinTools.sayEffects(all) : '';
                     if (scope.undoPrompt && (scope.undoPrompt.program === program)) {
                         scope.undoPrompt = { program: program, working: false, result: result,
-                            text: pinTools.sayUndo({ label: label, at: program.pin.at, effects: own, anyway: anywayText, dropped: all.dropped }) };
+                            text: pinTools.sayUndo({ label: label, at: program.pin.at, effects: own, anyway: anywayText, dropped: all.dropped }),
+                            items: pinTools.droppedBehind(all.dropped) };
                     }
                 } catch (err) {
                     console.error(err);
@@ -2871,6 +2879,22 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     $timeout();
                 }
             };
+            // Escape always leaves a prompt: the undo/confirm one, which sits on top, or the delete one.
+            let onEscape = (event) => {
+                let what = pinTools.escapeAction({ key: event.key, deletePrompt: scope.deletePrompt, undoPrompt: scope.undoPrompt });
+                if (what === null) {
+                    return;
+                }
+                event.preventDefault();
+                if (what === 'undo') {
+                    scope.finishUndo(false);
+                } else {
+                    scope.finishDelete(null);
+                }
+                $timeout();
+            };
+            document.addEventListener('keydown', onEscape);
+            scope.$on('$destroy', () => document.removeEventListener('keydown', onEscape));
             scope.finishUndo = (yes) => {
                 let prompt = scope.undoPrompt;
                 scope.undoPrompt = null;
@@ -2934,7 +2958,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         apply();
                     } else {
                         scope.undoPrompt = { program: program, working: false, result: result, title: 'Delete ' + prompt.label, go: 'Delete it',
-                            text: pinTools.sayDropped(effects.dropped), afterApply: () => queueCatalogOps(ops) };
+                            text: pinTools.sayDropped(effects.dropped), items: pinTools.droppedBehind(effects.dropped), afterApply: () => queueCatalogOps(ops) };
                     }
                 } catch (err) {
                     console.error(err);

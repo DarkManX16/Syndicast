@@ -286,6 +286,34 @@ function fitAt({ programs, startTime, schedule, at, duration }) {
     };
 }
 
+// Where a lineup's loop really ends. Callers stop two weeks before it: a
+// lineup's last days sit off the slots and end in Flex, so they'd read as
+// hand-placed, and they're a year out, beyond what a re-lay keeps. Since the
+// editor rotates a lineup's start to now, the real end is found as its longest
+// Flex (a day or more: generators end a lineup in days of it), not from its
+// start.
+function loopEnd(lineup, from) {
+    let total = lineup.programs.reduce( (a, p) => a + p.duration, 0 );
+    let base = Math.max(from, lineup.startTime);
+    let end = base + total - mod(base - lineup.startTime, total);
+    let longest = { start: null, length: 0 };
+    let run = { start: null, length: 0 };
+    walk(lineup.programs, lineup.startTime, base, base + total).forEach( (x) => {
+        if (x.program.isOffline && (x.program.type !== 'redirect') && ! x.program.pin) {
+            if (run.start === null) {
+                run = { start: x.start, length: 0 };
+            }
+            run.length += x.program.duration;
+            if (run.length > longest.length) {
+                longest = { start: run.start, length: run.length };
+            }
+        } else {
+            run = { start: null, length: 0 };
+        }
+    } );
+    return (longest.length >= DAY) ? Math.min(end, longest.start) : end;
+}
+
 /*
  * What a re-lay did, from the lineup before it to the one after, from
  * `from` to `to`: positions whose episode now airs at a later slot (the
@@ -294,35 +322,8 @@ function fitAt({ programs, startTime, schedule, at, duration }) {
  * that the re-lay drops.
  */
 function relayEffects({ before, after, from, to, schedule, getShowData }) {
-    // Not past two weeks before either lineup comes round its loop: a
-    // lineup's last days sit off the slots and end in Flex, so they'd read
-    // as hand-placed, and they're a year out, beyond what a re-lay keeps.
-    // A lineup's real end is where its loop comes round - and, since the
-    // editor rotates a lineup's start to now, that is found as its longest
-    // Flex (a day or more: generators end a lineup in days of it), not from
-    // its start.
-    let loopEnd = (lineup) => {
-        let total = lineup.programs.reduce( (a, p) => a + p.duration, 0 );
-        let base = Math.max(from, lineup.startTime);
-        let end = base + total - mod(base - lineup.startTime, total);
-        let longest = { start: null, length: 0 };
-        let run = { start: null, length: 0 };
-        walk(lineup.programs, lineup.startTime, base, base + total).forEach( (x) => {
-            if (x.program.isOffline && (x.program.type !== 'redirect') && ! x.program.pin) {
-                if (run.start === null) {
-                    run = { start: x.start, length: 0 };
-                }
-                run.length += x.program.duration;
-                if (run.length > longest.length) {
-                    longest = { start: run.start, length: run.length };
-                }
-            } else {
-                run = { start: null, length: 0 };
-            }
-        } );
-        return (longest.length >= DAY) ? Math.min(end, longest.start) : end;
-    };
-    to = Math.min(to, loopEnd(before) - 14 * DAY, loopEnd(after) - 14 * DAY);
+    // Not past two weeks before either lineup comes round its loop (see loopEnd).
+    to = Math.min(to, loopEnd(before, from) - 14 * DAY, loopEnd(after, from) - 14 * DAY);
     let starts = new Map();
     let anyStart = new Set();
     walk(after.programs, after.startTime, from - 3 * HOUR, to + 3 * HOUR).forEach( (x) => {
@@ -391,6 +392,38 @@ function relayEffects({ before, after, from, to, schedule, getShowData }) {
 }
 
 /*
+ * Airings in the list that no slot made - placed by hand: a clip put between
+ * programs, or a show added from the library. Read as relayEffects reads what
+ * a re-lay would drop, from `from` to `to` (clipped before the loop comes
+ * round), but from the lineup alone: no re-lay is needed to know it.
+ */
+function handPlaced({ programs, startTime, from, to, schedule, getShowData }) {
+    let lineup = { programs, startTime };
+    to = Math.min(to, loopEnd(lineup, from) - 14 * DAY);
+    return slotProgress.airings({ programs, startTime, from, to, schedule, getShowData })
+        .filter( (x) => (x.start >= from - SAME) && ! x.program.pin && (x.key === null) && (x.program.slotPosition !== 'repeat') )
+        .map( (x) => ({ start: x.start, program: x.program }) );
+}
+
+/*
+ * What deleting an airing does on a Time Slots channel: 'relay' re-makes the
+ * lineup from the schedule, which drops anything in the list that no slot
+ * made, so while the list holds something placed by hand it is 'splice' -
+ * the airing comes out of the list and nothing else changes.
+ */
+function deleteMode({ programs, startTime, from, to, schedule, getShowData }) {
+    return (handPlaced({ programs, startTime, from, to, schedule, getShowData }).length > 0) ? 'splice' : 'relay';
+}
+
+// Which prompt Escape closes: the undo/confirm prompt sits on top of the delete prompt.
+function escapeAction({ key, deletePrompt, undoPrompt }) {
+    if ( (key !== 'Escape') && (key !== 'Esc') ) {
+        return null;
+    }
+    return undoPrompt ? 'undo' : (deletePrompt ? 'delete' : null);
+}
+
+/*
  * The dialog's sentences. sayFit works out the Flex left from the lineup as
  * it is, unless `after` - the re-laid lineup - is given, which says it
  * exactly (a slot's own show may air after the item).
@@ -452,12 +485,27 @@ function sayEffects(effects) {
     return (parts.length > 0) ? parts.join(' ') : 'Nothing else changes.';
 }
 
+// A few are named in the sentence; hundreds (a show added from the library) are
+// counted, and droppedLines has the list for the dialog to hold behind "show them".
+const NAMED = 3;
 function sayDropped(dropped) {
     if (dropped.length === 0) {
         return '';
     }
+    if (dropped.length > NAMED) {
+        return `This also drops ${dropped.length} airings placed in the list by hand.`;
+    }
     return 'This also drops what was placed in the list by hand: '
-        + dropped.map( (d) => `${dayClock(d.start)} ${d.program.title} (${length(d.program.duration)})` ).join('; ') + '.';
+        + droppedLines(dropped).join('; ') + '.';
+}
+
+// What a prompt holds behind "show them": the list, when the sentence only counts it.
+function droppedBehind(dropped) {
+    return (dropped.length > NAMED) ? droppedLines(dropped) : [];
+}
+
+function droppedLines(dropped) {
+    return dropped.map( (d) => `${dayClock(d.start)} ${d.program.title} (${length(d.program.duration)})` );
 }
 
 function sayFirstSwap({ dropped }) {
@@ -591,6 +639,11 @@ module.exports = {
     sayFit: sayFit,
     sayEffects: sayEffects,
     sayDropped: sayDropped,
+    droppedLines: droppedLines,
+    droppedBehind: droppedBehind,
+    handPlaced: handPlaced,
+    deleteMode: deleteMode,
+    escapeAction: escapeAction,
     sayFirstSwap: sayFirstSwap,
     sayKept: sayKept,
     sayUndo: sayUndo,
