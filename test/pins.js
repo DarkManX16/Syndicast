@@ -234,6 +234,156 @@ module.exports = async function () {
                 && firstText === 'A swap or an insert re-makes the lineup from your Time Slots schedule, as Create Lineup does, so anything placed in the list by hand - bumpers, promos, episodes inserted from the library - is dropped. Nothing placed by hand from now on would be lost.'
                 && keptText === "Keeping your swaps and inserts: Thu Oct 8, 7:30pm Arnold's Christmas (Hey Arnold!).",
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
+
+        // Ron, Oct 16: House of Mouse re-added from the library - 212 episodes in one go - and then
+        // an episode deleted. Every one of them is "placed by hand" to a re-lay.
+        suite.log('-- hand-added items: what the prompt says, and whether a delete re-lays --');
+        const mouse = [];
+        for (let n = 1; n <= 212; n++) {
+            mouse.push(episode('House of Mouse', 1, n, { title: `House of Mouse - S01E${String(n).padStart(2, '0')}`, duration: 22 * MIN }));
+        }
+        const withMouse = { programs: plain.programs.slice(), startTime: plain.startTime };
+        let at2 = plain.startTime, k = 0;
+        while (at2 < thu(20, 30) + DAY) { at2 += withMouse.programs[k].duration; k++; }
+        withMouse.programs.splice(k, 0, ...mouse);
+        const reach = { from: NOON8, to: NOON8 + 400 * DAY, schedule, getShowData };
+
+        const held = pins.handPlaced(Object.assign({ programs: withMouse.programs, startTime: withMouse.startTime }, reach));
+        suite.check('handPlaced finds every airing in the list that no slot made, in order',
+            held.length === 212 && held[0].program.title === 'House of Mouse - S01E01' && held[211].program.title === 'House of Mouse - S01E212'
+                && held.every((h, i) => i === 0 || held[i - 1].start < h.start),
+            held.length + ' ' + (held[0] && held[0].program.title));
+        suite.check('...and nothing in a lineup the generator made',
+            pins.handPlaced(Object.assign({ programs: plain.programs, startTime: plain.startTime }, reach)).length === 0);
+        suite.check('...a pinned airing, a repeat and Flex are not hand-placed',
+            pins.handPlaced(Object.assign({ programs: swapped.programs, startTime: swapped.startTime }, reach)).length === 0);
+        const oneBumper = pins.handPlaced(Object.assign({ programs: byHand.programs, startTime: byHand.startTime }, reach));
+        suite.check('...and one bumper is found as before', oneBumper.length === 1 && oneBumper[0].program.title === 'NEXT - SGC2C');
+
+        const droppedAll = pins.relayEffects({ before: withMouse, after: plain, from: NOON8, to: NOON8 + 400 * DAY, schedule, getShowData }).dropped;
+        const shortText = pins.sayDropped(droppedAll);
+        suite.check('212 hand-placed airings are a short summary, not 212 times and titles',
+            shortText === 'This also drops 212 airings placed in the list by hand.' && shortText.length < 100,
+            shortText.slice(0, 160));
+        const lines = pins.droppedLines(droppedAll);
+        suite.check('...and the list is there to show: one line each, the way the short list reads',
+            lines.length === 212 && lines[0] === 'Fri Oct 9, 8:30pm House of Mouse - S01E01 (22:00)' && lines[211].includes('House of Mouse - S01E212'),
+            String(lines[0]));
+        const few = [ { start: thu(19, 52, 38), program: bumper }, { start: thu(20, 52, 38), program: bumper } ];
+        suite.check('a few are still named in the sentence, as before',
+            pins.sayDropped(few) === 'This also drops what was placed in the list by hand: Thu Oct 8, 7:52pm NEXT - SGC2C (0:10); Thu Oct 8, 8:52pm NEXT - SGC2C (0:10).');
+        suite.check('...and the first-swap warning and the undo prompt stay short too',
+            pins.sayFirstSwap({ dropped: droppedAll }).length < 400 && pins.sayUndo({ label: 'x', at: thu(19, 30), effects: undone, anyway: '', dropped: droppedAll }).length < 400);
+
+        suite.check('only a long list goes behind "show them"; a few are named in the sentence',
+            pins.droppedBehind(droppedAll).length === 212 && pins.droppedBehind(few).length === 0);
+        suite.check('a delete does not re-lay while the list holds something added by hand',
+            pins.deleteMode(Object.assign({ programs: withMouse.programs, startTime: withMouse.startTime }, reach)) === 'splice'
+                && pins.deleteMode(Object.assign({ programs: byHand.programs, startTime: byHand.startTime }, reach)) === 'splice');
+        suite.check('...and re-lays when nothing was',
+            pins.deleteMode(Object.assign({ programs: plain.programs, startTime: plain.startTime }, reach)) === 'relay'
+                && pins.deleteMode(Object.assign({ programs: swapped.programs, startTime: swapped.startTime }, reach)) === 'relay');
+
+        // Ron, Oct 16, second report: the library's default is "Insert at the end of list", which is
+        // past where a re-lay reaches (two weeks before the loop's end), so nothing read as placed by
+        // hand, the delete re-laid, and "Remove this airing only" lost every episode added.
+        // As Ron's lineups end: the content, then days of Flex where the loop comes round. What is added
+        // at the end of the list comes after that Flex.
+        const sealed = plain.programs.concat([{ isOffline: true, duration: 5 * DAY }]);
+        // The editor rotates a lineup's start to now, so the end of the list is a year out.
+        const reachNow = { from: plain.startTime + 30 * MIN, to: plain.startTime + 400 * DAY, schedule, getShowData };
+        const listEnd = { programs: sealed.concat(mouse.slice(0, 12)), startTime: plain.startTime };
+        const generated = sealed.reduce((a, p) => a + p.duration, 0);
+        suite.check('a lineup the generator made is a whole number of periods, and a re-lay is how a delete treats it',
+            generated % schedule.period === 0 && pins.deleteMode(Object.assign({ programs: sealed, startTime: plain.startTime }, reachNow)) === 'relay',
+            String(generated / schedule.period));
+        suite.check('...while a re-lay cannot see what was added after its end Flex (the cause)',
+            pins.handPlaced(Object.assign({ programs: listEnd.programs, startTime: listEnd.startTime }, reachNow)).length === 0);
+        suite.check('items added at the end of the list hold a delete back too: it takes the airing out and re-makes nothing',
+            pins.deleteMode(Object.assign({ programs: listEnd.programs, startTime: listEnd.startTime }, reachNow)) === 'splice',
+            pins.deleteMode(Object.assign({ programs: listEnd.programs, startTime: listEnd.startTime }, reachNow)));
+        const afterDelete = listEnd.programs.slice();
+        const gone = afterDelete[afterDelete.length - 11];
+        const rest = afterDelete.filter((p) => p !== gone);
+        suite.check('...and the airing that goes is that one: every other airing, added or not, stays in order',
+            pins.removeAiring(afterDelete, gone) === true && afterDelete.length === rest.length && afterDelete.every((p, i) => p === rest[i])
+                && afterDelete.slice(-11).every((p, i) => p === mouse.slice(0, 12).filter((m) => m !== gone)[i]),
+            afterDelete.length + ' of ' + rest.length);
+        suite.check('...a lineup with one airing already taken out by hand is not the generator\'s either',
+            pins.deleteMode(Object.assign({ programs: plain.programs.slice(0, 50).concat(plain.programs.slice(51)), startTime: plain.startTime }, reachNow)) === 'splice');
+        suite.check('...and a schedule with no period leaves it to what is in the list',
+            pins.deleteMode({ programs: plain.programs, startTime: plain.startTime, from: plain.startTime + 30 * MIN, to: plain.startTime + 400 * DAY, schedule: {}, getShowData }) === 'relay');
+
+        // The same blind spot in the other direction: a swap, an insert, an undo and the first-swap
+        // warning name what the re-lay drops through relayEffects, which stops two weeks before the
+        // loop's end, so the same twelve episodes were dropped by a swap without a word.
+        suite.log('-- a re-lay names what was added at the end of the list --');
+        const lostAtEnd = pins.relayEffects({ before: listEnd, after: plain, from: reachNow.from, to: reachNow.to, schedule, getShowData }).dropped;
+        suite.check('a re-lay names the episodes added after the end Flex, which it drops',
+            lostAtEnd.length === 12 && lostAtEnd[0].program.title === 'House of Mouse - S01E01' && lostAtEnd[11].program.title === 'House of Mouse - S01E12'
+                && lostAtEnd.every((d, i) => i === 0 || lostAtEnd[i - 1].start < d.start && d.start > reachNow.from),
+            lostAtEnd.length + ' ' + lostAtEnd.map((d) => d.program.title).join());
+        suite.check('...a dozen are counted, with the list behind "show them", in the first-swap warning, the undo prompt and the swap dialog',
+            pins.sayDropped(lostAtEnd) === 'This also drops 12 airings placed in the list by hand.' && pins.droppedBehind(lostAtEnd).length === 12
+                && pins.sayFirstSwap({ dropped: lostAtEnd }).endsWith('This also drops 12 airings placed in the list by hand.'));
+        const fewAtEnd = pins.relayEffects({ before: { programs: sealed.concat(mouse.slice(0, 2)), startTime: plain.startTime }, after: plain,
+            from: reachNow.from, to: reachNow.to, schedule, getShowData }).dropped;
+        suite.check('...two are named in the sentence',
+            fewAtEnd.length === 2 && pins.sayDropped(fewAtEnd).startsWith('This also drops what was placed in the list by hand: '), pins.sayDropped(fewAtEnd));
+        // Added at the end, then one airing in the middle taken out by hand (a delete that splices).
+        const mixed = { programs: listEnd.programs.slice(0, 50).concat(listEnd.programs.slice(51)), startTime: plain.startTime };
+        suite.check('...still all of them when an airing was also taken out of the middle by hand',
+            pins.relayEffects({ before: mixed, after: plain, from: reachNow.from, to: reachNow.to, schedule, getShowData }).dropped.length === 12);
+        // A lineup the generator made may have an airing past its end Flex that reads as no slot's (Ron's channel 3
+        // ends on Tick-Tick-Tick): it is whole, so it is the generator's own and is not named.
+        const seamItem = Object.assign({}, bumper, { title: 'Seam item', duration: 22 * MIN });
+        const seamLineup = { programs: plain.programs.concat([{ isOffline: true, duration: 5 * DAY - seamItem.duration }, seamItem]), startTime: plain.startTime };
+        suite.check('...and nothing in a generator lineup, even with an off-slot airing past its end Flex',
+            seamLineup.programs.reduce((a, p) => a + p.duration, 0) % schedule.period === 0
+                && pins.relayEffects({ before: seamLineup, after: plain, from: reachNow.from, to: reachNow.to, schedule, getShowData }).dropped.length === 0);
+        // As the editor holds it: rotated to start at now, so the end Flex is mid-list, then the seam, then the
+        // lineup's first days, and the episodes added from the library at the very end of the array.
+        const rotateAt = 300;
+        const cut = seamLineup.programs.slice(0, rotateAt).reduce((a, p) => a + p.duration, 0);
+        const rotatedList = { programs: seamLineup.programs.slice(rotateAt).concat(seamLineup.programs.slice(0, rotateAt)).concat(mouse.slice(0, 12)),
+            startTime: plain.startTime + cut };
+        const lostRotated = pins.relayEffects({ before: rotatedList, after: plain, from: plain.startTime + cut + 30 * MIN, to: reachNow.to, schedule, getShowData }).dropped;
+        suite.check('...in a list rotated to start at now: the episodes at its end, not the seam item or the first days',
+            lostRotated.length === 12 && lostRotated.every((d) => d.program.title.startsWith('House of Mouse')),
+            lostRotated.length + ' ' + lostRotated.slice(0, 3).map((d) => d.program.title).join());
+        suite.check('...and only the generators own list rotated like that names nothing',
+            pins.relayEffects({ before: { programs: rotatedList.programs.slice(0, rotatedList.programs.length - 12), startTime: rotatedList.startTime }, after: plain,
+                from: plain.startTime + cut + 30 * MIN, to: reachNow.to, schedule, getShowData }).dropped.length === 0);
+        suite.check('...nor in a lineup whose end Flex has nothing after it',
+            pins.relayEffects({ before: { programs: sealed, startTime: plain.startTime }, after: plain, from: reachNow.from, to: reachNow.to, schedule, getShowData }).dropped.length === 0);
+        // Only what a swap re-lays: pins are kept, so a pinned airing added at the end is not named.
+        const pinnedAtEnd = { programs: sealed.concat([Object.assign({}, mouse[0], { pin: { at: reachNow.from + 300 * DAY, kind: 'swap', then: 'take' } })]), startTime: plain.startTime };
+        suite.check('...and a pinned airing is not named',
+            pins.relayEffects({ before: pinnedAtEnd, after: plain, from: reachNow.from, to: reachNow.to, schedule, getShowData }).dropped.length === 0);
+
+        suite.check('Escape closes the delete prompt, or the undo prompt on top of it, and nothing else',
+            pins.escapeAction({ key: 'Escape', deletePrompt: {}, undoPrompt: null }) === 'delete'
+                && pins.escapeAction({ key: 'Escape', deletePrompt: null, undoPrompt: {} }) === 'undo'
+                && pins.escapeAction({ key: 'Escape', deletePrompt: {}, undoPrompt: {} }) === 'undo'
+                && pins.escapeAction({ key: 'Esc', deletePrompt: {}, undoPrompt: null }) === 'delete'
+                && pins.escapeAction({ key: 'Enter', deletePrompt: {}, undoPrompt: null }) === null
+                && pins.escapeAction({ key: 'Escape', deletePrompt: null, undoPrompt: null }) === null);
+    }
+
+    suite.log('-- the dialogs can always be left --');
+    {
+        const template = require('fs').readFileSync(require('path').join(__dirname, '../web/public/templates/channel-config.html'), 'utf8');
+        const modalOf = (marker) => {
+            const from = template.indexOf(marker);
+            return from === -1 ? '' : template.slice(from, template.indexOf('\n    </div>\n', from));
+        };
+        const deleteModal = modalOf('<div ng-if="deletePrompt" class="modal"');
+        const undoModal = modalOf('<div ng-if="undoPrompt" class="modal"');
+        suite.check('the delete prompt scrolls, so its buttons are always reachable',
+            /class="modal"[^>]*overflow-y:\s*auto/.test(deleteModal) && /modal-body[^>]*max-height/.test(deleteModal), deleteModal.slice(0, 200));
+        suite.check('the undo and delete-confirm prompt scrolls and keeps its list behind "show them"',
+            /class="modal"[^>]*overflow-y:\s*auto/.test(undoModal) && /modal-body[^>]*max-height/.test(undoModal)
+                && /ng-if="undoPrompt\.items\.length/.test(undoModal) && /show them/.test(undoModal), undoModal.slice(0, 200));
     }
 
     suite.log('-- inserts --');

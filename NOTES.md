@@ -5111,6 +5111,159 @@ his channel 1 save of that morning; the Plex snapshot is the Oct 11 one. Suite
   holiday pick) is proven live and by the pure helpers it uses, with no
   directive-level test harness.
 
+**Deleting while the list holds items placed by hand, Oct 16, 2026**
+(`delete-handplaced`, from `blocks` at ea15189). Ron re-added House of Mouse to
+channel 3 from the library and deleted one of its episodes: the delete prompt
+read "This also drops what was placed in the list by hand:" and then every
+airing, hundreds, with no way off the screen.
+
+- **Why the buttons were out of reach.** The prompt's `.modal` is shown by hand
+  (`display: block`), so Bootstrap's `modal-open` never switches on its scrolling:
+  `overflow-y` computed `hidden`. With 212 lines the Cancel button sat at
+  y=2927 on a 768px page, Escape did nothing (no key handling anywhere in the
+  editor), and the only way out was a refresh, losing the unsaved list.
+- **Why hundreds of airings counted.** Not a counting fault: every episode added
+  by hand is an airing that no slot made, and a re-lay really would drop each.
+  Reproduced on a copy of `.dizquetv-dev` (taken Fri Oct 16 about 5:37pm Central,
+  identical to the live files when compared at the end): House of Mouse is 12 episodes in
+  Plex today, added at the scroll position, one delete: the prompt named the other
+  11. Run in Node with 212 episodes, `relayEffects` returns 212 `dropped`. How
+  many Ron added is in his unsaved editor, so not checkable. The saved channel 3
+  is clean: 1 airing in the next 400 days reads as hand-placed (Tick-Tick-Tick,
+  Oct 22 2027, the lineup's far seam, which the re-lay's own cut-off ignores).
+- **What else was wrong, found while measuring.** Channel 1 has no labels (made
+  before stored progress, never regenerated), so its Shuffle airings carry no
+  number and read as hand-placed: 5,467 of its next 24,886 airings. It would
+  have shown the same prompt on any delete with nothing added. Under the new rule
+  a delete there splices (as before the swaps); re-running Time Slots on channel 1
+  labels it. Channel 2 reads 0.
+- **The fix.** `pins.handPlaced` (the airings no slot made, within a re-lay's
+  reach) and `pins.deleteMode`: while any exist, a delete on a Time Slots
+  channel takes the airing out of the list and re-makes nothing, as before the
+  swaps; Holiday and Never air are still recorded. The prompt says so and
+  drops the Flex and Swap lines, which belong to a re-lay. With none, a delete
+  re-lays as before. `pins.sayDropped` names up to three and otherwise counts
+  ("This also drops 212 airings placed in the list by hand."), with the list one
+  click away ("show them", `pins.droppedBehind`) in the delete-confirm and undo
+  prompts and the swap dialog. The prompts scroll (`overflow-y: auto`, body
+  `max-height`), Escape closes the top one (`pins.escapeAction`, a document
+  key listener in the channel editor), and clicking outside the delete prompt
+  cancels it.
+- **Proof.** Failing first: the new tests of `handPlaced`, `deleteMode`,
+  `sayDropped`'s count, `droppedLines`, `escapeAction` and the two templates
+  (2216 passed in all). Live on the preview, on the copy, channel 3 with the 12
+  episodes: the delete prompt names the by-hand rule, Escape closes it, Never
+  air removes the airing (37,531 to 37,530) with no re-lay and no prompt; a
+  212-line confirm prompt (state set directly) shows one sentence and "show them", its list scrolls
+  inside the dialog and Cancel stays on screen, and Escape closes it. The swap dialog's "show them" is not exercised live.
+- **Second report, same day: "Remove this airing only" removed every episode
+  added.** The library's default is "Insert at the end of list", which sits after
+  the lineup's end Flex - past where a re-lay reaches (two weeks before the loop's
+  end, which keeps the generator's own last days from reading as hand-placed). So
+  `handPlaced` saw nothing, `deleteMode` said re-lay, the prompt showed the
+  re-lay's text ("Leaves 21:37 of Flex"), and the re-lay regenerated the list
+  without the new airings: 37,531 to 37,507, all 12 gone, no prompt (the
+  dropped list is clipped the same way). Reproduced exactly so on the preview.
+  The first fix's tests put the items inside the window, and the fixture's
+  window started before the lineup's start, where the list's end loops round to
+  the front, so they never met the horizon.
+  `deleteMode` now also says splice when the lineup is not a whole number of the
+  schedule's periods long (the generator makes it so: channels 2 and 3 are 53
+  weeks exactly, channel 1, made by an older generator, is not and is unlabelled
+  anyway). An airing added after the end, or taken out by hand, breaks it; a
+  generator lineup, a swap, a pin or a re-lay's Flex never does. The splice is
+  `pins.removeAiring`, in place, one airing. Failing first: the end-of-list
+  lineup read 'relay'. Live, on the copy, channel 3 with House of Mouse added at
+  the end, each time fresh: Remove only, Holiday and Never air each take out
+  E06 alone (37,531 to 37,530), the other ten remain, no re-lay; the dialog says
+  the list holds items placed by hand. The unedited channel 3 still gets the
+  re-lay dialog.
+- **Same blind spot elsewhere, fixed next (see below).** Swap, Insert, Undo and the
+  first-swap warning name what a re-lay drops from the same clipped window, so items
+  added at the end of the list were dropped by them without being named.
+- **Not changed.** A re-lay still drops hand-placed items when asked for by
+  Swap, Insert, Undo and Create Lineup, which name them first.
+
+**Swap, insert and undo name what was added at the end of the list, Oct 16, 2026**
+(`relay-names-dropped`, from `delete-handplaced` at 228ddda). For these a re-lay is
+the point, so unlike the delete path nothing is held back: the fix is to say what
+would be lost, in the prompts that already ask first.
+
+- **The behaviour, and why.** `pins.relayEffects(...).dropped` now also holds
+  `pins.addedAtEnd`: the airings at the very end of the list that no slot made.
+  They ride the existing sentences (`sayDropped`: a few named, otherwise "This also
+  drops 12 airings placed in the list by hand." with "show them"), so the swap
+  dialog, the first-swap warning, the undo prompt, the insert prompt and the
+  delete-by-re-lay confirm all name them, and a delete's "no prompt when nothing is
+  dropped" shortcut no longer skips them. Refusing a swap on such a list, or
+  carrying the added items across a re-lay, were the alternatives: refusing blocks
+  a swap Ron may want anyway, and carrying them would silently change where they
+  air (the list's end moves with the re-lay); naming is what the same prompts
+  already do for a clip placed inside the window. Not built, but the next step if
+  Ron would rather the added items survive: append them after the re-lay's end Flex.
+- **How they are found** (`addedAtEnd`, from the list alone). The editor rotates the
+  list to start at now, so the end Flex is mid-array: after it come the loop's seam
+  (an airing or two off the slots, e.g. channel 3's Tick-Tick-Tick), then the
+  lineup's first days, and what the library added "at the end" follows those. So it
+  is the run of no-slot airings that ends the array, after the last airing a slot
+  made. Three guards keep it off the generator's own lists: the lineup must not be a
+  whole number of the schedule's periods long (the generator makes it whole, seam or
+  no seam, so a whole one has had nothing added); it must carry labels (an
+  unlabelled one reads every airing as no slot's, and the window already reports
+  that, as for channel 1); and a pinned airing or a Repeat is not named.
+- **Found live, not by the first fixture.** The first version scanned back from the
+  array's end for the last Flex, which was a 7-minute break in the lineup's first
+  days: nothing named, "Nothing placed by hand from now on would be lost", on the
+  real editor, while the unrotated fixture passed. The test now rotates the list
+  as the editor does.
+- **Proof.** Failing first (the end-of-list lineup of the delete fix, a swap's
+  re-lay): `dropped` was 0, the four new checks failed; 2231 pass. Live on the
+  preview (port 18210, a copy of `.dizquetv-dev` taken Fri Oct 16 about 9:37pm
+  Central, identical to the live files when compared at the end): channel 3 with 12
+  episodes added at the end through the library's own import, Swap on Sun Oct 18
+  3:30am: the dialog reads "This also drops 12 airings placed in the list by hand.",
+  "show them" lists the 12 (Fri Oct 22, 9:30pm to Sat Oct 23, 1:32am - next year's
+  Oct 22, the date has no year) in a list that scrolls inside the dialog, and Tick-Tick-Tick
+  is not named. The unedited channel 3 still says "Nothing placed by hand from now
+  on would be lost." Insert and undo take the same `relayEffects`; they are covered by
+  the Node tests, not exercised live. One re-lay of channel 3 takes about 50 s.
+- **Known gaps.** A lineup never labelled (channel 1) gets no end-of-list names, only
+  the window's own (over-)count. One whose end items include a slot's own show reads
+  those as made by the slot. A hand-edit that leaves the length a whole number of
+  periods (adding and removing the same length) is not seen.
+
+**Swap and Insert say why a show can't be read, Oct 17, 2026** (`relay-names-dropped`).
+On a preview whose server was no longer running (port 18210, a copy that was not
+the data's fault), the Swap dialog's This show and Custom shows tabs both said
+"Something went wrong reading that show." and listed nothing, while Holiday
+episodes worked (it reads the editor's cached catalog state, not the server).
+
+- **The cause was the environment, not the data or the show.** Port 18210 refused
+  connections (no process on it, its log ending at the last page load). On a live
+  server with the same data, This show, Other shows and Custom shows all read, for
+  a show added from the library included (`/api/catalogs/read` answers 200 for a
+  Plex show and a custom show). Stopping the server with the dialog open gave the
+  exact symptom. The shared read is a `$http` POST to `/api/catalogs/read`, and
+  Custom shows' list is another request, so a dead server fails both and the
+  dialog's catch-all gave one useless sentence. The reader already turns a show it
+  cannot read into `{ error }` and the dialog already fell back to the lineup's
+  episodes for that case; a failed request was the one case with neither.
+- **The fix** (`src/swap-read.js`, pure, tested in `test/swap-read.js`, failing
+  first): `explain` says the reason in plain words - the server did not answer
+  and may not be running; the server answered with an error (status and what it
+  said); a Plex server this data folder has no entry for, by name; Plex not
+  answering or timing out - and `readShow`, `readCustomShows` and `readCustomItems`
+  fall back to what the lineup holds (its episodes of the show, the custom shows
+  and their items in it), saying how many, or that it holds none. Both tabs, and
+  Other shows on this channel, use them. A custom list that came only from the
+  lineup is asked of the server again next time.
+- **Live**, on the fresh copy: the dialog open, the server stopped, Custom shows
+  says "Couldn't read the custom shows. The Syndicast server didn't answer - it may
+  not be running any more. Start it again, reload this page and try again. Showing
+  the 14 custom shows already in the lineup." and lists them; choosing one lists its
+  4 items in the lineup; This show lists the slot show's 41 episodes with the same
+  reason.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time

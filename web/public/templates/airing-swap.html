@@ -46,7 +46,15 @@
 
                 <div ng-show="state === 'choose'">
                     <p>{{fitText}}</p>
-                    <div class="alert alert-info py-1 px-2 small" ng-show="warning">{{warning}}</div>
+                    <div class="alert alert-info py-1 px-2 small" ng-show="warning">{{warning}}
+                        <div ng-if="warningItems.length > 0">
+                            <a href="" ng-click="showWarningItems = !showWarningItems; $event.preventDefault()">{{showWarningItems ? 'hide them' : 'show them'}}</a>
+                            <ul ng-if="showWarningItems" class="pl-3 mb-0" style="max-height: 30vh; overflow-y: auto;">
+                                <li ng-repeat="line in warningItems | limitTo:300 track by $index">{{line}}</li>
+                                <li ng-if="warningItems.length > 300">...and {{warningItems.length - 300}} more</li>
+                            </ul>
+                        </div>
+                    </div>
                     <div class="card" ng-repeat="o in options" style="margin-bottom: 8px;">
                         <div class="card-body py-2 px-3">
                             <button class="btn btn-sm btn-primary" ng-click="apply(o)">{{o.label}}</button>
