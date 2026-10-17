@@ -5232,6 +5232,38 @@ would be lost, in the prompts that already ask first.
   those as made by the slot. A hand-edit that leaves the length a whole number of
   periods (adding and removing the same length) is not seen.
 
+**Swap and Insert say why a show can't be read, Oct 17, 2026** (`relay-names-dropped`).
+On a preview whose server was no longer running (port 18210, a copy that was not
+the data's fault), the Swap dialog's This show and Custom shows tabs both said
+"Something went wrong reading that show." and listed nothing, while Holiday
+episodes worked (it reads the editor's cached catalog state, not the server).
+
+- **The cause was the environment, not the data or the show.** Port 18210 refused
+  connections (no process on it, its log ending at the last page load). On a live
+  server with the same data, This show, Other shows and Custom shows all read, for
+  a show added from the library included (`/api/catalogs/read` answers 200 for a
+  Plex show and a custom show). Stopping the server with the dialog open gave the
+  exact symptom. The shared read is a `$http` POST to `/api/catalogs/read`, and
+  Custom shows' list is another request, so a dead server fails both and the
+  dialog's catch-all gave one useless sentence. The reader already turns a show it
+  cannot read into `{ error }` and the dialog already fell back to the lineup's
+  episodes for that case; a failed request was the one case with neither.
+- **The fix** (`src/swap-read.js`, pure, tested in `test/swap-read.js`, failing
+  first): `explain` says the reason in plain words - the server did not answer
+  and may not be running; the server answered with an error (status and what it
+  said); a Plex server this data folder has no entry for, by name; Plex not
+  answering or timing out - and `readShow`, `readCustomShows` and `readCustomItems`
+  fall back to what the lineup holds (its episodes of the show, the custom shows
+  and their items in it), saying how many, or that it holds none. Both tabs, and
+  Other shows on this channel, use them. A custom list that came only from the
+  lineup is asked of the server again next time.
+- **Live**, on the fresh copy: the dialog open, the server stopped, Custom shows
+  says "Couldn't read the custom shows. The Syndicast server didn't answer - it may
+  not be running any more. Start it again, reload this page and try again. Showing
+  the 14 custom shows already in the lineup." and lists them; choosing one lists its
+  4 items in the lineup; This show lists the slot show's 41 episodes with the same
+  reason.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time

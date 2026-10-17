@@ -60,6 +60,7 @@ const suites = [
     './channel-catalog',
     './episode-start',
     './episode-start-model',
+    './swap-read',
 ];
 
 (async () => {

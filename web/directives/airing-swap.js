@@ -13,6 +13,7 @@ const pins = require('../../src/pins');
 const showCatalog = require('../../src/show-catalog');
 const constants = require('../../src/constants');
 const rounds = require('../../src/shuffle-rounds');
+const swapRead = require('../../src/swap-read');
 
 const SAME = 2000;
 const YEAR = 400 * 24 * 60 * 60 * 1000;
@@ -78,6 +79,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 .map( (id) => ({ id: id, name: names.get(id) }) ).sort( (a, b) => a.name.localeCompare(b.name) );
             scope.pick = { show: scope.showId, custom: null };
             scope.customShows = [];
+            let customFromLineup = false;
 
             let describe = (p) => {
                 let fit = pins.fitAt({ programs: channel.programs, startTime: startTime(), schedule, at, duration: p.duration });
@@ -92,14 +94,12 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             };
             let order = (a, b) => (getShowData(a).order - getShowData(b).order);
 
+            // A show that can't be read still offers the episodes the lineup holds, and says why.
             let readShow = async (showId) => {
                 let lineupItems = commonProgramTools.slotPool(channel.programs).filter( (p) => getShowData(p).showId === showId );
-                let read = await catalogReader.read([ { showId: showId, title: names.get(showId), lineupItems: lineupItems } ]);
-                let got = read[showId];
-                if (! got || got.error || ! Array.isArray(got.items)) {
-                    // Plex unreachable: the lineup's own episodes, as Create Lineup falls back.
-                    scope.error = `Couldn't read ${names.get(showId) || showId} from Plex (${got && got.error ? got.error : 'no answer'}); showing the episodes already in the lineup.`;
-                    return lineupItems;
+                let got = await swapRead.readShow({ read: (shows) => catalogReader.read(shows), showId: showId, title: names.get(showId), lineupItems: lineupItems });
+                if (got.notice !== '') {
+                    scope.error = got.notice;
                 }
                 return got.items;
             };
@@ -126,12 +126,23 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                         return;
                     }
                     if (scope.source === 'custom') {
-                        if (scope.customShows.length === 0) {
-                            scope.customShows = (await dizquetv.getAllShowsInfo()).slice().sort( (a, b) => a.name.localeCompare(b.name) );
+                        if ( (scope.customShows.length === 0) || customFromLineup ) {
+                            let shows = await swapRead.readCustomShows({ list: () => dizquetv.getAllShowsInfo(), programs: channel.programs });
+                            scope.customShows = shows.shows;
+                            // Only the lineup's own list: the server is asked again next time.
+                            customFromLineup = (shows.notice !== '');
+                            if (shows.notice !== '') {
+                                scope.error = shows.notice;
+                            }
                         }
                         if (scope.pick.custom !== null) {
-                            let show = await dizquetv.getShow(scope.pick.custom);
-                            list = showCatalog.fromCustom(Object.assign({ id: scope.pick.custom }, show));
+                            let chosen = scope.customShows.find( (s) => s.id === scope.pick.custom );
+                            let got = await swapRead.readCustomItems({ get: (id) => dizquetv.getShow(id), id: scope.pick.custom,
+                                name: chosen && chosen.name, programs: channel.programs });
+                            list = got.items;
+                            if (got.notice !== '') {
+                                scope.error = got.notice;
+                            }
                         }
                     } else {
                         let id = (scope.source === 'show') ? scope.showId : scope.pick.show;
@@ -140,7 +151,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     scope.items = list.filter( (p) => ! p.isOffline && (p.duration > 0) ).map(describe);
                 } catch (err) {
                     console.error(err);
-                    scope.error = 'Something went wrong reading that show.';
+                    scope.error = `Couldn't list the episodes. ${swapRead.explain(err)}`;
                 } finally {
                     scope.loading = false;
                     $timeout();
