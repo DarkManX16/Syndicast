@@ -408,11 +408,38 @@ function handPlaced({ programs, startTime, from, to, schedule, getShowData }) {
 /*
  * What deleting an airing does on a Time Slots channel: 'relay' re-makes the
  * lineup from the schedule, which drops anything in the list that no slot
- * made, so while the list holds something placed by hand it is 'splice' -
- * the airing comes out of the list and nothing else changes.
+ * made, so unless the list is the generator's own it is 'splice' - the airing
+ * comes out of the list and nothing else changes.
+ *
+ * It is not the generator's own when something in it is placed by hand
+ * (handPlaced), or when it is not a whole number of the schedule's periods
+ * long: the generator makes it so, and whatever was added after its end Flex
+ * - the library's "Insert at the end of list" - or taken out of it by hand
+ * is past where handPlaced reaches (a lineup's last two weeks are the
+ * generator's own, off the slots), and a re-lay would drop it unseen.
  */
 function deleteMode({ programs, startTime, from, to, schedule, getShowData }) {
-    return (handPlaced({ programs, startTime, from, to, schedule, getShowData }).length > 0) ? 'splice' : 'relay';
+    if (handPlaced({ programs, startTime, from, to, schedule, getShowData }).length > 0) {
+        return 'splice';
+    }
+    let period = (schedule && schedule.period);
+    if (Number.isFinite(period) && (period > 0)) {
+        let left = mod(programs.reduce( (a, p) => a + p.duration, 0 ), period);
+        if ( (left > 1) && (period - left > 1) ) {
+            return 'splice';
+        }
+    }
+    return 'relay';
+}
+
+// Takes one airing out of the list, in place; every other airing stays where it is.
+function removeAiring(programs, program) {
+    let i = programs.indexOf(program);
+    if (i === -1) {
+        return false;
+    }
+    programs.splice(i, 1);
+    return true;
 }
 
 // Which prompt Escape closes: the undo/confirm prompt sits on top of the delete prompt.
@@ -643,6 +670,7 @@ module.exports = {
     droppedBehind: droppedBehind,
     handPlaced: handPlaced,
     deleteMode: deleteMode,
+    removeAiring: removeAiring,
     escapeAction: escapeAction,
     sayFirstSwap: sayFirstSwap,
     sayKept: sayKept,

@@ -5156,8 +5156,34 @@ airing, hundreds, with no way off the screen.
   air removes the airing (37,531 to 37,530) with no re-lay and no prompt; a
   212-line confirm prompt (state set directly) shows one sentence and "show them", its list scrolls
   inside the dialog and Cancel stays on screen, and Escape closes it. The swap dialog's "show them" is not exercised live.
+- **Second report, same day: "Remove this airing only" removed every episode
+  added.** The library's default is "Insert at the end of list", which sits after
+  the lineup's end Flex - past where a re-lay reaches (two weeks before the loop's
+  end, which keeps the generator's own last days from reading as hand-placed). So
+  `handPlaced` saw nothing, `deleteMode` said re-lay, the prompt showed the
+  re-lay's text ("Leaves 21:37 of Flex"), and the re-lay regenerated the list
+  without the new airings: 37,531 to 37,507, all 12 gone, no prompt (the
+  dropped list is clipped the same way). Reproduced exactly so on the preview.
+  The first fix's tests put the items inside the window, and the fixture's
+  window started before the lineup's start, where the list's end loops round to
+  the front, so they never met the horizon.
+  `deleteMode` now also says splice when the lineup is not a whole number of the
+  schedule's periods long (the generator makes it so: channels 2 and 3 are 53
+  weeks exactly, channel 1, made by an older generator, is not and is unlabelled
+  anyway). An airing added after the end, or taken out by hand, breaks it; a
+  generator lineup, a swap, a pin or a re-lay's Flex never does. The splice is
+  `pins.removeAiring`, in place, one airing. Failing first: the end-of-list
+  lineup read 'relay'. Live, on the copy, channel 3 with House of Mouse added at
+  the end, each time fresh: Remove only, Holiday and Never air each take out
+  E06 alone (37,531 to 37,530), the other ten remain, no re-lay; the dialog says
+  the list holds items placed by hand. The unedited channel 3 still gets the
+  re-lay dialog.
+- **Same blind spot elsewhere, not fixed.** Swap, Insert, Undo and the first-swap
+  warning name what a re-lay drops from the same clipped window, so items added at
+  the end of the list are dropped by them without being named. Create Lineup
+  always rebuilds. A Swap on a lineup with the end-of-list items would lose them.
 - **Not changed.** A re-lay still drops hand-placed items when asked for by
-  Swap, Insert, Undo and Create Lineup, which name them first.
+  Swap, Insert, Undo and Create Lineup, which name them first (inside the window).
 
 ### Random Slots' Create Lineup restarts the program on air
 

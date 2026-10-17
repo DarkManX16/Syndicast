@@ -1445,7 +1445,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     deleteByRelay(prompt, choice);
                     return;
                 }
-                scope.channel.programs.splice(x, 1)
+                pinTools.removeAiring(scope.channel.programs, prompt.program);
                 updateChannelDuration()
                 if (choice !== 'only') {
                     queueCatalogOps([ { neverAir: [ showCatalog.neverAirEntry(prompt.program, getShowData, 'deleted', choice,

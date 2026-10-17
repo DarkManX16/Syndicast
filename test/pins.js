@@ -284,6 +284,36 @@ module.exports = async function () {
             pins.deleteMode(Object.assign({ programs: plain.programs, startTime: plain.startTime }, reach)) === 'relay'
                 && pins.deleteMode(Object.assign({ programs: swapped.programs, startTime: swapped.startTime }, reach)) === 'relay');
 
+        // Ron, Oct 16, second report: the library's default is "Insert at the end of list", which is
+        // past where a re-lay reaches (two weeks before the loop's end), so nothing read as placed by
+        // hand, the delete re-laid, and "Remove this airing only" lost every episode added.
+        // As Ron's lineups end: the content, then days of Flex where the loop comes round. What is added
+        // at the end of the list comes after that Flex.
+        const sealed = plain.programs.concat([{ isOffline: true, duration: 5 * DAY }]);
+        // The editor rotates a lineup's start to now, so the end of the list is a year out.
+        const reachNow = { from: plain.startTime + 30 * MIN, to: plain.startTime + 400 * DAY, schedule, getShowData };
+        const listEnd = { programs: sealed.concat(mouse.slice(0, 12)), startTime: plain.startTime };
+        const generated = sealed.reduce((a, p) => a + p.duration, 0);
+        suite.check('a lineup the generator made is a whole number of periods, and a re-lay is how a delete treats it',
+            generated % schedule.period === 0 && pins.deleteMode(Object.assign({ programs: sealed, startTime: plain.startTime }, reachNow)) === 'relay',
+            String(generated / schedule.period));
+        suite.check('...while a re-lay cannot see what was added after its end Flex (the cause)',
+            pins.handPlaced(Object.assign({ programs: listEnd.programs, startTime: listEnd.startTime }, reachNow)).length === 0);
+        suite.check('items added at the end of the list hold a delete back too: it takes the airing out and re-makes nothing',
+            pins.deleteMode(Object.assign({ programs: listEnd.programs, startTime: listEnd.startTime }, reachNow)) === 'splice',
+            pins.deleteMode(Object.assign({ programs: listEnd.programs, startTime: listEnd.startTime }, reachNow)));
+        const afterDelete = listEnd.programs.slice();
+        const gone = afterDelete[afterDelete.length - 11];
+        const rest = afterDelete.filter((p) => p !== gone);
+        suite.check('...and the airing that goes is that one: every other airing, added or not, stays in order',
+            pins.removeAiring(afterDelete, gone) === true && afterDelete.length === rest.length && afterDelete.every((p, i) => p === rest[i])
+                && afterDelete.slice(-11).every((p, i) => p === mouse.slice(0, 12).filter((m) => m !== gone)[i]),
+            afterDelete.length + ' of ' + rest.length);
+        suite.check('...a lineup with one airing already taken out by hand is not the generator\'s either',
+            pins.deleteMode(Object.assign({ programs: plain.programs.slice(0, 50).concat(plain.programs.slice(51)), startTime: plain.startTime }, reachNow)) === 'splice');
+        suite.check('...and a schedule with no period leaves it to what is in the list',
+            pins.deleteMode({ programs: plain.programs, startTime: plain.startTime, from: plain.startTime + 30 * MIN, to: plain.startTime + 400 * DAY, schedule: {}, getShowData }) === 'relay');
+
         suite.check('Escape closes the delete prompt, or the undo prompt on top of it, and nothing else',
             pins.escapeAction({ key: 'Escape', deletePrompt: {}, undoPrompt: null }) === 'delete'
                 && pins.escapeAction({ key: 'Escape', deletePrompt: null, undoPrompt: {} }) === 'undo'
