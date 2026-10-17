@@ -388,7 +388,72 @@ function relayEffects({ before, after, from, to, schedule, getShowData }) {
                 back: (typeof(nearest) !== 'undefined') && (nearest < x.start) });
         }
     }
+    // What was added after the lineup's end Flex is past the clip above, and a
+    // re-lay drops it all the same.
+    let named = new Set(effects.dropped.map( (d) => d.program ));
+    addedAtEnd({ programs: before.programs, startTime: before.startTime, from, schedule, getShowData })
+        .forEach( (d) => { if (! named.has(d.program)) { effects.dropped.push(d); } } );
     return effects;
+}
+
+/*
+ * What was put at the end of the list - the library's "Insert at the end of
+ * list" - which relayEffects and handPlaced never reach: it sits after the
+ * lineup's end Flex, where they stop (two weeks before the loop's end), yet a
+ * re-lay drops it. Read from the list alone: the run of airings at its very
+ * end that no slot made, each at its next airing from `from`.
+ *
+ * The editor rotates the list to start at now, so the end Flex is not at the
+ * end of the array: after it come the loop's seam (the generator leaves an
+ * airing or two off the slots there) and the lineup's first days, and what was
+ * added follows those. So it is the run that ends the list, after the last
+ * airing a slot made. And the generator makes a lineup a whole number of the
+ * schedule's periods long, so only one that is not whole has had anything
+ * added; a lineup with no labels reads every airing as no slot's, which says
+ * nothing here (relayEffects' own window reports that).
+ */
+function addedAtEnd({ programs, startTime, from, schedule, getShowData }) {
+    let period = (schedule && schedule.period);
+    if (! (Number.isFinite(period) && (period > 0)) || ! programs.some( (p) => typeof(p.slotPosition) === 'string' )) {
+        return [];
+    }
+    let total = programs.reduce( (a, p) => a + p.duration, 0 );
+    let left = mod(total, period);
+    if ( (left <= 1) || (period - left <= 1) ) {
+        return [];
+    }
+    // The end Flex: the longest run of a day or more.
+    let isFlex = (p) => p.isOffline && (p.type !== 'redirect') && ! p.pin;
+    let best = { end: -1, length: 0 };
+    for (let i = 0; i < programs.length; ) {
+        if (! isFlex(programs[i])) {
+            i++;
+            continue;
+        }
+        let length = 0;
+        while ( (i < programs.length) && isFlex(programs[i]) ) {
+            length += programs[i].duration;
+            i++;
+        }
+        if (length > best.length) {
+            best = { end: i, length: length };
+        }
+    }
+    if ( (best.length < DAY) || (best.end >= programs.length) ) {
+        return [];
+    }
+    let startOf = programs.slice(0, best.end).reduce( (a, p) => a + p.duration, 0 );
+    // Its next airing: this cycle's, or the next when this one's has begun.
+    let first = startTime + startOf;
+    first += Math.max(0, Math.ceil( (from - SAME - first) / total )) * total;
+    let found = slotProgress.airings({ programs, startTime, from: first, to: first + (total - startOf), schedule, getShowData });
+    let byHand = (x) => (x.key === null) && ! x.program.pin && (x.program.slotPosition !== 'repeat');
+    let n = found.length;
+    while ( (n > 0) && byHand(found[n - 1]) ) {
+        n--;
+    }
+    return found.slice(n).filter( (x) => x.start >= first - SAME )
+        .map( (x) => ({ start: x.start, program: x.program }) );
 }
 
 /*
@@ -669,6 +734,7 @@ module.exports = {
     droppedLines: droppedLines,
     droppedBehind: droppedBehind,
     handPlaced: handPlaced,
+    addedAtEnd: addedAtEnd,
     deleteMode: deleteMode,
     removeAiring: removeAiring,
     escapeAction: escapeAction,

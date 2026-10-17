@@ -5178,12 +5178,59 @@ airing, hundreds, with no way off the screen.
   E06 alone (37,531 to 37,530), the other ten remain, no re-lay; the dialog says
   the list holds items placed by hand. The unedited channel 3 still gets the
   re-lay dialog.
-- **Same blind spot elsewhere, not fixed.** Swap, Insert, Undo and the first-swap
-  warning name what a re-lay drops from the same clipped window, so items added at
-  the end of the list are dropped by them without being named. Create Lineup
-  always rebuilds. A Swap on a lineup with the end-of-list items would lose them.
+- **Same blind spot elsewhere, fixed next (see below).** Swap, Insert, Undo and the
+  first-swap warning name what a re-lay drops from the same clipped window, so items
+  added at the end of the list were dropped by them without being named.
 - **Not changed.** A re-lay still drops hand-placed items when asked for by
-  Swap, Insert, Undo and Create Lineup, which name them first (inside the window).
+  Swap, Insert, Undo and Create Lineup, which name them first.
+
+**Swap, insert and undo name what was added at the end of the list, Oct 16, 2026**
+(`relay-names-dropped`, from `delete-handplaced` at 228ddda). For these a re-lay is
+the point, so unlike the delete path nothing is held back: the fix is to say what
+would be lost, in the prompts that already ask first.
+
+- **The behaviour, and why.** `pins.relayEffects(...).dropped` now also holds
+  `pins.addedAtEnd`: the airings at the very end of the list that no slot made.
+  They ride the existing sentences (`sayDropped`: a few named, otherwise "This also
+  drops 12 airings placed in the list by hand." with "show them"), so the swap
+  dialog, the first-swap warning, the undo prompt, the insert prompt and the
+  delete-by-re-lay confirm all name them, and a delete's "no prompt when nothing is
+  dropped" shortcut no longer skips them. Refusing a swap on such a list, or
+  carrying the added items across a re-lay, were the alternatives: refusing blocks
+  a swap Ron may want anyway, and carrying them would silently change where they
+  air (the list's end moves with the re-lay); naming is what the same prompts
+  already do for a clip placed inside the window. Not built, but the next step if
+  Ron would rather the added items survive: append them after the re-lay's end Flex.
+- **How they are found** (`addedAtEnd`, from the list alone). The editor rotates the
+  list to start at now, so the end Flex is mid-array: after it come the loop's seam
+  (an airing or two off the slots, e.g. channel 3's Tick-Tick-Tick), then the
+  lineup's first days, and what the library added "at the end" follows those. So it
+  is the run of no-slot airings that ends the array, after the last airing a slot
+  made. Three guards keep it off the generator's own lists: the lineup must not be a
+  whole number of the schedule's periods long (the generator makes it whole, seam or
+  no seam, so a whole one has had nothing added); it must carry labels (an
+  unlabelled one reads every airing as no slot's, and the window already reports
+  that, as for channel 1); and a pinned airing or a Repeat is not named.
+- **Found live, not by the first fixture.** The first version scanned back from the
+  array's end for the last Flex, which was a 7-minute break in the lineup's first
+  days: nothing named, "Nothing placed by hand from now on would be lost", on the
+  real editor, while the unrotated fixture passed. The test now rotates the list
+  as the editor does.
+- **Proof.** Failing first (the end-of-list lineup of the delete fix, a swap's
+  re-lay): `dropped` was 0, the four new checks failed; 2231 pass. Live on the
+  preview (port 18210, a copy of `.dizquetv-dev` taken Fri Oct 16 about 9:37pm
+  Central, identical to the live files when compared at the end): channel 3 with 12
+  episodes added at the end through the library's own import, Swap on Sun Oct 18
+  3:30am: the dialog reads "This also drops 12 airings placed in the list by hand.",
+  "show them" lists the 12 (Fri Oct 22, 9:30pm to Sat Oct 23, 1:32am - next year's
+  Oct 22, the date has no year) in a list that scrolls inside the dialog, and Tick-Tick-Tick
+  is not named. The unedited channel 3 still says "Nothing placed by hand from now
+  on would be lost." Insert and undo take the same `relayEffects`; they are covered by
+  the Node tests, not exercised live. One re-lay of channel 3 takes about 50 s.
+- **Known gaps.** A lineup never labelled (channel 1) gets no end-of-list names, only
+  the window's own (over-)count. One whose end items include a slot's own show reads
+  those as made by the slot. A hand-edit that leaves the length a whole number of
+  periods (adding and removing the same length) is not seen.
 
 ### Random Slots' Create Lineup restarts the program on air
 
