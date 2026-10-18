@@ -62,6 +62,11 @@ const SHOW_KEYED_ON = WHICH.filter( (w) => w.match === 'show' ).map( (w) => w.ke
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// The "Only when" select's value for the cascade option, alongside a step id
+// and null ("always"). No stored step id ever starts with "$" (newStepId),
+// so it cannot collide with one.
+const CASCADE_MARK = '$cascade';
+
 // Which of the choices a stored step is, or null when it is none of them (a kind
 // or an unknown match the editor does not know): those are shown and kept, never edited.
 function whichOf(step) {
@@ -222,26 +227,57 @@ function markOptions(draft, situation, step) {
     return stepsOf(draft, situation).filter( (s) => (s !== step) && (s.id != null) && ! isMarked(s) );
 }
 
+function isCascade(step) {
+    return step.onlyIfNothingAbove === true;
+}
+
+// Marked covers both ways to be conditional: watching one step by id, or
+// cascading from position (isCascade). Either way the step cannot itself be
+// watched by id (markOptions) or become the other kind without first clearing
+// this one (setMark / setCascade, below).
 function isMarked(step) {
+    if (isCascade(step)) {
+        return true;
+    }
     const w = step.onlyIfNoMatch;
     return ! ( (typeof(w) === 'undefined') || (w === null) || (w === false) || (w === '') );
 }
 
-// A step another step watches cannot itself be conditional.
+// A step another step watches (by id) cannot itself be conditional - cascade included.
 function isWatched(draft, situation, step) {
     return stepsOf(draft, situation).some( (s) => (s !== step) && isMarked(s) && (s.onlyIfNoMatch === step.id) );
 }
 
 // Setting a mark that cannot be honoured is refused rather than stored.
+// Choosing an id clears a cascade mark on the same step, keeping the two
+// mutually exclusive.
 function setMark(draft, situation, step, watchedId) {
     if ( (watchedId === null) || (typeof(watchedId) === 'undefined') || (watchedId === '') ) {
         step.onlyIfNoMatch = null;
+        step.onlyIfNothingAbove = false;
         return true;
     }
     if (! markOptions(draft, situation, step).some( (s) => s.id === watchedId ) || isWatched(draft, situation, step) ) {
         return false;
     }
     step.onlyIfNoMatch = watchedId;
+    step.onlyIfNothingAbove = false;
+    return true;
+}
+
+// Turning the cascade option on or off, refused for the same reason setMark
+// refuses an id: a step another step already watches by name cannot itself
+// become conditional. Turning it on clears any id mark on the same step.
+function setCascade(draft, situation, step, on) {
+    if (! on) {
+        step.onlyIfNothingAbove = false;
+        return true;
+    }
+    if (isWatched(draft, situation, step)) {
+        return false;
+    }
+    step.onlyIfNothingAbove = true;
+    step.onlyIfNoMatch = null;
     return true;
 }
 
@@ -356,7 +392,9 @@ function stepListName(step, names) {
 // What limits a step, as the clauses ending its sentence.
 function limitClauses(step, sequence, names) {
     const parts = [];
-    if (isMarked(step)) {
+    if (isCascade(step)) {
+        parts.push('only when no step above it on this side found a clip');
+    } else if (isMarked(step)) {
         const watched = sequence.find( (s) => (s !== step) && (s.id === step.onlyIfNoMatch) );
         parts.push(watched
             ? `only when the “${stepListName(watched, names)}” step found nothing`
@@ -404,7 +442,9 @@ function describeStep(step, sequence, names) {
 function chipLabel(step, sequence, names) {
     if ( (step.kind === 'generated') && (whichOf(step) !== null) ) {
         const parts = [ stepListName(step, names), CARD_WHICH.find( (x) => x.id === whichOf(step) ).short ];
-        if (isMarked(step)) {
+        if (isCascade(step)) {
+            parts.push('if nothing above it played');
+        } else if (isMarked(step)) {
             const watched = sequence.find( (s) => (s !== step) && (s.id === step.onlyIfNoMatch) );
             parts.push(watched ? `if “${stepListName(watched, names)}” finds nothing` : 'watches a missing step');
         }
@@ -432,7 +472,9 @@ function chipLabel(step, sequence, names) {
     } else {
         parts.push('skip');
     }
-    if (isMarked(step)) {
+    if (isCascade(step)) {
+        parts.push('if nothing above it played');
+    } else if (isMarked(step)) {
         const watched = sequence.find( (s) => (s !== step) && (s.id === step.onlyIfNoMatch) );
         parts.push(watched ? `if “${stepListName(watched, names)}” finds nothing` : 'watches a missing step');
     }
@@ -678,7 +720,7 @@ function flexTag(channel, index, entryStart, names) {
         lines.push('? = plays only some of the time');
     }
     if (all.some( (l) => l.charAt(0) === '(' )) {
-        lines.push('( ) = plays only if the step it watches found nothing');
+        lines.push('( ) = plays only if the step it watches found nothing, or (with no step named) if nothing above it on its side played');
     }
     return { text: all.join(' / '), title: lines.join('\n') };
 }
@@ -887,8 +929,11 @@ module.exports = {
     copySituations: copySituations,
     markOptions: markOptions,
     isMarked: isMarked,
+    isCascade: isCascade,
     isWatched: isWatched,
     setMark: setMark,
+    setCascade: setCascade,
+    CASCADE_MARK: CASCADE_MARK,
     normalizeDays: normalizeDays,
     isDaySelected: isDaySelected,
     toggleDay: toggleDay,

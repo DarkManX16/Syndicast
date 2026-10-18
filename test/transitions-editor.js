@@ -32,7 +32,7 @@ const names = { listName: (id) => (typeof(LIST_NAMES[id]) === 'undefined') ? nul
 // A generated card step, as the form stores one.
 function card(id, extra) {
     return Object.assign({ id, kind: 'generated', templateId: 'ct', keyedOn: 'later',
-        onlyIfNoMatch: null, days: null, chance: null }, extra || {});
+        onlyIfNoMatch: null, onlyIfNothingAbove: false, days: null, chance: null }, extra || {});
 }
 
 function episode(show, n, mins) {
@@ -44,7 +44,7 @@ function clip(title, seconds, extra) {
 }
 function step(id, extra) {
     return Object.assign({ id, kind: 'list', listId: 'wbrb', match: 'any', keyedOn: 'next',
-        fallbackListId: null, onlyIfNoMatch: null, days: null, chance: null }, extra || {});
+        fallbackListId: null, onlyIfNoMatch: null, onlyIfNothingAbove: false, days: null, chance: null }, extra || {});
 }
 
 const LISTS = {
@@ -120,9 +120,9 @@ module.exports = async function run() {
         const s = editor.newStep(draft);
         suite.check('a new step asks for a clip for the show coming up, no list chosen',
             s.kind === 'list' && s.match === 'show' && s.keyedOn === 'next' && s.listId === ''
-            && s.fallbackListId === null && s.onlyIfNoMatch === null && s.days === null && s.chance === null);
+            && s.fallbackListId === null && s.onlyIfNoMatch === null && s.onlyIfNothingAbove === false && s.days === null && s.chance === null);
         suite.check('... and carries every field a stored step carries',
-            same(Object.keys(s).sort(), ['chance', 'days', 'fallbackListId', 'id', 'keyedOn', 'kind', 'listId', 'match', 'onlyIfNoMatch']));
+            same(Object.keys(s).sort(), ['chance', 'days', 'fallbackListId', 'id', 'keyedOn', 'kind', 'listId', 'match', 'onlyIfNoMatch', 'onlyIfNothingAbove']));
         const ids = new Set();
         for (let i = 0; i < 200; i++) {
             const n = editor.newStep(draft);
@@ -236,6 +236,44 @@ module.exports = async function run() {
         suite.check('... but not off either end', ! editor.moveStep(d2, 'leaving', 'out', m[1], -1) && ! editor.moveStep(d2, 'leaving', 'out', m[0], 1));
     }
 
+    // ---- "only when": the cascade option ---------------------------------------
+    {
+        const draft = editor.emptyDraft();
+        const a = step('a');
+        const b = step('b');
+        const c = step('c');
+        draft.betweenShows.out.push(a, b, c);
+
+        suite.check('a step may become a cascade step', editor.setCascade(draft, 'betweenShows', b, true) && editor.isCascade(b));
+        suite.check('becoming one clears any id mark it had', b.onlyIfNoMatch === null);
+        suite.check('a cascade step is marked, so it is not offered as something to watch by id',
+            editor.isMarked(b) && ! editor.markOptions(draft, 'betweenShows', c).some( (s) => s.id === 'b' ));
+        suite.check('turning it off clears it, and it is no longer marked',
+            editor.setCascade(draft, 'betweenShows', b, false) && ! editor.isCascade(b) && ! editor.isMarked(b));
+
+        editor.setCascade(draft, 'betweenShows', b, true);
+        suite.check('watching a step by id instead clears the cascade mark',
+            editor.setMark(draft, 'betweenShows', b, 'a') && ! editor.isCascade(b) && b.onlyIfNoMatch === 'a');
+        suite.check('becoming a cascade step instead clears the id mark',
+            editor.setCascade(draft, 'betweenShows', b, true) && b.onlyIfNoMatch === null && editor.isCascade(b));
+        suite.check('"always" clears a cascade mark too',
+            editor.setMark(draft, 'betweenShows', b, '') && ! editor.isCascade(b) && b.onlyIfNoMatch === null);
+
+        editor.setMark(draft, 'betweenShows', c, 'a');
+        suite.check('a step that is watched by id cannot become a cascade step either',
+            editor.isWatched(draft, 'betweenShows', a) && ! editor.setCascade(draft, 'betweenShows', a, true) && ! editor.isCascade(a));
+
+        suite.check('copying a cascade step keeps it a cascade step, with no id to remap',
+            (() => {
+                const source = editor.emptyDraft();
+                const s1 = editor.addStep(source, 'leaving', 'out', Object.assign(step('s1'), { listId: 'upnext' }));
+                editor.setCascade(source, 'leaving', s1, true);
+                const target = { name: 'T', fillerCollections: [], starts: [] };
+                editor.copySituations(source, target, ['leaving']);
+                return editor.isCascade(editor.loadDraft(target).leaving.out[0]);
+            })());
+    }
+
     // ---- the sentence and the chip ----------------------------------------------
     {
         const sentence = (s, seq) => editor.describeStep(s, seq || [s], names);
@@ -263,6 +301,10 @@ module.exports = async function run() {
             sentence(marked, [watched, marked]).includes('only when the “Up Next” step found nothing'));
         suite.check('a mark on a step that is not there says it never plays',
             sentence(step('m', { onlyIfNoMatch: 'ghost' })).includes('never plays'));
+        suite.check('a cascade step\'s sentence names the rule plainly, not a step',
+            sentence(step('s', { onlyIfNothingAbove: true })).includes('only when no step above it on this side found a clip'));
+        suite.check('onlyIfNothingAbove on a step wins over a stray onlyIfNoMatch in the sentence too',
+            sentence(step('s', { onlyIfNothingAbove: true, onlyIfNoMatch: 'ghost' })).includes('only when no step above it on this side found a clip'));
         suite.check('no list chosen is said plainly',
             sentence(step('s', { listId: '' })).startsWith('Plays any clip from a list you have not chosen yet'));
         suite.check('a list that was deleted is said plainly',
@@ -304,6 +346,10 @@ module.exports = async function run() {
             editor.chipLabel(step('s', { days: [1, 2], chance: 25 }), [], names).endsWith('Mon Tue · 25%'));
         suite.check('a mark shows on the chip',
             editor.chipLabel(marked, [watched, marked], names).includes('if “Up Next” finds nothing'));
+        suite.check('a cascade step\'s chip says so briefly',
+            editor.chipLabel(step('s', { onlyIfNothingAbove: true }), [], names).includes('if nothing above it played'));
+        suite.check('a cascade card step\'s chip says so too',
+            editor.chipLabel(card('c', { onlyIfNothingAbove: true }), [nt], names).includes('if nothing above it played'));
     }
 
     // ---- what is wrong with a step ----------------------------------------------
@@ -314,6 +360,10 @@ module.exports = async function run() {
         suite.check('a deleted list is a problem', p(step('s', { listId: 'gone' })).length === 1);
         suite.check('a deleted fallback list is a problem', p(step('s', { fallbackListId: 'gone' })).length === 1);
         suite.check('a mark that cannot be honoured is a problem', p(step('s', { onlyIfNoMatch: 'ghost' })).length === 1);
+        suite.check('a cascade step has nothing to dangle, so it is never this problem',
+            p(step('s', { onlyIfNothingAbove: true })).length === 0);
+        suite.check('onlyIfNothingAbove on a step means the stray onlyIfNoMatch is never checked either',
+            p(step('s', { onlyIfNothingAbove: true, onlyIfNoMatch: 'ghost' })).length === 0);
         suite.check('an empty days list in a stored step is a problem', p(step('s', { days: [] })).length === 1);
         suite.check('a bad chance in a stored step is a problem', p(step('s', { chance: 0 })).length === 1);
         suite.check('a step of a kind the editor does not know has none to report', p(step('s', { kind: 'video', listId: '' })).length === 0);
@@ -500,6 +550,19 @@ module.exports = async function run() {
             same(d.in.map( (x) => x.clip ), ['Generic Bumper']) && d.left.some( (l) => l.step.startsWith('Up Next') && l.why === 'found no clip'),
             JSON.stringify([d.in, d.left]));
         suite.check('breaks with steps are counted', ofLate.betweenShows.withSteps === 2 && ofLate.entering.withSteps === 1);
+
+        // The same two breaks, with the generic bumper a cascade step instead of a named mark.
+        const cascChannel = fixtureChannel();
+        cascChannel.blocks[0].transitions.betweenShows.in[1] = step('gen', { listId: 'generic', onlyIfNothingAbove: true });
+        const cascView = editor.previewBreaks(cascChannel, cascChannel.blocks[0], from, to, env()).situations.betweenShows.items;
+        const [cc, dd] = cascView;
+        suite.check('Up Next plays for Gamma, and the cascade bumper stays out - in its own plain words, not naming a step',
+            same(cc.in.map( (x) => x.clip ), ['Up Next Gamma'])
+            && cc.left.some( (l) => l.step.startsWith('Generic') && l.why === 'a step above it on this side already found a clip' ),
+            JSON.stringify(cc.left));
+        suite.check('with no clip naming Delta, the cascade bumper plays instead',
+            same(dd.in.map( (x) => x.clip ), ['Generic Bumper']) && dd.left.some( (l) => l.step.startsWith('Up Next') && l.why === 'found no clip'),
+            JSON.stringify(dd.left));
 
         // Several clips fit Up Next for Gamma: the preview shows the one that comes first and all that fit.
         const manyLists = Object.assign({}, LISTS, { upnext: LISTS.upnext.concat([clip('Up Next Gamma 2', 12, { names: ['tv.Gamma'] }),
