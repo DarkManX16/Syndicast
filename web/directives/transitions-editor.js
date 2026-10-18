@@ -78,6 +78,11 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
             };
 
             const sequence = (situation) => editor.stepsOf(scope.draft, situation);
+            // The "Only when" select's current value: a step id, CASCADE_MARK, or
+            // null for "always" - whichever of the two conditional shapes the step
+            // actually has (they are mutually exclusive, kept so by setMark/setCascade).
+            const markValueOf = (step) => editor.isCascade(step) ? editor.CASCADE_MARK
+                : editor.isMarked(step) ? step.onlyIfNoMatch : null;
 
             scope.count = () => editor.stepCount(scope.draft);
             scope.summaryLine = () => {
@@ -123,8 +128,9 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                 scope.templateChoices = templates;
                 const draft = scope.draft;
                 const situation = scope.form.situation;
-                scope.markChoices = editor.markOptions(draft, situation, scope.form.step)
-                    .map( (s) => ({ id: s.id, name: `only when “${editor.stepListName(s, names)}” (${draft[situation].out.indexOf(s) !== -1 ? 'before the commercials' : 'after the commercials'}) found nothing` }) );
+                scope.markChoices = [ { id: editor.CASCADE_MARK, name: 'only when no step above it on this side found a clip' } ]
+                    .concat(editor.markOptions(draft, situation, scope.form.step)
+                        .map( (s) => ({ id: s.id, name: `only when “${editor.stepListName(s, names)}” (${draft[situation].out.indexOf(s) !== -1 ? 'before the commercials' : 'after the commercials'}) found nothing` }) ));
                 scope.form.watched = editor.isWatched(scope.draft, scope.form.situation, scope.form.step);
             };
 
@@ -163,7 +169,7 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                     fallback: step.fallbackListId || null,
                     templateId: step.templateId || null,
                     which: editor.whichOf(step),
-                    mark: editor.isMarked(step) ? step.onlyIfNoMatch : null,
+                    mark: markValueOf(step),
                     chance: (step.chance == null) ? '' : String(step.chance),
                     chanceError: '',
                     watched: false,
@@ -204,8 +210,10 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                 } else if (field === 'which') {
                     editor.setWhich(step, f.which);
                 } else if (field === 'mark') {
-                    if (! editor.setMark(scope.draft, f.situation, step, f.mark) ) {
-                        f.mark = editor.isMarked(step) ? step.onlyIfNoMatch : null;
+                    const ok = (f.mark === editor.CASCADE_MARK) ? editor.setCascade(scope.draft, f.situation, step, true)
+                        : editor.setMark(scope.draft, f.situation, step, f.mark);
+                    if (! ok) {
+                        f.mark = markValueOf(step);
                     }
                 } else if (field === 'chance') {
                     const parsed = editor.setChance(step, f.chance);

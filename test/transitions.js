@@ -256,7 +256,7 @@ module.exports = async function run() {
         suite.check('reading fills a step\'s missing fields with the spec\'s defaults',
             read.betweenShows.out[0].kind === 'list' && read.betweenShows.out[0].match === 'any'
             && read.betweenShows.out[0].keyedOn === 'next' && read.betweenShows.out[0].fallbackListId === null
-            && read.betweenShows.out[0].listId === 'L');
+            && read.betweenShows.out[0].listId === 'L' && read.betweenShows.out[0].onlyIfNothingAbove === false);
         suite.check('a side that is not an array reads as empty, and an unknown situation is dropped',
             read.betweenShows.in.length === 0 && typeof read.nonsense === 'undefined');
         suite.check('reading rewrites nothing', JSON.stringify(context) === before);
@@ -336,6 +336,19 @@ module.exports = async function run() {
                 step('b', { onlyIfNoMatch: 'a' })], in: [] } } }).length === 1);
         suite.check('a watched id used twice is warned about, once for each watcher',
             warningsFor({ transitions: { betweenShows: { out: [step('up'), step('up'), step('w', { onlyIfNoMatch: 'up' })], in: [] } } }).length === 1);
+
+        // onlyIfNothingAbove: a cascade step names no step, so it has nothing to dangle.
+        suite.check('a cascade step is not warned about, alone or first in its side',
+            warningsFor({ transitions: { betweenShows: { out: [step('a', { onlyIfNothingAbove: true })], in: [] } } }).length === 0);
+        suite.check('a cascade step later in its side is not warned about either',
+            warningsFor({ transitions: { betweenShows: {
+                out: [step('up'), step('a', { onlyIfNothingAbove: true }), step('b', { onlyIfNothingAbove: true })], in: [] } } }).length === 0);
+        suite.check('a step cannot watch a cascade step by id either: it is conditional too',
+            warningsFor({ transitions: { betweenShows: {
+                out: [step('a', { onlyIfNothingAbove: true }), step('b', { onlyIfNoMatch: 'a' })], in: [] } } }).length === 1);
+        suite.check('onlyIfNothingAbove wins over a leftover onlyIfNoMatch on the same (hand-edited) step',
+            warningsFor({ transitions: { betweenShows: {
+                out: [step('a', { onlyIfNothingAbove: true, onlyIfNoMatch: 'ghost' })], in: [] } } }).length === 0);
     }
 
     // ---- the show after the next one ----------------------------------------
@@ -756,6 +769,127 @@ module.exports = async function run() {
             suite.check('across a boundary a step watches only steps of its own context\'s situation',
                 across.skipped.some((s) => s.stepId === 'en-w' && s.problem && /not in this situation/.test(s.reason)),
                 JSON.stringify(across.skipped));
+        }
+
+        // -- onlyIfNothingAbove: a cascade of steps on one side - the first that
+        // finds a clip plays, and the rest are skipped, without naming a step by id
+        {
+            const lists = {
+                UP: [clipOf('Up Beta', 10, ['tv.Beta'])], WB: [clipOf('WBRB', 5)], BT: [clipOf('BTTS', 5)],
+                GEN: [clipOf('Generic', 5)], PROMO: [clipOf('Promo Beta', 10, ['tv.Beta'])],
+            };
+
+            const solo = planFor([S('a', 'WB', { onlyIfNothingAbove: true })], [], lists);
+            suite.check('a cascade step with nothing above it on its side plays as if it were unconditional',
+                titles(solo.out) === 'WBRB', titles(solo.out));
+
+            const two = (upLists) => planFor(
+                [S('up', 'UP', { match: 'show' }), S('wb', 'WB', { onlyIfNothingAbove: true })],
+                [], Object.assign({}, lists, upLists || {}));
+            suite.check('the step above it plays: the cascade step stays out',
+                titles(two().out) === 'Up Beta' && two().skipped.filter((s) => s.stepId === 'wb' && ! s.problem).length === 1,
+                JSON.stringify(two()));
+            suite.check('the step above it finds nothing: the cascade step plays',
+                titles(two({ UP: [] }).out) === 'WBRB', titles(two({ UP: [] }).out));
+
+            // The chain the single-step choice could not build: a step that watches
+            // one found nothing could not itself be watched, so "promo, else Up
+            // Next, else bumper, else WBRB" needed a step conditional on a
+            // conditional step. Position, not an id, settles it here.
+            const chain = (promoLists, upLists) => planFor([
+                S('promo', 'PROMO', { match: 'show' }),
+                S('up', 'UP', { match: 'show', onlyIfNothingAbove: true }),
+                S('bumper', 'GEN', { onlyIfNothingAbove: true }),
+                S('wb', 'WB', { onlyIfNothingAbove: true }),
+            ], [], Object.assign({}, lists, promoLists || {}, upLists || {}));
+            suite.check('the promo plays: everything below it stays out',
+                titles(chain().out) === 'Promo Beta'
+                && chain().skipped.filter((s) => ['up', 'bumper', 'wb'].includes(s.stepId) && ! s.problem).length === 3,
+                JSON.stringify(chain()));
+            const noPromo = chain({ PROMO: [] });
+            suite.check('the promo finds nothing, Up Next plays: the bumper and WBRB stay out',
+                titles(noPromo.out) === 'Up Beta'
+                && noPromo.skipped.filter((s) => ['bumper', 'wb'].includes(s.stepId) && ! s.problem).length === 2,
+                JSON.stringify(noPromo));
+            const neitherPromoNorUp = chain({ PROMO: [] }, { UP: [] });
+            suite.check('neither the promo nor Up Next: the bumper plays, WBRB stays out',
+                titles(neitherPromoNorUp.out) === 'Generic'
+                && neitherPromoNorUp.skipped.filter((s) => s.stepId === 'wb' && ! s.problem).length === 1,
+                JSON.stringify(neitherPromoNorUp));
+            const allMiss = planFor([
+                S('promo', 'PROMO', { match: 'show' }),
+                S('up', 'UP', { match: 'show', onlyIfNothingAbove: true }),
+                S('bumper', 'GEN', { onlyIfNothingAbove: true, listId: 'EMPTY' }),
+                S('wb', 'WB', { onlyIfNothingAbove: true }),
+            ], [], Object.assign({}, lists, { PROMO: [], UP: [], EMPTY: [] }));
+            suite.check('every step above finds nothing (the bumper\'s own list is empty, which also counts as finding nothing): WBRB plays',
+                titles(allMiss.out) === 'WBRB', JSON.stringify(allMiss));
+
+            // A step left out by its day or its chance has found nothing - not played
+            // - exactly like one that looked and found no clip. Ron's Miguzi setup:
+            // Up Next at 75%, otherwise BTTS.
+            const miguzi = (roll) => {
+                const channel = channelWith({
+                    out: [S('up', 'UP', { match: 'show', chance: 75 }), S('bt', 'BT', { onlyIfNothingAbove: true })], in: [],
+                });
+                const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+                return transitions.buildPlan(channel, brk, Object.assign(env(lists), { roll: () => roll }));
+            };
+            suite.check('the roll is under 75%: Up Next plays and BTTS, though it is a cascade step, stays out',
+                titles(miguzi(0.1).out) === 'Up Beta' && miguzi(0.1).skipped.filter((s) => s.stepId === 'bt' && ! s.problem).length === 1);
+            suite.check('the roll loses: Up Next was left out, not played, so BTTS plays - and that is not a problem',
+                titles(miguzi(0.9).out) === 'BTTS' && miguzi(0.9).notes.length === 0, JSON.stringify(miguzi(0.9)));
+
+            const dayGated = (days) => {
+                const channel = channelWith({
+                    out: [S('up', 'UP', { match: 'show', days: days }), S('bt', 'BT', { onlyIfNothingAbove: true })], in: [],
+                });
+                const brk = transitions.findBreak(channel, 1, start + 30 * MIN);
+                return transitions.buildPlan(channel, brk, env(lists));
+            };
+            suite.check('left out by day rather than chance: the same rule, BTTS plays',
+                titles(dayGated([1]).out) === 'BTTS', JSON.stringify(dayGated([1])));
+            suite.check('on a day it is not left out, Up Next plays and BTTS stays out',
+                titles(dayGated([5]).out) === 'Up Beta');
+
+            // A clip from a fallback list is still a clip: the step played.
+            const viaFallback = planFor(
+                [S('up', 'UP', { match: 'show', fallbackListId: 'GEN' }), S('bt', 'BT', { onlyIfNothingAbove: true })],
+                [], Object.assign({}, lists, { UP: [clipOf('Up Gamma', 10, ['tv.Gamma'])] }));
+            suite.check('a step that falls back still played: the cascade step below it stays out',
+                titles(viaFallback.out) === 'Generic'
+                && viaFallback.skipped.filter((s) => s.stepId === 'bt' && ! s.problem).length === 1, JSON.stringify(viaFallback));
+
+            // Scope: this side only, and this context only.
+            const sideTest = (upFinds) => planFor(
+                [S('up', 'UP', { match: 'show' })],
+                [S('bt', 'BT', { onlyIfNothingAbove: true })],
+                upFinds ? lists : Object.assign({}, lists, { UP: [] }));
+            suite.check('a cascade step only watches its own side: an out step finding a clip does not reach an in cascade step',
+                titles(sideTest(true).in) === 'BTTS' && titles(sideTest(false).in) === 'BTTS');
+
+            const boundary = fixtureChannel();
+            boundary.blocks[0].transitions.entering = {
+                out: [step('en-casc', { listId: 'WB', onlyIfNothingAbove: true })], in: [] };
+            const brk2 = transitions.findBreak(boundary, 3, start + 63 * MIN);
+            const acrossCascade = transitions.buildPlan(boundary, brk2, env({
+                'list-d-lv-out': [clipOf('Leave', 5)], WB: [clipOf('WBRB', 5)],
+            }));
+            suite.check('a cascade step only watches its own context\'s side: the other context\'s step sharing the assembled "out" does not count',
+                titles(acrossCascade.out) === 'Leave | WBRB', titles(acrossCascade.out));
+
+            // A step cannot be watched by id if it is itself conditional - cascade included.
+            const idWatchesCascade = planFor(
+                [S('up', 'UP', { match: 'show' }), S('a', 'WB', { onlyIfNothingAbove: true }), S('b', 'BT', { onlyIfNoMatch: 'a' })],
+                [], Object.assign({}, lists, { UP: [] }));
+            suite.check('a step cannot watch a cascade step by id: it is conditional too, and that is a problem',
+                idWatchesCascade.skipped.filter((s) => s.stepId === 'b' && s.problem).length === 1, JSON.stringify(idWatchesCascade.skipped));
+
+            // A hand-edited step with both fields: onlyIfNothingAbove wins and the
+            // stale onlyIfNoMatch is never consulted.
+            const bothFields = planFor([S('w', 'WB', { onlyIfNothingAbove: true, onlyIfNoMatch: 'nope' })], [], lists);
+            suite.check('onlyIfNothingAbove on a step overrides a leftover onlyIfNoMatch on the same step',
+                titles(bothFields.out) === 'WBRB' && bothFields.notes.length === 0, JSON.stringify(bothFields));
         }
 
         // -- days: a step limited to some weekdays (the break starts Friday 20:30, local)

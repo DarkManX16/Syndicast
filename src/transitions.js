@@ -38,7 +38,7 @@ const KEYED_ON = ['now', 'next', 'later'];
 
 const STEP_DEFAULTS = {
     kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null,
-    days: null, chance: null,
+    onlyIfNothingAbove: false, days: null, chance: null,
 };
 
 /*
@@ -384,13 +384,26 @@ function showAfter(channel, brk) {
  * A step marked `onlyIfNoMatch: <step id>` plays only when the step it names
  * found no clip. Unset, null, false and '' all mean "not marked"; any other
  * value that is not a string is a marked step that can never be honoured.
+ *
+ * `onlyIfNothingAbove: true` is the other way to be conditional: a cascade
+ * step, which plays only when no step above it on its own side (same context,
+ * same situation, same side: the one array the editor's row stores) has
+ * already found a clip. It names no step, so it has nothing to dangle and is
+ * never a problem - which is the point: a step that watches one found nothing
+ * cannot itself be watched (watchProblem, below), so a chain of three or more
+ * could not be built with onlyIfNoMatch alone. Position settles it instead.
+ * It takes precedence over a leftover onlyIfNoMatch on the same (hand-edited)
+ * step, which is then never consulted.
  */
 function watchOf(step) {
+    if (step.onlyIfNothingAbove === true) {
+        return { marked: true, id: null, cascade: true };
+    }
     const w = step.onlyIfNoMatch;
     if ( (typeof(w) === 'undefined') || (w === null) || (w === false) || (w === '') ) {
-        return { marked: false, id: null };
+        return { marked: false, id: null, cascade: false };
     }
-    return { marked: true, id: (typeof(w) === 'string') ? w : null };
+    return { marked: true, id: (typeof(w) === 'string') ? w : null, cascade: false };
 }
 
 /*
@@ -466,6 +479,9 @@ function defaultRoll(channel, brk, key) {
 function watchProblem(step, sequence) {
     const watch = watchOf(step);
     if (! watch.marked) {
+        return null;
+    }
+    if (watch.cascade) {
         return null;
     }
     if (watch.id === null) {
@@ -930,13 +946,17 @@ function buildPlan(channel, brk, env) {
         .filter( (e) => (e.context === entry.context) && (e.situation === entry.situation) )
         .map( (e) => e.step );
 
+    // Unconditional steps first - a cascade step reads their outcome, and a
+    // step named by id can only ever name one of these (watchProblem refuses a
+    // mark naming a step that is itself conditional).
     for (const entry of entries) {
         if (! watchOf(entry.step).marked) {
             resolve(entry);
         }
     }
     for (const entry of entries) {
-        if (! watchOf(entry.step).marked) {
+        const watch = watchOf(entry.step);
+        if (! watch.marked || watch.cascade) {
             continue;
         }
         const problem = watchProblem(entry.step, sequenceOf(entry));
@@ -948,6 +968,27 @@ function buildPlan(channel, brk, env) {
             && (e.situation === entry.situation) && (e.step.id === entry.step.onlyIfNoMatch) );
         if (watched.found !== null) {
             skip(entry, `only plays if "${watched.step.id}" finds no clip, and it did`, false);
+            continue;
+        }
+        resolve(entry);
+    }
+
+    // Cascade steps last, in their stored order (`entries`' own order, which keeps
+    // each row's own order even though a boundary's two contexts are interleaved
+    // by side): by the time this loop reaches one, every entry before it is
+    // already settled - the unconditional and by-id passes above, for one not of
+    // this side/situation/context, or this same forward pass, for an earlier
+    // cascade step of its own row. "Above" never crosses a side, a situation or a
+    // boundary into the other context.
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        if (! watchOf(entry.step).cascade) {
+            continue;
+        }
+        const playedAbove = entries.slice(0, i).some( (e) => (e.context === entry.context)
+            && (e.situation === entry.situation) && (e.side === entry.side) && (e.found !== null) );
+        if (playedAbove) {
+            skip(entry, 'a step above it on this side already found a clip', false);
             continue;
         }
         resolve(entry);
