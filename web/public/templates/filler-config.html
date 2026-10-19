@@ -143,7 +143,7 @@
     
                     </div>
                 </div>
-                <div ng-show="mode==='custom'" vs-repeat="{size: contentRowHeight}" class="modal-body container list-group list-group-root filler-list"
+                <div ng-show="mode==='custom'" vs-repeat="{size: contentRowHeight}" vs-repeat-options="vsRepeatDragOptions" class="modal-body container list-group list-group-root filler-list"
                  dnd-list="content" ng-if="showList()"
                     vs-repeat-reinitialized="vsReinitialized(event, startIndex, endIndex)"
                     ng-init="setUpWatcher()"
@@ -157,6 +157,7 @@
                         dnd-disable-if="isFiltered()"
                         dnd-effect-allowed="move"
                         dnd-moved="movedFunction(x.$index)"
+                        dnd-dragstart="startContentDrag(event)" dnd-dragend="endContentDrag()"
                         style="height: {{ contentRowHeight }}px"
                     >
                         <span class="lr-square" ng-style="rowSquareStyle(x)"></span>

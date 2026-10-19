@@ -180,7 +180,7 @@
                         <div ng-repeat="p in pinList() track by $index"><a href="" ng-click="goToAiring(p.at)">{{p.text}}</a></div>
                     </div>
                     <div class='row' ng-class="{'reverse': reverseTools }" >
-                        <div vs-repeat="{size: programRowHeight}" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
+                        <div vs-repeat="{size: programRowHeight}" vs-repeat-options="vsRepeatDragOptions" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
                             dnd-drop="dropFunction(index , item)"
                             dnd-list=""
                             ng-init="setUpWatcher()"
@@ -191,6 +191,7 @@
                             <div ng-repeat="x in channel.programs track by x.$index"
                                 ng-click="selectProgram(x.$index)"
                                 class="list-group-item flex-container psr-row" dnd-draggable="x" dnd-moved="" dnd-effect-allowed="move"
+                                dnd-dragstart="startProgramDrag(event)" dnd-dragend="endProgramDrag()"
                                 style="height: {{ programRowHeight }}px"
                             >
                                 <span class="psr-start" ng-class="{'font-weight-bold': goTo.row === x.$index}">{{ rowStartTime(x) }}</span>

@@ -1,4 +1,5 @@
 const clipNames = require('../../src/clip-names');
+const makeVsRepeatDragGuard = require('../services/vs-repeat-drag-guard');
 
 module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, namesReview) {
     return {
@@ -122,6 +123,11 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, 
                     scope.currentStartIndex = val;
                 });
             };
+
+            scope.vsRepeatDragOptions = { latch: false, preserveLatchOnRefresh: false };
+            const contentDragGuard = makeVsRepeatDragGuard(scope, scope.vsRepeatDragOptions);
+            scope.startContentDrag = contentDragGuard.start;
+            scope.endContentDrag = contentDragGuard.end;
 
             scope.movedFunction = (index) => {
                 console.log("movedFunction(" + index + ")");
