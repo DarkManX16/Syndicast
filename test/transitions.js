@@ -23,7 +23,7 @@
  *     23:32  Flex 3m          break 5: two items of one custom show -> between episodes
  *     23:35  Short 2 (custom show)
  */
-const { MIN, HOUR, at, flex, mix, Suite } = require('./support');
+const { MIN, HOUR, DAY, at, flex, mix, Suite } = require('./support');
 const transitions = require('../src/transitions');
 const ChannelDB = require('../src/dao/channel-db');
 
@@ -981,6 +981,62 @@ module.exports = async function run() {
             suite.check('rolls stay in [0, 1)', rolls.every( (r) => r >= 0 && r < 1 ));
         }
 
+        // -- times: a step limited to breaks starting inside a wall-clock window
+        // (the break starts Friday 20:30, local - same break planFor always uses)
+        {
+            const lists = { U: [clipOf('Up Beta', 10, ['tv.Beta'])], W: [clipOf('WBRB', 5)] };
+            const on = (times) => planFor([S('up', 'U', { match: 'show', times: times })], [], lists);
+            suite.check('a step with no times plays at any time, and so does null',
+                titles(on(undefined).out) === 'Up Beta' && titles(on(null).out) === 'Up Beta');
+            suite.check('a window covering 20:30 plays', titles(on({ start: 20 * HOUR, end: 21 * HOUR }).out) === 'Up Beta');
+            suite.check('a window not covering 20:30 skips the step, and that is not a problem',
+                on({ start: 21 * HOUR, end: 22 * HOUR }).out.length === 0 && on({ start: 21 * HOUR, end: 22 * HOUR }).notes.length === 0
+                && on({ start: 21 * HOUR, end: 22 * HOUR }).skipped[0].problem === false
+                && /time/.test(on({ start: 21 * HOUR, end: 22 * HOUR }).skipped[0].reason));
+            suite.check('the start is inside the window, the end is not (half-open)',
+                titles(on({ start: 20 * HOUR + 30 * MIN, end: 21 * HOUR }).out) === 'Up Beta'
+                && on({ start: 19 * HOUR, end: 20 * HOUR + 30 * MIN }).out.length === 0);
+
+            // crossing midnight (the break's own day is tested separately below): a
+            // window whose end is earlier than its start wraps, as a block airing does.
+            const late = [episode('Alpha', 1, 30), flex(20), episode('Beta', 1, 30)];
+            const lateChannel = Object.assign(channelWith({ out: [S('up', 'U', { match: 'show' })], in: [] }), {
+                programs: late, duration: 80 * MIN, startTime: new Date(at('2026-10-02T23:20:00')).toISOString() });
+            const lateBrk = transitions.findBreak(lateChannel, 1, at('2026-10-02T23:50:00'));
+            const planAt2350 = (times) => {
+                lateChannel.dayParts[0].transitions.betweenShows.out[0].times = times;
+                return transitions.buildPlan(lateChannel, lateBrk, env(lists));
+            };
+            suite.check('23:50 falls inside a window crossing midnight (23:00-00:30)',
+                planAt2350({ start: 23 * HOUR, end: 30 * MIN }).out.length === 1);
+            suite.check('23:50 falls inside a window that starts just before it and ends just after midnight',
+                planAt2350({ start: 23 * HOUR + 45 * MIN, end: 15 * MIN }).out.length === 1);
+            suite.check('23:50 is not inside a same-day window of the small hours (00:00-06:00)',
+                planAt2350({ start: 0, end: 6 * HOUR }).out.length === 0);
+            suite.check('23:50 is not inside a non-crossing window that ends right at it (half-open)',
+                planAt2350({ start: 22 * HOUR, end: 23 * HOUR + 50 * MIN }).out.length === 0);
+
+            suite.check('times that are not a well-formed {start, end} are a problem and skip the step',
+                [ null, undefined, {}, { start: 0 }, { end: 0 }, { start: '0', end: 10 }, { start: -1, end: 10 },
+                    { start: 0, end: DAY }, { start: 1.5, end: 10 }, 'noon', 5 ]
+                    .filter( (t) => (t !== null) && (typeof(t) !== 'undefined') )
+                    .every( (bad) => { const p = on(bad); return p.out.length === 0 && p.notes.length === 1; }));
+            const sameInstant = on({ start: 20 * HOUR + 30 * MIN, end: 20 * HOUR + 30 * MIN });
+            suite.check('a start equal to its end plays at no time, and is noted as a problem',
+                sameInstant.out.length === 0 && sameInstant.notes.length === 1 && /no time/.test(sameInstant.notes.join()));
+
+            // a time-skipped step has found nothing: a step watching it plays
+            const gated = (times) => planFor([S('up', 'U', { match: 'show', times: times })], [S('b', 'W', { onlyIfNoMatch: 'up' })], lists);
+            suite.check('a step watching a step skipped for its times plays',
+                titles(gated({ start: 21 * HOUR, end: 22 * HOUR }).in) === 'WBRB');
+            suite.check('and stays out when the watched step plays at that time',
+                titles(gated({ start: 20 * HOUR, end: 21 * HOUR }).out) === 'Up Beta' && gated({ start: 20 * HOUR, end: 21 * HOUR }).in.length === 0);
+
+            // days and times are independent gates: both must allow it
+            const both = planFor([S('up', 'U', { match: 'show', days: [5], times: { start: 21 * HOUR, end: 22 * HOUR } })], [], lists);
+            suite.check('a step wrong on time but right on day still skips (both gates apply)', both.out.length === 0);
+        }
+
         // -- lists whose clips feature shows
         {
             const T0 = { }; // no play times
@@ -1078,6 +1134,14 @@ module.exports = async function run() {
         suite.check('a chance outside 1 to 100, or not whole, or not a number, is warned about',
             [0, 101, -1, 12.5, '50'].every( (bad) => warnings({ chance: bad }).length === 1 ));
         suite.check('a step with both wrong is warned about twice', warnings({ days: [], chance: 0 }).length === 2);
+        suite.check('times that are fine, or absent, or null, are not warned about',
+            warnings({ times: { start: 0, end: 6 * HOUR } }).length === 0 && warnings({ times: null }).length === 0);
+        suite.check('times with a start equal to its end are warned about, and say it plays at no time',
+            warnings({ times: { start: 0, end: 0 } }).length === 1 && /no time/.test(warnings({ times: { start: 0, end: 0 } })[0]));
+        suite.check('times that are not a well-formed {start, end} are warned about',
+            warnings({ times: {} }).length === 1 && warnings({ times: { start: 0 } }).length === 1
+            && warnings({ times: { start: -1, end: 10 } }).length === 1 && warnings({ times: { start: 0, end: 24 * HOUR } }).length === 1);
+        suite.check('a step wrong in all three ways is warned about three times', warnings({ days: [], chance: 0, times: {} }).length === 3);
     }
 
     // ---- defaults: the new fields are off unless set -------------------------
@@ -1088,6 +1152,12 @@ module.exports = async function run() {
         suite.check('and reading wrote nothing', typeof channel.dayParts[0].transitions.betweenShows.out[0].days === 'undefined');
         const set = transitions.normalizeTransitions({ transitions: { betweenShows: { out: [{ id: 'a', days: [1], chance: 30 }], in: [] } } }).betweenShows.out[0];
         suite.check('a step that sets them keeps them', JSON.stringify(set.days) === '[1]' && set.chance === 30);
+
+        suite.check('a step saved before times existed reads with it off, and reading wrote nothing',
+            read.times === null && typeof channel.dayParts[0].transitions.betweenShows.out[0].times === 'undefined');
+        const setTimes = transitions.normalizeTransitions({ transitions: { betweenShows: {
+            out: [{ id: 'a', times: { start: 0, end: 6 * HOUR } }], in: [] } } }).betweenShows.out[0];
+        suite.check('a step that sets times keeps it', JSON.stringify(setTimes.times) === JSON.stringify({ start: 0, end: 6 * HOUR }));
     }
 
     // ---- what playback asks before it builds any plan (step 4) -------------

@@ -354,6 +354,10 @@ function warnAboutTransitions(json) {
                         if (badChance !== null) {
                             complain(`${stepLabel}: ${badChance}, so it will be skipped.`);
                         }
+                        const badTimes = transitions.timesProblem(step);
+                        if (badTimes !== null) {
+                            complain(`${stepLabel}: ${badTimes}, so it will be skipped.`);
+                        }
                         // The sequence a marked step watches within is this
                         // situation, out and in together, so that is what it is
                         // checked against.

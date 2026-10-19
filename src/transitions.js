@@ -38,8 +38,10 @@ const KEYED_ON = ['now', 'next', 'later'];
 
 const STEP_DEFAULTS = {
     kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null,
-    onlyIfNothingAbove: false, days: null, chance: null,
+    onlyIfNothingAbove: false, days: null, chance: null, times: null,
 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /*
  * The key the slot editor uses for "the same show" (get-show-data.js), with
@@ -443,6 +445,53 @@ function chanceProblem(step) {
 }
 
 /*
+ * A step may also be limited to a wall-clock time-of-day window (`times`,
+ * { start, end }, each milliseconds since local midnight - the same units
+ * day-parts.js starts and block airings use). Unset and null are off, same
+ * as days and chance. An end earlier than its start crosses midnight and
+ * covers [start, DAY) plus [0, end), exactly as a block airing does
+ * (day-parts.js's airingSpans). No DST flag is needed: inTimeWindow reads
+ * the break's local wall clock at the instant it starts, which already
+ * reflects whichever offset is in force then - the same way daysProblem's
+ * weekday does.
+ */
+function timesProblem(step) {
+    const t = step.times;
+    if ( (typeof(t) === 'undefined') || (t === null) ) {
+        return null;
+    }
+    if ( (typeof(t) !== 'object') || Array.isArray(t) ) {
+        return 'times must be an object with a start and an end, each milliseconds since local midnight';
+    }
+    const inRange = (x) => Number.isInteger(x) && (x >= 0) && (x < DAY_MS);
+    if (! inRange(t.start) || ! inRange(t.end)) {
+        return 'times.start and times.end must be whole milliseconds since local midnight, from 0 up to but not including a day';
+    }
+    if (t.start === t.end) {
+        return 'times.start and times.end are the same, so it plays at no time at all';
+    }
+    return null;
+}
+
+// The wall-clock milliseconds since local midnight at `instant` - the
+// intra-day part of day-parts.js's weekPositionOf, read fresh each time so
+// it reflects whichever daylight-saving offset is in force at that instant.
+function msOfDay(instant) {
+    const d = new Date(instant);
+    return d.getHours() * 60 * 60 * 1000 + d.getMinutes() * 60 * 1000 + d.getSeconds() * 1000 + d.getMilliseconds();
+}
+
+// Whether `instant`'s local time-of-day falls inside a step's `times`
+// window (already known to be well-formed - timesProblem rejects anything
+// else before this is asked). A window whose end is earlier than its start
+// crosses midnight.
+function inTimeWindow(times, instant) {
+    const t = msOfDay(instant);
+    return (times.start < times.end) ? ( (t >= times.start) && (t < times.end) )
+        : ( (t >= times.start) || (t < times.end) );
+}
+
+/*
  * The roll a step with a chance is judged by, in [0, 1): a hash of the channel,
  * the break's start and the step, not a random number. A plan is dropped on
  * every save and lost on a restart, and rebuilding a half-played break must not
@@ -816,12 +865,13 @@ function buildPlan(channel, brk, env) {
         return eligible.map( (e) => e.clip );
     };
 
-    // Whether this step is left out before it looks for a clip: a day or chance
-    // it cannot honour (a problem), a weekday it is not limited to, or a lost
-    // roll. Either way it has found nothing, so a step watching it plays.
+    // Whether this step is left out before it looks for a clip: a day, chance
+    // or times it cannot honour (a problem), a weekday or time window it is
+    // not inside, or a lost roll. Either way it has found nothing, so a step
+    // watching it plays.
     const leftOut = (entry) => {
         const step = entry.step;
-        const bad = daysProblem(step) || chanceProblem(step);
+        const bad = daysProblem(step) || chanceProblem(step) || timesProblem(step);
         if (bad !== null) {
             skip(entry, bad, true);
             return true;
@@ -829,6 +879,10 @@ function buildPlan(channel, brk, env) {
         if ( (step.days != null) && (brk.startTime != null)
             && ! step.days.includes( new Date(brk.startTime).getDay() ) ) {
             skip(entry, 'not one of its days', false);
+            return true;
+        }
+        if ( (step.times != null) && (brk.startTime != null) && ! inTimeWindow(step.times, brk.startTime) ) {
+            skip(entry, 'outside its time window', false);
             return true;
         }
         if ( (step.chance != null) && (step.chance < 100) ) {
@@ -1024,6 +1078,8 @@ module.exports = {
     watchProblem: watchProblem,
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,
+    timesProblem: timesProblem,
+    inTimeWindow: inTimeWindow,
     defaultRoll: defaultRoll,
     buildPlan: buildPlan,
 };

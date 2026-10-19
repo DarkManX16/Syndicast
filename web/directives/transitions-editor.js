@@ -172,6 +172,9 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                     mark: markValueOf(step),
                     chance: (step.chance == null) ? '' : String(step.chance),
                     chanceError: '',
+                    timesStart: editor.clockInputOf(step.times && step.times.start),
+                    timesEnd: editor.clockInputOf(step.times && step.times.end),
+                    timesError: '',
                     watched: false,
                 };
                 rebuildChoices();
@@ -218,6 +221,9 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                 } else if (field === 'chance') {
                     const parsed = editor.setChance(step, f.chance);
                     f.chanceError = parsed.ok ? '' : parsed.error;
+                } else if (field === 'times') {
+                    const result = editor.setTimes(step, f.timesStart, f.timesEnd);
+                    f.timesError = result.ok ? '' : result.error;
                 }
                 changed();
                 rebuildChoices();
