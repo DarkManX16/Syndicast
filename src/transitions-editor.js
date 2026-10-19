@@ -335,6 +335,79 @@ function setChance(step, text) {
     return parsed;
 }
 
+/*
+ * What an <input type="time">'s ng-model holds: a Date object whose hour and
+ * minute are the wall-clock time typed (as channel-config.js's own start-time
+ * and "go to" fields already read them), or null/invalid while empty. Only the
+ * hour and minute are read - the same way the rest of the form ignores seconds.
+ */
+function msOfClockInput(d) {
+    return ( (d instanceof Date) && ! isNaN(d) ) ? (d.getHours() * 60 * 60 * 1000 + d.getMinutes() * 60 * 1000) : null;
+}
+
+/*
+ * "Only at these times": both fields are set or both are cleared. Setting a
+ * window that cannot be honoured (the same start and end, which would play at
+ * no time at all) is refused, the same way a bad "sometimes" is - the store
+ * never holds a times a step could not have meant.
+ */
+function setTimes(step, startInput, endInput) {
+    const start = msOfClockInput(startInput);
+    const end = msOfClockInput(endInput);
+    if ( (start === null) && (end === null) ) {
+        step.times = null;
+        return { ok: true, error: '' };
+    }
+    if ( (start === null) || (end === null) ) {
+        return { ok: false, error: 'Set both a start and an end time, or clear both to play at any time.' };
+    }
+    if (start === end) {
+        return { ok: false, error: 'The start and end time cannot be the same - that would play at no time at all.' };
+    }
+    step.times = { start: start, end: end };
+    return { ok: true, error: '' };
+}
+
+// The Date an <input type="time"> should show for a stored ms-since-midnight
+// value, or null for an empty field. The date part is arbitrary; only hours
+// and minutes are read back (msOfClockInput).
+function clockInputOf(ms) {
+    if (! Number.isInteger(ms) ) {
+        return null;
+    }
+    const d = new Date(1970, 0, 1, 0, 0, 0, 0);
+    d.setHours(Math.floor(ms / (60 * 60 * 1000)), Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000)), 0, 0);
+    return d;
+}
+
+// "2:45pm", "12:00am" - a time-of-day, for the sentence and the chip.
+function timeWords(ms) {
+    const mins = Math.round(ms / 60000);
+    const h24 = Math.floor(mins / 60);
+    const m = mins % 60;
+    const h12 = ( (h24 % 12) === 0 ) ? 12 : (h24 % 12);
+    return `${h12}:${m < 10 ? '0' : ''}${m}${h24 < 12 ? 'am' : 'pm'}`;
+}
+
+// What a step's `times` reads as: null when unset or malformed (timesProblem
+// reports the latter separately), else the words for its window, or for the
+// one shape worth calling out plainly - a start equal to its end, which plays
+// at no time at all.
+function timesWords(step) {
+    const t = step.times;
+    if ( (t == null) || (typeof(t) !== 'object') || ! Number.isInteger(t.start) || ! Number.isInteger(t.end) ) {
+        return null;
+    }
+    return (t.start === t.end) ? null : `${timeWords(t.start)} and ${timeWords(t.end)}`;
+}
+function timesChipWord(step) {
+    const t = step.times;
+    if ( (t == null) || (typeof(t) !== 'object') || ! Number.isInteger(t.start) || ! Number.isInteger(t.end) ) {
+        return null;
+    }
+    return (t.start === t.end) ? 'no time' : `${timeWords(t.start)}–${timeWords(t.end)}`;
+}
+
 function joinWords(words) {
     if (words.length <= 1) {
         return words.join('');
@@ -405,6 +478,12 @@ function limitClauses(step, sequence, names) {
     } else if (Array.isArray(step.days)) {
         parts.push('on no day at all');
     }
+    const times = timesWords(step);
+    if (times !== null) {
+        parts.push(`only in breaks starting between ${times}`);
+    } else if ( (step.times != null) && (typeof(step.times) === 'object') && (step.times.start === step.times.end) ) {
+        parts.push('at no time at all');
+    }
     if ( (step.chance != null) && (step.chance < 100) ) {
         parts.push(`about ${step.chance}% of the time`);
     }
@@ -451,6 +530,10 @@ function chipLabel(step, sequence, names) {
         if (Array.isArray(step.days) && (step.days.length > 0)) {
             parts.push(dayWords(step.days).join(' '));
         }
+        const cardTimesWord = timesChipWord(step);
+        if (cardTimesWord !== null) {
+            parts.push(cardTimesWord);
+        }
         if ( (step.chance != null) && (step.chance < 100) ) {
             parts.push(`${step.chance}%`);
         }
@@ -480,6 +563,10 @@ function chipLabel(step, sequence, names) {
     }
     if (Array.isArray(step.days) && (step.days.length > 0)) {
         parts.push(dayWords(step.days).join(' '));
+    }
+    const timesWord = timesChipWord(step);
+    if (timesWord !== null) {
+        parts.push(timesWord);
     }
     if ( (step.chance != null) && (step.chance < 100) ) {
         parts.push(`${step.chance}%`);
@@ -522,6 +609,10 @@ function problemsOf(step, sequence, names) {
     const chance = transitions.chanceProblem(step);
     if (chance !== null) {
         problems.push(chance.charAt(0).toUpperCase() + chance.slice(1) + '.');
+    }
+    const times = transitions.timesProblem(step);
+    if (times !== null) {
+        problems.push(times.charAt(0).toUpperCase() + times.slice(1) + '.');
     }
     return problems;
 }
@@ -701,8 +792,9 @@ function flexTag(channel, index, entryStart, names) {
     const assembled = transitions.assemble(channel, brk);
     const weekday = new Date(brk.startTime).getDay();
     const label = (e) => ( isSupported(e.step) && ! hasNoTemplate(e.step)
-        && (transitions.daysProblem(e.step) === null)
-        && ( (e.step.days == null) || e.step.days.includes(weekday) ) ) ? tagLabel(e.step, brk, names) : null;
+        && (transitions.daysProblem(e.step) === null) && (transitions.timesProblem(e.step) === null)
+        && ( (e.step.days == null) || e.step.days.includes(weekday) )
+        && ( (e.step.times == null) || transitions.inTimeWindow(e.step.times, brk.startTime) ) ) ? tagLabel(e.step, brk, names) : null;
     const before = first ? assembled.out.map(label).filter( (l) => l !== null ) : [];
     const after = last ? assembled.in.map(label).filter( (l) => l !== null ) : [];
     if ( (before.length === 0) && (after.length === 0) ) {
@@ -939,6 +1031,8 @@ module.exports = {
     toggleDay: toggleDay,
     parseChance: parseChance,
     setChance: setChance,
+    setTimes: setTimes,
+    clockInputOf: clockInputOf,
     describeStep: describeStep,
     stepListName: stepListName,
     chipLabel: chipLabel,

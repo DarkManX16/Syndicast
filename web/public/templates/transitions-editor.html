@@ -209,6 +209,20 @@
                             ng-class="{'btn-info': isDay(d.id), 'btn-outline-secondary': !isDay(d.id)}"
                             style="margin-right: 2px;" ng-click="toggleDay(d.id)">{{d.name}}</button>
                     </div>
+
+                    <div class="form-group">
+                        <label class="small d-block">Only at these times <span class="text-muted">(blank = any time; the time is the one the break starts at, and a window may cross midnight)</span></label>
+                        <div class="form-row align-items-center">
+                            <div class="col-auto">
+                                <input type="time" class="form-control form-control-sm" ng-model="form.timesStart" ng-change="formChanged('times')">
+                            </div>
+                            <div class="col-auto">to</div>
+                            <div class="col-auto">
+                                <input type="time" class="form-control form-control-sm" ng-model="form.timesEnd" ng-change="formChanged('times')">
+                            </div>
+                        </div>
+                        <small class="text-danger" ng-if="form.timesError">{{form.timesError}}</small>
+                    </div>
                 </div>
 
                 <div class="tr-form-buttons">

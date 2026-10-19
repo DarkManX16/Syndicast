@@ -44,7 +44,7 @@ function clip(title, seconds, extra) {
 }
 function step(id, extra) {
     return Object.assign({ id, kind: 'list', listId: 'wbrb', match: 'any', keyedOn: 'next',
-        fallbackListId: null, onlyIfNoMatch: null, onlyIfNothingAbove: false, days: null, chance: null }, extra || {});
+        fallbackListId: null, onlyIfNoMatch: null, onlyIfNothingAbove: false, days: null, chance: null, times: null }, extra || {});
 }
 
 const LISTS = {
@@ -120,9 +120,9 @@ module.exports = async function run() {
         const s = editor.newStep(draft);
         suite.check('a new step asks for a clip for the show coming up, no list chosen',
             s.kind === 'list' && s.match === 'show' && s.keyedOn === 'next' && s.listId === ''
-            && s.fallbackListId === null && s.onlyIfNoMatch === null && s.onlyIfNothingAbove === false && s.days === null && s.chance === null);
+            && s.fallbackListId === null && s.onlyIfNoMatch === null && s.onlyIfNothingAbove === false && s.days === null && s.chance === null && s.times === null);
         suite.check('... and carries every field a stored step carries',
-            same(Object.keys(s).sort(), ['chance', 'days', 'fallbackListId', 'id', 'keyedOn', 'kind', 'listId', 'match', 'onlyIfNoMatch', 'onlyIfNothingAbove']));
+            same(Object.keys(s).sort(), ['chance', 'days', 'fallbackListId', 'id', 'keyedOn', 'kind', 'listId', 'match', 'onlyIfNoMatch', 'onlyIfNothingAbove', 'times']));
         const ids = new Set();
         for (let i = 0; i < 200; i++) {
             const n = editor.newStep(draft);
@@ -181,6 +181,29 @@ module.exports = async function run() {
         suite.check('clearing it stores null', editor.setChance(c, '').ok && c.chance === null);
         suite.check('whatever it stores passes the save-time check',
             [1, 50, 99].every( (n) => transitions.chanceProblem({ chance: editor.parseChance(String(n)).value }) === null));
+
+        // -- times: the "only at these times" fields hold Date objects, the way
+        // an <input type="time"> binds them (only the hour and minute matter).
+        const clearedT = step('t', { times: { start: 0, end: 6 * HOUR } });
+        const clearR = editor.setTimes(clearedT, null, null);
+        suite.check('two empty inputs clear times', clearR.ok && clearedT.times === null);
+        const setT = step('t');
+        const setR = editor.setTimes(setT, new Date(2020, 0, 1, 14, 45), new Date(2020, 0, 1, 15, 0));
+        suite.check('setting a start and end stores milliseconds since midnight',
+            setR.ok && setT.times.start === 14 * HOUR + 45 * MIN && setT.times.end === 15 * HOUR, JSON.stringify(setT.times));
+        const crossT = step('t');
+        const crossR = editor.setTimes(crossT, new Date(2020, 0, 1, 23, 45), new Date(2020, 0, 1, 0, 15));
+        suite.check('a window crossing midnight (end earlier than start) round-trips, and passes the save-time check',
+            crossR.ok && crossT.times.start === 23 * HOUR + 45 * MIN && crossT.times.end === 15 * MIN
+            && transitions.timesProblem(crossT) === null);
+        const halfT = step('t', { times: { start: 0, end: HOUR } });
+        const halfR = editor.setTimes(halfT, new Date(2020, 0, 1, 2, 0), null);
+        suite.check('only one of the two set is refused with a reason, and leaves the step as it was',
+            ! halfR.ok && halfR.error.length > 0 && halfT.times.start === 0 && halfT.times.end === HOUR);
+        const sameT = step('t');
+        const sameR = editor.setTimes(sameT, new Date(2020, 0, 1, 2, 0), new Date(2020, 0, 1, 2, 0));
+        suite.check('the same start and end is refused with a reason, and stores nothing',
+            ! sameR.ok && sameR.error.length > 0 && sameT.times === null);
     }
 
     // ---- "only when" -----------------------------------------------------------
@@ -295,6 +318,12 @@ module.exports = async function run() {
             sentence(step('s', { days: [1, 3, 5] })).includes('only on Mon, Wed and Fri'));
         suite.check('two days read as "and"', sentence(step('s', { days: [0, 6] })).includes('only on Sun and Sat'));
         suite.check('a chance reads as a percent', sentence(step('s', { chance: 50 })).includes('about 50% of the time'));
+        suite.check('times read as a window',
+            sentence(step('s', { times: { start: 14 * HOUR + 45 * MIN, end: 15 * HOUR } })).includes('only in breaks starting between 2:45pm and 3:00pm'));
+        suite.check('a window crossing midnight reads as such too',
+            sentence(step('s', { times: { start: 0, end: 6 * HOUR } })).includes('only in breaks starting between 12:00am and 6:00am'));
+        suite.check('a start equal to its end reads plainly as never',
+            sentence(step('s', { times: { start: HOUR, end: HOUR } })).includes('at no time at all'));
         const watched = step('w', { listId: 'upnext' });
         const marked = step('m', { listId: 'btts', onlyIfNoMatch: 'w' });
         suite.check('a marked step names the step it watches',
@@ -344,6 +373,12 @@ module.exports = async function run() {
             editor.chipLabel(step('s', { match: 'show', keyedOn: 'later' }), [], names).includes('for the show next time'));
         suite.check('days and chance show on the chip, since they decide whether it plays',
             editor.chipLabel(step('s', { days: [1, 2], chance: 25 }), [], names).endsWith('Mon Tue · 25%'));
+        suite.check('a time window shows on the chip too',
+            editor.chipLabel(step('s', { times: { start: 14 * HOUR + 45 * MIN, end: 15 * HOUR } }), [], names).endsWith('2:45pm–3:00pm'));
+        suite.check('a start equal to its end shows on the chip as "no time"',
+            editor.chipLabel(step('s', { times: { start: HOUR, end: HOUR } }), [], names).endsWith('no time'));
+        suite.check('a generated card step\'s chip shows its time window too',
+            editor.chipLabel(card('c', { times: { start: 0, end: HOUR } }), [nt], names).includes('12:00am–1:00am'));
         suite.check('a mark shows on the chip',
             editor.chipLabel(marked, [watched, marked], names).includes('if “Up Next” finds nothing'));
         suite.check('a cascade step\'s chip says so briefly',
@@ -366,6 +401,8 @@ module.exports = async function run() {
             p(step('s', { onlyIfNothingAbove: true, onlyIfNoMatch: 'ghost' })).length === 0);
         suite.check('an empty days list in a stored step is a problem', p(step('s', { days: [] })).length === 1);
         suite.check('a bad chance in a stored step is a problem', p(step('s', { chance: 0 })).length === 1);
+        suite.check('a times with equal start and end in a stored step is a problem', p(step('s', { times: { start: HOUR, end: HOUR } })).length === 1);
+        suite.check('a malformed times in a stored step is a problem', p(step('s', { times: { start: HOUR } })).length === 1);
         suite.check('a step of a kind the editor does not know has none to report', p(step('s', { kind: 'video', listId: '' })).length === 0);
         suite.check('a card step with no template is a problem', p(card('s', { templateId: '' })).length === 1);
         suite.check('a card step whose template was deleted is a problem', p(card('s', { templateId: 'gone' })).length === 1);
@@ -471,6 +508,14 @@ module.exports = async function run() {
         suite.check('... and one limited to this weekday stays in',
             editor.flexTag(monday, 6, starts[6], names).text === 'Up Next · Gamma / (Generic)');
 
+        const narrowTime = fixtureChannel();
+        narrowTime.blocks[0].transitions.betweenShows.in[0].times = { start: 22 * HOUR, end: 23 * HOUR };
+        suite.check('a step limited to a time window that does not cover this break is left out of the tag (break C starts 21:37)',
+            editor.flexTag(narrowTime, 6, starts[6], names).text === '(Generic)');
+        narrowTime.blocks[0].transitions.betweenShows.in[0].times = { start: 21 * HOUR, end: 22 * HOUR };
+        suite.check('... and one whose window covers it stays in',
+            editor.flexTag(narrowTime, 6, starts[6], names).text === 'Up Next · Gamma / (Generic)');
+
         const keyed = fixtureChannel();
         keyed.blocks[0].transitions.betweenShows.in = [
             step('k1', { listId: 'upnext', match: 'show', keyedOn: 'now' }),
@@ -550,6 +595,14 @@ module.exports = async function run() {
             same(d.in.map( (x) => x.clip ), ['Generic Bumper']) && d.left.some( (l) => l.step.startsWith('Up Next') && l.why === 'found no clip'),
             JSON.stringify([d.in, d.left]));
         suite.check('breaks with steps are counted', ofLate.betweenShows.withSteps === 2 && ofLate.entering.withSteps === 1);
+
+        // A step left out by its time window (break C starts 21:37) says so plainly.
+        const timesChannel = fixtureChannel();
+        timesChannel.blocks[0].transitions.betweenShows.in[0].times = { start: 22 * HOUR, end: 23 * HOUR };
+        const timesView = editor.previewBreaks(timesChannel, timesChannel.blocks[0], from, to, env()).situations.betweenShows.items;
+        suite.check('a step left out by its time window says so in the preview',
+            timesView[0].left.some( (l) => l.step.startsWith('Up Next') && l.why === 'outside its time window' ),
+            JSON.stringify(timesView[0].left));
 
         // The same two breaks, with the generic bumper a cascade step instead of a named mark.
         const cascChannel = fixtureChannel();
