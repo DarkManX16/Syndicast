@@ -6942,3 +6942,47 @@ through an object in the view and read as `$scope.ui.search` in the controller.
 No test compiles Angular templates, so it was checked by hand, on a copy of `.dizquetv-dev` on a spare port
 with the rebuilt bundle served: typing "gundam" narrowed the list to the six Gundam nicknames ("6 of 59
 nicknames"), and clearing the box brought all 59 back.
+
+### Dragging a program row can't shed its row mid-drag
+
+Found and fixed Oct 18, 2026. In Edge (and in dizqueTV before this fork), dragging a row in the channel
+programming list - or the show/filler content pickers - would eventually get stuck: every drop target shows
+🚫, closing the tab doesn't fix it, and only closing all of Edge does.
+
+Root cause: every drag list in this app (`web/ext/dragdrop.js`, a vendored copy of
+angular-drag-and-drop-lists) runs on the browser's native HTML5 drag-and-drop, and the channel programming
+list - routinely tens of thousands of rows (Cartoon Cartoons Network's dev channel has 40,000) - is
+virtualized by `vs-repeat`. vs-repeat doesn't hide off-screen rows with CSS; on every scroll it re-slices the
+source array and lets `ng-repeat` destroy the DOM nodes that fall outside the new window
+(`angular-vs-repeat`'s `updateInnerCollection`). A drag that crosses that window - exactly what the browser's
+own auto-scroll does near the list's edge - tears the dragged row's own node out of the document while the
+browser's native drag session still references it. Chromium has no way to recover from that: confirmed by
+dispatching a real `dragstart` on a row, then scrolling the list, and watching that row's node go
+`isConnected: false` while still carrying `dndDragging` - the session the browser's drag controller is
+holding references a node that no longer exists, in a state no page script can see.
+
+Fix (smallest change that stops it, same library, same drag behaviour): `web/services/vs-repeat-drag-guard.js`
+wires the list's `dnd-dragstart`/`dnd-dragend` callbacks (both already-documented hooks of the vendored
+library) to vs-repeat's own already-reactive `vs-repeat-options` attribute. For the duration of a drag it
+turns on `latch` (vs-repeat's rendered window only grows, never shrinks) and `preserveLatchOnRefresh` (keeps
+that widened window even if the list's own source array is swapped out mid-drag, e.g. a lineup rebuild
+finishing while the user is still dragging) - so the row a drag started on is never recycled. A
+MutationObserver is the safety net for the one case the latch can't cover - the dragged item itself leaving
+the list's data, not just scrolling out of view - ending the pinned state immediately instead of leaving
+vs-repeat's window latched open forever. Wired identically into `channel-config.js` (the programming list),
+`show-config.js` and `filler-config.js` (their content pickers) - the same pairing, same risk.
+
+`test/drag-vs-repeat-lockup.js` drives a genuine native drag through Chrome DevTools Protocol
+(`page.mouse.drag`/`dragEnter`/`dragOver`/`drop` with `setDragInterception(true)` - a real browser-level drag
+session, not a scripted `dragstart` event) against the real vendored `dragdrop.js` and `angular-vs-repeat`,
+mounted with the real container/row markup pulled live from `channel-config.html`. It reproduces the lockup
+with the fix's own attributes stripped back out of that real markup, confirms the real, current markup
+doesn't lose the row through the same scroll, and confirms the safety net resets the latch when the dragged
+item is removed from the array mid-drag. Passes on both Chrome and Edge.
+
+Beyond the committed test: a 20-cycle native drag-and-scroll session against the real running app (40,000-row
+channel, built bundle, scratch copy of `.dizquetv-dev`) held up cleanly - every cycle's dragged row stayed
+connected, `dragend` fired every time, and the latch reset to `false` after each one - before an unrelated
+puppeteer/CDP hang (unrecoverable `Input.dragIntercepted` wait) on an already heavily-loaded dev machine cut
+the session short; the hang reproduced nothing the fix is meant to prevent (the prior four cycles had each
+already dragged, scrolled and dropped cleanly).

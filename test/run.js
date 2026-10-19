@@ -38,6 +38,7 @@ const suites = [
     './ffmpeg-qos',
     './bundle-freshness',
     './program-row-heights',
+    './drag-vs-repeat-lockup',
     './card-templates',
     './card-moment',
     './card-render',

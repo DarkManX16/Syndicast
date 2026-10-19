@@ -1,3 +1,4 @@
+const makeVsRepeatDragGuard = require('../services/vs-repeat-drag-guard');
 const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
 const transitions = require('../../src/transitions');
@@ -402,6 +403,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     scope.currentStartIndex = val;
                 });
             };
+
+            scope.vsRepeatDragOptions = { latch: false, preserveLatchOnRefresh: false };
+            const programDragGuard = makeVsRepeatDragGuard(scope, scope.vsRepeatDragOptions);
+            scope.startProgramDrag = programDragGuard.start;
+            scope.endProgramDrag = programDragGuard.end;
 
             scope.finishedOfflineEdit = (program) => {
                 let editedProgram = scope.channel.programs[scope.selectedProgram];
