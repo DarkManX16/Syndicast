@@ -199,6 +199,43 @@ module.exports = async function run() {
             allowed.type === 'commercial' && allowed.title === 'Cooled#1', JSON.stringify(allowed));
     }
 
+    // ----------------------------------------- cooldown: the correct context's own number
+    {
+        // The SAME list id in both day-parts, with different cooldowns.
+        // helperFuncs.js's applyMix re-reads weight/cooldown from whichever
+        // context resolveCollections hands it, never from
+        // allFillerCollections' merged, deduplicated copy (which - since
+        // 'Cooled' is declared on Day first - would carry Day's number
+        // anyway and so could not catch this on its own). This proves the
+        // *right* context's own number is what is actually applied: 5
+        // minutes since the last play is still cooling under Day's 10-minute
+        // cooldown, so "previous" must be reading Day's entry, not Night's
+        // 2-minute one, which would have allowed it straight through.
+        const ch = {
+            number: 92, name: 'SameListDifferentCooldown', offlineMode: 'pic', fallback: [], fillerRepeatCooldown: 0,
+            fillerCollections: mix([['Base', 100]]),
+            dayParts: [
+                { name: 'Day', fillerCollections: mix([['Cooled', 100, 10 * MIN]]),
+                  starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }] },
+                { name: 'Night', fillerCollections: mix([['Cooled', 100, 2 * MIN]]), commercialsFrom: 'previous',
+                  starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 20 * HOUR }] },
+            ],
+        };
+        const programs = [show('Before', 30), flex(8), show('After', 30)];
+        const channelWithBreak = Object.assign({}, ch, { programs });
+        const t0 = at('2026-01-05T20:00:00') - 8 * MIN + 1 * MIN;
+        const fillers = fillersFor(channelWithBreak);
+        const obj = { program: programs[1], timeElapsed: 1 * MIN, programIndex: 1 };
+
+        const store = freshStore();
+        const playedAgo = Date.now() - 5 * MIN;
+        store.update(92, '!fillerList!|Cooled', playedAgo);
+        store.update(92, 'plex|srv|/f/Cooled#1', playedAgo);
+        const item = helperFuncs.createLineup(store, obj, channelWithBreak, fillers, false, t0)[0];
+        suite.check('the borrowed mix is read with the PREVIOUS day-part\'s own cooldown number, not the incoming one\'s',
+            item.type === 'offline', JSON.stringify(item));
+    }
+
     // ------------------------------------------------------- stable through a break
     {
         // The comment on resolveMixContext promises a long break spanning a
