@@ -208,8 +208,34 @@ async function checkRouter(suite) {
         // ... and 15s left where the only short clips are on a 10 minute cooldown
         const cooled = withBreak(15, 255);
         cooled.fillerCollections = [{ id: 'LONG', weight: 100, cooldown: 0 }, { id: 'COOL', weight: 1, cooldown: 600 * SEC }];
-        const channels = { 11: plain, 12: stepped, 13: withBreak(13, 255), 14: withBreak(14, 290), 15: cooled };
-        const lists = { ADS: ads, OUT, IN, LONG: clips('Long', 8, 60), COOL: clips('Cool', 3, 12) };
+        // Channel 16: a day-part boundary, with Night's commercialsFrom set to
+        // 'previous' - see docs/blocks-spec.md, "Which mix fills a break".
+        // A16 (600s) -> a 240s break ending exactly where Night starts -> B16.
+        // Night's start is computed from the break's own end, so this lands on
+        // the real boundary regardless of what day or hour the suite runs at;
+        // Day's start is two hours earlier in the day, every day, so it is
+        // always the context in effect right before Night's.
+        const dpBreakSecs = 240;
+        const nightStartsAt = T + 600 * SEC + dpBreakSecs * SEC;
+        const nsd = new RealDate(nightStartsAt);
+        const nightTimeMs = nsd.getHours() * 3600000 + nsd.getMinutes() * 60000 + nsd.getSeconds() * 1000 + nsd.getMilliseconds();
+        const dayTimeMs = ((nightTimeMs - 2 * 3600000) % 86400000 + 86400000) % 86400000;
+        const dayNightPrograms = [
+            { title: 'A16', key: '/p/A16', duration: 600 * SEC, serverKey: 'srv' },
+            { isOffline: true, duration: dpBreakSecs * SEC },
+            { title: 'B16', key: '/p/B16', duration: 600 * SEC, serverKey: 'srv' },
+        ];
+        const dayNightShared = base(16, dayNightPrograms);
+        dayNightShared.fillerCollections = [{ id: 'DAY_ADS', weight: 100, cooldown: 0 }];
+        dayNightShared.dayParts = [
+            { name: 'Day', fillerCollections: [{ id: 'DAY_ADS', weight: 100, cooldown: 0 }],
+              starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: dayTimeMs }] },
+            { name: 'Night', fillerCollections: [{ id: 'NIGHT_ADS', weight: 100, cooldown: 0 }], commercialsFrom: 'previous',
+              starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: nightTimeMs }] },
+        ];
+        const channels = { 11: plain, 12: stepped, 13: withBreak(13, 255), 14: withBreak(14, 290), 15: cooled, 16: dayNightShared };
+        const lists = { ADS: ads, OUT, IN, LONG: clips('Long', 8, 60), COOL: clips('Cool', 3, 12),
+            DAY_ADS: clips('DayAd', 12, 30), NIGHT_ADS: clips('NightAd', 12, 30) };
         const channelService = Object.assign(new EventEmitter(), { getChannel: async (n) => channels[n] || null });
         const fillerService = { getFillersFromCollections: async (ch, cols) => cols.map((c) => ({
             id: c.id, content: lists[c.id] || [], weight: c.weight, cooldown: c.cooldown })) };
@@ -331,6 +357,31 @@ async function checkRouter(suite) {
         suite.check('A: in a break with steps, both viewers get the same out step, Flex and in step',
             s1.length > 4 && s1[0].startsWith('Out') && s1[s1.length - 1].startsWith('In') && s1.join('|') === s2.join('|'),
             `${s1.join(', ')}\n        vs ${s2.join(', ')}`);
+
+        // Day-parts + "previous": the Fri-9:54pm-style boundary break. Two
+        // viewers 3s apart, mirroring the plain-channel "A" check above, on a
+        // break whose mix is borrowed from the day-part before the one it is
+        // entering (the user-facing scenario docs/blocks-spec.md documents).
+        channelCache.clear();
+        seen = await watch(16, [follow('dp1', 16, T + 600 * SEC, 300), follow('dp2', 16, T + 603 * SEC, 300)],
+            T + 600 * SEC + dpBreakSecs * SEC + 260 * SEC);
+        const dp1 = flexOf(seen.dp1), dp2 = flexOf(seen.dp2);
+        const dp2Ads = seen.dp2.filter((i) => i.type === 'commercial');
+        suite.check('day-parts + "previous": two viewers 3s apart still see the same commercials in the same order, all but at most the break\'s last',
+            dp1.length > 1 && dp1.slice(0, -1).join('|') === dp2.slice(0, -1).join('|')
+                && dp2Ads.slice(0, -1).every((i) => i.sharedPick === true), `${dp1.join(', ')}\n        vs ${dp2.join(', ')}`);
+        suite.check('...neither viewer gets the offline screen - the previous day-part\'s mix has clips that fit',
+            !dp1.includes('[offline]') && !dp2.includes('[offline]'), `${dp1.join(', ')}\n        vs ${dp2.join(', ')}`);
+        suite.check('...and every commercial in the break comes from Day\'s own list (the day-part before Night), never Night\'s',
+            dp1.every((t) => t.startsWith('DayAd')) && dp2.every((t) => t.startsWith('DayAd')), `${dp1.join(', ')}\n        vs ${dp2.join(', ')}`);
+        suite.check('...and both go on to B16, from its start',
+            seen.dp1[seen.dp1.length - 1].title === 'B16' && seen.dp2[seen.dp2.length - 1].title === 'B16'
+                && seen.dp2[seen.dp2.length - 1].start === 0);
+        const ownByDp2 = new Set(dp2Ads.filter((i) => i.sharedPick !== true).map((i) => 'plex|' + i.serverKey + '|' + i.key));
+        const byDp2 = writes.filter(([who, k]) => who === 'dp2' && k !== 'plex|srv|/p/B16'
+            && !(k === listKey('DAY_ADS') && ownByDp2.size > 0) && !ownByDp2.has(k));
+        suite.check('...and play times (and so the cooldown clock) are recorded once per pick: the second viewer records none for the picks it shares',
+            byDp2.length === 0 && dp2Ads.length > 1, byDp2.slice(0, 3).map((w) => w[1]).join(', '));
 
         // C: tiny leftovers.
         channelCache.clear();

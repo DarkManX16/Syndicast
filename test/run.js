@@ -9,6 +9,7 @@ const suites = [
     './blocks-persistence',
     './blocks-guide',
     './blocks-schedule-view',
+    './break-mix-source',
     './transitions',
     './transitions-editor',
     './show-match',

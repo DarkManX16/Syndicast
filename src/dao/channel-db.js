@@ -94,6 +94,25 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
 /*
+ * commercialsFrom (the "commercials in the break into it come from" setting)
+ * is read by day-parts.js's resolveMixContext as 'previous' or anything else
+ * - absent included - meaning "this", so a bad value never breaks playback.
+ * This only catches it from staying silently wrong: a typo or a stray value
+ * from hand-editing would otherwise just read as "this", with nothing to say
+ * why "the one before" was picked in the editor but never took effect.
+ * Shared between day-parts and blocks below, the same way warnAboutTransitions
+ * is shared across both.
+ */
+function warnAboutCommercialsFrom(label, context, complain) {
+    if (typeof(context.commercialsFrom) === 'undefined') {
+        return;
+    }
+    if ( (context.commercialsFrom !== 'this') && (context.commercialsFrom !== 'previous') ) {
+        complain(`${label} has commercialsFrom "${context.commercialsFrom}", which should be "this" or "previous". It will be read as "this" (today's behaviour) until fixed.`);
+    }
+}
+
+/*
  * Day-parts form one continuous weekly chain, so a malformed start does not
  * fail loudly on its own - it just makes some stretch of the week resolve to a
  * day-part nobody meant. Complain here, at the one place every channel write
@@ -122,6 +141,7 @@ function warnAboutDayParts(json) {
             complain(`${label} is empty.`);
             continue;
         }
+        warnAboutCommercialsFrom(label, dayPart, complain);
         if (! Array.isArray(dayPart.starts) || (dayPart.starts.length === 0) ) {
             complain(`${label} has no start times, so it never airs.`);
             continue;
@@ -203,6 +223,7 @@ function warnAboutBlocks(json) {
             complain(`${label} is empty.`);
             continue;
         }
+        warnAboutCommercialsFrom(label, block, complain);
         if (! Array.isArray(block.airings) || (block.airings.length === 0) ) {
             complain(`${label} has no airings, so it never airs.`);
             continue;
