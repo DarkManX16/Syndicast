@@ -1734,6 +1734,26 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope.dpMinuteOptions.push( { id: m, description: ( (m<10) ? "0" : "") + m } );
             }
 
+            /*
+             * "Commercials in the break into it come from" (day-parts and
+             * blocks both). Stored as context.commercialsFrom, read by
+             * src/day-parts.js's resolveMixContext as 'previous' or anything
+             * else - absent included - meaning "this": the default stays
+             * today's behaviour, so leaving it unset here (rather than
+             * writing "this" explicitly) means a channel nobody has touched
+             * this on saves no differently than before.
+             */
+            scope.commercialsFromValue = (context) => {
+                return (context.commercialsFrom === 'previous') ? 'previous' : 'this';
+            }
+            scope.setCommercialsFrom = (context, value) => {
+                if (value === 'previous') {
+                    context.commercialsFrom = 'previous';
+                } else {
+                    delete context.commercialsFrom;
+                }
+            }
+
             scope.addDayPart = () => {
                 scope.channel.dayParts.push( {
                     id: newDayPartId(),

@@ -101,7 +101,11 @@ async function getNowPlaying(channel, fillerDB, now) {
 
     if (program.isOffline === true) {
         let next = dayParts.findNextProgram(channel, now, obj);
-        let context = dayParts.resolveBreakContext(channel, now, next !== null ? next.startTime : null);
+        // The context whose mix is really playing - resolveMixContext, same as
+        // resolveCollections, so this page cannot show a different context
+        // than the one actually supplying commercials when a day-part or
+        // block reads its mix from "the one before" it.
+        let context = dayParts.resolveMixContext(channel, now, obj);
         let mixEntries = ( (context !== null) && Array.isArray(context.fillerCollections) )
             ? context.fillerCollections
             : channel.fillerCollections;

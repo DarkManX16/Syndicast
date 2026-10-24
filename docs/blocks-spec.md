@@ -73,6 +73,8 @@ This reproduces the real channels:
 
 A break with no program neighbour — the start of a lineup, or an all-Flex channel — resolves from the clock.
 
+**A day-part or block may instead read its boundary breaks from the context before it.** Per day-part/block: *"Commercials in the break into it come from: this day-part (or block) / the one before."* Default is **this one** (today's behaviour), so nothing saved changes until someone picks the other option. It changes only which **mix** fills the break — the transition sequence is still chosen from the real P/N contexts (`leaving`/`entering`), unaffected, so a context's own sign-on still plays where it always did. Inside one context (no boundary) there is no "before" to borrow from, so the setting has no effect there, nor at the very start of a lineup with no program before the break to read a context from. When the context right before resolves to null (nothing time-scoped covers that moment), the break falls back to the channel's own Flex tab, the same answer a channel with no overlay at all would give — never the incoming context's own mix, which would be "this one", not "the one before".
+
 ### Daylight saving
 
 A time marked *shift with daylight saving* stays fixed in standard time, so it reads an hour later on the wall clock in summer. The UI never says "standard time"; it shows the result — *7:00 PM in winter, 8:00 PM in summer.* All other times stay at the wall-clock time entered, as the DST fix on `main` already guarantees.

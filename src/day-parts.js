@@ -472,8 +472,43 @@ function findNextProgram(channel, t0, obj) {
 }
 
 /*
+ * The mirror image of findNextProgram: the first real program before the
+ * break being filled, and the wall-clock instant it started at. Walks
+ * channel.programs backward from obj.programIndex, skipping adjacent Flex
+ * entries the same way findNextProgram skips them going forward, and wraps
+ * the same way - a break at index 0 of the array reads the lineup's own
+ * previous cycle, which is correct: the array is a cycle, not a single day.
+ *
+ * Used only by resolveMixContext's "the one before" option below. Nothing
+ * else needs the previous neighbour, which is why this stayed unwritten
+ * through stages 1 and 2 of day-parts.js.
+ */
+function findPreviousProgram(channel, t0, obj) {
+    let programs = channel.programs;
+    if (! Array.isArray(programs) || (programs.length === 0) ) {
+        return null;
+    }
+    let index = obj.programIndex;
+    if ( (typeof(index) !== 'number') || (index < 0) || (index >= programs.length) ) {
+        return null;
+    }
+    // The instant this break itself began - the mirror of findNextProgram's
+    // "at", which starts from the instant it ends.
+    let at = t0 + (obj.startsIn || 0) - obj.timeElapsed;
+    let limit = Math.min(MAX_NEIGHBOUR_SCAN, programs.length);
+    for (let i = 1; i <= limit; i++) {
+        let program = programs[ ( ( (index - i) % programs.length ) + programs.length ) % programs.length ];
+        at -= program.duration;
+        if (program.isOffline !== true) {
+            return { program: program, startTime: at };
+        }
+    }
+    return null;
+}
+
+/*
  * The shared "given a maybe-absent neighbour, which instant do we resolve
- * context at" decision - see resolveCollections below for why the neighbour's
+ * context at" decision - see resolveMixContext below for why the neighbour's
  * start wins when there is one. Factored out because the picker and the
  * guide each find that neighbour a different way (the picker walks
  * channel.programs from obj.programIndex; the guide scans the window it has
@@ -488,8 +523,9 @@ function resolveBreakContext(channel, t0, neighbourStartTime) {
 }
 
 /*
- * Which filler mix fills this break, or null when nothing time-scoped applies
- * and the channel's own Flex tab should be used exactly as it is.
+ * The context whose mix actually fills this break - what resolveCollections
+ * and the channel status page both want, factored out so the two cannot
+ * drift apart on which context's commercials are really playing.
  *
  * The rule in the spec has two branches - same context on both sides of the
  * break uses that context's mix, a boundary uses the incoming one - and for the
@@ -507,13 +543,48 @@ function resolveBreakContext(channel, t0, neighbourStartTime) {
  * a long break: createLineup is re-invoked once per filler clip with a fresh
  * t0, but the neighbour it reads does not move, so a break spanning a boundary
  * plays one mix throughout instead of switching partway.
+ *
+ * A day-part or block may opt into "the one before" (commercialsFrom:
+ * 'previous') instead of its own mix (the default, 'this' or absent - nothing
+ * saved changes until someone picks the other option). It only ever reads
+ * differently from the incoming context's own mix at a real boundary: inside
+ * one context the program before the break shares that same context, so "the
+ * one before" and "this one" land on the same answer. With no program before
+ * the break to read a context from (the very start of a lineup), there is
+ * nothing to borrow, so this falls back to the incoming context's own mix -
+ * the same "no neighbour" fallback the spec already gives the clock-resolved
+ * case. When the context right before resolves to null (nothing time-scoped
+ * covers that moment), this returns null too, so the caller falls back to the
+ * channel's own Flex tab exactly as it would for a channel with no overlay at
+ * all - never silently keeping the incoming context's own mix instead, which
+ * would be "this", not "the one before".
+ *
+ * This never changes which transition sequence plays: transitions.js reads
+ * the real P and N contexts (leaving/entering) straight from resolveContext,
+ * never from here, so a boundary's entering sequence is unaffected by this
+ * setting - only the Flex mix between the steps is.
+ */
+function resolveMixContext(channel, t0, obj) {
+    let next = findNextProgram(channel, t0, obj);
+    let context = resolveBreakContext(channel, t0, next !== null ? next.startTime : null);
+    if ( (context != null) && (context.commercialsFrom === 'previous') ) {
+        let prev = findPreviousProgram(channel, t0, obj);
+        if (prev !== null) {
+            return resolveContext(channel, prev.startTime);
+        }
+    }
+    return context;
+}
+
+/*
+ * Which filler mix fills this break, or null when nothing time-scoped applies
+ * and the channel's own Flex tab should be used exactly as it is.
  */
 function resolveCollections(channel, t0, obj) {
     if (! hasOverlay(channel)) {
         return null;
     }
-    let next = findNextProgram(channel, t0, obj);
-    let context = resolveBreakContext(channel, t0, next !== null ? next.startTime : null);
+    let context = resolveMixContext(channel, t0, obj);
     if ( (context == null) || ! Array.isArray(context.fillerCollections) ) {
         return null;
     }
@@ -610,6 +681,7 @@ module.exports = {
     hasOverlay: hasOverlay,
     resolveContext: resolveContext,
     resolveBreakContext: resolveBreakContext,
+    resolveMixContext: resolveMixContext,
     resolveCollections: resolveCollections,
     weeklySegments: weeklySegments,
     airingSpans: airingSpans,
@@ -619,6 +691,7 @@ module.exports = {
     effectiveStartTime: effectiveStartTime,
     daylightShiftAt: daylightShiftAt,
     findNextProgram: findNextProgram,
+    findPreviousProgram: findPreviousProgram,
     DAY: DAY,
     WEEK: WEEK,
 };
