@@ -2767,6 +2767,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             let relayGate = pinTools.oneAtATime();
             scope.relaying = () => relayGate.busy();
             let guardedRelay = (args) => relayGate.run( () => scope.timeSlots.relay(args) );
+            // A swap or insert dialog plans its re-lays once, through the same gate; they then run in the re-lay worker.
+            let guardedPlan = (args) => relayGate.run( () => scope.timeSlots.plan(args) );
             scope.swapRequest = null;
             let openPlacing = async (index, mode) => {
                 if (relayGate.busy()) {
@@ -2790,7 +2792,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 scope.swapRequest = {
                     channel: scope.channel, index: index, mode: mode,
-                    relay: guardedRelay, limit: scope.maxSize, catalogState: catalogFor,
+                    plan: guardedPlan, limit: scope.maxSize, catalogState: catalogFor,
                 };
                 $timeout();
             };
@@ -2873,15 +2875,14 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     let start = new Date(scope.channel.startTime).getTime();
                     let now = Date.now();
                     let ahead = pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: now });
-                    let relayKeeping = async (keep) => guardedRelay({
-                        programs: commonProgramTools.slotPool(scope.channel.programs), limit: scope.maxSize,
-                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: await catalogFor(), pins: keep, now: now,
-                    });
                     // As the swap dialog does: the undo's own effects are the re-lay
-                    // without the pin against the same re-lay with it, made back to
-                    // back; what re-making the lineup changes anyway is said apart.
-                    let baseline = await relayKeeping(ahead);
-                    let result = await relayKeeping(ahead.filter( (x) => x.program !== program ));
+                    // without the pin against the same re-lay with it, both made from
+                    // one plan; what re-making the lineup changes anyway is said apart.
+                    let [ baseline, result ] = await guardedRelay({
+                        programs: commonProgramTools.slotPool(scope.channel.programs), limit: scope.maxSize,
+                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: await catalogFor(), now: now,
+                        pinSets: [ ahead, ahead.filter( (x) => x.program !== program ) ],
+                    });
                     let lineupOf = (r) => ({ programs: r.programs, startTime: new Date(r.startTime).getTime() });
                     let year = 400 * 24 * 60 * 60 * 1000;
                     let own = pinTools.relayEffects({ before: lineupOf(baseline), after: lineupOf(result), from: Math.max(now, program.pin.at - 2000),

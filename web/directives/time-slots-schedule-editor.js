@@ -6,8 +6,10 @@ const showCatalog = require('../../src/show-catalog');
 const episodeStart = require('../../src/episode-start');
 const pinTools = require('../../src/pins');
 const buildCheck = require('../../src/build-check');
+const poolSeasons = require('../../src/pool-seasons');
+const catalogKeep = require('../../src/catalog-keep');
 
-module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
+module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader, relayWorker ) {
     const DAY = 24*60*60*1000;
     const WEEK = 7 * DAY;
     // Thursday-first: a weekly slot's time is ms into the epoch week. See
@@ -512,6 +514,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
              * channel page after Update Channel.
              */
             let catalogs = {};
+            //What the last read got, kept for the re-lays of swaps, inserts and undo
+            //while the channel editor is open (src/catalog-keep.js); Create Lineup reads afresh.
+            let keptCatalogs = catalogKeep.keeper({ maxAge: 30 * 60 * 1000 });
+            //Told how many shows are about to be read, while a re-lay is planned.
+            let onReading = null;
             let reading = null;
             let lastRun = null;
             scope.catalog = { state: showCatalog.emptyState(), channelNumber: null, leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0 };
@@ -557,8 +564,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 scope.catalog.reading = true;
                 scope.catalog.readCount = shows.length;
+                if (onReading !== null) {
+                    onReading(shows.length);
+                }
+                let into = catalogs;
                 reading = catalogReader.read(shows).then( (got) => {
-                    Object.assign(catalogs, got);
+                    Object.assign(into, got);
+                    keptCatalogs.keep(into, Date.now());
                 } ).catch( (err) => {
                     shows.forEach( (sh) => { catalogs[sh.showId] = { error: (err && err.message) ? err.message : String(err) }; } );
                 } ).then( () => {
@@ -667,7 +679,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 return model;
             };
+            //Not while the dialog is hidden: every re-lay prepares it unseen, and rebuilding
+            //the model for nobody took 5 s on channel 2.
             scope.nextLineOf = (slot) => {
+                if (! scope.visible) {
+                    return null;
+                }
                 ensureModel();
                 return slotInfo.get(slot) || null;
             };
@@ -771,9 +788,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             };
             scope.dismissDroppedStarts = () => { scope.droppedStarts = []; };
 
-            //`pinsToKeep`, when given, are the swaps and inserts to keep
-            //instead of the lineup's own (src/pins.js) - for a re-lay.
-            let makeLineup = async(fromInstant, pinsToKeep, atNow) => {
+            //Everything a lineup is made from but its pins, as of `atNow`: the
+            //pool, every position's place, history and the program on air.
+            let planLineup = async(atNow) => {
                 scope.schedule.timeZoneOffset =  (new Date()).getTimezoneOffset();
                 //A re-lay compared with another plans both as of one moment, `atNow`:
                 //a moment apart, each can count a different program as on air.
@@ -831,6 +848,22 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     history = h.history.filter( (a) => ! showCatalog.isNeverAir(stateForHistory, a.program) );
                     scope.schedule.progress.history = h.keep;
                 }
+                return { run, carry, history, t0 };
+            };
+            //What a run hands back with its lineup: the schedule it was made from, as
+            //saved, and the catalog changes the channel page saves after Update Channel.
+            let afterRun = (schedule, run) => {
+                delete schedule.fake;
+                let catalogOps = showCatalog.opsAfterRun({ run, catalogs, lineupPool: scope.programs || [], leftOut: scope.catalog.leftOut,
+                    named: scope.catalog.named, stateReadable: ! scope.catalog.unreadable, getShowData: getShowData });
+                seasonConstraints.clearStartSeasons(schedule);
+                return { schedule, catalogOps };
+            };
+
+            //`pinsToKeep`, when given, are the swaps and inserts to keep
+            //instead of the lineup's own (src/pins.js) - for a re-lay.
+            let makeLineup = async(fromInstant, pinsToKeep, atNow) => {
+                let { run, carry, history, t0 } = await planLineup(atNow);
                 //Swaps and inserts still to air stay pinned to their times.
                 let keep = Array.isArray(pinsToKeep) ? pinsToKeep : [];
                 if ( ! Array.isArray(pinsToKeep) && (typeof(scope.lineup) === 'function') ) {
@@ -848,12 +881,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     await doWait(w);
                 }
 
-                res.schedule = scope.schedule;
-                delete res.schedule.fake;
-                res.catalogOps = showCatalog.opsAfterRun({ run, catalogs, lineupPool: scope.programs || [], leftOut: scope.catalog.leftOut,
-                    named: scope.catalog.named, stateReadable: ! scope.catalog.unreadable, getShowData: getShowData });
-                seasonConstraints.clearStartSeasons(res.schedule);
-                return res;
+                return Object.assign(res, afterRun(scope.schedule, run));
             }
 
             //Create Lineup, Regenerate, Swap, Insert and undo all come through here: none
@@ -874,10 +902,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             // edited here, now gives to another show.
             let keptPins = [];
             scope.pinNoteList = () => (keptPins.length === 0) ? [] : pinTools.pinNotes({ pins: keptPins, schedule: scope.schedule, nameOf: (id) => nameOf(id) }).map( (n) => n.text );
-            let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState) => {
+            //`keepCatalogs`: a re-lay's, reading only the shows the last read didn't get.
+            let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs) => {
                 scope.limit = limit;
                 scope.programs = programs;
-                catalogs = {};
+                catalogs = keepCatalogs ? keptCatalogs.catalogs(Date.now()) : {};
                 reading = null;
                 lastRun = null;
                 //A re-roll shows no notes, so its newcomers stay new for next time.
@@ -969,24 +998,65 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
              * is never shown and onDone is not called: the result is handed
              * back, for the Programming tab to compare and apply.
              */
-            let relay = async ({ programs, limit, backup, lineup, catalogState, pins, now }) => {
+            /*
+             * The part of a re-lay that is the same whatever its pins, worked out
+             * once: the generator's inputs, planned as of `now` - for the re-lay
+             * worker (src/relay-worker.js) - and what a result is handed back with.
+             * Catalogs come from the last read while the channel editor is open.
+             * `onReading(count)` is told when shows must be read from Plex.
+             */
+            let plan = async ({ programs, limit, backup, lineup, catalogState, now, onReading: reported }) => {
                 // It re-uses the dialog's state: never while the dialog is open.
                 if (scope.visible) {
                     throw new Error('The Time Slots dialog is open');
                 }
                 await buildCheck.guard({ fetchVersion: () => dizquetv.getCodeBuild(), run: async () => null });
-                prepare(programs, limit, backup, true, null, lineup, catalogState);
-                scope.visible = false;
-                let res = await makeLineup(false, pins, now);
-                // Its own copy: the dialog's schedule object is used again by the next opening.
-                res.schedule = JSON.parse(JSON.stringify(res.schedule));
-                return res;
+                onReading = (typeof(reported) === 'function') ? reported : null;
+                try {
+                    prepare(programs, limit, backup, true, null, lineup, catalogState, true);
+                    scope.visible = false;
+                    let { run, carry, history } = await planLineup(now);
+                    let inputs = { pool: run.pool, schedule: JSON.parse(JSON.stringify(scope.schedule)), history, carry };
+                    // Its own copy: the dialog's schedule object is used again by the next opening.
+                    return Object.assign({ inputs }, afterRun(JSON.parse(JSON.stringify(scope.schedule)), run));
+                } finally {
+                    onReading = null;
+                }
+            };
+
+            /*
+             * A swap, insert or undo re-lays the lineup through Regenerate's
+             * path, keeping `pins` (src/pins.js pinsAhead's shape) - the dialog
+             * is never shown and onDone is not called: the result is handed
+             * back, for the Programming tab to compare and apply. The generator
+             * runs in the re-lay worker, off the page's main thread. Given
+             * `pinSets` instead of `pins`, it makes one lineup for each from the
+             * one plan - undo compares the lineup with a pin and without it.
+             */
+            let relaySession = 0;
+            let relay = async (args) => {
+                let planned = await plan(args);
+                let session = `relay-${++relaySession}`;
+                await relayWorker.open(session, planned.inputs, { programs: [], startTime: 0 });
+                try {
+                    let sets = Array.isArray(args.pinSets) ? args.pinSets : [ args.pins ];
+                    let results = [];
+                    for (let i = 0; i < sets.length; i++) {
+                        await relayWorker.call({ type: 'relay', session, key: `r${i}`, pins: sets[i] });
+                        let res = await relayWorker.call({ type: 'result', session, key: `r${i}` });
+                        results.push(Object.assign(res, { schedule: JSON.parse(JSON.stringify(planned.schedule)), catalogOps: planned.catalogOps }));
+                    }
+                    return Array.isArray(args.pinSets) ? results : results[0];
+                } finally {
+                    relayWorker.call({ type: 'close', session });
+                }
             };
 
 
             scope.linker( {
                 startDialog: startDialog,
                 relay: relay,
+                plan: plan,
             } );
 
             scope.finished = async (cancel, fromInstant) => {
@@ -1081,21 +1151,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
              */
             scope.openSeasonEditor = null;
 
-            scope.seasonsAvailable = (showId) => {
-                let seasons = {};
-                let available = scope.catalogPool();
-                for (let i = 0; i < available.length; i++) {
-                    let p = available[i];
-                    if (p.type !== 'episode') {
-                        continue;
-                    }
-                    if (getShowData(p).showId !== showId) {
-                        continue;
-                    }
-                    seasons[ (typeof(p.season) === 'number') ? p.season : 0 ] = true;
-                }
-                return Object.keys(seasons).map( (s) => parseInt(s, 10) ).sort( (a,b) => a - b );
-            }
+            //Asked for every slot on every redraw: worked out once per pool (src/pool-seasons.js).
+            let seasonsIn = poolSeasons.memo(getShowData);
+            scope.seasonsAvailable = (showId) => seasonsIn(scope.catalogPool(), showId);
 
             //Shuffle keeps its rounds by episode, so leaving seasons out of a
             //Shuffle slot moves nothing else - see src/shuffle-rounds.js.
