@@ -7024,7 +7024,18 @@ Found and fixed Oct 18, 2026. In Edge (and in dizqueTV before this fork), draggi
 programming list - or the show/filler content pickers - would eventually get stuck: every drop target shows
 🚫, closing the tab doesn't fix it, and only closing all of Edge does.
 
-Root cause: every drag list in this app (`web/ext/dragdrop.js`, a vendored copy of
+**Corrected Oct 25, 2026: the root cause below is wrong, and the lockup is not fixed.** It came back on the
+Filler Lists page, a plain table with no vs-repeat, and a page reload didn't clear it. A reload throws away
+everything a page holds, so the stuck state is inside Edge's own process, where no page script can reach.
+The test below never showed a lockup. It only showed the row leaving the document, and its drags
+(`setDragInterception`) never go through Windows' own drag-and-drop, which is where a stuck state like this
+would live. With real mouse input, a detached row does not lock Edge 156 (see "The lockup came back" at the
+end of this entry). The guard is kept: with it off, a real edge auto-scroll still tears the dragged row out
+and its `dragend` never reaches the page, which leaves the drag list's own state wrong until the next drag.
+That's a page-level fault, not the lockup. The cause of the lockup is still unknown; the drag log below
+is there to catch it.
+
+Root cause (as first written, disproved Oct 25): every drag list in this app (`web/ext/dragdrop.js`, a vendored copy of
 angular-drag-and-drop-lists) runs on the browser's native HTML5 drag-and-drop, and the channel programming
 list - routinely tens of thousands of rows (Cartoon Cartoons Network's dev channel has 40,000) - is
 virtualized by `vs-repeat`. vs-repeat doesn't hide off-screen rows with CSS; on every scroll it re-slices the
@@ -7061,3 +7072,45 @@ connected, `dragend` fired every time, and the latch reset to `false` after each
 puppeteer/CDP hang (unrecoverable `Input.dragIntercepted` wait) on an already heavily-loaded dev machine cut
 the session short; the hang reproduced nothing the fix is meant to prevent (the prior four cycles had each
 already dragged, scrolled and dropped cleanly).
+
+#### The lockup came back, Oct 25, 2026
+
+Ron hit 🚫 again on Edge 155 while dragging on the Filler Lists page, and a few days earlier in the channel
+editor, with e054eb8's guard already live on 18000. The 🚫 stayed after a reload, and closing all of Edge
+cleared it. (That restart also moved Edge from 155 to 156, which had been installed Oct 24 and was waiting.)
+
+Reproduced with real input instead of CDP drag interception: a PowerShell helper sends Windows mouse input
+(`SetCursorPos`/`mouse_event`) while puppeteer-core only reads the page, in a separate Edge 156 started with
+its own `--user-data-dir` and `--remote-debugging-port`, on a copy of `.dizquetv-dev`. Each case was followed
+by an ordinary probe drag. About 30 drags, none of which locked Edge:
+- Filler Lists: plain reorders, Esc mid-drag, wheel mid-drag, dropped on the toolbar, Esc outside the page,
+  quick flicks, out of the window and back, the dragged `<tr>` removed from the document mid-drag (and that
+  with Esc, and dropped outside), dragged up over another tab in the tab strip and dropped there.
+- Channel 1's programming list (39,999 rows): plain, wheel (a real drag's modal loop doesn't scroll on the
+  wheel at all), edge auto-scroll with the guard on, and edge auto-scroll with the guard switched off. In that
+  last one the dragged row really did leave the document and `dragend` never reached the page, and the next
+  drag still worked. Also a 4 s main-thread freeze right at the drop.
+
+Also checked: the re-lay gate (`relaying()`) only disables buttons and never touches the programming list's
+drag; the Time Slots dialog (`ng-if="visible"`) is a separate modal outside the list; nothing else since
+e054eb8 re-renders or blocks a drag list. Ron's Edge profile has no drag-related flags or experiments set.
+
+**What's added: a drag log** (`web/services/drag-recorder.js`, `test/drag-recorder.js`). It is started at
+load on every page and listens on window in the capture phase. It never changes an event. For each drag it
+records the page, the types the page's dragstart set, how many drag-enters and drag-overs arrived, how many the
+page accepted (read after the page's handlers, through `defaultPrevented`), the types they carried, and
+whether a drop and a `dragend` came. It also records a press-and-move on a draggable row that never became a
+drag. The last 40 drags are kept in `localStorage` (`syndicast.dragLog`) so they survive the reload Ron tries
+first. Each drag gets a one-line verdict: Edge never started it, no drag-over reached the page, refused
+(with or without data), never ended, or ok. The footer's "Drag log" link shows the log with Copy, Refresh and
+Clear. When it next locks up: one drag, reload, one more, Copy, send it before closing Edge. Quick checks at
+that point: does a drag work in a new Edge window (Ctrl+N), and on another site? `edge://restart` restarts
+Edge with the tabs restored, quicker than closing everything.
+
+Lesson: puppeteer's `setDragInterception` drags never touch Windows' drag-and-drop, so they can't show a
+lockup that lives in the browser. Never run `msedge.exe --version` to read the version on Windows: it hands
+off to Ron's running Edge and opens a window. Read the folder names under `Edge\Application` instead.
+
+Preview gotcha found on the way: a preview server on a data copy opens ~7,700 play-cache files at startup
+and hits EMFILE. A `bundle.js` request during that burst fails its rebuild, and the footer then says the page
+code "failed to rebuild" until a source changes again. Wait for the startup burst to end before the first page load.

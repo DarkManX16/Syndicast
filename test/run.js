@@ -40,6 +40,7 @@ const suites = [
     './bundle-freshness',
     './program-row-heights',
     './drag-vs-repeat-lockup',
+    './drag-recorder',
     './card-templates',
     './card-moment',
     './card-render',
