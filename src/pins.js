@@ -544,6 +544,21 @@ function sayFit({ programs, startTime, schedule, at, item, kind, after }) {
     if (after) {
         let placed = walk(after.programs, after.startTime, at - SAME, fit.slotEnd + 3 * HOUR)
             .find( (x) => x.program.pin && (Math.abs(x.program.pin.at - at) <= SAME) );
+        if (placed && (placed.start > at + SLACK)) {
+            // Held back by a program still on at its time: what it fits is from there.
+            let behind = walk(after.programs, after.startTime, placed.start - DAY, placed.start)
+                .filter( (x) => ! x.program.isOffline && (x.start < placed.start) ).pop();
+            let held = `can't start until ${clock(placed.start)}` + (behind ? `: ${showName(behind.program)} is still on until then` : '');
+            let over = placed.start + item.duration - fit.slotEnd;
+            if (over > SLACK) {
+                return text + ` It fits the space, but ${held}, so it runs ${length(over)} past ${clock(fit.slotEnd)}`
+                    + (fit.runsInto ? `, into ${possessive(showName(fit.runsInto.program))} slot.` : '.');
+            }
+            let following = walk(after.programs, after.startTime, placed.start + placed.program.duration, fit.slotEnd + 3 * HOUR)
+                .find( (x) => ! x.program.isOffline );
+            return text + ` It fits, but ${held}: ${length(placed.flex)} of Flex after it`
+                + (following ? `, and ${showName(following.program)} starts at ${clock(following.start)}.` : '.');
+        }
         if (placed) {
             left = placed.flex;
             let following = walk(after.programs, after.startTime, placed.start + placed.program.duration, fit.slotEnd + 3 * HOUR)
@@ -575,6 +590,56 @@ function sayEffects(effects) {
             + `${and(early.map( (e) => clock(e.nowAt) ))}.`);
     }
     return (parts.length > 0) ? parts.join(' ') : 'Nothing else changes.';
+}
+
+/*
+ * What a re-lay does that is said first, before any choice: pins in `after`
+ * that would start later than their time - a program still on then - and slot
+ * occurrences from `from` to `to` whose own show aired in `before` but has no
+ * airing starting in them in `after`. The slot `own` - the new pin's instant -
+ * is in is left out: the pin is there in its place.
+ */
+function slotWarnings({ before, after, from, to, schedule, getShowData, own }) {
+    let pushed = [];
+    let behind = null;
+    walk(after.programs, after.startTime, from - DAY, loopEnd(after, from)).forEach( (x) => {
+        let pin = x.program.pin;
+        if ( pin && (typeof(pin.at) === 'number') && (x.start + x.program.duration > from) && (x.start > pin.at + SLACK) ) {
+            pushed.push({ program: x.program, at: pin.at, start: x.start, behind: behind });
+        }
+        if (! x.program.isOffline) {
+            behind = { start: x.start, program: x.program };
+        }
+    } );
+    let airings = (lineup) => walk(lineup.programs, lineup.startTime, from - 3 * HOUR, to + 3 * HOUR).filter( (x) => ! x.program.isOffline );
+    let was = airings(before);
+    let now = airings(after);
+    let ownSlot = (typeof(own) === 'number') ? slotAround({ schedule, at: own }) : null;
+    let lost = [];
+    for (let t = from; t < to; ) {
+        let occ = slotAround({ schedule, at: t });
+        if ( (occ === null) || (occ.end <= t) ) {
+            break;
+        }
+        let id = occ.showId;
+        if ( (occ.start >= from - SAME) && ! ( (ownSlot !== null) && (ownSlot.start === occ.start) )
+            && (typeof(id) === 'string') && ! /^(flex|redirect)\./.test(id) ) {
+            let airs = (list) => list.find( (x) => (x.start >= occ.start - SAME) && (x.start < occ.end - SAME) && (getShowData(x.program).showId === id) );
+            let had = airs(was);
+            if (had && ! airs(now)) {
+                lost.push({ name: showName(had.program), start: occ.start, program: had.program });
+            }
+        }
+        t = occ.end;
+    }
+    return { pushed, lost };
+}
+
+function sayWarnings({ pushed, lost }) {
+    let named = (p) => p.isOffline ? `The Flex in place of ${p.pin.was}` : p.title;
+    return pushed.map( (x) => `${named(x.program)}, pinned to ${dayClock(x.at)}, would start late, at ${clock(x.start)}`
+        + (x.behind ? `: ${showName(x.behind.program)} is still on until then.` : '.') )
+        .concat(lost.map( (x) => `${x.name} loses its ${dayClock(x.start)} slot.` ));
 }
 
 // A few are named in the sentence; hundreds (a show added from the library) are
@@ -711,6 +776,8 @@ module.exports = {
     oneAtATime: oneAtATime,
     placedIn: placedIn,
     withPin: withPin,
+    slotWarnings: slotWarnings,
+    sayWarnings: sayWarnings,
     label: label,
     makePin: makePin,
     removalPin: removalPin,

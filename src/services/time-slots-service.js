@@ -375,6 +375,35 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     if ( (carryChecked !== null) && (carryChecked.start < t0) && (carryChecked.start > t0 - schedule.period) ) {
         t0 = carryChecked.start;
     }
+
+    /*
+     * Pins. Rule 1: a pin airs at its time, or the moment a program still on
+     * then ends - it never cuts into one. Rule 2: from its time to the end of
+     * its slot the slot is the pin's; the slot's own show airs after it only
+     * what fits whole. Rule 3: a slot that begins while the pin is on and ends
+     * before it is taken over; the one it ends in is taken over too ('take')
+     * or runs late ('late'): programs one after another from the pin's end,
+     * unpadded and unrounded, until one starts on time. Take covers only the
+     * slots the pin reaches from its own time: one pushed later by a program
+     * still on runs late into any slot beyond those. Rule 4 needs nothing
+     * here: a position advances only when its episode is placed, so what a pin
+     * pushes out airs at its show's next slot.
+     */
+    const SLACK = constants.SLACK;
+    let pins = (Array.isArray(pinsIn) ? pinsIn : [])
+        .filter( (x) => (x !== null) && (typeof(x) === 'object') && (typeof(x.at) === 'number')
+            && (typeof(x.program) === 'object') && (x.program !== null) && (x.at + x.program.duration > ts) )
+        .sort( (a, b) => a.at - b.at );
+    // A pinned Flex on air ("Remove this airing only") with nothing to carry keeps
+    // its own time, as the program on air does: restarted now, it would run on
+    // into the next slot and take it over.
+    let flexOnAir = (carryChecked !== null) ? undefined : pins.find( (x) => x.program.isOffline && (x.at <= ts) );
+    if ( (typeof(flexOnAir) !== 'undefined') && (flexOnAir.at < t0) && (flexOnAir.at > t0 - schedule.period) ) {
+        t0 = flexOnAir.at;
+    }
+    if ( (typeof(flexOnAir) !== 'undefined') && (flexOnAir.at < t0) ) {
+        flexOnAir = undefined;
+    }
     let p = [];
     let t = t0;
     let hardLimit = t0 + schedule.maxDays * DAY;
@@ -405,22 +434,16 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         }
     };
 
-    /*
-     * Pins. Rule 1: a pin airs at its time, or the moment a program still on
-     * then ends - it never cuts into one. Rule 2: from its time to the end of
-     * its slot the slot is the pin's; the slot's own show airs after it only
-     * what fits whole. Rule 3: a slot that begins while the pin is on and ends
-     * before it is taken over; the one it ends in is taken over too ('take')
-     * or runs late ('late'): programs one after another from the pin's end,
-     * unpadded and unrounded, until one starts on time. Rule 4 needs nothing
-     * here: a position advances only when its episode is placed, so what a pin
-     * pushes out airs at its show's next slot.
-     */
-    const SLACK = constants.SLACK;
-    let pins = (Array.isArray(pinsIn) ? pinsIn : [])
-        .filter( (x) => (x !== null) && (typeof(x) === 'object') && (typeof(x.at) === 'number')
-            && (typeof(x.program) === 'object') && (x.program !== null) && (x.at + x.program.duration > ts) )
-        .sort( (a, b) => a.at - b.at );
+    // A take pin, pushed later than its own time, ending in a slot that began after it
+    // would have ended: that slot was never given to it, so it runs late (rule 3).
+    let pushedPast = (pin, at) => {
+        if ( (pin.then !== 'take') || (typeof(pin.ownEnd) !== 'number') ) {
+            return false;
+        }
+        let found = findSlot(localMsIntoPeriod(at));
+        let occStart = (found === null) ? at : at - found.late;
+        return (occStart > pin.start + SLACK) && (occStart >= pin.ownEnd - SLACK);
+    };
     let nextPin = 0;
     let lastPin = null;
     let runningLate = false;
@@ -437,7 +460,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         } else {
             pushProgram(program);
         }
-        lastPin = { start: start, end: t, then: (pin.then === 'late') ? 'late' : 'take', kind: program.pin ? program.pin.kind : undefined };
+        // `ownEnd`: where it would end from its own time - take covers no slot past it (pushedPast).
+        lastPin = { start: start, end: t, then: (pin.then === 'late') ? 'late' : 'take', kind: program.pin ? program.pin.kind : undefined,
+            ownEnd: pin.at + program.duration };
         runningLate = false;
     };
 
@@ -449,18 +474,23 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         }
         pushProgram( Object.assign( {}, carry.program ) );
         // Its own slot gets only what fits whole after it (rule 2); slots it ran into
-        // are filled as the generator always has, so what follows is what it was.
-        lastPin = { start: carry.start, end: t, then: 'carry' };
+        // are filled as the generator always has, so what follows is what it was -
+        // unless it is a pin, which keeps its own choice for them (rule 3).
+        let carriedPin = carry.program.pin;
+        lastPin = ( (typeof(carriedPin) === 'object') && (carriedPin !== null) && (typeof(carriedPin.at) === 'number') )
+            ? { start: carry.start, end: t, then: (carriedPin.then === 'late') ? 'late' : 'take', kind: carriedPin.kind,
+                ownEnd: carriedPin.at + carry.program.duration }
+            : { start: carry.start, end: t, then: 'carry' };
         // A pin the program on air is itself was carried, not placed again.
         pins = pins.filter( (x) => ! ( x.program.pin && carry.program.pin && (x.program.pin.at === carry.program.pin.at) ) );
     } else if (ts > t0) {
-        pushFlex( ts - t0 );
+        pushFlex( ( (typeof(flexOnAir) !== 'undefined') ? flexOnAir.at : ts ) - t0 );
     }
     while ( (t < hardLimit) && (p.length < LIMIT) ) {
         await throttle();
         //ensure t is padded - except while running late after a pin (rule 3)
         let m = t % schedule.pad;
-        let afterLatePin = (lastPin !== null) && (lastPin.then === 'late') && (t === lastPin.end);
+        let afterLatePin = (lastPin !== null) && (t === lastPin.end) && ( (lastPin.then === 'late') || pushedPast(lastPin, t) );
         if ( ! runningLate && ! afterLatePin && (t % schedule.pad > constants.SLACK) && (schedule.pad - m > constants.SLACK) )  {
             let d = schedule.pad - m;
             if ( (nextPin < pins.length) && (pins[nextPin].at - t < d) ) {
@@ -535,7 +565,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         let ownSlot = (lastPin !== null) && (occStart <= lastPin.start + SLACK) && (lastPin.start < occEnd);
         // rule 3: a slot that began while the last pin was on
         if ( (lastPin !== null) && (lastPin.then !== 'carry') && (occStart > lastPin.start + SLACK) && (occStart < lastPin.end - SLACK) ) {
-            if ( (occEnd <= lastPin.end + SLACK) || (lastPin.then === 'take') ) {
+            if ( (occEnd <= lastPin.end + SLACK) || ( (lastPin.then === 'take') && (occStart < lastPin.ownEnd - SLACK) ) ) {
                 pushFlex( pinInside ? Math.max(0, pins[nextPin].at - t) : remaining );
                 continue;
             }

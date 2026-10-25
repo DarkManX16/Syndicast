@@ -235,6 +235,47 @@ module.exports = async function () {
                 && keptText === "Keeping your swaps and inserts: Thu Oct 8, 7:30pm Arnold's Christmas (Hey Arnold!).",
             [fitText, overText, movedText, lateText, droppedText, firstText, keptText].join(' | '));
 
+        // Ron, Oct 24: a swap pushed late by the show before it ran into the next slot and took
+        // it over, and the dialog said it fit. Whatever pushes a pin late or costs a show its
+        // slot is said first, in plain words.
+        suite.log('-- a pin pushed late, a slot lost: said first --');
+        {
+            const ride = episode('Are You Afraid of the Dark?', 3, 1, { title: 'The Tale of the Midnight Ride', duration: 24 * MIN + 23 * SEC });
+            const lateFirst = await lineup([mark(special, thu(19), 'late')]);
+            const pushedBoth = await lineup([mark(special, thu(19), 'late'), mark(ride, thu(20), 'take')]);
+            const w = pins.slotWarnings({ before: lateFirst, after: pushedBoth, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData, own: thu(20) });
+            suite.check('slotWarnings names a pin pushed late and the show still on at its time',
+                w.pushed.length === 1 && w.pushed[0].program.title === ride.title && w.pushed[0].at === thu(20) && w.pushed[0].start === thu(20, 6, 47)
+                    && w.pushed[0].behind.program.showTitle === 'Hey Arnold!' && w.lost.length === 0,
+                JSON.stringify({ pushed: w.pushed.map((x) => [x.program.title, clock(x.start)]), lost: w.lost.map((x) => x.name) }));
+            suite.check('...in plain words',
+                pins.sayWarnings(w).join(' ') === 'The Tale of the Midnight Ride, pinned to Thu Oct 8, 8:00pm, would start late, at 8:06:47: Hey Arnold! is still on until then.',
+                pins.sayWarnings(w).join(' '));
+
+            const takeOver = await lineup([mark(special, thu(20), 'take')]);
+            const lost = pins.slotWarnings({ before: plain, after: takeOver, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData, own: thu(20) });
+            suite.check('slotWarnings names the show whose slot a take-over costs, and not the slot the pin is in',
+                lost.lost.length === 1 && lost.lost[0].name === 'Shelby Woo' && lost.lost[0].start === thu(20, 30) && lost.pushed.length === 0,
+                JSON.stringify(lost.lost.map((x) => [x.name, new Date(x.start).toString()])));
+            suite.check('...in plain words', pins.sayWarnings(lost).join(' ') === 'Shelby Woo loses its Thu Oct 8, 8:30pm slot.', pins.sayWarnings(lost).join(' '));
+
+            const fifty = episode('Specials', 0, 2, { title: 'Fifty', duration: 50 * MIN });
+            const whole = await lineup([mark(special, thu(19), 'late'), mark(fifty, thu(20), 'take')]);
+            const both = pins.slotWarnings({ before: lateFirst, after: whole, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData, own: thu(20) });
+            suite.check('...and a slot a pushed pin covers whole is lost, and said',
+                both.pushed.length === 1 && both.lost.map((x) => x.name).join() === 'Shelby Woo',
+                JSON.stringify({ pushed: both.pushed.length, lost: both.lost.map((x) => x.name) }));
+
+            const quiet = pins.slotWarnings({ before: plain, after: swapped, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData, own: thu(19, 30) });
+            suite.check('a swap that fits on time warns of nothing', quiet.pushed.length === 0 && quiet.lost.length === 0 && pins.sayWarnings(quiet).length === 0);
+
+            const said = pins.sayFit({ programs: lateFirst.programs, startTime: lateFirst.startTime, schedule, at: thu(20), item: ride, kind: 'swap', after: pushedBoth });
+            suite.check('sayFit, given the re-lay, never says it fits when it would start late and run over',
+                ! said.includes('It fits:') && said.includes("can't start until 8:06:47: Hey Arnold! is still on until then")
+                    && said.includes("runs 1:10 past 8:30, into Shelby Woo's slot"),
+                said);
+        }
+
         // Ron, Oct 16: House of Mouse re-added from the library - 212 episodes in one go - and then
         // an episode deleted. Every one of them is "placed by hand" to a re-lay.
         suite.log('-- hand-added items: what the prompt says, and whether a delete re-lays --');

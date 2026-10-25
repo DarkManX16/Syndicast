@@ -1,12 +1,15 @@
 /*
  * Swap an airing for another episode or item, pinned to its date and time
- * (src/pins.js). Picking an item re-lays the lineup through the Time Slots
- * editor's relay - twice when it runs into the next slot, once each way - and
- * says in plain words what each choice does; choosing one hands that re-lay
- * to the channel page, which applies it as Create Lineup's result. See
- * NOTES.md, Known issues, "Swaps, inserts and Flex that keeps time".
+ * (src/pins.js). The dialog's re-lays are planned once, as it opens, by the
+ * Time Slots editor (plan), and run in the re-lay worker (src/relay-worker.js,
+ * off the page's main thread): the lineup without the swap, then for a pick
+ * the lineup with it - twice when it runs into the next slot, once each way.
+ * The dialog says in plain words what each choice does, first whatever pushes
+ * a pin late or costs a show its slot; choosing one hands that re-lay to the
+ * channel page, which applies it as Create Lineup's result. See NOTES.md,
+ * Known issues, "Swaps, inserts and Flex that keeps time".
  *
- * `request`: { channel, index, mode, relay, catalogState } from the channel
+ * `request`: { channel, index, mode, plan, catalogState } from the channel
  * page; `onDone(result | null)`.
  */
 const pins = require('../../src/pins');
@@ -16,9 +19,8 @@ const rounds = require('../../src/shuffle-rounds');
 const swapRead = require('../../src/swap-read');
 
 const SAME = 2000;
-const YEAR = 400 * 24 * 60 * 60 * 1000;
 
-module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, catalogReader) {
+module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, catalogReader, relayWorker) {
     return {
         restrict: 'E',
         templateUrl: 'templates/airing-swap.html',
@@ -81,15 +83,20 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             scope.customShows = [];
             let customFromLineup = false;
 
+            // When the lineup re-made without the swap still has a program on at `at`,
+            // where that ends: an item can only start then (see baselineFor).
+            let heldUntil = null;
             let describe = (p) => {
                 let fit = pins.fitAt({ programs: channel.programs, startTime: startTime(), schedule, at, duration: p.duration });
+                let overrun = (heldUntil === null) ? fit.overrun : Math.max(0, heldUntil + p.duration - fit.slotEnd);
                 return {
                     program: p,
                     label: pins.label(p),
                     length: pins.length(p.duration),
                     holiday: showCatalog.holidayOf(p.title),
-                    fits: fit.overrun <= constants.SLACK,
-                    over: pins.length(fit.overrun),
+                    fits: overrun <= constants.SLACK,
+                    over: pins.length(overrun),
+                    late: (heldUntil === null) ? '' : `starts late, at ${pins.clock(heldUntil)}`,
                 };
             };
             let order = (a, b) => (getShowData(a).order - getShowData(b).order);
@@ -177,16 +184,45 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 return (f === '') || row.label.toLowerCase().includes(f) || (row.holiday && row.holiday.toLowerCase().includes(f));
             };
 
-            // Every re-lay of this dialog is planned as of the moment it opened (see relay).
+            // What the dialog is doing while it works, in a line.
+            scope.progress = 'Working it out...';
+            let say = (text) => {
+                scope.progress = text;
+                $timeout();
+            };
+            // Every re-lay of this dialog is planned once, as of the moment it opened: the
+            // pool, every position's place and the program on air are the same for each.
             let relayNow = Date.now();
-            let relayPins = async (keep) => {
+            let session = `swap-${relayNow}-${Math.random().toString(36).slice(2)}`;
+            // Its own worker, loading while the re-lays are planned.
+            relayWorker.begin(session);
+            let planned = null;
+            let planOf = () => {
+                if (planned === null) {
+                    planned = (async () => {
+                        let t0 = Date.now();
+                        say('Getting the lineup ready...');
+                        let made = await req.plan({
+                            programs: commonProgramTools.slotPool(channel.programs), limit: req.limit,
+                            backup: schedule, lineup: lineupNow, catalogState: await req.catalogState(), now: relayNow,
+                            onReading: (count) => say(`Reading ${count} ${ (count === 1) ? "show's catalog" : "shows' catalogs" } from Plex...`),
+                        });
+                        await relayWorker.open(session, made.inputs, { programs: channel.programs, startTime: startTime() });
+                        console.log(`Swap: planned the re-lays in ${Date.now() - t0} ms`);
+                        return made;
+                    })();
+                    planned.catch( () => { planned = null; } );
+                }
+                return planned;
+            };
+            // One re-lay in the worker, kept there by `key`; asked again with the same pins, not re-made.
+            let relayIn = async (key, list, what) => {
+                await planOf();
+                say(what);
                 let t0 = Date.now();
-                let result = await req.relay({
-                    programs: commonProgramTools.slotPool(channel.programs), limit: req.limit,
-                    backup: schedule, lineup: lineupNow, catalogState: await req.catalogState(), pins: keep, now: relayNow,
-                });
-                console.log(`Swap: re-laid the lineup in ${Date.now() - t0} ms`);
-                return { result, after: { programs: result.programs, startTime: new Date(result.startTime).getTime() } };
+                let got = await relayWorker.call({ type: 'relay', session, key, pins: list });
+                console.log(`Swap: re-laid the lineup (${key}) in ${Date.now() - t0} ms${got.cached ? ', kept from before' : ''}`);
+                return got;
             };
             /*
              * A re-lay changes things no pin causes: what's on air re-airs at
@@ -199,25 +235,28 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let baseline = null;
             let baselineOf = () => {
                 if (baseline === null) {
-                    baseline = relayPins(ahead()).then( (base) => {
-                        let now = relayNow;
-                        let anyway = pins.relayEffects({ before: { programs: channel.programs, startTime: startTime() }, after: base.after,
-                            from: now, to: now + YEAR, schedule, getShowData });
-                        base.anyway = ( (anyway.movedAlong.length + anyway.late.length + anyway.early.length) > 0 )
-                            ? 'Re-making the lineup now also changes, with or without this swap: ' + pins.sayEffects(anyway) : '';
-                        base.dropped = anyway.dropped;
-                        return base;
-                    } );
+                    baseline = relayIn('base', ahead(), 'Re-making the lineup as it is...');
                     baseline.catch( () => { baseline = null; } );
                 }
                 return baseline;
             };
-            let relayWith = async (pin) => {
-                let base = await baselineOf();
-                let mine = await relayPins(pins.withPin(ahead(), pin));
-                let now = relayNow;
-                let own = pins.relayEffects({ before: base.after, after: mine.after, from: Math.max(now, at - SAME), to: now + YEAR, schedule, getShowData });
-                return { result: mine.result, after: mine.after, effects: pins.sayEffects(own), onAir: base.anyway, dropped: base.dropped };
+            // What the lineup without the swap says about `at` - asked again when an insert moves.
+            let said = new Map();
+            let baselineFor = async (instant) => {
+                await baselineOf();
+                if (! said.has(instant)) {
+                    said.set(instant, await relayWorker.call({ type: 'baseline', session, key: 'base', now: relayNow, at: instant }));
+                }
+                return said.get(instant);
+            };
+            let relayWith = async (pin, what) => {
+                let base = await baselineFor(at);
+                let key = `${pin.pin.then}|${pin.pin.at}|${rounds.fileKey(pin)}`;
+                await relayIn(key, pins.withPin(ahead(), pin), what);
+                say('Working out what changes...');
+                let mine = await relayWorker.call({ type: 'option', session, key, base: 'base', now: relayNow, at, item: pin, kind: pin.pin.kind });
+                return { key, placed: mine.placed, fitText: mine.fitText, effects: mine.effects, onAir: base.anyway, dropped: base.dropped,
+                    alerts: mine.alerts.filter( (a) => ! base.alerts.includes(a) ), anywayAlerts: base.alerts };
             };
 
             // A holiday row names its episode by file; its program comes from the show's catalog.
@@ -257,24 +296,24 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 try {
                     let make = (then) => pins.makePin({ program: p, at, kind: isInsert ? 'insert' : 'swap', then,
                         was: isInsert ? undefined : pins.label(airing), slotShow: slotShowAt(isInsert ? afterStart : at), now: Date.now() });
-                    let take = await relayWith(make('take'));
-                    if (! pins.placedIn(take.after, at)) {
+                    let take = await relayWith(make('take'), `Re-making the lineup with ${p.title}...`);
+                    if (! take.placed) {
                         // The generator leaves out a pin it can't place: never apply a re-lay without it.
                         scope.error = `The lineup can't hold ${p.title} at ${pins.dayClock(at)}: it is past the end of what Create Lineup makes (${schedule.maxDays} days), or the lineup is full. Nothing was changed.`;
                         scope.state = 'pick';
                         return;
                     }
                     let fit = pins.fitAt({ programs: channel.programs, startTime: startTime(), schedule, at, duration: p.duration });
-                    scope.fitText = pins.sayFit({ programs: channel.programs, startTime: startTime(), schedule, at, item: p, kind: isInsert ? 'insert' : 'swap', after: take.after });
+                    scope.fitText = take.fitText;
                     scope.options = [];
                     scope.breaks = [];
                     if (fit.overrun <= constants.SLACK) {
                         scope.options.push(Object.assign({ label: isInsert ? 'Insert' : 'Swap' }, take));
                     } else {
-                        let late = await relayWith(make('late'));
+                        let late = await relayWith(make('late'), `Re-making the lineup with ${p.title} running late...`);
                         let into = fit.runsInto ? ` ${pins.clock(fit.slotEnd)} slot` : ' next slot';
                         let takeOver = Object.assign({ label: `Take over the${into}` }, take);
-                        let runLate = pins.placedIn(late.after, at) ? Object.assign({ label: 'Run late' }, late) : null;
+                        let runLate = late.placed ? Object.assign({ label: 'Run late' }, late) : null;
                         // An insert's first choice is to run late: it is the shortest way to
                         // keep what follows; a swap's is to take the slot over.
                         let ordered = isInsert ? [ runLate, takeOver ] : [ takeOver, runLate ];
@@ -291,6 +330,11 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                         ? (firstSwap ? pins.sayFirstSwap({ dropped }) : pins.sayDropped(dropped)) : '';
                     scope.warningItems = pins.droppedBehind(dropped);
                     scope.showWarningItems = false;
+                    // Said first, before any choice: a pin pushed late, a show losing its slot.
+                    scope.alerts = scope.options[0].anywayAlerts.map( (a) => 'Re-making the lineup now, with or without this: ' + a )
+                        .concat( (scope.options.length === 1)
+                            ? scope.options[0].alerts
+                            : [].concat(...scope.options.map( (o) => o.alerts.map( (a) => `If you choose "${o.label}": ${a}` ) )) );
                     scope.error = null;
                     scope.state = 'choose';
                 } catch (err) {
@@ -321,19 +365,55 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     $timeout();
                 }
             };
-            scope.apply = (option) => {
-                scope.onDone(option.result);
+            // The chosen lineup comes back from the worker only now, with what the plan hands back with it.
+            scope.apply = async (option) => {
+                scope.state = 'working';
+                say('Putting it in the list...');
+                try {
+                    let made = await planOf();
+                    let result = await relayWorker.call({ type: 'result', session, key: option.key });
+                    close();
+                    scope.onDone(Object.assign(result, { schedule: JSON.parse(JSON.stringify(made.schedule)), catalogOps: made.catalogOps }));
+                } catch (err) {
+                    console.error(err);
+                    scope.error = 'The lineup could not be put in the list: ' + ( (err && err.message) || err );
+                    scope.state = 'choose';
+                    $timeout();
+                }
             };
             scope.back = () => {
                 scope.state = 'pick';
                 scope.options = [];
             };
+            let closed = false;
+            let close = () => {
+                if (! closed) {
+                    closed = true;
+                    relayWorker.call({ type: 'close', session }).catch( () => null );
+                }
+            };
             scope.cancel = () => {
+                close();
                 scope.onDone(null);
             };
+            scope.$on('$destroy', close);
 
             load();
-            baselineOf();
+            // The lineup without the swap, worked out while Ron picks; then the picker's
+            // "fits" counts from wherever a program still on would hold the item back.
+            scope.preparing = true;
+            baselineFor(at).then( (base) => {
+                heldUntil = base.heldUntil;
+                // Only the fit is worked out again: a holiday row keeps its own label, and no program until picked.
+                scope.items.forEach( (r) => {
+                    let d = describe(r.program || { title: r.label, duration: r.entry.duration });
+                    Object.assign(r, { fits: d.fits, over: d.over, late: d.late });
+                } );
+                $timeout();
+            } ).catch( (err) => console.error(err) ).then( () => {
+                scope.preparing = false;
+                $timeout();
+            } );
         },
     };
 };

@@ -251,6 +251,56 @@ module.exports = async function () {
             placed && placed.start === thu(19, 30) && placed.program.pin && placed.program.pin.at === thu(19, 30));
     }
 
+    suite.log('-- a pin keeps its choice, and takes over only what it chose --');
+    {
+        // A pin on air is carried (the program on air is left alone), and keeps its own
+        // choice for the slot it ends in - not the generator's own lateness.
+        const long = item('Long Special', 44 * MIN + 9 * SEC);
+        const pinnedAt7 = (then) => Object.assign({}, long, { pin: { at: thu(19), kind: 'swap', then } });
+        const take = await generate(pool(), daily(), thu(19, 20), [], { start: thu(19), program: pinnedAt7('take') });
+        suite.check('a carried pin that chose take still takes over the slot it ends in',
+            startOf(take, 'Long Special') === thu(19) && !shows(take).some((a) => a.start > thu(19) && a.start < thu(20))
+                && firstAt(take, thu(19, 44)).start === thu(20) && startOf(take, bThu) === thu(19, 30) + DAY,
+            shows(take).filter((a) => a.start > thu(19) && a.start < thu(20, 31)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
+        const late = await generate(pool(), daily(), thu(19, 20), [], { start: thu(19), program: pinnedAt7('late') });
+        suite.check('...and one that chose late still runs late, unrounded, then back on time',
+            startOf(late, bThu) === thu(19, 44, 9) && firstAt(late, thu(20)).start === thu(20, 6, 9) && firstAt(late, thu(20, 29)).start === thu(20, 30),
+            shows(late).filter((a) => a.start > thu(19) && a.start < thu(20, 31)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
+
+        // Ron's Oct 24 evening, in the fixture's slots: a movie that took over the slot it
+        // ends in, on air, and a swap in the next slot.
+        const swap = item('Midnight Ride', 24 * MIN + 23 * SEC, 'C');
+        const ron = await generate(pool(), daily(), thu(19, 20), [pin(swap, thu(20), 'take')], { start: thu(19), program: pinnedAt7('take') });
+        const d = shows(plain).find((a) => a.start === thu(20, 30)).program.title;
+        suite.check('a swap after a carried take-over pin starts at its time, and the slot after it keeps its show',
+            startOf(ron, 'Midnight Ride') === thu(20) && startOf(ron, d) === thu(20, 30),
+            shows(ron).filter((a) => a.start > thu(19) && a.start < thu(21)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
+
+        // A pin pushed late by another pin that runs late: the slot it then runs into was
+        // never given to it, so that slot runs late rather than being taken over.
+        const pushed = await generate(pool(), daily(), NOON, [pin(long, thu(19), 'late'), pin(swap, thu(20), 'take')]);
+        const dStart = startOf(pushed, d);
+        suite.check('a pin pushed late never takes over a slot it would not have reached at its own time: that slot runs late',
+            startOf(pushed, 'Midnight Ride') === thu(20, 6, 9) && dStart === thu(20, 30, 32),
+            shows(pushed).filter((a) => a.start > thu(19) && a.start < thu(21)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
+        // ...but a pin on time that chose take still takes over the slot it runs into.
+        const onTime = await generate(pool(), daily(), NOON, [pin(item('Over C', 44 * MIN + 9 * SEC, 'C'), thu(20), 'take')]);
+        suite.check('...while one on time that chose take still takes over the slot it runs into',
+            startOf(onTime, d) === null || startOf(onTime, d) >= thu(20, 30) + DAY,
+            `${d} ${startOf(onTime, d) && new Date(startOf(onTime, d)).toString()}`);
+
+        // "Remove this airing only" on air, with no program to carry (the one before it
+        // ended with its slot): the kept Flex stays at its own time, not restarted now.
+        const removal = { at: thu(19, 30), then: 'take', program: { isOffline: true, duration: 22 * MIN,
+            pin: { at: thu(19, 30), kind: 'remove', then: 'take', was: bThu, slotShow: 'tv.B', made: '2026-10-08T12:00:00.000Z' } } };
+        const rem = await generate(pool(), daily(), thu(19, 40), [removal]);
+        const kept = withStarts(rem).find((a) => a.program.pin);
+        const c = shows(plain).find((a) => a.start === thu(20)).program.title;
+        suite.check('a removal on air keeps its own time, and the next slot keeps its show',
+            kept && kept.start === thu(19, 30) && kept.program.duration === 22 * MIN && startOf(rem, c) === thu(20),
+            `kept Flex ${kept && clock(kept.start)}, ${c} ${startOf(rem, c) && clock(startOf(rem, c))}`);
+    }
+
     suite.log('-- a removal keeps its slot --');
     {
         const halves = pool('H', 11 * MIN);

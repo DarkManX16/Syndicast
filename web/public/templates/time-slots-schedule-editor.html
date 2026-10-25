@@ -1,5 +1,5 @@
 <div ng-show="visible">
-    <div class="modal" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
+    <div class="modal" ng-if="visible" tabindex="-1" role="dialog" style="display: block; background-color: rgba(0, 0, 0, .5);">
         <div class="modal-dialog modal-dialog-scrollable modal-xl" role="document">
             <div class="modal-content">
                 <div>
@@ -62,7 +62,7 @@
                         <div class='form-group col-md-5' style="margin-bottom: 4px;">
                             <input type="text" class="form-control form-control-sm" id="slotFilter"
                                 placeholder="Filter slots - a show name, a day, or both"
-                                ng-model="slotFilter" ng-change="filterChanged()" ></input>
+                                ng-model="$parent.slotFilter" ng-change="filterChanged()" ></input>
                         </div>
                         <div class='form-group col-md-7' style="margin-bottom: 4px;">
                             <span class='small text-muted' ng-hide="isFiltered()">
