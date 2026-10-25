@@ -5264,6 +5264,81 @@ episodes worked (it reads the editor's cached catalog state, not the server).
   4 items in the lineup; This show lists the slot show's 41 episodes with the same
   reason.
 
+**A pin's choice through every re-lay, and Swap made fast, Oct 24, 2026**
+(`swap-pin-choices`, from `blocks` at 8c1ec5d). Ron pinned CryBaby Lane (1:24:34)
+on channel 2 at Sat Oct 24 6:00pm with Take over, then swapped All That at 7:30 for
+Are You Afraid of the Dark? S3E1 (24:23): the dialog said it fit with Drake & Josh at
+8:30, but its "re-making also changes" line had The Amanda Show back at 7:25; applied,
+the swap started at 7:49, ran past 8:00, took Romeo!'s slot with 16:14 of Flex, and
+Romeo! was gone. And a swap took about 25 seconds with the page frozen.
+
+- **Why the choice was lost.** The swap came while CryBaby Lane was on air, so the
+  re-lay carried it (Task 4b) - and the generator marked any carried program
+  `then: 'carry'`, which rule 3 skips: the slot it ends in was filled as the
+  generator's own lateness does, The Amanda Show at 7:24:34 rounded to 7:25.
+  Reproduced on a copy with `progress-check` at 6:20pm (no new pin: Amanda 7:25, the
+  evening late to 9:30; with the swap: 7:25, 7:49:22, 16:15 of Flex, Romeo! gone, to
+  the second); at 5:50pm, before the movie aired, take held. A carried pin now keeps
+  its own `then`.
+- **Why the pushed pin took Romeo!'s slot.** A pin waits for a program still on at its
+  time (rule 1), and the dialog judged the fit from the lineup as it was, so the swap
+  went in as Take over; take then covered whatever slot it ran into. Take now covers
+  only the slots a pin reaches from its own time (`ownEnd`): pushed later, any slot
+  past those runs late, unrounded (`pushedPast`). A slot a pushed pin covers whole
+  can't be kept, and is said. Same class, found by the same reading: a kept Flex
+  ("Remove this airing only") on air with nothing to carry was restarted at now, at
+  full length, and could take the next slot over; it now keeps its own time.
+- **What the dialog says first.** `pins.slotWarnings` / `sayWarnings`: pins that
+  would start late and what is still on at their time, and shows that lose a slot
+  occurrence, red, at the top - per choice when there are two ("If you choose 'Run
+  late': Drake & Josh loses its Sat Oct 24, 8:30pm slot."), and what re-making does
+  anyway apart. `sayFit` given the re-lay never says "It fits" for a pin that would
+  start late and run over; the picker's "fits" counts from what the lineup without
+  the swap still has on at that time.
+- **Why it was slow, measured on a copy** (preview, channel 2, before the fix: open
+  28.8 s, pick 41.9 and 49.5 s, the page frozen 77-92% of it, freezes up to 7.6 s).
+  One redraw took 2.4-4.5 s: the hidden Time Slots dialog's 335 rows each asked
+  `canConstrainSeasons`, which scanned all 14,347 catalog items. Every re-lay read 160
+  shows from Plex again (13 s in the page, 8.3 s from Node), sent the server 20.4 MB
+  and got 25.9 MB back, and the generator itself took 0.3-0.5 s of it. Found while
+  fixing: the hidden dialog's rows re-drew on every re-lay (3 s) and rebuilt the
+  Episode start model for its "Next:" lines (5 s); a worker on the bundle's own
+  `setImmediate` (a 4 ms `setTimeout`) took minutes; handing the pool and lineup to a
+  worker in one message froze the page 2.3 s; and one worker kept for every dialog
+  slowed from 0.4 s a re-lay to 7 s.
+- **The fix.** `src/pool-seasons.js` (seasons once per pool); the Time Slots window
+  drawn only while shown (`ng-if`, the slot filter through `$parent`), and `nextLineOf`
+  works nothing out while hidden; `src/catalog-keep.js` (catalogs kept 30 minutes
+  while the editor is open, a show that failed asked again; Create Lineup reads
+  afresh); the editor's `plan` - a re-lay's inputs planned once per dialog - and
+  `src/relay-worker.js`, the generator and the dialog's sentences run in a Web Worker
+  made from the page's own bundle (`web/app.js` loads the editor in a page,
+  `relay-worker.listen` in a worker; the editor moved to `web/editor.js`), one worker
+  per session, ended on close, data handed over in slices; the chosen lineup comes back
+  only when applied. Undo makes both its re-lays from one plan (`relay`'s `pinSets`).
+  Create Lineup still runs on the server. `throttle` resolves at once outside Node.
+- **After, the same preview** (Ron's machine busy, Plex reads 10-57 s through the
+  evening): a first Swap in an editor session 13-22 s, nearly all of it Plex, longest
+  freeze 0.9 s; later ones 6.4-12 s, longest freeze 0.3 s, most of it the fresh
+  worker's first re-lay (2.7-4.7 s; 0.35 s in Node); a pick 2.4-3.1 s with no freeze,
+  0.5 s asked again; undo 5.0 s; a redraw 25-29 ms.
+- **Proof.** Failing first: five generator tests (`test/pins-generator.js`), six of the
+  dialog's (`test/pins.js`), and `test/relay-speed.js`; 2393 pass. Additive: channels
+  1-3 regenerated at Oct 24 5:50pm, Oct 31 noon and Dec 21 10am, 0 programs differ
+  from `blocks`. On channel 2 with the swap at 6:20pm: AYAOTD 7:30, Romeo! 8:00. Live
+  on a preview whose page, worker and server ran as of 6:20pm (a clock-shift harness
+  in the session's scratchpad, never in the repo), on a copy taken Oct 24 8:43pm
+  Central with channel 2 rebuilt from the 3am backup plus the CryBaby Lane pin, re-laid
+  as of 5:49pm (airing for airing the evening Ron had): the swap reads "It fits: 5:37
+  of Flex after it, and Romeo! starts at 8:00", applies with the movie still taking
+  over to 7:30, and undo restores All That; a 1:20:47 movie for Romeo! names Drake &
+  Josh's and Just Jordan's lost slots at the top for each choice.
+- **Left for later.** The effects lines under each choice list far-off ripples (an
+  airing a few minutes later in May-Oct 2027) and long "back on time" lists - as
+  before this change. Ron's live channel 2, saved at 7:26pm, has Are You Afraid of the
+  Dark? from 7:30pm to past midnight, unpinned, in other shows' slots: not from Swap
+  as far as the code goes, not investigated.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time
