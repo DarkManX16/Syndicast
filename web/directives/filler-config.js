@@ -1,5 +1,6 @@
 const clipNames = require('../../src/clip-names');
 const makeVsRepeatDragGuard = require('../services/vs-repeat-drag-guard');
+const makeDeferredDragMove = require('../services/deferred-drag-move');
 
 module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, namesReview) {
     return {
@@ -105,17 +106,26 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, 
                 scope.contentSplice(program.$index, 1);
             }
 
+            // `program` is the drag library's JSON copy; the clip itself is
+            // moved, and only once the drag is over (deferred-drag-move.js).
             scope.dropFunction = (dropIndex, program) => {
-                scope.clipsChanged = true;
                 let y = program.$index;
                 let z = dropIndex + scope.currentStartIndex - 1;
-                scope.content.splice(y, 1);
+                let clip = scope.content[y];
                 if (z >= y) {
                     z--;
                 }
-                scope.content.splice(z, 0, program );
-                refreshContentIndexes();
-                $timeout();
+                contentMove.drop( () => {
+                    let from = scope.content.indexOf(clip);
+                    if (from === -1) {
+                        return;
+                    }
+                    scope.clipsChanged = true;
+                    scope.content.splice(from, 1);
+                    scope.content.splice(z, 0, clip);
+                    refreshContentIndexes();
+                    $timeout();
+                } );
                 return false;
             }
             scope.setUpWatcher = function setupWatchers() {
@@ -126,8 +136,12 @@ module.exports = function ($timeout, dizquetv, commonProgramTools, getShowData, 
 
             scope.vsRepeatDragOptions = { latch: false, preserveLatchOnRefresh: false };
             const contentDragGuard = makeVsRepeatDragGuard(scope, scope.vsRepeatDragOptions);
+            const contentMove = makeDeferredDragMove({ onFallback: () => scope.$applyAsync(contentDragGuard.end) });
             scope.startContentDrag = contentDragGuard.start;
-            scope.endContentDrag = contentDragGuard.end;
+            scope.endContentDrag = () => {
+                contentDragGuard.end();
+                contentMove.end();
+            };
 
             scope.movedFunction = (index) => {
                 console.log("movedFunction(" + index + ")");

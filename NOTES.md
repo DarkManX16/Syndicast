@@ -7113,4 +7113,43 @@ off to Ron's running Edge and opens a window. Read the folder names under `Edge\
 
 Preview gotcha found on the way: a preview server on a data copy opens ~7,700 play-cache files at startup
 and hits EMFILE. A `bundle.js` request during that burst fails its rebuild, and the footer then says the page
-code "failed to rebuild" until a source changes again. Wait for the startup burst to end before the first page load.
+code "failed to rebuild". With no build record yet the checker never retries that failure, so only a restart clears
+it. The burst runs past "Server Started" (about a minute on Oct 25's copy): restart, wait until the log's EMFILE count
+has held still for a minute, then load the first page.
+
+#### A drop threw away the row still being dragged, Oct 25, 2026
+
+Ron's drag log from the real server (Edge 156, 5:12-5:28 PM, filler list editor) showed four drags with "drop yes;
+end never" ("Edge never ended it") among about 30 good ones, and then the lockup: a drag whose drag-overs carried
+no data (`types seen none`), refused everywhere. His reading was that a drop redraws the list before Edge sends
+dragend. Confirmed:
+
+- The drag library (`web/ext/dragdrop.js`) hands `dnd-drop` a copy of the item, parsed back from the drag's JSON.
+  The filler list editor's and the custom show editor's `dropFunction` took the original clip out of `content`,
+  put that copy in, and called `$timeout()`. Their `ng-repeat="x in filteredContent"` has no `track by`, so the
+  redraw saw the original object leave and deleted its row: the row Edge was still dragging. If the redraw ran
+  before Edge's dragend arrived (a race between a zero-delay timer and Edge's message), dragend went to a node no
+  longer in the page. jqLite had already taken the library's handlers off it, and nothing up the page heard it
+  either. That's the log's "never ended", and it's why only some drops showed it.
+- The channel programming list (`track by x.$index`) kept its row in the page, so dragend did arrive, but before it
+  did the row was rebound to the next program, and the list ended up holding the JSON copy (Date fields as strings)
+  instead of the program.
+- The Filler Lists table and the other plain lists use the library's own insert-then-`dnd-moved` path, which
+  removes the original row in the dragend handler, after dragend. Unchanged.
+
+Fix: `web/services/deferred-drag-move.js`. The drop records the move and the list doesn't change; the move runs just
+after dragend has been dispatched (from `dnd-dragend`), and it moves the original object, found by identity, not the
+copy. If dragend never comes, the move runs after 1 s and the vs-repeat guard is ended too. Wired into
+`filler-config.js`, `show-config.js` and `channel-config.js`. Dragging looks the same: the dropped row appears in
+its new place as soon as the drag ends.
+
+`test/drag-row-kept.js` bundles the real filler-config and show-config directives (real templates, dragdrop.js,
+angular-vs-repeat) and plays drags as events: dragend late, prompt, and never. Before the fix 10/32 browser checks
+passed: with a late dragend the dragged row was out of the page, dragend never reached it, and the list held a copy.
+After: all pass, plus checks of the helper on a hand-driven clock. The channel list was checked the same way on a
+preview with Channel 1's 39,999 programs: before, the row showed a different program by the time dragend came; after,
+it kept its own until dragend, and the program itself landed where dropped (late, prompt and no-dragend).
+
+**Not established:** that these lost dragends cause the lockup. The lockup drag came 2.5 minutes and 8 good drags
+after the last "never ended" one. With the fix those entries should stop; if 🚫 still comes back, the drag log
+will show whether anything still ends without a dragend first.

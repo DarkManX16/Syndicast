@@ -1,4 +1,5 @@
 const makeVsRepeatDragGuard = require('../services/vs-repeat-drag-guard');
+const makeDeferredDragMove = require('../services/deferred-drag-move');
 const dayParts = require('../../src/day-parts');
 const slotWeek = require('../../src/slot-week');
 const transitions = require('../../src/transitions');
@@ -386,16 +387,26 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 scope._selectedProgram = null
                 updateChannelDuration()
             }
+            // `program` is the drag library's JSON copy; the program itself is
+            // moved, and only once the drag is over (deferred-drag-move.js) -
+            // until then the dragged row keeps showing what it showed.
             scope.dropFunction = (dropIndex, program) => {
                 let y = program.$index;
                 let z = dropIndex + scope.currentStartIndex - 1;
-                scope.channel.programs.splice(y, 1);
+                let item = scope.channel.programs[y];
                 if (z >= y) {
                     z--;
                 }
-                scope.channel.programs.splice(z, 0, program );
-                updateChannelDuration();
-                $timeout();
+                programMove.drop( () => {
+                    let from = scope.channel.programs.indexOf(item);
+                    if (from === -1) {
+                        return;
+                    }
+                    scope.channel.programs.splice(from, 1);
+                    scope.channel.programs.splice(z, 0, item);
+                    updateChannelDuration();
+                    $timeout();
+                } );
                 return false;
             }
             scope.setUpWatcher = function setupWatchers() {
@@ -406,8 +417,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
 
             scope.vsRepeatDragOptions = { latch: false, preserveLatchOnRefresh: false };
             const programDragGuard = makeVsRepeatDragGuard(scope, scope.vsRepeatDragOptions);
+            const programMove = makeDeferredDragMove({ onFallback: () => scope.$applyAsync(programDragGuard.end) });
             scope.startProgramDrag = programDragGuard.start;
-            scope.endProgramDrag = programDragGuard.end;
+            scope.endProgramDrag = () => {
+                programDragGuard.end();
+                programMove.end();
+            };
 
             scope.finishedOfflineEdit = (program) => {
                 let editedProgram = scope.channel.programs[scope.selectedProgram];
