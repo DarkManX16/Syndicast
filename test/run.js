@@ -41,6 +41,7 @@ const suites = [
     './program-row-heights',
     './drag-vs-repeat-lockup',
     './drag-recorder',
+    './drag-row-kept',
     './card-templates',
     './card-moment',
     './card-render',
