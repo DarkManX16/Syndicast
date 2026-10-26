@@ -23,6 +23,8 @@ function makeDragRecorder(options) {
     const defer = options.defer || ((fn) => setTimeout(fn, 0));
     const where = options.where || (() => window.location.hash);
     const agent = options.agent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
+    // The page's own build, from the stamp src/web-bundle.js puts on the bundle's first line.
+    const code = options.code || (() => (typeof window !== 'undefined' ? window.__syndicastBundle : undefined));
     let storage = options.storage;
     if (!storage) {
         try {
@@ -55,9 +57,17 @@ function makeDragRecorder(options) {
         }
     }
 
+    function codeName() {
+        const stamp = code();
+        if (!stamp || !stamp.commit) {
+            return 'unstamped';
+        }
+        return `${stamp.commit}${stamp.modified ? '+modified' : ''} built ${stamp.built}`;
+    }
+
     function begin(fields) {
         open = Object.assign({
-            at: new Date(now()).toISOString(), where: String(where() || ''),
+            at: new Date(now()).toISOString(), where: String(where() || ''), code: codeName(), noTransfer: 0, errors: [],
             moved: 0, dragstart: false, fromElsewhere: false, typesSet: [], allowed: '',
             enter: 0, over: 0, accepted: 0, typesSeen: [], drop: false, dragend: false, dropEffect: '',
         }, fields);
@@ -74,6 +84,9 @@ function makeDragRecorder(options) {
     }
 
     function seen(s, ev) {
+        if (!ev.dataTransfer) {
+            s.noTransfer++;
+        }
         types(ev).forEach((t) => {
             if (s.typesSeen.indexOf(t) === -1) {
                 s.typesSeen.push(t);
@@ -141,6 +154,9 @@ function makeDragRecorder(options) {
         },
         dragend: (ev) => {
             const s = open || begin({});
+            if (!ev.dataTransfer) {
+                s.noTransfer++;
+            }
             s.dragend = true;
             s.dropEffect = (ev.dataTransfer && ev.dataTransfer.dropEffect) || '';
             open = null;
@@ -149,6 +165,22 @@ function makeDragRecorder(options) {
     };
 
     Object.keys(on).forEach((type) => target.addEventListener(type, on[type], true));
+
+    // A page error while a drag is open goes with that drag: the drag library throwing on
+    // what Edge handed it would otherwise look just like Edge refusing.
+    const ERRORS_KEPT = 5;
+    function noteError(what) {
+        if (!open || open.errors.length >= ERRORS_KEPT) {
+            return;
+        }
+        open.errors.push(String(what).slice(0, 300));
+        save();
+    }
+    const describe = (err) => (err && err.message) ? err.message : String(err);
+    const onError = (ev) => noteError(`${ev.message || describe(ev.error)}${ev.filename ? ` (${ev.filename}:${ev.lineno})` : ''}`);
+    const onRejection = (ev) => noteError('unhandled rejection: ' + describe(ev.reason));
+    target.addEventListener('error', onError, true);
+    target.addEventListener('unhandledrejection', onRejection, true);
 
     function verdict(s) {
         if (!s.dragstart && !s.fromElsewhere) {
@@ -159,7 +191,8 @@ function makeDragRecorder(options) {
             problems.push('no drag-over reached the page');
         } else if (s.over > 0 && s.accepted === 0) {
             problems.push('refused: the page turned down every spot it crossed (🚫)'
-                + (s.typesSeen.length === 0 ? ', and its drag-overs carried no data' : ''));
+                + (s.noTransfer > 0 ? ', and its drag-overs came with no data object at all'
+                    : (s.typesSeen.length === 0 ? ', and its drag-overs carried no data' : '')));
         }
         if (!s.dragend && !s.fromElsewhere) {
             problems.push('Edge never ended it (no dragend)');
@@ -168,7 +201,8 @@ function makeDragRecorder(options) {
             return problems.join('; ');
         }
         // The drag library takes its own drags even when Edge hands them back empty (dragdrop.js > lostOwnData).
-        const empty = (s.over > 0 && s.typesSeen.length === 0) ? ', though Edge carried no data (the page used its own copy)' : '';
+        const empty = (s.over > 0 && s.typesSeen.length === 0)
+            ? `, though Edge carried no data${s.noTransfer > 0 ? ' object' : ''} (the page used its own copy)` : '';
         return (s.drop ? 'ok' : 'ok, let go outside a list or with Esc (no drop)') + empty;
     }
 
@@ -176,11 +210,14 @@ function makeDragRecorder(options) {
         return `${new Date(s.at).toLocaleString()}  ${s.where || '(no page)'}  ${verdict(s)}`
             + `  [${s.fromElsewhere ? 'came from outside this page' : 'start types: ' + (s.typesSet.join(',') || 'none') + ', allowed ' + (s.allowed || '?')}`
             + `; enter ${s.enter}, over ${s.over} (accepted ${s.accepted}), types seen ${s.typesSeen.join(',') || 'none'}`
-            + `; drop ${s.drop ? 'yes' : 'no'}; end ${s.dragend ? (s.dropEffect || 'none') : 'never'}]`;
+            + `; drop ${s.drop ? 'yes' : 'no'}; end ${s.dragend ? (s.dropEffect || 'none') : 'never'}`
+            + `; code ${s.code || 'not recorded'}`
+            + ((s.errors && s.errors.length > 0) ? `; errors: ${s.errors.join(' | ')}` : '') + ']';
     }
 
     return {
         sessions: () => log.slice(),
+        noteError: (err) => noteError(describe(err)),
         verdict,
         line,
         text: () => [`Syndicast drag log, copied ${new Date(now()).toLocaleString()}`, `Browser: ${agent}`]
@@ -197,7 +234,11 @@ function makeDragRecorder(options) {
                 // nothing stored to clear
             }
         },
-        stop: () => Object.keys(on).forEach((type) => target.removeEventListener(type, on[type], true)),
+        stop: () => {
+            Object.keys(on).forEach((type) => target.removeEventListener(type, on[type], true));
+            target.removeEventListener('error', onError, true);
+            target.removeEventListener('unhandledrejection', onRejection, true);
+        },
     };
 }
 

@@ -68,6 +68,7 @@ module.exports = async function run() {
             entryFile, outFile, manifestFile,
             watchDir: webRoot,
             watchDirExclude: [publicDir],
+            stamp: () => ({ commit: 'abc1234', modified: true }),
         });
 
         // Rolls the bundle's own mtime back so the next check unambiguously
@@ -96,6 +97,14 @@ module.exports = async function run() {
         suite.check('first build includes the file outside the watched tree', built && built.includes('SHARED_V1'));
         suite.check('a manifest is recorded', fs.existsSync(manifestFile));
         suite.check('checker is not stale after a clean build', checker.isStale() === false);
+        {
+            // The drag log stamps each entry with this, so a log says which build the page ran.
+            const m = built && built.match(/^window\.__syndicastBundle = (\{.*?\});\r?\n/);
+            let stamp = null;
+            try { stamp = m && JSON.parse(m[1]); } catch (e) { stamp = null; }
+            suite.check('the bundle opens with its own stamp: the commit it was built from, whether modified, and when',
+                stamp && stamp.commit === 'abc1234' && stamp.modified === true && !isNaN(Date.parse(stamp.built)), m ? m[1] : (built || '').slice(0, 80));
+        }
 
         // ---- a changed web file triggers a rebuild ----------------------------
         ageBundle(10);

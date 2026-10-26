@@ -42,6 +42,9 @@ const gitCommit = readGitCommit();
 const gitDirty = readGitDirty();
 
 module.exports = {
+    // Read fresh each call, for stamping a build (src/web-bundle.js).
+    readGitCommit,
+    readGitDirty,
     version: constants.VERSION_NAME,
     gitCommit,
     gitDirty,

@@ -44,6 +44,13 @@ app.service('relayWorker', require('./services/relay-worker'))
 // Started at load, on every page, so the drag before a lockup is on record too.
 app.factory('dragRecorder', () => require('./services/drag-recorder')())
 app.run(['dragRecorder', () => {}])
+// Errors Angular catches (inside a digest) never reach window's error event; the drag log keeps them too.
+app.config(['$provide', ($provide) => {
+    $provide.decorator('$exceptionHandler', ['$delegate', '$injector', ($delegate, $injector) => (exception, cause) => {
+        $injector.get('dragRecorder').noteError(exception);
+        $delegate(exception, cause);
+    }]);
+}])
 
 app.directive('plexSettings',   require('./directives/plex-settings'))
 app.directive('ffmpegSettings', require('./directives/ffmpeg-settings'))

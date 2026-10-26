@@ -7238,3 +7238,33 @@ drag, so a real one shows up in Ron's log.
 **Not known yet:** whether Edge, in that state, shows the drop as allowed and delivers the drop once the page
 accepts the drag-over. A script can't reach Edge's stuck state; Ron's next lockup will tell.
 
+#### The fallback didn't take the 5:49 PM lockup, Oct 26, 2026
+
+Ron's next lockup (5:49:52-5:50:04 PM, filler page): eight drags refused, each with the page's data set at
+dragstart, every drag-over empty, accepted 0. With the fallback running, those would have read "ok, though Edge
+carried no data". Two explanations fit and the log couldn't tell them apart: the tab ran a bundle from before the
+fallback (18000 has served it since 7:36 AM), or Edge sent the drag events with no `dataTransfer` at all. The
+drag log printed both as "types seen none", and the drag library's `event.dataTransfer.types` throws on a missing
+one, which refuses the drag just the same.
+
+`test/drag-row-kept.js` now plays drags whose drag-overs and drop carry no DataTransfer (`dataTransfer: null`).
+Before the change the library threw "Cannot read properties of null (reading 'types')" and refused them in both
+editors and the Filler Lists table; after, they're taken like the empty ones (`lostOwnData` counts a missing
+dataTransfer or types list as no types, `mimeTypeOf` and the dropEffect writes don't touch a missing one).
+
+The drag log now says which code ran and what else went wrong:
+- **Code stamp.** `src/web-bundle.js` writes `window.__syndicastBundle = {"commit", "modified", "built"}` as the
+  bundle's first line at every build, and every drag log entry records it ("code 666f749 built ..."; "+modified"
+  for a dirty checkout; "unstamped" for a bundle built before this). `npm run build` now goes through the same
+  builder (`scripts/build-bundle.js`, `appBundleChecker`), so a hand build is stamped and leaves a build record
+  too. That also means a preview server started after `npm run build` doesn't rebuild on its first request, which
+  is what kept colliding with the startup EMFILE burst. index.js builds the same checker from `appBundleChecker`.
+- **No data object.** Drag events that arrive with no `dataTransfer` are counted apart (`noTransfer`); the verdict
+  says "came with no data object at all" (refused) or "carried no data object (the page used its own copy)" (ok).
+- **Errors during a drag.** window `error` and `unhandledrejection` events, and everything Angular's
+  `$exceptionHandler` sees (decorated in `web/editor.js`), are kept with the open drag: up to 5, 300 characters
+  each, with the file and line. Errors outside a drag aren't kept.
+
+The stamp comes from the server's build code, so a server started before this change keeps building unstamped
+bundles until it restarts.
+

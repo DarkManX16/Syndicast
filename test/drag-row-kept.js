@@ -131,7 +131,7 @@ function clips(prefix) {
  * timers ran), 'prompt' (straight after drop), or 'never'. lostData: the
  * drag-overs and the drop carry an empty DataTransfer, as Edge handed them
  * over in Ron's Oct 26 lockup ("types seen none") although the dragstart
- * had set the data.
+ * had set the data. lostData 'none': they carry no DataTransfer at all.
  */
 async function playDrag(page, listSelector, from, onto, dragendAfter, lostData) {
     return page.evaluate(async (listSelector, from, onto, dragendAfter, lostData) => {
@@ -159,8 +159,8 @@ async function playDrag(page, listSelector, from, onto, dragendAfter, lostData) 
         Object.defineProperty(dt, 'effectAllowed', { value: 'move', writable: true });
         const r = target.getBoundingClientRect();
         const at = { clientX: r.left + 20, clientY: r.top + r.height * 0.75 };
-        const overDt = lostData ? new DataTransfer() : dt;
-        const fire = (node, type, extra, transfer) => node.dispatchEvent(new DragEvent(type, Object.assign({ bubbles: true, cancelable: true, dataTransfer: transfer || dt }, extra || {})));
+        const overDt = lostData === 'none' ? null : (lostData ? new DataTransfer() : dt);
+        const fire = (node, type, extra, transfer) => node.dispatchEvent(new DragEvent(type, Object.assign({ bubbles: true, cancelable: true, dataTransfer: transfer === undefined ? dt : transfer }, extra || {})));
         fire(src, 'dragstart');
         report.typesAfterStart = Array.from(dt.types);
         await tick(20);
@@ -189,7 +189,7 @@ async function playDrag(page, listSelector, from, onto, dragendAfter, lostData) 
         report.latch = scope.vsRepeatDragOptions.latch;
         report.titlesAround = now.slice(Math.max(0, onto - 2), onto + 3).map((c) => c.title);
         return report;
-    }, listSelector, from, onto, dragendAfter, !!lostData);
+    }, listSelector, from, onto, dragendAfter, lostData || false);
 }
 
 /*
@@ -211,7 +211,7 @@ async function playTableDrag(page, from, onto, opts) {
         const at = { clientX: r.left + 40, clientY: r.top + r.height * 0.75 };
         const dt = new DataTransfer();
         Object.defineProperty(dt, 'effectAllowed', { value: 'move', writable: true });
-        const fire = (node, type, extra, transfer) => node.dispatchEvent(new DragEvent(type, Object.assign({ bubbles: true, cancelable: true, dataTransfer: transfer || dt }, extra || {})));
+        const fire = (node, type, extra, transfer) => node.dispatchEvent(new DragEvent(type, Object.assign({ bubbles: true, cancelable: true, dataTransfer: transfer === undefined ? dt : transfer }, extra || {})));
         window.__savedOrders.length = 0;
         if (opts.staleStart) {
             fire(rows[4].querySelector('td[dnd-handle]'), 'dragstart');
@@ -225,7 +225,7 @@ async function playTableDrag(page, from, onto, opts) {
             fire(handle, 'dragstart');
             await tick(20);
             if (opts.lostData) {
-                overDt = new DataTransfer();
+                overDt = opts.lostData === 'none' ? null : new DataTransfer();
             }
         }
         fire(target, 'dragenter', at, overDt);
@@ -345,14 +345,14 @@ module.exports = async function () {
                 suite.check(`${label}: ...and the list is free to redraw again`, r.latch === false);
                 await page.close();
             }
-            {
+            for (const lost of ['empty', 'none']) {
                 const page = await browser.newPage();
                 page.on('pageerror', (e) => suite.log('page error: ' + e.message));
                 await page.setContent(html, { waitUntil: 'load' });
                 await page.evaluate((open, filler) => angular.element(document.body).injector().get('$rootScope').$apply(() => { window[open](filler); }), editor.open, editor.feed(clips(editor.name)));
                 await page.waitForFunction((sel) => document.querySelectorAll(sel + ' .lr-row').length > 8, { timeout: 15000 }, editor.list);
-                const r = await playDrag(page, editor.list, 2, 7, 'prompt', true);
-                const label = 'Edge hands the drag-overs and the drop no data';
+                const r = await playDrag(page, editor.list, 2, 7, 'prompt', lost);
+                const label = lost === 'none' ? 'Edge hands the drag-overs and the drop no data object at all' : 'Edge hands the drag-overs and the drop no data';
                 suite.check(`${label}: the page still takes the drag it started itself`, r.overAccepted && r.dropAccepted, `over=${r.overAccepted} drop=${r.dropAccepted}`);
                 suite.check(`${label}: ...and the clip lands where it was dropped, the same clip`,
                     r.movedTo === 7 && r.sameObject && !r.copyInserted && r.length === r.lengthBefore, `at ${r.movedTo}: ${JSON.stringify(r.titlesAround)}`);
@@ -364,7 +364,8 @@ module.exports = async function () {
         suite.log('-- Filler Lists table --');
         for (const c of [
             { label: 'an ordinary drag', opts: {}, moves: true },
-            { label: 'Edge hands the drag-overs and the drop no data', opts: { lostData: true }, moves: true },
+            { label: 'Edge hands the drag-overs and the drop no data', opts: { lostData: 'empty' }, moves: true },
+            { label: 'Edge hands the drag-overs and the drop no data object at all', opts: { lostData: 'none' }, moves: true },
             { label: 'a drag of text from elsewhere', opts: { foreign: true }, moves: false },
             { label: 'a drag of text after an in-page drag that never got its dragend', opts: { foreign: true, staleStart: true }, moves: false },
         ]) {

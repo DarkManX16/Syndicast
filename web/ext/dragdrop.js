@@ -303,7 +303,7 @@
             horizontal: attr.dndHorizontalList && scope.$eval(attr.dndHorizontalList)
           };
   
-          var mimeType = lostOwnData(event) ? dndState.mimeType : getMimeType(event.dataTransfer.types);
+          var mimeType = mimeTypeOf(event, lostOwnData(event));
           if (!mimeType || !isDropAllowed(getItemType(mimeType))) return true;
           event.preventDefault();
         });
@@ -317,7 +317,7 @@
   
           // Check whether the drop is allowed and determine mime type.
           var lost = lostOwnData(event);
-          var mimeType = lost ? dndState.mimeType : getMimeType(event.dataTransfer.types);
+          var mimeType = mimeTypeOf(event, lost);
           var itemType = getItemType(mimeType);
           if (!mimeType || !isDropAllowed(itemType)) return true;
   
@@ -365,7 +365,7 @@
           // Set dropEffect to modify the cursor shown by the browser, unless we're in IE, where this
           // is not supported. This must be done after preventDefault in Firefox.
           event.preventDefault();
-          if (!ignoreDataTransfer) {
+          if (!ignoreDataTransfer && event.dataTransfer) {
             event.dataTransfer.dropEffect = dropEffect;
           }
   
@@ -384,7 +384,7 @@
   
           // Check whether the drop is allowed and determine mime type.
           var lost = lostOwnData(event);
-          var mimeType = lost ? dndState.mimeType : getMimeType(event.dataTransfer.types);
+          var mimeType = mimeTypeOf(event, lost);
           var itemType = getItemType(mimeType);
           if (!mimeType || !isDropAllowed(itemType)) return true;
   
@@ -420,7 +420,7 @@
   
           // The drop is definitely going to happen now, store the dropEffect.
           dndState.dropEffect = dropEffect;
-          if (!ignoreDataTransfer) {
+          if (!ignoreDataTransfer && event.dataTransfer) {
             event.dataTransfer.dropEffect = dropEffect;
           }
   
@@ -478,11 +478,19 @@
          * row can't shed its row mid-drag" > "Edge lost the drag's data". Such a drag is still
          * this page's own: dndState holds what dragstart wrote. Only a drag with no types at all
          * counts; one carrying anything (selected text, a link) is someone else's, even when a
-         * stale isDragging is left over from a drag whose dragend never came.
+         * stale isDragging is left over from a drag whose dragend never came. No dataTransfer at
+         * all, or no types list, counts as no types (Oct 26: with none, reading .types threw).
          */
         function lostOwnData(event) {
-          var types = event.dataTransfer && event.dataTransfer.types;
-          return !!(dndState.isDragging && dndState.itemJson !== undefined && types && types.length === 0);
+          var types = event.dataTransfer ? event.dataTransfer.types : null;
+          return !!(dndState.isDragging && dndState.itemJson !== undefined && (!types || types.length === 0));
+        }
+
+        // The drag's MIME type: dndState's for a drag of ours that lost its data, else read off
+        // the dataTransfer (none at all is nobody's).
+        function mimeTypeOf(event, lost) {
+          if (lost) return dndState.mimeType;
+          return event.dataTransfer ? getMimeType(event.dataTransfer.types) : null;
         }
   
         /**

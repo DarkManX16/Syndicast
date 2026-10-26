@@ -46,6 +46,7 @@ function rig(storage) {
         defer: (fn) => queue.push(fn),
         where: () => '#!/filler',
         agent: 'Mozilla/5.0 Chrome/156.0.0.0 Edg/156.0.4314.42',
+        code: () => ({ commit: 'abc1234', modified: false, built: '2026-10-26T12:36:20.000Z' }),
     });
     // Dispatches like the browser: the recorder's capture listener first,
     // then `page` (the drag list's own handler), then whatever was deferred.
@@ -159,6 +160,67 @@ module.exports = async function () {
         const d = r.rec.sessions()[0];
         suite.check('a started drag that got no drag-over and never ended says both',
             /no drag-over/.test(r.rec.verdict(d)) && /never ended/.test(r.rec.verdict(d)), r.rec.verdict(d));
+    }
+
+    suite.log('-- which code, and what went missing --');
+    {
+        const r = rig();
+        goodDrag(r);
+        const d = r.rec.sessions()[0];
+        suite.check("each drag records the page code it ran: the bundle's commit and build time",
+            d.code === 'abc1234 built 2026-10-26T12:36:20.000Z', d.code);
+        suite.check("...and the copy shows it on the drag's line", /code abc1234 built /.test(r.rec.line(d)), r.rec.line(d));
+    }
+    {
+        const win = fakeWindow();
+        const rec = makeDragRecorder({ target: win, storage: fakeStorage(), now: () => 0, defer: (fn) => fn(), where: () => '', agent: '', code: () => undefined });
+        win.handlers.dragstart.forEach((h) => h.fn({ type: 'dragstart', target: row, dataTransfer: { types: [] } }));
+        suite.check('a bundle with no stamp says so rather than guessing', rec.sessions()[0].code === 'unstamped', rec.sessions()[0].code);
+    }
+    {
+        const r = rig();
+        const { fire, dt } = r;
+        fire('mousedown');
+        fire('dragstart', { dataTransfer: dt([]) }, (ev) => { ev.dataTransfer.types = ['application/x-dnd']; });
+        fire('dragenter', { dataTransfer: null });
+        fire('dragover', { dataTransfer: null });
+        fire('dragover', { dataTransfer: null });
+        fire('dragend', { dataTransfer: null });
+        const d = r.rec.sessions()[0];
+        suite.check('drag events that arrive with no data object at all are counted apart from empty ones',
+            d.noTransfer === 4 && d.over === 2, `noTransfer=${d.noTransfer} over=${d.over}`);
+        suite.check('...and the verdict says so', /no data object/.test(r.rec.verdict(d)), r.rec.verdict(d));
+    }
+    {
+        const r = rig();
+        const { fire, dt } = r;
+        fire('error', { message: 'outside any drag' });
+        fire('mousedown');
+        fire('dragstart', { dataTransfer: dt([]) }, (ev) => { ev.dataTransfer.types = ['application/x-dnd']; });
+        fire('error', { message: "Cannot read properties of null (reading 'types')", filename: 'http://localhost:18000/bundle.js', lineno: 120345 });
+        fire('dragover', { dataTransfer: dt([]) });
+        r.rec.noteError(new Error('thrown inside a digest'));
+        fire('unhandledrejection', { reason: new Error('a promise gave up') });
+        fire('dragend', { dataTransfer: dt([]) });
+        fire('error', { message: 'after the drag' });
+        const d = r.rec.sessions()[0];
+        suite.check('page errors during a drag are kept with it, where they came from included',
+            d.errors.length === 3 && /reading 'types'/.test(d.errors[0]) && /bundle.js:120345/.test(d.errors[0])
+                && /inside a digest/.test(d.errors[1]) && /promise gave up/.test(d.errors[2]), JSON.stringify(d.errors));
+        suite.check('...not ones from before or after it', !JSON.stringify(r.rec.sessions()).includes('outside any drag') && !JSON.stringify(r.rec.sessions()).includes('after the drag'));
+        suite.check('...and the copy shows them', /errors: /.test(r.rec.line(d)) && /reading 'types'/.test(r.rec.line(d)), r.rec.line(d));
+    }
+    {
+        const r = rig();
+        const { fire, dt } = r;
+        fire('mousedown');
+        fire('dragstart', { dataTransfer: dt([]) });
+        for (let i = 0; i < 50; i++) {
+            fire('error', { message: 'x'.repeat(500) });
+        }
+        fire('dragend', { dataTransfer: dt([]) });
+        const d = r.rec.sessions()[0];
+        suite.check('a drag keeps at most 5 errors, each cut to 300 characters', d.errors.length === 5 && d.errors.every((e) => e.length <= 300), d.errors.length + ' ' + d.errors[0].length);
     }
 
     suite.log('-- kept across a reload --');
