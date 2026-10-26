@@ -121,6 +121,19 @@ module.exports = async function () {
         suite.check('drag-overs that arrive with no data say so', /no data/.test(r.rec.verdict(d)), r.rec.verdict(d));
     }
     {
+        // The drag library takes a drag it started itself even when Edge hands it back empty.
+        const r = rig();
+        const { fire, dt } = r;
+        fire('mousedown');
+        fire('dragstart', { dataTransfer: dt([]) }, (ev) => { ev.dataTransfer.types = ['application/x-dnd']; });
+        fire('dragover', { dataTransfer: dt([]) }, (ev) => ev.preventDefault());
+        fire('drop', { dataTransfer: dt([]) }, (ev) => ev.preventDefault());
+        fire('dragend', { dataTransfer: dt([]) });
+        const d = r.rec.sessions()[0];
+        suite.check('a drag Edge handed back empty that the page took anyway says both',
+            /^ok/.test(r.rec.verdict(d)) && /no data/.test(r.rec.verdict(d)), r.rec.verdict(d));
+    }
+    {
         const r = rig();
         const { fire } = r;
         fire('mousedown', { clientX: 10, clientY: 10 });

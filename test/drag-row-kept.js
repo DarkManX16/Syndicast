@@ -57,11 +57,14 @@ app.service('dizquetv', function () {
         getPlexServers: () => Promise.resolve([]),
         getFillerMatch: () => Promise.resolve({ showNames: {}, clips: [] }),
         getFiller: () => Promise.resolve({ content: [] }),
+        getAllFillersInfo: () => Promise.resolve(['A', 'B', 'C', 'D', 'E', 'F'].map((n) => ({ id: 'id-' + n, name: 'List ' + n, count: 1 }))),
+        saveFillerOrder: (ids) => { window.__savedOrders.push(ids); return Promise.resolve(); },
     };
 });
 app.service('namesReview', function () { return { open: () => {} }; });
 app.directive('fillerConfig', require('./web/directives/filler-config'));
 app.directive('showConfig', require('./web/directives/show-config'));
+app.controller('fillerCtrl', require('./web/controllers/filler'));
 app.run(['$templateCache', function ($templateCache) {
     $templateCache.put('templates/filler-config.html', window.__templates.filler);
     $templateCache.put('templates/show-config.html', window.__templates.show);
@@ -91,6 +94,9 @@ function harnessHtml(bundleSrc) {
         filler: fs.readFileSync(path.join(ROOT, 'web/public/templates/filler-config.html'), 'utf8'),
         show: fs.readFileSync(path.join(ROOT, 'web/public/templates/show-config.html'), 'utf8'),
     };
+    // The Filler Lists page itself, under its real controller: a plain table
+    // on the drag library's own insert-then-dnd-moved path.
+    const fillersPage = fs.readFileSync(path.join(ROOT, 'web/public/views/filler.html'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'web/public/style.css'), 'utf8');
     return `<!doctype html><html><head><style>
 ${css}
@@ -102,6 +108,8 @@ ${css}
 <filler-config linker="registerFiller" on-done="done"></filler-config>
 <show-config linker="registerShow" on-done="done"></show-config>
 </div>
+<div id="fillersPage" ng-controller="fillerCtrl">${fillersPage}</div>
+<script>window.__savedOrders = [];</script>
 <script>window.__templates = ${escapeForInlineScript(JSON.stringify(templates))};</script>
 <script>${escapeForInlineScript(bundleSrc)}</script>
 <script>angular.bootstrap(document.body, ['dragRowKept']);</script>
@@ -120,10 +128,13 @@ function clips(prefix) {
 /*
  * Plays one drag in the page: row `from` dropped onto the lower half of row
  * `onto` (both visible-row positions). dragendAfter: 'late' (after the page's
- * timers ran), 'prompt' (straight after drop), or 'never'.
+ * timers ran), 'prompt' (straight after drop), or 'never'. lostData: the
+ * drag-overs and the drop carry an empty DataTransfer, as Edge handed them
+ * over in Ron's Oct 26 lockup ("types seen none") although the dragstart
+ * had set the data.
  */
-async function playDrag(page, listSelector, from, onto, dragendAfter) {
-    return page.evaluate(async (listSelector, from, onto, dragendAfter) => {
+async function playDrag(page, listSelector, from, onto, dragendAfter, lostData) {
+    return page.evaluate(async (listSelector, from, onto, dragendAfter, lostData) => {
         const tick = (ms) => new Promise((r) => setTimeout(r, ms));
         const list = document.querySelector(listSelector);
         const scope = angular.element(list).scope();
@@ -148,14 +159,15 @@ async function playDrag(page, listSelector, from, onto, dragendAfter) {
         Object.defineProperty(dt, 'effectAllowed', { value: 'move', writable: true });
         const r = target.getBoundingClientRect();
         const at = { clientX: r.left + 20, clientY: r.top + r.height * 0.75 };
-        const fire = (node, type, extra) => node.dispatchEvent(new DragEvent(type, Object.assign({ bubbles: true, cancelable: true, dataTransfer: dt }, extra || {})));
+        const overDt = lostData ? new DataTransfer() : dt;
+        const fire = (node, type, extra, transfer) => node.dispatchEvent(new DragEvent(type, Object.assign({ bubbles: true, cancelable: true, dataTransfer: transfer || dt }, extra || {})));
         fire(src, 'dragstart');
         report.typesAfterStart = Array.from(dt.types);
         await tick(20);
-        fire(target, 'dragenter', at);
-        fire(target, 'dragover', at);
-        report.overAccepted = !fire(target, 'dragover', at);
-        report.dropAccepted = !fire(target, 'drop', at);
+        fire(target, 'dragenter', at, overDt);
+        fire(target, 'dragover', at, overDt);
+        report.overAccepted = !fire(target, 'dragover', at, overDt);
+        report.dropAccepted = !fire(target, 'drop', at, overDt);
         report.placeholder = !!list.querySelector('.dndPlaceholder');
         report.connectedRightAfterDrop = src.isConnected;
         if (dragendAfter === 'late') {
@@ -177,7 +189,55 @@ async function playDrag(page, listSelector, from, onto, dragendAfter) {
         report.latch = scope.vsRepeatDragOptions.latch;
         report.titlesAround = now.slice(Math.max(0, onto - 2), onto + 3).map((c) => c.title);
         return report;
-    }, listSelector, from, onto, dragendAfter);
+    }, listSelector, from, onto, dragendAfter, !!lostData);
+}
+
+/*
+ * One drag on the Filler Lists table, by its grip: row `from` dropped on the
+ * lower half of row `onto`, dragend straight after. lostData as above.
+ * foreign: no dragstart in this page at all - a drag of selected text from
+ * elsewhere, carrying text/plain. staleStart: an in-page dragstart whose
+ * dragend never came, before that foreign drag.
+ */
+async function playTableDrag(page, from, onto, opts) {
+    return page.evaluate(async (from, onto, opts) => {
+        const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+        const names = () => Array.from(document.querySelectorAll('#fillersPage tr.filler-row')).map((tr) => tr.children[1].innerText.trim());
+        const before = names();
+        const rows = document.querySelectorAll('#fillersPage tr.filler-row');
+        const handle = rows[from].querySelector('td[dnd-handle]');
+        const target = rows[onto];
+        const r = target.getBoundingClientRect();
+        const at = { clientX: r.left + 40, clientY: r.top + r.height * 0.75 };
+        const dt = new DataTransfer();
+        Object.defineProperty(dt, 'effectAllowed', { value: 'move', writable: true });
+        const fire = (node, type, extra, transfer) => node.dispatchEvent(new DragEvent(type, Object.assign({ bubbles: true, cancelable: true, dataTransfer: transfer || dt }, extra || {})));
+        window.__savedOrders.length = 0;
+        if (opts.staleStart) {
+            fire(rows[4].querySelector('td[dnd-handle]'), 'dragstart');
+            await tick(20);
+        }
+        let overDt = dt;
+        if (opts.foreign) {
+            overDt = new DataTransfer();
+            overDt.setData('text/plain', 'some selected text');
+        } else {
+            fire(handle, 'dragstart');
+            await tick(20);
+            if (opts.lostData) {
+                overDt = new DataTransfer();
+            }
+        }
+        fire(target, 'dragenter', at, overDt);
+        fire(target, 'dragover', at, overDt);
+        const overAccepted = !fire(target, 'dragover', at, overDt);
+        const dropAccepted = !fire(target, 'drop', at, overDt);
+        if (!opts.foreign) {
+            fire(handle, 'dragend');
+        }
+        await tick(100);
+        return { before, after: names(), overAccepted, dropAccepted, saved: window.__savedOrders.length };
+    }, from, onto, opts);
 }
 
 // web/services/deferred-drag-move.js on its own, with a hand-driven clock.
@@ -285,6 +345,45 @@ module.exports = async function () {
                 suite.check(`${label}: ...and the list is free to redraw again`, r.latch === false);
                 await page.close();
             }
+            {
+                const page = await browser.newPage();
+                page.on('pageerror', (e) => suite.log('page error: ' + e.message));
+                await page.setContent(html, { waitUntil: 'load' });
+                await page.evaluate((open, filler) => angular.element(document.body).injector().get('$rootScope').$apply(() => { window[open](filler); }), editor.open, editor.feed(clips(editor.name)));
+                await page.waitForFunction((sel) => document.querySelectorAll(sel + ' .lr-row').length > 8, { timeout: 15000 }, editor.list);
+                const r = await playDrag(page, editor.list, 2, 7, 'prompt', true);
+                const label = 'Edge hands the drag-overs and the drop no data';
+                suite.check(`${label}: the page still takes the drag it started itself`, r.overAccepted && r.dropAccepted, `over=${r.overAccepted} drop=${r.dropAccepted}`);
+                suite.check(`${label}: ...and the clip lands where it was dropped, the same clip`,
+                    r.movedTo === 7 && r.sameObject && !r.copyInserted && r.length === r.lengthBefore, `at ${r.movedTo}: ${JSON.stringify(r.titlesAround)}`);
+                suite.check(`${label}: ...with dragend reaching the row as before`, r.dragendSeen.length === 1 && r.dragendSeen[0].connected && r.windowSawDragend);
+                await page.close();
+            }
+        }
+
+        suite.log('-- Filler Lists table --');
+        for (const c of [
+            { label: 'an ordinary drag', opts: {}, moves: true },
+            { label: 'Edge hands the drag-overs and the drop no data', opts: { lostData: true }, moves: true },
+            { label: 'a drag of text from elsewhere', opts: { foreign: true }, moves: false },
+            { label: 'a drag of text after an in-page drag that never got its dragend', opts: { foreign: true, staleStart: true }, moves: false },
+        ]) {
+            const page = await browser.newPage();
+            page.on('pageerror', (e) => suite.log('page error: ' + e.message));
+            await page.setContent(html, { waitUntil: 'load' });
+            await page.waitForFunction(() => document.querySelectorAll('#fillersPage tr.filler-row').length === 6, { timeout: 15000 });
+            const r = await playTableDrag(page, 1, 4, c.opts);
+            const expected = ['List A', 'List C', 'List D', 'List E', 'List B', 'List F'];
+            if (c.moves) {
+                suite.check(`${c.label}: List B lands below List E, and the order is saved`,
+                    r.overAccepted && r.dropAccepted && JSON.stringify(r.after) === JSON.stringify(expected) && r.saved === 1,
+                    `over=${r.overAccepted} drop=${r.dropAccepted} ${JSON.stringify(r.after)} saved=${r.saved}`);
+            } else {
+                suite.check(`${c.label}: still turned down, and nothing moves`,
+                    !r.overAccepted && JSON.stringify(r.after) === JSON.stringify(r.before) && r.saved === 0,
+                    `over=${r.overAccepted} ${JSON.stringify(r.after)} saved=${r.saved}`);
+            }
+            await page.close();
         }
     } finally {
         await browser.close();

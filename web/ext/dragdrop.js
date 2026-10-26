@@ -110,6 +110,9 @@
           // https://github.com/marceljuenemann/angular-drag-and-drop-lists/wiki/Data-Transfer-Design
           var item = scope.$eval(attr.dndDraggable);
           var mimeType = MIME_TYPE + (dndState.itemType ? ('-' + dndState.itemType) : '');
+          // Syndicast: kept for a drag Edge hands back with no data (see lostOwnData).
+          dndState.itemJson = angular.toJson(item);
+          dndState.mimeType = mimeType;
           try {
             event.dataTransfer.setData(mimeType, angular.toJson(item));
           } catch (e) {
@@ -168,6 +171,8 @@
           // Clean up
           dndState.isDragging = false;
           dndState.callback = undefined;
+          dndState.itemJson = undefined;
+          dndState.mimeType = undefined;
           element.removeClass("dndDragging");
           element.removeClass("dndDraggingSource");
           event.stopPropagation();
@@ -298,7 +303,7 @@
             horizontal: attr.dndHorizontalList && scope.$eval(attr.dndHorizontalList)
           };
   
-          var mimeType = getMimeType(event.dataTransfer.types);
+          var mimeType = lostOwnData(event) ? dndState.mimeType : getMimeType(event.dataTransfer.types);
           if (!mimeType || !isDropAllowed(getItemType(mimeType))) return true;
           event.preventDefault();
         });
@@ -311,7 +316,8 @@
           event = event.originalEvent || event;
   
           // Check whether the drop is allowed and determine mime type.
-          var mimeType = getMimeType(event.dataTransfer.types);
+          var lost = lostOwnData(event);
+          var mimeType = lost ? dndState.mimeType : getMimeType(event.dataTransfer.types);
           var itemType = getItemType(mimeType);
           if (!mimeType || !isDropAllowed(itemType)) return true;
   
@@ -344,8 +350,10 @@
           // In IE we set a fake effectAllowed in dragstart to get the correct cursor, we therefore
           // ignore the effectAllowed passed in dataTransfer. We must also not access dataTransfer for
           // drops from external sources, as that throws an exception.
+          // Syndicast: a drag whose data Edge lost carries no effectAllowed worth reading either;
+          // dndState has the one dragstart set.
           var ignoreDataTransfer = mimeType == MSIE_MIME_TYPE;
-          var dropEffect = getDropEffect(event, ignoreDataTransfer);
+          var dropEffect = getDropEffect(event, ignoreDataTransfer || lost);
           if (dropEffect == 'none') return stopDragover();
   
           // At this point we invoke the callback, which still can disallow the drop.
@@ -375,7 +383,8 @@
           event = event.originalEvent || event;
   
           // Check whether the drop is allowed and determine mime type.
-          var mimeType = getMimeType(event.dataTransfer.types);
+          var lost = lostOwnData(event);
+          var mimeType = lost ? dndState.mimeType : getMimeType(event.dataTransfer.types);
           var itemType = getItemType(mimeType);
           if (!mimeType || !isDropAllowed(itemType)) return true;
   
@@ -385,7 +394,7 @@
   
           // Unserialize the data that was serialized in dragstart.
           try {
-            var data = JSON.parse(event.dataTransfer.getData(mimeType));
+            var data = JSON.parse(lost ? dndState.itemJson : event.dataTransfer.getData(mimeType));
           } catch(e) {
             return stopDragover();
           }
@@ -399,7 +408,7 @@
   
           // Special handling for internal IE drops, see dragover handler.
           var ignoreDataTransfer = mimeType == MSIE_MIME_TYPE;
-          var dropEffect = getDropEffect(event, ignoreDataTransfer);
+          var dropEffect = getDropEffect(event, ignoreDataTransfer || lost);
           if (dropEffect == 'none') return stopDragover();
   
           // Invoke the callback, which can transform the transferredObject and even abort the drop.
@@ -460,6 +469,20 @@
             }
           }
           return null;
+        }
+  
+        /**
+         * Syndicast: Edge can hand a drag that started on this page back to its drop targets with
+         * no data at all - every drag-over and the drop carry no types, although dragstart set
+         * them - and the list then turns down every spot (🚫). See NOTES.md > "Dragging a program
+         * row can't shed its row mid-drag" > "Edge lost the drag's data". Such a drag is still
+         * this page's own: dndState holds what dragstart wrote. Only a drag with no types at all
+         * counts; one carrying anything (selected text, a link) is someone else's, even when a
+         * stale isDragging is left over from a drag whose dragend never came.
+         */
+        function lostOwnData(event) {
+          var types = event.dataTransfer && event.dataTransfer.types;
+          return !!(dndState.isDragging && dndState.itemJson !== undefined && types && types.length === 0);
         }
   
         /**
