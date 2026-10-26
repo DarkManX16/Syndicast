@@ -131,7 +131,7 @@ module.exports = async function run() {
         }
         suite.check('200 new steps get 200 different ids', ids.size === 200);
 
-        for (const id of ['next', 'now', 'pair', 'any', 'later']) {
+        for (const id of ['next', 'now', 'pair', 'any', 'later', 'afterNext', 'tomorrow']) {
             editor.setWhich(s, id);
             suite.check(`choosing "${id}" reads back as "${id}"`, editor.whichOf(s) === id, `${s.match}/${s.keyedOn}`);
         }
@@ -369,6 +369,18 @@ module.exports = async function run() {
             editor.chipLabel(step('s', { listId: 'wbrb', match: 'any' }), [], names).includes('any clip')
             && editor.chipLabel(step('s', { match: 'show', keyedOn: 'now' }), [], names).includes('for the show that just ended')
             && editor.chipLabel(step('s', { match: 'pair' }), [], names).includes('for the show that just ended, then the one coming up'));
+        suite.check('"afterNext" and "tomorrow" read their own sentences',
+            sentence(step('s', { listId: 'upnext', keyedOn: 'afterNext', match: 'show' }))
+                === 'Plays a clip from Up Next for the show that opens this, the time after next time it comes round; if none matches, plays nothing.'
+            && sentence(step('s', { listId: 'upnext', keyedOn: 'tomorrow', match: 'show' }))
+                === 'Plays a clip from Up Next for the show that opens this tomorrow, or else the first block to open tomorrow; plays nothing if none does; if none matches, plays nothing.');
+        suite.check('... and their own chip words',
+            editor.chipLabel(step('s', { match: 'show', keyedOn: 'afterNext' }), [], names).includes('for the show the time after next')
+            && editor.chipLabel(step('s', { match: 'show', keyedOn: 'tomorrow' }), [], names).includes('for the show tomorrow'));
+        suite.check('a generated card cannot be for either: a card is only for the show next time',
+            ! editor.isSupported(card('x', { keyedOn: 'tomorrow' })) && ! editor.isSupported(card('x', { keyedOn: 'afterNext' })));
+        suite.check('turning a card step into a list step keeps a keyedOn the list may use',
+            editor.setKind(step('s', { match: 'show', keyedOn: 'tomorrow' }), 'list').keyedOn === 'tomorrow');
         suite.check('"later" has its own chip words too, built at step 8',
             editor.chipLabel(step('s', { match: 'show', keyedOn: 'later' }), [], names).includes('for the show next time'));
         suite.check('days and chance show on the chip, since they decide whether it plays',

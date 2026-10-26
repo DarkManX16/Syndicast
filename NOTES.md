@@ -1451,6 +1451,62 @@ for the full spec, stages and acceptance tests.
         Flex -> (none)` - the generated card chosen as the out step of a real break, by the
         production code, not a test fixture.
 
+
+      **Two more `keyedOn` choices, Oct 26, 2026 (Sonnet 5.5), for channel 3's Disney Movies block:
+      `afterNext` ("the show the time after next time") and `tomorrow` ("the show that opens
+      tomorrow").** `'later'` is unchanged, so every saved channel reads as before. The gap was a
+      step that must announce a movie airing later than the next airing of its own block: after
+      a Friday or Saturday movie, next week's; before or after a Saturday one, Sunday's, which
+      belongs to the Disney Sunday Movie block; before a movie, tomorrow's rather than tonight's.
+      Both are list steps ("a clip for ..." in the form's radio list); a generated card can still
+      only be for "next time".
+
+      - **`afterNext`** (`afterNextAiring`): counts airings of the step's own context the way
+        `laterAiring` finds its first, and takes the second. An airing is a run of the context's
+        programs with no real program of anything else between them, so a block's own Flex
+        breaks do not split it. For a block that airs twice a week (Friday and Saturday) the
+        second airing from any break is the same night next week: Friday's break finds next
+        Friday, Saturday's finds next Saturday, which is the owner's "the movie airing next
+        week". A once-a-week block's second airing is a fortnight out; for a week on there,
+        `later` is the right choice. I chose "the airing after next" over "this weekday next
+        week" because it needs no calendar arithmetic and composes with `later`, at the price
+        of that weekly-block difference, which the editor note spells out.
+      - **`tomorrow`** (`tomorrowAiring`): the next local calendar day after the break starts
+        (a break at 11:50 PM Friday looks at Saturday; one at 12:10 AM Saturday at Sunday). The
+        first program of the step's own context that opens an airing that day; and when its own
+        context does not air that day, the first program that opens any *block* that day.
+        "Opens" is the same run as above (a program of the context whose last real predecessor
+        was not), so the second half of a block that began before midnight is not tomorrow's.
+        Own context first is what makes Friday's break find Saturday's 7 PM movie rather than
+        the 11:30 AM AfterToon Movie that opens first that day; the any-block fallback is what
+        lets Saturday's break find Sunday's. A day-part counts only as the step's own context,
+        never as the fallback: the first show of tomorrow's morning day-part is not an event to
+        announce. A day-part that runs round midnight into the next day never "opens" tomorrow.
+      - **Nothing to announce.** If nothing opens tomorrow (or there is no second airing in
+        reach), a step keyed on either plays nothing at all - not even a clip that names no
+        show, and not its fallback list - and that is not a problem line in the log. `later`
+        still lets an unnamed clip through, as before. "Tomorrow night" must not play on a
+        night with nothing on.
+      - **Clip names** match exactly as for `later`: a clip names the show, movie, season or
+        episode of the program found (`movie.Twitches Too`), most specific first, the fallback
+        list after; a clip naming several shows never fits. Nothing new for the review screen.
+      - **Real-data check, on a copy of `.dizquetv-dev`'s channel 3 (taken Oct 26, 07:21, 25.6 MB,
+        the same size and content as the live file's 06:55 save).** `buildPlan` over Disney Movies
+        with out steps `afterNext` then `tomorrow` and a promo list named for the real movies:
+        Fri Nov 6, 8:24 PM (after Halloweentown) found Halloweentown II (Fri Nov 13) then Mom's
+        Got a Date with a Vampire (Sat Nov 7); Sat Nov 7, 8:22 PM found Twitches (Sat Nov 14) then
+        Twitches Too (Sun Nov 8, the other block); before the movies, Fri 6:51 PM found Mom's Got a
+        Date with a Vampire and Sat 6:52 PM found Twitches Too. The Disney Sunday Movie block's
+        break on Sun Nov 8 finds nothing tomorrow, as it should.
+      - Tests in `test/transitions.js` (a two-week lineup shaped like channel 3: Friday and
+        Saturday 7 PM block, a Sunday block and a Saturday-morning block) and
+        `test/transitions-editor.js`. Editor wording in `src/transitions-editor.js` (`WHICH`) and
+        the hint under the radio list in `web/public/templates/transitions-editor.html`.
+      - **Not done:** channel 3's saved steps still use the workbook's workaround (promos naming
+        tonight's movie); moving them to the new choices is Ron's edit in the editor. Generated
+        cards for the new choices (their `want` carries `keyedOn`, so the renderer and the card
+        service would need a look first).
+
 - [x] Next Time bumper: `keyedOn: 'later'` and the Cartoon Theatre "Next Time" row (stage 5 step
       8). **Built Oct 8, 2026**; see the "Step 8" entry above (after Step 7) and the spec.
 - [x] Generated Next Time cards for Cartoon Theatre: when step 8's real clip has none for next

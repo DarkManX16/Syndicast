@@ -673,6 +673,165 @@ module.exports = async function run() {
                 titles(withFallback.out) === 'Generic stand-in' && withFallback.out[0].via === 'fallback', titles(withFallback.out));
         }
 
+        // -- keyedOn 'afterNext' and 'tomorrow': channel 3's Disney Movies block, which airs
+        // Friday and Saturday at 7:00 PM, next to a Sunday Movie block and a Saturday
+        // morning one. A two-week lineup, so next Friday's movie is not Saturday's.
+        {
+            const week1 = at('2026-11-02T00:00:00');                    // a Monday
+            const dayAt = (week, dow, hhmm) => {                        // dow 0 = Sunday .. 6 = Saturday
+                const d = new Date(week1);
+                d.setDate(d.getDate() + week * 7 + ((dow + 6) % 7));
+                const [h, m] = hhmm.split(':').map(Number);
+                d.setHours(h, m, 0, 0);
+                return d.getTime();
+            };
+            const showings = [];
+            [['Up', 'Cars', 'Moana', 'Frozen'], ['Brave', 'Luca', 'Coco', 'Soul']].forEach((names, week) => {
+                showings.push([dayAt(week, 5, '19:00'), names[0]], [dayAt(week, 6, '11:30'), names[1]],
+                    [dayAt(week, 6, '19:00'), names[2]], [dayAt(week, 0, '19:00'), names[3]]);
+            });
+            showings.sort((a, b) => a[0] - b[0]);
+            const programs = [];
+            const end = dayAt(1, 0, '23:59') + MIN;
+            let t = week1;
+            // Fill is cut where a day-part starts (midnight, 6 AM), as a generated lineup would
+            const fill = (until) => {
+                while (until > t) {
+                    const d = new Date(t);
+                    const cut = [0, 6].map( (h) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + (h === 0 ? 1 : 0), h).getTime() )
+                        .filter( (c) => c > t ).concat([until]).sort( (a, b) => a - b )[0];
+                    const stop = Math.min(cut, until);
+                    programs.push({ title: 'Fill', key: '/e/fill' + t, type: 'episode', showTitle: 'Fill', season: 1, episode: 1,
+                        duration: stop - t, serverKey: 'srv' });
+                    t = stop;
+                }
+            };
+            for (const [when, title] of showings) {
+                fill(when - 9 * MIN);
+                programs.push(flex(9), movie(title, 82), flex(8));
+                t = when + 90 * MIN;
+            }
+            fill(end);
+            const channel = {
+                number: 3, name: 'Disney', offlineMode: 'pic', fallback: [], fillerRepeatCooldown: 0, fillerCollections: [],
+                dayParts: [
+                    { id: 'early', name: 'Early', fillerCollections: mix([['A', 100]]), starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }] },
+                    { id: 'day', name: 'Day', fillerCollections: mix([['A', 100]]), starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 6 * HOUR }] },
+                ],
+                blocks: [
+                    { id: 'dm', name: 'Disney Movies', fillerCollections: mix([['B', 100]]),
+                        airings: [{ days: [5, 6], start: 19 * HOUR, end: 20.5 * HOUR }] },
+                    { id: 'sm', name: 'Disney Sunday Movie', fillerCollections: mix([['B', 100]]),
+                        airings: [{ days: [0], start: 19 * HOUR, end: 20.5 * HOUR }] },
+                    { id: 'at', name: 'AfterToon Movie', fillerCollections: mix([['B', 100]]),
+                        airings: [{ days: [6], start: 11.5 * HOUR, end: 12.5 * HOUR }] },
+                ],
+                programs: programs, duration: programs.reduce((a, p) => a + p.duration, 0),
+                startTime: new Date(week1).toISOString(),
+            };
+            const flexAt = (ms) => {
+                let from = week1;
+                for (let i = 0; i < programs.length; i++) {
+                    if ( (from === ms) && (programs[i].isOffline === true) ) {
+                        return transitions.findBreak(channel, i, from);
+                    }
+                    from += programs[i].duration;
+                }
+                throw new Error('no Flex entry at ' + new Date(ms));
+            };
+            const [movies, sunday] = channel.blocks;
+            const titleOf = (found) => (found === null) ? null : found.program.title;
+            const fri = dayAt(0, 5, '19:00');
+            const sat = dayAt(0, 6, '19:00');
+            const sun = dayAt(0, 0, '19:00');
+            const friLeaving = flexAt(fri + 82 * MIN);
+            const satLeaving = flexAt(sat + 82 * MIN);
+            const friEntering = flexAt(fri - 9 * MIN);
+            const satEntering = flexAt(sat - 9 * MIN);
+            const sunLeaving = flexAt(sun + 82 * MIN);
+
+            suite.check('the Friday movie\'s break is a boundary leaving Disney Movies, and the Saturday one\'s break before it enters it',
+                transitions.assemble(channel, friLeaving).from === movies && transitions.assemble(channel, satEntering).to === movies);
+
+            // (a) next week, from a Friday and a Saturday break
+            suite.check('"later" after the Friday movie is Saturday\'s: the case it cannot do, next Friday\'s',
+                titleOf(transitions.laterAiring(channel, friLeaving, movies)) === 'Moana');
+            const nextFri = transitions.afterNextAiring(channel, friLeaving, movies);
+            suite.check('"the airing after next" finds next Friday\'s movie, at its own start',
+                titleOf(nextFri) === 'Brave' && nextFri.startTime === dayAt(1, 5, '19:00'), titleOf(nextFri));
+            suite.check('after the Saturday movie it finds next Saturday\'s, where "later" finds next Friday\'s',
+                titleOf(transitions.afterNextAiring(channel, satLeaving, movies)) === 'Coco'
+                && titleOf(transitions.laterAiring(channel, satLeaving, movies)) === 'Brave');
+            suite.check('before the Friday movie, "later" is that movie and "the airing after next" is Saturday\'s',
+                titleOf(transitions.laterAiring(channel, friEntering, movies)) === 'Up'
+                && titleOf(transitions.afterNextAiring(channel, friEntering, movies)) === 'Moana');
+            suite.check('a context the lineup never airs has no airing after the next, and a break with no next program or no context has none either',
+                transitions.afterNextAiring(channel, friLeaving, { id: 'ghost' }) === null
+                && transitions.afterNextAiring(channel, Object.assign({}, friLeaving, { next: null }), movies) === null
+                && transitions.afterNextAiring(channel, friLeaving, null) === null);
+
+            // (b) and (c): tomorrow
+            suite.check('after the Saturday movie "tomorrow" is the Sunday movie, which belongs to another block',
+                titleOf(transitions.tomorrowAiring(channel, satLeaving, movies)) === 'Frozen');
+            suite.check('before the Saturday movie it is the same one: tomorrow\'s, not tonight\'s',
+                titleOf(transitions.tomorrowAiring(channel, satEntering, movies)) === 'Frozen');
+            suite.check('on Friday it is Saturday evening\'s movie, not the Saturday morning one that opens first that day',
+                titleOf(transitions.tomorrowAiring(channel, friLeaving, movies)) === 'Moana'
+                && titleOf(transitions.tomorrowAiring(channel, friEntering, movies)) === 'Moana');
+            suite.check('a step whose own block does not air tomorrow finds the first block to open that day',
+                titleOf(transitions.tomorrowAiring(channel, friLeaving, sunday)) === 'Cars');
+            suite.check('after the Sunday movie nothing opens on Monday: no show tomorrow',
+                transitions.tomorrowAiring(channel, sunLeaving, sunday) === null);
+            suite.check('a day-part\'s own start counts for its own step, but is never the fallback for another context',
+                transitions.tomorrowAiring(channel, sunLeaving, channel.dayParts[0]).startTime === dayAt(1, 1, '00:00')
+                && transitions.tomorrowAiring(channel, sunLeaving, movies) === null);
+            suite.check('no next program, no tomorrow',
+                transitions.tomorrowAiring(channel, Object.assign({}, satLeaving, { next: null }), movies) === null);
+
+            // The owner's sequences through buildPlan
+            const lists = {
+                MOVIE: ['Brave', 'Coco', 'Frozen', 'Moana', 'Up'].map( (m) => clipOf('Promo ' + m, 10, ['movie.' + m]) ),
+                GENERIC: [clipOf('Tonight at seven', 10), clipOf('Another at seven', 10)],
+            };
+            const keyed = (id, keyedOn, extra) => S(id, 'MOVIE', Object.assign({ match: 'show', keyedOn: keyedOn }, extra || {}));
+            const withSteps = (situation, steps) => {
+                movies.transitions = { [situation]: { out: steps, in: [] } };
+            };
+            const planAt = (brk, from) => transitions.buildPlan(channel, brk, env(from || lists));
+
+            withSteps('leaving', [keyed('wk', 'afterNext'), keyed('tm', 'tomorrow')]);
+            suite.check('after the Friday movie: a promo for next Friday\'s movie, then one for Saturday\'s',
+                titles(planAt(friLeaving).out) === 'Promo Brave | Promo Moana', titles(planAt(friLeaving).out));
+            suite.check('after the Saturday movie: next Saturday\'s, then Sunday\'s',
+                titles(planAt(satLeaving).out) === 'Promo Coco | Promo Frozen', titles(planAt(satLeaving).out));
+
+            withSteps('entering', [keyed('tm', 'tomorrow')]);
+            suite.check('before the Saturday movie: tomorrow\'s, not tonight\'s',
+                titles(planAt(satEntering).out) === 'Promo Frozen', titles(planAt(satEntering).out));
+            const tonightOnly = planAt(satEntering, { MOVIE: [clipOf('Promo Moana', 10, ['movie.Moana'])] });
+            suite.check('a clip naming tonight\'s movie is not one for tomorrow\'s: the step plays nothing, and that is no problem',
+                tonightOnly.out.length === 0 && tonightOnly.skipped.length === 1 && tonightOnly.skipped[0].problem === false);
+            withSteps('entering', [keyed('tm', 'tomorrow', { fallbackListId: 'GENERIC' })]);
+            suite.check('a fallback list stands in when no clip names it, as for any show step',
+                titles(planAt(satEntering, { MOVIE: [clipOf('Promo Moana', 10, ['movie.Moana'])], GENERIC: lists.GENERIC }).out) === 'Tonight at seven');
+
+            sunday.transitions = { leaving: { out: [S('tm', 'GENERIC', { match: 'show', keyedOn: 'tomorrow' }),
+                S('an', 'GENERIC', { match: 'any', keyedOn: 'afterNext' }), S('ok', 'GENERIC', { match: 'any', keyedOn: 'later' })], in: [] } };
+            const nothing = planAt(sunLeaving);
+            suite.check('with nothing on tomorrow a step keyed on it plays nothing, not even a clip that names no show - and that is no problem',
+                nothing.skipped.filter( (x) => x.stepId === 'tm' ).length === 1 && ! nothing.out.some( (x) => x.stepId === 'tm' )
+                && nothing.skipped.every( (x) => x.problem === false ) && nothing.notes.length === 0, JSON.stringify(nothing.skipped));
+            suite.check('while one keyed on the next airing plays, as before',
+                nothing.out.map( (x) => x.stepId ).join() === 'an,ok', nothing.out.map( (x) => x.stepId ).join());
+            delete sunday.transitions;
+
+            withSteps('leaving', [keyed('lt', 'later')]);
+            suite.check('"later" is as it was: after the Friday movie, Saturday\'s',
+                titles(planAt(friLeaving).out) === 'Promo Moana', titles(planAt(friLeaving).out));
+            suite.check('all three are known keyedOn values',
+                ['later', 'afterNext', 'tomorrow'].every( (k) => transitions.KEYED_ON.includes(k) ));
+        }
+
         // -- purity
         {
             const lists = { U: [clipOf('B1', 10, ['tv.Beta'])] };

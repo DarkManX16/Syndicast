@@ -22,7 +22,7 @@ const transitions = require('./transitions');
 const showMatch = require('./show-match');
 
 /*
- * The five ways a step can choose its clips, as the form offers them. Each is a
+ * The seven ways a step can choose its clips, as the form offers them. Each is a
  * (match, keyedOn) pair of the stored shape; `any` keeps keyedOn 'next', the
  * default, since the field is read but means nothing for it.
  */
@@ -41,6 +41,12 @@ const WHICH = [
     { id: 'later', match: 'show', keyedOn: 'later', short: 'for the show next time',
       label: 'a clip for the show that opens this, next time it comes round',
       about: ' for the show that opens this, next time it comes round' },
+    { id: 'afterNext', match: 'show', keyedOn: 'afterNext', short: 'for the show the time after next',
+      label: 'a clip for the show that opens this, the time after next time it comes round',
+      about: ' for the show that opens this, the time after next time it comes round' },
+    { id: 'tomorrow', match: 'show', keyedOn: 'tomorrow', short: 'for the show tomorrow',
+      label: 'a clip for the show that opens tomorrow: in this block, or else the first block to open',
+      about: ' for the show that opens this tomorrow, or else the first block to open tomorrow; plays nothing if none does' },
 ];
 
 /*
@@ -56,7 +62,7 @@ const WHICH = [
  */
 const CARD_WHICH = WHICH.filter( (w) => w.id === 'later' )
     .map( (w) => Object.assign({}, w, { label: w.label.replace(/^a clip/, 'a card') }) );
-// Every keyedOn a 'show' list step can use (next, now, later) - unlike
+// Every keyedOn a 'show' list step can use (next, now, later, afterNext, tomorrow) - unlike
 // CARD_WHICH, not narrowed to what a generated step may use.
 const SHOW_KEYED_ON = WHICH.filter( (w) => w.match === 'show' ).map( (w) => w.keyedOn );
 

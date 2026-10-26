@@ -34,7 +34,7 @@ const clipNames = require('./clip-names');
 const SITUATIONS = ['leaving', 'entering', 'betweenEpisodes', 'betweenShows'];
 const KINDS = ['list', 'generated'];
 const MATCHES = ['any', 'show', 'pair'];
-const KEYED_ON = ['now', 'next', 'later'];
+const KEYED_ON = ['now', 'next', 'later', 'afterNext', 'tomorrow'];
 
 const STEP_DEFAULTS = {
     kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null,
@@ -42,6 +42,9 @@ const STEP_DEFAULTS = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The keyedOn values that look ahead past `later`, which skip a step with nothing to announce.
+const FUTURE_KEYS = ['afterNext', 'tomorrow'];
 
 /*
  * The key the slot editor uses for "the same show" (get-show-data.js), with
@@ -604,6 +607,103 @@ function laterAiring(channel, brk, context) {
 }
 
 /*
+ * keyedOn: 'afterNext' - the airing of the step's own context after the one
+ * `laterAiring` finds. An airing is a run: the programs of `context` with no
+ * program of anything else between them (Flex does not end one, so a block's own
+ * commercial breaks do not split it). Counts the same way `laterAiring` does, from
+ * the break's next program on, so 'later' is the first run it meets and this is the
+ * second: after a Friday movie of a block that airs Friday and Saturday, 'later' is
+ * Saturday's and this is next Friday's; after the Saturday one, 'later' is next
+ * Friday's and this is next Saturday's - the same night a week on, for any block
+ * that airs twice a week. A once-a-week block's second airing is a fortnight out.
+ * Looks far enough ahead for a context that comes round once a week. null when
+ * there is no second airing in reach.
+ */
+function afterNextAiring(channel, brk, context) {
+    if ( (context == null) || (brk.next == null) ) {
+        return null;
+    }
+    const programs = channel.programs;
+    const n = programs.length;
+    const horizon = brk.next.startTime + 2 * LATER_SCAN_WINDOW_MS;
+    let at = brk.next.startTime;
+    let index = brk.next.index;
+    let runs = 0;
+    let inRun = false;
+    for (let guard = 0; (at < horizon) && (guard < LATER_SCAN_GUARD); guard++) {
+        const program = programs[index];
+        if (program.isOffline !== true) {
+            if (dayParts.resolveContext(channel, at) === context) {
+                if (! inRun) {
+                    inRun = true;
+                    runs++;
+                    if (runs === 2) {
+                        return { program: program, startTime: at };
+                    }
+                }
+            } else {
+                inRun = false;
+            }
+        }
+        at += program.duration;
+        index = (index + 1) % n;
+    }
+    return null;
+}
+
+/*
+ * keyedOn: 'tomorrow' - the show airing on the next calendar day after the break
+ * starts (local time: a break at 11:50 PM Friday looks at Saturday, one at 12:10
+ * AM Saturday at Sunday): the first program of the step's own context that opens an
+ * airing that day; and when its context does not air that day, the first program
+ * to open any block's airing that day. Both read as "the feature on tomorrow", and
+ * the second is what lets a Saturday-night break in the Disney Movies block find
+ * Sunday's movie, which belongs to a different block. A day-part's own start counts
+ * only as the step's own context, never as the fallback: the first show of
+ * tomorrow's morning day-part is not an event to announce.
+ *
+ * "Opens an airing" is the same run as afterNextAiring's: the program is of that
+ * context and the last real program before it was not, so the middle of a block that
+ * began before midnight does not count as tomorrow's. null when nothing opens that
+ * day, and a step keyed on it then plays nothing at all, not even a clip that
+ * names no show: "tomorrow night" must not play on a night with nothing on.
+ */
+function tomorrowAiring(channel, brk, context) {
+    if ( (brk.next == null) || (brk.startTime == null) ) {
+        return null;
+    }
+    const d = new Date(brk.startTime);
+    const from = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 2).getTime();
+    const programs = channel.programs;
+    const n = programs.length;
+    const blocks = Array.isArray(channel.blocks) ? channel.blocks : [];
+    // The context of the last real program before the one being looked at.
+    let before = (brk.prev != null) ? dayParts.resolveContext(channel, brk.prev.startTime) : undefined;
+    let at = brk.next.startTime;
+    let index = brk.next.index;
+    let block = null;
+    for (let guard = 0; (at < to) && (guard < LATER_SCAN_GUARD); guard++) {
+        const program = programs[index];
+        if (program.isOffline !== true) {
+            const here = dayParts.resolveContext(channel, at);
+            if ( (at >= from) && (here !== before) && (here != null) ) {
+                if (here === context) {
+                    return { program: program, startTime: at };
+                }
+                if ( (block === null) && blocks.includes(here) ) {
+                    block = { program: program, startTime: at };
+                }
+            }
+            before = here;
+        }
+        at += program.duration;
+        index = (index + 1) % n;
+    }
+    return block;
+}
+
+/*
  * A clip's names as plan-building reads them: [] when it has none, the one or
  * two keys when it has, and null when the field is there but unusable, which
  * makes the clip ineligible everywhere. An unusable `names` must never turn a
@@ -671,7 +771,9 @@ function namesState(clip) {
  * plays twice in one plan, so the in step of a break whose out step took the
  * only fitting clip falls through to its fallback or skips. Ties go to list
  * order, so one break always builds one plan. `keyedOn: 'later'` keys a step
- * on `laterProgram`, below.
+ * on `laterProgram`, below; 'afterNext' and 'tomorrow' on `afterNextAiring` and
+ * `tomorrowAiring`, and a step keyed on one of those with nothing to announce plays
+ * nothing, not even a clip that names no show.
  *
  * A 'generated' step plays a card made for the show it is keyed on (now, next or
  * later, as a list step), from its template (`templateId`), when env.card has one
@@ -739,6 +841,12 @@ function buildPlan(channel, brk, env) {
         if (keyedOn === 'later') {
             return laterAiring(channel, brk, context);
         }
+        if (keyedOn === 'afterNext') {
+            return afterNextAiring(channel, brk, context);
+        }
+        if (keyedOn === 'tomorrow') {
+            return tomorrowAiring(channel, brk, context);
+        }
         return undefined;
     };
     const keyedShows = (keyedOn, context) => {
@@ -750,6 +858,10 @@ function buildPlan(channel, brk, env) {
         }
         if (keyedOn === 'later') {
             return { singles: [laterProgram(channel, brk, context)], order: null };
+        }
+        if ( (keyedOn === 'afterNext') || (keyedOn === 'tomorrow') ) {
+            const airing = keyedAiring(keyedOn, context);
+            return { singles: [(airing === null) ? null : airing.program], order: null };
         }
         return null;
     };
@@ -944,6 +1056,13 @@ function buildPlan(channel, brk, env) {
         if (leftOut(entry)) {
             return;
         }
+        // A step keyed on a day or an airing that is not there has nothing to announce,
+        // which an unnamed clip must not paper over (it would still fit any show).
+        if ( ( (step.match === 'show') || (step.match === 'any') ) && FUTURE_KEYS.includes(step.keyedOn)
+            && (keyedAiring(step.keyedOn, entry.context) === null) ) {
+            skip(entry, step.keyedOn === 'tomorrow' ? 'nothing opens tomorrow' : 'its context has no second airing in reach', false);
+            return;
+        }
         const tiers = tiersOf(step, entry.context);
         if (typeof(tiers) === 'undefined') {
             skip(entry, `has match "${step.match}", which is not one of ${MATCHES.join(', ')}`, true);
@@ -1075,6 +1194,8 @@ module.exports = {
     sequencePrograms: sequencePrograms,
     laterProgram: laterProgram,
     laterAiring: laterAiring,
+    afterNextAiring: afterNextAiring,
+    tomorrowAiring: tomorrowAiring,
     watchProblem: watchProblem,
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,

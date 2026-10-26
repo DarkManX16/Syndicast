@@ -193,7 +193,7 @@ A step says which clips it may draw from and how it chooses one:
 { id, kind: 'list',
   listId,                            // the filler list it draws from
   match: 'any' | 'show' | 'pair',    // any clip; a clip naming the keyed show; a clip naming now→then
-  keyedOn: 'now' | 'next' | 'later', // which show a 'show' step must name (see below)
+  keyedOn: 'now' | 'next' | 'later' | 'afterNext' | 'tomorrow', // which show a 'show' step must name (see below)
   fallbackListId: null,              // when nothing names the show: null skips the step, a list plays one from it
   onlyIfNoMatch: null,               // null, or the id of another step in this sequence: play only if that one found no clip
   days: null,                        // null, or the weekdays it plays on, 0 = Sunday (step 3b)
@@ -284,6 +284,13 @@ step 3b reads, and plays, exactly as it did.
   *next* airing or start, for Cartoon Theatre's "Next Time" — the one bumper
   in the examples that names neither neighbour. **Built Oct 8, 2026**; see
   NOTES.md.
+- **`keyedOn: 'afterNext'` and `'tomorrow'`** reach further than `later`, for a
+  block that announces the movie a week on or the one on tomorrow, even when that is
+  another block's. `afterNext` is the second airing of this context from the break
+  (the same night next week, for a block that airs two nights a week); `tomorrow` is
+  the first program of this context to open on the next calendar day, else the
+  first program to open any block that day, and with neither the step plays nothing,
+  not even a fallback. **Built Oct 26, 2026**; see NOTES.md.
 
 **Matching falls back rather than skipping.** A step tries its most specific
 match, then the next, then its fallback list. A step with no fallback is the

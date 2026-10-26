@@ -180,6 +180,8 @@
                                 ng-model="form.which" ng-value="w.id" ng-change="formChanged('which')">
                             <label class="form-check-label small" for="tr-which-{{$id}}-{{w.id}}">{{w.label}}</label>
                         </div>
+                        <small class="text-muted d-block" ng-if="form.which === 'afterNext'">Counted from this break: "next time" is the first time this comes round, and this is the one after. For a block that airs on two nights a week, it is the same night next week. Needs a clip naming that show; a step with no clip for it plays nothing, or its fallback.</small>
+                        <small class="text-muted d-block" ng-if="form.which === 'tomorrow'">Tomorrow is the next calendar day after the break starts. If this block (or day-part) opens tomorrow, that is the show; if not, the first show to open any block tomorrow, so a Saturday break can announce Sunday's movie from another block. When nothing opens tomorrow the step plays nothing, even a fallback clip.</small>
                     </div>
                     </div>
 
