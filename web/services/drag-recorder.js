@@ -167,7 +167,9 @@ function makeDragRecorder(options) {
         if (problems.length > 0) {
             return problems.join('; ');
         }
-        return s.drop ? 'ok' : 'ok, let go outside a list or with Esc (no drop)';
+        // The drag library takes its own drags even when Edge hands them back empty (dragdrop.js > lostOwnData).
+        const empty = (s.over > 0 && s.typesSeen.length === 0) ? ', though Edge carried no data (the page used its own copy)' : '';
+        return (s.drop ? 'ok' : 'ok, let go outside a list or with Esc (no drop)') + empty;
     }
 
     function line(s) {

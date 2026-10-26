@@ -7209,3 +7209,32 @@ it kept its own until dragend, and the program itself landed where dropped (late
 **Not established:** that these lost dragends cause the lockup. The lockup drag came 2.5 minutes and 8 good drags
 after the last "never ended" one. With the fix those entries should stop; if 🚫 still comes back, the drag log
 will show whether anything still ends without a dragend first.
+
+**Update, Oct 26:** ruled out. Ron's next lockup (6:05 AM) came after 31 clean drags on code with this fix (18000
+restarted at 3:17 AM on 8c97154); the only "never ended" entry was nine hours earlier.
+
+#### Edge lost the drag's data, Oct 26, 2026
+
+The 6:05 AM lockup in Ron's drag log: three drags in a row on the filler list editor, each with `start types:
+application/x-dnd` (the page's dragstart wrote its data) and every drag-over and the drop carrying nothing
+(`types seen none`). `web/ext/dragdrop.js` reads the drag's MIME type off `dataTransfer.types` and turns down
+anything without one, so every spot showed 🚫. The data goes missing between the page handing it to Edge and Edge
+passing it back, which no page code can reach. The cause of that is still unknown.
+
+Mitigation (the library's own data path is unchanged): dragstart also keeps the item's JSON and MIME type in
+`dndState`, and `lostOwnData` treats a drag as the page's own when `isDragging` is set and the event carries
+*no types at all*. Then dragenter/dragover/drop use the kept MIME type and JSON, and skip the empty
+`effectAllowed` (dndState's is used, as the library already did for IE). Drags carrying anything (selected text,
+a link) still go the normal way and are turned down, even when `isDragging` is stale from a drag that lost its
+dragend. dragend clears both fields. This covers every list on the library: the Filler Lists table, the filler
+list and custom show editors, the programming list, and the rest.
+
+`test/drag-row-kept.js` gained an "Edge hands the drag-overs and the drop no data" case for both editors and
+the Filler Lists table (its real controller and `views/filler.html`), plus foreign-text and stale-dragstart cases
+that must still be refused. Before the change the five no-data checks failed (dragover not accepted, nothing moved);
+after, all pass. The drag log now says "ok, though Edge carried no data (the page used its own copy)" for such a
+drag, so a real one shows up in Ron's log.
+
+**Not known yet:** whether Edge, in that state, shows the drop as allowed and delivers the drop once the page
+accepts the drag-over. A script can't reach Edge's stuck state; Ron's next lockup will tell.
+
