@@ -44,8 +44,13 @@ function listJsFilesRecursive(dir, excludeDirs) {
 }
 
 class BundleFreshnessChecker {
-    constructor({ entryFile, outFile, manifestFile, watchDir, watchDirExclude }) {
+    constructor({ entryFile, outFile, manifestFile, watchDir, watchDirExclude, stamp }) {
         this.entryFile = entryFile;
+        // What the bundle says it was built from: { commit, modified }, read at each build.
+        this.stamp = stamp || (() => {
+            const buildInfo = require('./build-info');
+            return { commit: buildInfo.readGitCommit(), modified: buildInfo.readGitDirty() };
+        });
         this.outFile = outFile;
         this.manifestFile = manifestFile;
         this.watchDir = watchDir;
@@ -141,6 +146,10 @@ class BundleFreshnessChecker {
                 const out = fs.createWriteStream(tmpOut);
                 out.on('error', reject);
                 out.on('finish', resolve);
+                // The bundle's first line names its own build, so the page can say which code it
+                // runs (the drag log stamps every entry with it).
+                const stamp = Object.assign({}, this.stamp(), { built: new Date().toISOString() });
+                out.write(`window.__syndicastBundle = ${JSON.stringify(stamp)};\n`);
                 bundleStream.pipe(out);
             });
             fs.renameSync(tmpOut, this.outFile);
@@ -149,6 +158,7 @@ class BundleFreshnessChecker {
             this.lastFailedSignature = null;
             this.lastFailureLogged = false;
             console.log(`[web-bundle] rebuilt ${path.basename(this.outFile)} (${inputs.length} files) - ${staleness.reason}`);
+            return true;
         } catch (err) {
             try { fs.unlinkSync(tmpOut); } catch (e) { /* nothing to clean up */ }
             this.lastFailedSignature = staleness.signature;
@@ -156,6 +166,7 @@ class BundleFreshnessChecker {
                 console.error(`[web-bundle] rebuild failed, still serving the previous ${path.basename(this.outFile)}:`, err.message);
                 this.lastFailureLogged = true;
             }
+            return false;
         }
     }
 
@@ -167,4 +178,16 @@ class BundleFreshnessChecker {
     }
 }
 
-module.exports = { BundleFreshnessChecker };
+// The editor's own bundle under a checkout root: what the server keeps fresh, and what
+// `npm run build` (scripts/build-bundle.js) builds.
+function appBundleChecker(root) {
+    return new BundleFreshnessChecker({
+        entryFile: path.join(root, 'web', 'app.js'),
+        outFile: path.join(root, 'web', 'public', 'bundle.js'),
+        manifestFile: path.join(root, 'web', 'bundle.manifest.json'),
+        watchDir: path.join(root, 'web'),
+        watchDirExclude: [path.join(root, 'web', 'public')],
+    });
+}
+
+module.exports = { BundleFreshnessChecker, appBundleChecker };

@@ -39,7 +39,7 @@ const ProgrammingService = require("./src/services/programming-service");
 const ActiveChannelService = require('./src/services/active-channel-service')
 const ProgramPlayTimeDB = require('./src/dao/program-play-time-db')
 const FfmpegSettingsService = require('./src/services/ffmpeg-settings-service')
-const { BundleFreshnessChecker } = require('./src/web-bundle')
+const { appBundleChecker } = require('./src/web-bundle')
 
 const onShutdown = require("node-graceful-shutdown").onShutdown;
 
@@ -287,13 +287,7 @@ channelService.on("channel-update", (data) => {
 } );
 
 
-const bundleChecker = new BundleFreshnessChecker({
-    entryFile: path.join(__dirname, 'web', 'app.js'),
-    outFile: path.join(__dirname, 'web', 'public', 'bundle.js'),
-    manifestFile: path.join(__dirname, 'web', 'bundle.manifest.json'),
-    watchDir: path.join(__dirname, 'web'),
-    watchDirExclude: [path.join(__dirname, 'web', 'public')],
-});
+const bundleChecker = appBundleChecker(__dirname);
 bundleChecker.ensureFresh(); // best-effort rebuild at startup; never rejects
 
 let hdhr = HDHR(db, channelDB)

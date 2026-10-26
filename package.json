@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node test/run.js",
     "start": "node index.js",
-    "build": "browserify ./web/app.js -o ./web/public/bundle.js",
+    "build": "node scripts/build-bundle.js",
     "dev-client": "watchify ./web/app.js -o ./web/public/bundle.js",
     "dev-server": "nodemon index.js --ignore ./web/ --ignore ./db/ --ignore ./xmltv.xml",
     "compile": "babel index.js -d dist && babel src -d dist/src",
