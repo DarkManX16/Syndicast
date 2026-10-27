@@ -66,6 +66,9 @@ const suites = [
     './episode-start-model',
     './swap-read',
     './relay-speed',
+    './break-detect',
+    './break-scan',
+    './breaks-store',
 ];
 
 (async () => {
