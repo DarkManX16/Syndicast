@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-9, through "Next Time", `keyedOn: 'later'` and generated cards)
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-9, through "Next Time", `keyedOn: 'later'` and generated cards); stage 6 (the break-point detector and midrolls) designed Oct 15-26, 2026, not built
 
 ## Summary
 
@@ -782,7 +782,8 @@ except the new optional fields.
   "Next Time" via `later`.
 - **Stage 6** (inside an episode): the same WBRB and BTTS clips around a
   midroll. Stage 6 adds a fifth situation, **Midroll**, with the same step
-  model and the same empty default, once chapter detection exists.
+  model and the same empty default, on top of a break-point detector. Designed
+  Oct 15-26, 2026; see Stage 6 below.
 - **Slot filler positions (HEAD / PRE / MID / POST / TAIL)** are covered and
   the roadmap line folds into this stage. PRE and POST are the in and out
   steps of the between-* situations; HEAD and TAIL are Entering and Leaving
@@ -1004,9 +1005,346 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    the Cards page — see "Generated cards (step 9…)" above for the design and
    NOTES.md for the build. **Built Oct 9, 2026.**
 
-### Stage 6 — Midrolls
+### Stage 6 — Midrolls (designed Oct 15-26, 2026 on Opus 5.5; Sonnet 5 builds)
 
-Breaks inside a program. Depends on chapter/segment detection and gets designed once that exists.
+Breaks inside a program: an episode stops where its original broadcast break
+was, a "we'll be right back" plays, then commercials, then "back to the show",
+and the episode carries on, with the next program still starting on time. Two
+parts, built in that order:
+
+1. **The break-point detector**, a library-side store that knows where each
+   file's breaks are. It belongs to the files, not to a channel, and nothing in
+   a channel changes when it runs.
+2. **The Midroll situation**, a fifth situation beside Leaving, Entering,
+   Between episodes and Between shows, with the same step model and the same
+   empty default, and a per-context setting for how many midrolls an episode
+   gets.
+
+**Every saved channel keeps playing exactly as it does.** No context has
+midrolls until one is switched on, and even then only points Ron has approved
+ever air.
+
+#### What the files offer (measured Oct 15, 2026)
+
+Measured read-only on 46 files across the three channels (16, 13 and 12
+episodes from 1951 to 2011, 7-minute shorts to the 42-minute Honey, I Shrunk
+the Kids, and five movies) and on the chapters of 867 files, one or two of
+every show. The detail is in NOTES.md, "Chapter and segment detector, and
+stage 6 midrolls".
+
+| Source | Found | Use |
+|---|---|---|
+| Plex markers | Nothing: 0 of 46. No intro or credits detection runs on the server, ad markers are set to "never", and Plex marks intros and credits, never act breaks | Not used |
+| Embedded chapters | 18% of files (154 of 867): real act breaks (Family Guy, DuckTales), anime eyecatches near the middle, scene lists (SpongeBob), and evenly spaced chapters a ripper wrote every 5 minutes (Just Jordan, The Jersey) | A second opinion, and the only sign of a break whose fade was cut (The Smurfs at 6:10) |
+| Black frames with silence | A believable mid-episode break in 23 of 29 half-hour episodes (18 act breaks, 5 joins between two stories), 1 possible, 5 with none; none in the 7-minute shorts, which never had breaks; clean breaks in TV-made movies, scattered fades in theatrical ones | The detector |
+
+Black-with-silence also finds the break after the opening (Happy Days 1:14,
+Cheers 2:32) and where the credits start. Its weakness is a dark show: Batman:
+The Animated Series fades through black between ordinary scenes, and only its
+two long fades (9:38 and 15:46, about 4 seconds each) are act breaks. What
+tells them apart is that act breaks recur at the same place across a show's
+episodes, which is what the show pattern below is built on.
+
+#### A break point
+
+```js
+{ at: 327.8,                 // seconds: part one stops here and part two resumes here (the middle of the black)
+  black: [326.8, 328.8],     // the black, as measured
+  silence: [326.5, 333.1],   // the silence, as measured
+  kind: 'opening' | 'act' | 'story' | 'credits',
+  sources: ['blackSilence', 'chapter'],   // or ['chapter'], or ['hand']
+  strength: 0.0-1.0,         // from the black's and silence's lengths, and a chapter agreeing
+  keyframe: 327.4,           // the first keyframe inside the black, if any (for files sent out without re-encoding)
+  status: 'found' | 'approved' | 'rejected' | 'hand',
+  approvedBy: null | 'pattern' | 'ron' }
+```
+
+- **Kinds.** `opening` is the break after a cold open or the opening titles;
+  `act` a break between acts, the one before a closing tag included; `story`
+  the join between two stories in one file ("New Kid in Town / Pickles vs.
+  Pickles"); `credits` where the closing credits begin. The detector proposes
+  a kind from where the point sits (the first few minutes, the last 90 seconds,
+  the point nearest the middle of a file whose title names two stories), and
+  the show pattern lets Ron relabel a whole cluster once. `credits` is never a
+  midroll spot; it is stored for the generated "Up Next" clips, which must
+  avoid credits and a cold open.
+- **Only `approved` and `hand` points ever air.** `found` is a suggestion,
+  `rejected` stays recorded so a rescan does not offer it again.
+- **Part one stops and part two starts at `at`**, the middle of the black, so
+  the viewer sees the fade out, the break, and the fade back in. A file sent
+  out without re-encoding can only start on a keyframe; there, part two starts
+  at `keyframe` when the black has one, else at the keyframe before `at`.
+
+#### The store
+
+`<data>/breaks/`, one JSON file per show key (the key stage 5 uses:
+`custom.<id>`, `tv.<showTitle>`, `movie.<title>`), small enough to rewrite on
+every change. Each holds the show's settings (`theatrical`, the approved
+pattern) and a record per file, keyed by the file's path:
+
+```js
+{ ratingKey, size, mtimeMs, durationMs,      // the fingerprint
+  scannedAt, scanner: 1,                     // which detector version wrote it
+  chapters: [ [start, end, title], ... ],
+  points: [ ... ],
+  noBreaks: false,                           // Ron: "this one has none"
+  error: null }                              // the last failure, and when to retry
+```
+
+A file reached under two show keys (an episode in a custom show and in its
+own show) has one record, found by its path wherever it is stored. A file
+whose size or date changes is scanned again; its old approvals come back as
+`found` points marked "approved before the file changed", so the pattern can
+approve them again in one click.
+
+#### Detection
+
+Two stages, read-only on the media, both through ffmpeg (no new dependency):
+
+1. **Silence, from the audio alone,** in 5-minute pieces so a pause takes
+   effect within seconds: `silencedetect` at -45 dB, 0.2 s. About a second per
+   episode on most files.
+2. **Black, only around silences** of 0.4 s or more (merged when under 1 s
+   apart): `blackdetect` (0.05 s, `pix_th` 0.10, `pic_th` 0.95) on the picture
+   scaled to 192 wide, from 1 s before the silence to 1 s after it. A silence
+   longer than 6 s is checked at its two ends only, because a show with long
+   quiet stretches (Samurai Jack) otherwise decodes minutes of picture.
+
+A black touching a silence (within 0.3 s) is a point. Then chapters:
+
+- A chapter within 3 s of a point adds `chapter` to its sources and raises its
+  strength.
+- A chapter with no black or silence near it becomes a weak `chapter`-only
+  point (The Smurfs' 6:10), unless the file's chapters are evenly spaced on
+  whole minutes (a ripper's, ignored) or a scene list (more than 8 chapters,
+  used only where black and silence agree).
+
+On the investigation's prototype this found the same points as decoding the
+whole picture, in a fifth of the time.
+
+#### Theatrical movies and custom shows
+
+A movie or a custom show can be marked **theatrical** (Looney Tunes shorts,
+The Iron Giant): it is not scanned, shows no found points, and gets breaks
+only where Ron adds them by hand. Every other movie is treated as TV-made, like
+a DCOM: scanned, its found points shown, and each needing approval like an
+episode's. A movie has no pattern of its own, so its found points are always
+on the list to check.
+
+#### Show patterns, and approving
+
+The main way to approve is **one click per show**.
+
+- **The pattern.** For each show, the found `opening`, `act` and `story`
+  points of its scanned episodes are grouped by where they fall (seconds from
+  the start, within 45 s of each other). A group present in at least half the
+  scanned episodes, and in at least three, is part of the pattern, shown as a
+  line: *"Happy Days, 98 of 104 episodes scanned: opening near 1:14 (95%), act
+  near 11:46 (91%), act near 23:00 (88%)."* When a show's seasons break at
+  different places (an hour-long season, a later format), the pattern is shown
+  per season.
+- **Approve the pattern.** In every scanned episode, the point closest to each
+  pattern position (within 45 s) is approved, `approvedBy: 'pattern'`.
+  Episodes scanned later that fit the approved pattern are approved as they
+  arrive; those that do not join the list below. Ron can withdraw a show's
+  pattern approval, which returns its pattern-approved points to `found`.
+- **The outliers, listed for Ron to check:** episodes missing a pattern point;
+  chapter-only points; episodes with no points at all; found points that fit no
+  pattern group, collapsed per episode (Batman's scene fades land here and are
+  never approved by the pattern); and every TV-made movie's points.
+- **For each point on the list:** the frame before and after it, a few seconds
+  of playback across it, and approve, reject, nudge (by frames or a typed
+  mm:ss), change its kind, add a break, or mark the episode as having none.
+
+#### The scanner, and live streams
+
+A background service in the shape of the card service
+(`src/services/card-service.js`): a minute after boot, then every 30 minutes
+and 10 seconds after a channel is saved, it queues what needs scanning.
+
+- **Order:** every file airing in the next 7 days on any channel, soonest
+  first, then the rest by next airing. Theatrical items are skipped. A file
+  with a current record is not scanned again.
+- **One file at a time, one ffmpeg at a time, at idle priority, one thread.**
+  Each file's result is saved when it finishes, so a restart picks up where it
+  left off. A file that takes over 15 minutes is stopped and retried a day
+  later (on Oct 15 one read on the external F: drive took 7 minutes and the
+  same read 2.4 s the next time).
+- **It measures its effect on live streams.** Each ffmpeg that Syndicast runs
+  for a program or filler item reports its progress through ffmpeg's own
+  progress output, on a separate pipe, every 2 s; the stream it sends is not
+  touched. Its **pace** is media time advanced over wall time, across the last
+  10 seconds, ignoring an item's first 3 seconds. Under `-re` a healthy item
+  reads 1.00.
+- **It backs off by itself.** Three modes:
+  - *Normal*, when no Syndicast stream is playing and the whole PC's CPU is
+    under 70%: one file after another.
+  - *Gentle*, whenever any stream is playing: after each ffmpeg run the scanner
+    rests twice as long as it ran (about a third of one core at most), and it
+    does not read from a drive a live stream is reading right now, taking
+    another drive's file first, or waiting.
+  - *Paused*, as soon as any live item's pace falls below 0.99 for 10 seconds
+    while the scanner is working, or the whole PC's CPU stays above 85% for 30
+    seconds (the other streaming server's load counts here, since its streams
+    cannot be measured directly): the scanner stops its own ffmpeg at once
+    (a piece is at most 5 minutes of audio or a few seconds of picture, so
+    little is lost), waits 10 minutes and resumes Gentle. A second pause within
+    the hour doubles the wait, up to 2 hours.
+- **What it shows.** The Breaks page shows the scanner's mode and why ("Gentle:
+  3 streams playing", "Paused until 9:24pm: channel 2's item fell to 0.97"),
+  each live stream's pace while scanning against while not, a log of every
+  back-off, how much is scanned (the next week and the whole library), and a
+  Pause / Resume switch.
+
+**How long.** The prototype ran at about 3 minutes per hour of video while
+four streams were playing: about 1 s per minute of SD, 2.6 s per minute of HD
+H.264, 5.6 s per minute of HD HEVC. The next week's 1,142 files (388 hours)
+come to roughly 13-20 hours of scanning, the whole library (26,300 files,
+9,339 hours, 30% of it HD) to roughly 12-20 days, both before Gentle's rests,
+which are expected to roughly double them. Step 1's two changes (silences
+of 0.4 s or more, the ends only of a long silence) are aimed at the HD HEVC
+files, where most of the time went; step 1 measures what they save.
+
+#### The Midroll situation
+
+| Situation | Fires when |
+|---|---|
+| **Midroll** | Inside a program, at an approved point the context's midroll setting allows |
+
+- **Steps** are the same model as the other situations: out steps, the
+  commercials, in steps. The context is the program's, resolved at its start,
+  as everywhere else. `now` and `next` both mean the show on air, so a WBRB
+  step "names the show coming up" picks that show's own WBRB, and a BTTS step
+  its own BTTS; `later`, `afterNext` and `tomorrow` resolve from the
+  program's end. Default empty: a midroll with no steps is just commercials.
+- **The setting**, per day-part and block, off by default:
+
+  ```js
+  midrolls: { count: 0,            // 0 = off; else at most this many per program
+              minMs: 90000,        // the shortest midroll worth having, steps included
+              story: true,         // the join between two stories counts
+              opening: false }     // the break after the opening counts
+  ```
+
+  `act` points always count; `credits` never do. The break after the opening
+  is available but off, switchable per day-part and block.
+- **The commercials** come from the context's mix, as in a break inside the
+  context, with stage 5's shared picks, so every viewer sees the same ones.
+
+#### Keeping the schedule on time
+
+**Midrolls borrow only from the Flex after the program**, so the next program
+starts exactly when it does today. Half-hour episodes on Ron's channels are
+followed by a median of 6-7½ minutes of Flex, shorts by about 3, movies by 2½-4
+(measured Oct 15 on the saved lineups).
+
+- **The budget** is that Flex run, less the steps its own break plays (stage
+  5's out and in steps).
+- **Shares.** The midrolls and the break at the end get equal shares of the
+  budget, each midroll's steps coming out of its own share. If a share would be
+  under `minMs`, the program gets one fewer midroll, down to none; with no
+  Flex after it, a program has none.
+- **Which points.** The program's approved and hand points of kinds the
+  setting allows, at least 2 minutes from its start and end and 3 from each
+  other. When there are more than `count`, the set nearest even spacing wins,
+  then the stronger.
+- **The plan** for an airing is built once, when a viewer's stream reaches the
+  program, and kept in the channel cache like a break's, so every viewer sees
+  the same midrolls. It is deterministic: built twice, it is the same.
+- **Bending.** As in stage 5, steps play whole and only commercials bend: a
+  late stream gets a shorter midroll, and whatever lateness is left carries to
+  the end break, which ends where the next program starts.
+
+Family Guy "Death Is a Bitch" airs Friday at 12:30am with 7:23 of Flex before
+Robot Chicken, approved acts at 5:28 and 15:48, `count: 2`:
+
+| Time | Plays |
+|---|---|
+| 12:30:00 | Part 1, 0:00-5:28 |
+| 12:35:28 | Midroll: WBRB, commercials, BTTS (2:28) |
+| 12:37:56 | Part 2, 5:28-15:48 |
+| 12:48:16 | Midroll (2:28) |
+| 12:50:44 | Part 3, 15:48-22:37 |
+| 12:57:33 | The end break (2:27) |
+| 1:00:00 | Robot Chicken, on time |
+
+#### Playing it
+
+- Each part is the program's lineup item with a start and a length, the shape
+  a tune-in partway through a program already uses (`start`, `streamDuration`
+  in `plex-player.js`), so nothing in the players changes.
+- The cursor carries the program's plan the way it carries a break's phases:
+  part, then the midroll's out steps, commercials and in steps, then the next
+  part.
+- **Tuning in by the clock** lands in the part or the midroll phase the clock
+  is in; a tune-in partway through a part starts there, as now.
+- **The guide** shows the episode running to its real end (its start, plus its
+  length, plus its midrolls) and the Flex after it shortened, worked out by the
+  same planner, so guide and playback agree.
+- `channel.programs` never changes; the lineup, the stored progress, swaps and
+  Time Slots are untouched.
+
+#### Build order for Sonnet 5
+
+One session each. Every proof runs on copies of Ron's real data
+(`.dizquetv-dev` copied fresh, the copy's time stated, the media read-only),
+never on the live data folder and never through the server on port 18000.
+
+1. **Detector and store.** `src/break-detect.js` (pure: silences, blacks and
+   chapters in, points out; kinds, strength, ignored chapters),
+   `src/break-scan.js` (the ffmpeg runs: audio in pieces, the black windows,
+   idle priority, the time limit), `src/breaks-store.js` (the folder, the
+   fingerprint, one record per path). Tests on fixture intervals, including
+   Batman's scene fades and the ripper's 5-minute chapters. **Proof:** a script
+   scans the Oct 15 sample's 46 files into a copy's `breaks` folder and prints
+   each file's points beside the investigation's, matching or explained, with
+   the time per format against the investigation's (the HD HEVC files are
+   expected to be faster).
+2. **Pace meter and the background scanner.** The progress pipe on Syndicast's
+   item ffmpegs, `src/services/break-scan-service.js` (order, the three modes,
+   the drive rule, the log, pause and resume). Tests drive the modes with a
+   made-up pace and CPU feed. **Proof:** a scratch server from the worktree on
+   a copy, with two or three real `/video` streams counted the way NOTES.md
+   measured realtime before (audio packets against wall time): pace with the
+   scanner off, Gentle and Normal; a stream's bytes identical with the meter
+   and without it; a deliberate load, started by the proof itself, pausing the
+   scanner within its 10 seconds and the scanner resuming after; a restart
+   picking up where it left off.
+3. **Patterns and approval** (pure): the grouping, the pattern line, approving
+   and withdrawing, approval of later episodes, the outlier list, theatrical,
+   rescan of a changed file. Tests. **Proof:** on a copy scanned in full for a
+   handful of shows (Happy Days, Cheers, Batman: The Animated Series, Family
+   Guy, Boy Meets World, Rugrats) and two movies (Twitches, Halloweentown II),
+   the pattern lines and outlier lists printed; Batman's scene fades among the
+   outliers and none approved by its pattern.
+4. **The Breaks page.** The scanner's status and switch, the shows with their
+   scan progress and pattern, approve the pattern, the outliers with frames and
+   playback, every per-point action, theatrical on movies and custom shows.
+   **Proof:** by hand in the preview on the copy, with screenshots; Ron tries
+   it.
+5. **The Midroll plan** (pure): the fifth situation and its empty default, the
+   `midrolls` setting and its default, save-time cleanup and warnings,
+   `buildMidrollPlan` (points, budget, shares, `minMs`, spacing, the steps
+   through the stage 5 planner keyed on the show on air). Tests, and the Family
+   Guy table above as an acceptance row. **Proof:** a script over a week of all
+   three channels on a copy, with midrolls switched on and a few shows
+   approved: every planned midroll printed, and every next program's start
+   time identical to the lineup's.
+6. **Playing it.** The cursor's parts and midroll phases, the clock path, the
+   shared plan, the keyframe start for copied files, the guide. The simulated
+   viewer in `test/lineup-cursor.js` and the real router in
+   `test/stream-cursor.js`. **Proof:** a scratch server from the worktree on a
+   copy, stage 4's compressed channels given midrolls, two viewers tuned in at
+   different moments; then a **TiviMate preview** from Ron of two real
+   midrolls (Family Guy and Happy Days).
+7. **The editor.** The Midroll row in the Transitions section of each day-part
+   and block card, the midroll setting beside it, "Copy transitions to..."
+   carrying it, the preview on this week's lineup listing midrolls, and a tag
+   on program rows ("2 midrolls"). **Proof:** by hand on the copy, with
+   screenshots.
+8. **End to end.** Ron approves real shows on a copy; a day of a channel walked
+   by script; a TiviMate preview; then the roadmap ticked. The scanner reaches
+   the real library only when Ron restarts 18000 on the merged code.
 
 ## Acceptance tests
 

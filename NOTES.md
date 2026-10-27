@@ -1517,7 +1517,11 @@ for the full spec, stages and acceptance tests.
       stage 5's sequences, decided at its design pass: PRE and POST are the in
       and out steps, HEAD and TAIL are Entering and Leaving, MID is stage 6;
       see the spec. Nothing is left over.*
-- [ ] Midrolls
+- [ ] Midrolls - *designed Oct 15-26, 2026 (Opus 5.5), not built: a fifth
+      situation, Midroll, on approved break points, borrowing its time from the
+      Flex after the program so the next one starts on time. See Stage 6 in
+      the spec and "Chapter and segment detector, and stage 6 midrolls" under
+      Known issues.*
 - [ ] Generated Up Next bumpers (after 1.0, except the Next Time piece below)
 
       Syndicast builds these live at airtime from its own schedule, so they
@@ -1600,6 +1604,11 @@ for the full spec, stages and acceptance tests.
       way to; see the spec's Stage 5. Recorded at step 7, not built.
 - [ ] Random slot pad times below their duration
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
+      - *designed Oct 15-26, 2026 (Opus 5.5), not built: black frames with
+      silence, chapters as a second opinion, a background scanner that backs
+      off from live streams, and Ron approving by show pattern. See Stage 6 in
+      the spec and "Chapter and segment detector, and stage 6 midrolls" under
+      Known issues.*
 - [x] Per-position stored progress, so every slot or range continues where it
       left off across a regeneration, whichever day it is run and whatever
       airs first. *Built Oct 9, 2026 (steps 1-2): every Play Next position
@@ -3339,6 +3348,10 @@ be built:
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
+      **Designed Oct 15-26, 2026**, with Ron's decisions; eight build steps,
+      each proved on copies of the real data, in the spec's Stage 6 "Build
+      order". See "Chapter and segment detector, and stage 6 midrolls" under
+      Known issues.
 - [ ] Profiles for specific looks, custom TV guides, and UI customization and
       cosmetic theming - each defined together before Sonnet 5 builds it.
 - [ ] Jellyfin as a media source (Opus 5.5 investigates and designs, Sonnet 5
@@ -5394,6 +5407,129 @@ Romeo! was gone. And a swap took about 25 seconds with the page frozen.
   before this change. Ron's live channel 2, saved at 7:26pm, has Are You Afraid of the
   Dark? from 7:30pm to past midnight, unpinned, in other shows' slots: not from Swap
   as far as the code goes, not investigated.
+
+### Chapter and segment detector, and stage 6 midrolls
+
+Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's
+decisions below; not built. The design and the build steps are Stage 6 in
+[docs/blocks-spec.md](docs/blocks-spec.md). Covers two roadmap lines,
+"Midrolls" under Blocks system and "Chapter and segment detector" under
+Scheduling, and their 1.0 line.
+
+Everything was measured read-only: the media through ffprobe and ffmpeg (one at
+a time, idle priority, one or two threads), Plex through GETs, and the channels in
+`.dizquetv-dev` as they stood on Oct 15 at about 2am Central. Four streams were
+playing on 18000 throughout (two of channel 1, one each of 2 and 3); their pace
+was not measured, which is why the scanner now measures its own effect (step
+2). Nothing was written anywhere but the session's scratch folder.
+
+#### The sample
+
+46 files, one episode picked from the middle of each show's sorted file list:
+channel 1 Dexter's Laboratory, Johnny Bravo, Tom and Jerry (1940), I Am
+Weasel, The Smurfs, The Powerpuff Girls, Aqua Teen Hunger Force, The
+Flintstones, Pokémon, Family Guy, Futurama, Batman: The Animated Series,
+ThunderCats, Codename: Kids Next Door, Dragon Ball Z, Samurai Jack; channel 2
+I Love Lucy, Happy Days, Cheers, Rugrats, Double Dare, All That, Full House,
+The Fresh Prince of Bel-Air, Hey Arnold!, Heathcliff, The Penguins of
+Madagascar, SpongeBob SquarePants, Are You Afraid of the Dark?; channel 3 Boy
+Meets World, Shaun the Sheep, DuckTales, Kim Possible, Hannah Montana, Zorro
+(1957), The Emperor's New School, Gargoyles, Honey, I Shrunk the Kids, Bill
+Nye, Wizards of Waverly Place, Recess; and five movies (Scooby-Doo 2, The Iron
+Giant, Halloweentown II, Twitches, a Looney Tunes short). Separately, the
+chapters of 867 files: one or two from every show on the three channels.
+
+#### What each source found
+
+- **Plex markers: none.** 0 of 46 had a marker. The server (1.43.4) runs no
+  intro or credits detection, and `GenerateAdMarkerBehavior` is `never`
+  (every library has `enableAdMarkerGeneration=1`, which does nothing while the
+  server setting is never). Plex's markers would be intros and credits anyway,
+  never act breaks. Plex's own chapters are the file's chapters, copied.
+- **Embedded chapters: 154 of 867 files (18%)**; channel 1 87 of 290, channel 2
+  44 of 329, channel 3 23 of 248. Four kinds:
+  - act breaks: Family Guy 5:29 and 15:50 (black and silence at 5:27 and
+    15:47), DuckTales 11:12 and 16:23 (11:10 and 16:22), Futurama, Mission
+    Hill, The PJs;
+  - anime eyecatches: the opening ends near 1:30, one chapter near 11-12
+    minutes, the ending near 22 (Cowboy Bebop, Naruto, Gundam, Fullmetal
+    Alchemist: Brotherhood);
+  - scene lists, mostly not breaks: SpongeBob (20 chapters in "Pressure / The
+    Smoking Peanut"), Home Improvement; Family Guy's 9:51 and 19:09 and
+    Futurama's 9:46 have no black there either;
+  - a ripper's evenly spaced chapters, never breaks: Just Jordan and The Jersey
+    every 5:00, Doug (channel 2) 10:00 and 20:00, My Brother and Me 15:00.
+
+  And one thing only a chapter shows: The Smurfs' 6:10 is a hard cut from Papa
+  Smurf to Gargamel, an act break whose fade was edited out.
+- **Black frames with silence**, by episode, mid-episode points only (the
+  opening and the credits are found too):
+
+  | | Real break | Join of two stories | Nothing |
+  |---|---|---|---|
+  | Channel 1 | Flintstones 13:13 (Fred, black, the mailbox title card), Pokémon 10:05 (inside "Who's That Pokémon?"), Family Guy 5:27 and 15:47, Futurama 7:35 and 15:40, Batman 9:38 and 15:46, ThunderCats 9:05 | Kids Next Door 11:18 | Dragon Ball Z; Samurai Jack 13:34 only possible |
+  | Channel 2 | I Love Lucy 16:20, Happy Days 11:46 and 23:00, Cheers 12:53 (into the Cheers logo card), Full House 11:32, Are You Afraid of the Dark? 12:26 | Rugrats 11:52, Hey Arnold! 11:48, SpongeBob 11:49 | Fresh Prince (its 4:31 is the end of the opening), All That and Double Dare (never fully silent) |
+  | Channel 3 | Boy Meets World 12:12, DuckTales 11:10 and 16:22, Kim Possible 9:52 and 15:56, Hannah Montana 12:01, Zorro 15:59, Gargoyles 9:20 and 14:06, Wizards 12:22 | Recess 11:30 | Bill Nye (never fully silent) |
+
+  23 of 29 half-hour episodes, 1 possible, 5 none. The hour-long Honey, I
+  Shrunk the Kids has four or five (13:45, 19:48, 23:59, 31:00). Of the
+  10-12-minute files only The Emperor's New School has a clear one (5:44,
+  4.2 s of black); Powerpuff Girls' 7:09 is possible; Dexter's Lab, Aqua Teen
+  and Penguins have none, and The Smurfs only its chapter. The six 7-minute
+  shorts have none, which is right: they were made for cinemas. TV-made movies
+  are clean: Twitches 27:58, 53:13 and 75:14, Halloweentown II 54:31 and 66:09
+  (and a weak 33:58). Theatrical ones are not: Scooby-Doo 2 has none, The Iron
+  Giant 27 scattered fades.
+
+  Confirmed by eye from the frames either side of each point (Flintstones,
+  Pokémon, Powerpuff, Smurfs, Batman, Happy Days, Cheers, Boy Meets World,
+  Fresh Prince, Zorro, Lucy, Rugrats, Hey Arnold, SpongeBob, both TV movies);
+  the rest are judged from the length of black and silence and where they fall.
+  **The false alarms are dark shows**: Batman had 12 points, of which the two
+  long fades (about 4 s of black, 2.5-3 s of silence) are act breaks and the
+  other six mid-episode ones scene fades. The fix is not a threshold but the
+  show pattern: act breaks recur, scene fades do not.
+
+#### How long scanning takes
+
+- Decoding the whole picture ran at about 8x realtime (Dexter's Lab, 11:20 of
+  SD HEVC, 81-143 s); the GPU's decoder did not help (65-101 s). Audio alone
+  took 0.6 s. So the prototype scanned silence first and checked for black only
+  around each silence: on Dexter's Lab the same five points as the full decode,
+  in 28 s.
+- Across the sample: 61 minutes for 19.7 hours of video. Per minute of video,
+  medians: SD H.264 0.8 s, SD HEVC 1.1 s, HD H.264 2.6 s, HD HEVC 5.6 s. The
+  slow cases: Family Guy (1080p HEVC) had 230 short silences to check, 263 s;
+  Samurai Jack's minutes-long silences made 7 windows cost 527 s; the movies
+  took 2-12 minutes each. Step 1's two changes are aimed at those.
+- One read stalled: I Love Lucy's audio on F: took 418 s, and 2.4 s when run
+  again, most likely the external drive waking or contending with the live
+  Facts of Life stream on the same drive. Hence the per-file time limit and the
+  drive rule.
+- The library: 26,300 scheduled files, 9,339 hours; by Plex's own metadata
+  HD H.264 1,472 h, HD HEVC 1,322 h, SD H.264 4,995 h, SD HEVC 987 h, other
+  524 h. In the next 7 days from Oct 15: 1,142 distinct files, 388 hours.
+
+#### The time a midroll can borrow
+
+The Flex after each program on the saved lineups (median, with the 10th and
+90th percentiles): half-hour episodes 7.5 min (6.0-8.9) on channel 1, 6.3
+(4.7-8.1) on 2, 7.4 (4.3-8.4) on 3; 9-16-minute items 3.6-3.8; shorts under 9
+minutes 2.9-3.0; programs of an hour or more 2.4-3.9. Almost nothing is
+followed by no Flex at all (14-22% of the 35-60-minute items on channels 1 and
+2).
+
+#### Ron's decisions (Oct 26)
+
+1. **Only approved points air.** One-click approval of a show's pattern is the
+   main way to approve, and the outliers are listed for him to check.
+2. **The break after the opening** is available but off by default,
+   switchable per day-part and block.
+3. **Movies:** TV-made movies (DCOMs) get found points like episodes, still
+   needing approval; theatrical movies get no found points, only breaks he adds
+   by hand. He can mark a movie or a custom show as theatrical.
+4. **The scanner measures its effect on live streams and backs off by itself**,
+   pausing or slowing whenever streams are playing, on top of idle priority.
 
 ### Random Slots' Create Lineup restarts the program on air
 
