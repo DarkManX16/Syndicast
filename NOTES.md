@@ -7094,6 +7094,108 @@ said the reads kept the token on the server, and they don't. Public sharing's
 design has to treat these responses, like every API answer that carries
 programs, as token-bearing.
 
+### Uploaded channel logos are saved under the browser's own filename, unsanitized
+
+Investigated, not fixed - another prerequisite for "Public channel sharing
+without exposing an IP" above, since right now the upload form is reached
+only by whoever already runs the server.
+
+`POST /api/upload/image` (`src/api.js:470`) does
+`logo.mv(path.join(process.env.DATABASE, '/images/uploads/', logo.name))` -
+`logo.name` is the filename the browser sent in the multipart upload.
+Tested Oct 28, 2026 with the installed express-fileupload 1.5.2 / busboy
+1.6.0 against a scratch folder:
+
+- **Folders are already stripped.** `../../evil.png`, `..\..\evil.png` and
+  `C:\x\evil.png` all arrive as `evil.png`, so there is no path traversal.
+- **Characters Windows forbids are not.** A name with `?` fails with
+  ENOENT; `mv()` is called without `await` or a callback, so the rejection
+  goes unhandled and **the server exits** - after it has already answered
+  "File is uploaded". A name with `:` (`Click: x.png`) is told it uploaded
+  too, but lands as an empty file named `Click` with the image hidden in an
+  NTFS alternate data stream - the same silent trap the break store hit in
+  stage 6 step 1.
+
+All 12 logos actually uploaded in this dev install
+(`.dizquetv-dev/images/uploads/`) have ordinary names, so it hasn't bitten
+here. But a public install takes uploads from whoever can reach the
+channel-editor page, and one request would stop the server.
+
+### The image-cache proxy named above keys its own files by a raw base64 URL
+
+Investigated Oct 27-28, 2026, not fixed - a prerequisite for public sharing
+too, since it lets one request stop the server.
+
+`src/services/cache-image-service.js:99`'s `requestImageAndStore` writes
+each cached image to `${cachePath}/images/${dbFile.url}`, where `dbFile.url`
+is the external image URL run through Node's *standard* base64 alphabet
+(`registerImageOnDatabase`, `Buffer.toString('base64')`), not the
+filename-safe variant. `+` is harmless in a filename; `/` is a path
+separator on both platforms Syndicast runs on, so it names a subfolder of
+`images/` that doesn't exist.
+
+For text that is plain ASCII, standard base64 produces `/` or `+` only when
+a `?`, `>` or `~` falls on the third byte of a three-byte group (any
+non-ASCII byte can too). Every Plex thumbnail URL carries
+`?X-Plex-Token=`, so the question is only where its `?` lands. Measured
+against the real lineups: of 2,905 distinct program icon URLs (56,154
+entries across channels 1-3), exactly one encodes with a `/` - channel 3's
+Good Morning, Mickey!, 51 entries, its `?` at index 77 - and none with a
+`+`. Nearly every thumbnail URL has the same shape, which is why it isn't
+closer to one in three.
+
+What happens to that one, tested with the real service and Express against
+a scratch cache folder and a local image server:
+
+- **As the guide writes it** (`{{host}}/cache/images/<hash>`, `xmltv.js`),
+  the raw `/` means the `/:hash` route never matches; the static handler
+  finds nothing and answers 404, every time. No write, no crash - the icon
+  just never loads.
+- **With the slash written `%2F`**, Express decodes it into the param, the
+  lookup finds the registered row, the image is fetched, and
+  `fs.createWriteStream` fails with ENOENT. That stream has no `error`
+  listener and there is no process-level handler, so the error is thrown
+  and **the whole server exits**. The hash is printed in the public XMLTV
+  guide, so anyone who can read the guide can do this with one request.
+
+Dormant here: `enableImageCache` defaults to `false` (see above) and this
+dev install has never turned it on - `cache-images.json` is `[]` and
+`.dizquetv-dev/cache/images/` is empty, so the lookup finds nothing and
+never reaches the write. It becomes live the day `enableImageCache` is
+turned on, which the Plex-token entry above names as the likely fix for
+that leak - so the two have to be fixed together.
+
+### Program play-time cooldown files have the same base64-as-filename exposure
+
+`src/dao/program-play-time-db.js:77-78`'s `update()` writes
+`<play-cache>/<channelId>/<base64(programKey)>.json`, again with standard
+(non-URL-safe) base64. `programKey` is `plex|<serverKey>|<program.key>`
+(`src/channel-cache.js`'s `getProgramKey`) - not a show title, but not a
+clean opaque id either: `serverKey` is the Plex server's own display name,
+which Ron named `Thats So Disney/Nick Picks` - a real slash, already live in
+every program key this install computes.
+
+The literal `/` in the name doesn't matter by itself; by the rule in the
+image-cache entry above, a key encodes to `/` or `+` only through a `?`,
+`>`, `~` or non-ASCII character at the wrong position. Plex's
+`/library/metadata/<digits>` never has one, and neither does this server
+name - but a server named with a `?`, an accented letter or a curly
+apostrophe could. Per-list cooldowns share the store under
+`!fillerList!|<uuid>`, which never can.
+
+Measured against the real data (3 channels, 112,380 program entries,
+27,119 distinct program keys; 259 filler lists; and the 12,834 play-cache
+files actually on disk): zero produce a `/` or `+` once base64-encoded, and
+no stray subdirectories turned up under `play-cache/<channelId>/`, so
+nothing is failing today.
+
+If one ever did, it would stop the server, not just lose a cooldown:
+`update()` would reject with ENOENT, and nothing awaits it
+(`recordProgramPlayTime` in `src/channel-cache.js` calls it and moves on),
+so on Node 24 the unhandled rejection exits the process - checked with a
+scratch reproduction of the same call shape - on the first play of that
+program.
+
 ### The program-list-row work broke the live dev server, without touching it
 
 Ron's real server on port 18000 (`node index.js -p 18000 -d ./.dizquetv-dev`)
