@@ -212,10 +212,13 @@ class ScanGovernor {
         if (this.isPaused()) {
             return 'paused';
         }
+        if (this.resumeGentle) {
+            return 'gentle';
+        }
         if (this.force === 'normal' || this.force === 'gentle') {
             return this.force;
         }
-        if (this.resumeGentle || (this.live.length > 0)) {
+        if (this.live.length > 0) {
             return 'gentle';
         }
         const cpu = this.cpuAverage(CPU_AVERAGE_MS);

@@ -171,6 +171,13 @@ module.exports = async () => {
         feed(14000, [ stream(0.97) ], 0.2);
         suite.check('...and still pauses for a slow stream',
             g.mode() === 'paused');
+        g.setWorking(false);
+        feed(10 * MIN, [ stream(1.0) ], 0.2);
+        suite.check('...coming back Gentle, as any pause does, until it finishes a file',
+            (g.mode() === 'gentle') && g.log.some( (e) => e.text === 'Resumed Gentle after the pause' ));
+        g.fileDone();
+        suite.check('...and Normal again after that',
+            g.mode() === 'normal');
     }
 
     return suite;

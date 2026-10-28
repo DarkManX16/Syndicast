@@ -475,7 +475,7 @@ class BreakScanService {
             current: this.current,
             queued: this.queue.length,
             counts: this.counts,
-            live: this.meter.live().map( (i) => ({ channel: i.channel, title: i.title, drive: i.drive, pace: i.pace }) ),
+            live: this.meter.live().map( (i) => ({ channel: i.channel, title: i.title, drive: i.drive, startedAt: i.startedAt, pace: i.pace }) ),
             pace: g.paceReport(),
             log: g.log.slice(-100),
         };
