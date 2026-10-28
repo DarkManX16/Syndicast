@@ -471,6 +471,7 @@ class BreakScanService {
             reason: g.reason(),
             pausedUntil: g.isPaused() ? g.pausedUntil : null,
             pausedByHand: g.manualPaused,
+            working: g.working,
             current: this.current,
             queued: this.queue.length,
             counts: this.counts,
