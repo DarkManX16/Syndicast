@@ -42,6 +42,7 @@ const ShowAliasDB = require("./src/dao/show-alias-db");
 const ShowMatchService = require("./src/services/show-match-service");
 const CardTemplateDB = require("./src/dao/card-template-db");
 const CardService = require("./src/services/card-service");
+const BreakScanService = require("./src/services/break-scan-service");
 const CustomShowDB = require("./src/dao/custom-show-db");
 const TVGuideService = require("./src/services/tv-guide-service");
 const EventService = require("./src/services/event-service");
@@ -178,6 +179,15 @@ cardTemplateDB.load()
     .then( () => cardService.init() )
     .then( () => cardService.start() )
     .catch( (err) => console.error('Generated cards could not start; card steps will be skipped.', err) );
+// Break points for midrolls (docs/blocks-spec.md, Stage 6): scanned in the background, backing off for live streams.
+let breakScanService = new BreakScanService( {
+    folder: process.env.DATABASE,
+    channelService: channelService,
+    getFfmpegSettings: () => db['ffmpeg-settings'].find()[0],
+} );
+breakScanService.init()
+    .then( () => breakScanService.start() )
+    .catch( (err) => console.error('The break scanner could not start.', err) );
 
 i18next
     .use(i18nextBackend)
@@ -349,7 +359,7 @@ app.use('/favicon.svg', express.static(
 app.use('/custom.css', express.static(path.join(process.env.DATABASE, 'custom.css')))
 
 // API Routers
-app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService, cardService))
+app.use(api.router(db, channelService, fillerDB, customShowDB, xmltvInterval, guideService, m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService, cardService, breakScanService))
 app.use('/api/cache/images', cacheImageService.apiRouters())
 app.use('/' + fontAwesome, express.static(path.join(process.env.DATABASE, fontAwesome)))
 app.use('/' + bootstrap, express.static(path.join(process.env.DATABASE, bootstrap)))

@@ -63,6 +63,10 @@ class PlexPlayer {
             let watermark = this.context.watermark;
             let ffmpeg = new FFMPEG(ffmpegSettings, channel);  // Set the transcoder options
             ffmpeg.setAudioOnly( this.context.audioOnly );
+            ffmpeg.setMeterInfo( {
+                title: (lineupItem.showTitle && (lineupItem.type === 'episode')) ? `${lineupItem.showTitle} - ${lineupItem.title}` : lineupItem.title,
+                file: lineupItem.file,
+            } );
             this.ffmpeg = ffmpeg;
             let streamDuration;
             if (typeof(lineupItem.streamDuration)!=='undefined') {

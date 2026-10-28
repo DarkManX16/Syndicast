@@ -60,6 +60,18 @@ function listShowKeys(breaksDir) {
         .map( (f) => desanitizeKey(f.slice(0, -'.json'.length)) );
 }
 
+// Every record, by path, from one read of every show's file: { key, record }.
+function indexByPath(breaksDir) {
+    const index = new Map();
+    for (const key of listShowKeys(breaksDir)) {
+        const show = loadShow(breaksDir, key);
+        for (const p of Object.keys(show.files)) {
+            index.set(p, { key, record: show.files[p] });
+        }
+    }
+    return index;
+}
+
 // "Found by its path wherever it is stored": walks every show's file until
 // one holds this path.
 function findRecord(breaksDir, filePath) {
@@ -127,19 +139,21 @@ function recordFor(breaksDir, key, file, scanResult, now = Date.now) {
     return record;
 }
 
-function recordError(breaksDir, key, file, error, now = Date.now) {
+// The last failure, and when to try again (docs/blocks-spec.md, "The store").
+function recordError(breaksDir, key, file, error, now = Date.now, retryAt = null) {
     const show = loadShow(breaksDir, key);
     const old = show.files[file.path];
+    const at = now();
     show.files[file.path] = {
         ...(old || { ratingKey: file.ratingKey, size: file.size, mtimeMs: file.mtimeMs, points: [] }),
-        error: { message: String((error && error.message) || error), at: now() },
+        error: { message: String((error && error.message) || error), at, retryAt },
     };
     saveShow(breaksDir, key, show);
     return show.files[file.path];
 }
 
 module.exports = {
-    showFile, sanitizeKey, desanitizeKey, emptyShow, loadShow, saveShow, listShowKeys, findRecord,
+    showFile, sanitizeKey, desanitizeKey, emptyShow, loadShow, saveShow, listShowKeys, findRecord, indexByPath,
     fingerprintOf, sameFingerprint, needsScan, carryApprovals,
     recordFor, recordError,
     CURRENT_SCANNER_VERSION, CARRY_APPROVAL_NEAR_S,
