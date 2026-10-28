@@ -121,21 +121,50 @@ class BreakScanService {
         this.worker = null;
         this.building = null;
         this.rebuildRequested = false;
+        this.indexByPath = options.indexByPath || store.indexByPath;
+        this.ready = false;
+        this.switchedByHand = false;
+    }
+
+    /*
+     * The store and the hand switch are read before the first scan, not at
+     * boot: a boot can run out of file handles for a minute (measured: the
+     * play-time store opens every file at once), and a failed read here must
+     * neither stop the scanner for good nor forget a pause by hand.
+     */
+    async load() {
+        await fs.promises.mkdir(this.breaksDir, { recursive: true });
+        let saved = {};
+        try {
+            saved = JSON.parse(await fs.promises.readFile(this.settingsFile, 'utf8'));
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                throw err;
+            }
+        }
+        const index = this.indexByPath(this.breaksDir);
+        if (! this.switchedByHand) {
+            this.governor.manualPaused = (saved.paused === true);
+        }
+        this.index = index;
+        this.ready = true;
     }
 
     async init() {
-        await fs.promises.mkdir(this.breaksDir, { recursive: true });
         try {
-            const saved = JSON.parse(await fs.promises.readFile(this.settingsFile, 'utf8'));
-            this.governor.manualPaused = (saved.paused === true);
+            await this.load();
         } catch (err) {
-            this.governor.manualPaused = false;
+            this.log(`Breaks: the store could not be read yet (${err.message}); trying again before the first scan`);
         }
-        this.index = store.indexByPath(this.breaksDir);
     }
 
     start() {
-        const rebuild = () => this.rebuildQueue().catch( (err) => this.log(`Breaks: could not work out what to scan: ${err.stack || err}`) );
+        const rebuild = () => this.rebuildQueue().catch( (err) => {
+            this.log(`Breaks: could not work out what to scan: ${err.stack || err}`);
+            if (! this.ready) {
+                this.timers.push(setTimeout(rebuild, FIRST_QUEUE_MS));
+            }
+        } );
         this.timers.push(setTimeout(rebuild, FIRST_QUEUE_MS));
         this.timers.push(setInterval(rebuild, QUEUE_EVERY_MS));
         this.timers.push(setInterval( () => this.tick(), TICK_MS ));
@@ -177,6 +206,7 @@ class BreakScanService {
     }
 
     async setPaused(paused) {
+        this.switchedByHand = true;
         this.governor.setManualPaused(paused === true);
         if (paused === true) {
             this.abort('pause');
@@ -232,6 +262,9 @@ class BreakScanService {
     }
 
     async buildOnce() {
+        if (! this.ready) {
+            await this.load();
+        }
         const now = this.now();
         this.theatrical = new Map();
         const byPath = new Map();
@@ -292,7 +325,7 @@ class BreakScanService {
     async workLoop() {
         while (! this.stopping) {
             const mode = this.governor.mode();
-            if ( (mode === 'off') || (mode === 'paused') ) {
+            if ( ! this.ready || (mode === 'off') || (mode === 'paused') ) {
                 await this.sleep(1000);
                 continue;
             }
@@ -467,8 +500,9 @@ class BreakScanService {
     status() {
         const g = this.governor;
         return {
+            ready: this.ready,
             mode: g.mode(),
-            reason: g.reason(),
+            reason: this.ready ? g.reason() : 'Starting: the store is read before the first scan',
             pausedUntil: g.isPaused() ? g.pausedUntil : null,
             pausedByHand: g.manualPaused,
             working: g.working,

@@ -260,6 +260,49 @@ module.exports = async () => {
                 (gone === 'failed') && (st.calls.length === 2) && (store.loadShow(path.join(f, 'breaks'), 'tv.Gone').files['G:\\missing.mkv'].error.retryAt === st.now + DAY));
         }
 
+        // ---- a boot that runs out of file handles ----------------------------------------------
+        {
+            const f = path.join(tmp, 'boot');
+            fs.mkdirSync(f);
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: true } ));
+            let fails = 1;
+            const { service: s } = rig(f, { channels: [ ch1 ], service: {
+                indexByPath: (dir) => {
+                    if (fails-- > 0) {
+                        throw Object.assign(new Error('EMFILE: too many open files'), { code: 'EMFILE' });
+                    }
+                    return store.indexByPath(dir);
+                },
+            } } );
+            await s.init();
+            suite.check('a store that cannot be read at boot does not stop the scanner starting; it is not ready, and says so',
+                (s.ready === false) && /^Starting/.test(s.status().reason));
+            await s.buildOnce();
+            suite.check('...the first queue build reads it, and the saved Pause by hand still holds',
+                (s.ready === true) && (s.governor.mode() === 'off') && (s.queue.length > 0));
+        }
+        {
+            const f = path.join(tmp, 'boot2');
+            fs.mkdirSync(f);
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: true } ));
+            let fails = 1;
+            const { service: s } = rig(f, { channels: [ ch1 ], service: {
+                indexByPath: (dir) => {
+                    if (fails-- > 0) {
+                        throw new Error('EMFILE');
+                    }
+                    return store.indexByPath(dir);
+                },
+            } } );
+            await s.init();
+            await s.setPaused(false);
+            // what a load that read the file just before the switch would see
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: true } ));
+            await s.buildOnce();
+            suite.check('a Resume by hand before the store is read is not undone by a Pause read from before it',
+                (s.ready === true) && (s.governor.mode() !== 'off'));
+        }
+
         // ---- the hand switch ---------------------------------------------------------------
         {
             const f = path.join(tmp, 'switch');
