@@ -62,11 +62,13 @@ class ItemPace {
         this.samples = [];
     }
 
-    add(wallMs, mediaS) {
+    // held: the item's output was backed up when this report came - its
+    // reader (a slow viewer, or none left) is holding it back, not its own speed.
+    add(wallMs, mediaS, held = false) {
         if ( (mediaS === null) || (wallMs - this.startedAt < IGNORE_FIRST_MS) ) {
             return;
         }
-        this.samples.push( { wallMs, mediaS } );
+        this.samples.push( { wallMs, mediaS, held } );
         while ( (this.samples.length > 2) && (this.samples[1].wallMs <= wallMs - PACE_WINDOW_MS) ) {
             this.samples.shift();
         }
@@ -84,6 +86,10 @@ class ItemPace {
             return null;
         }
         return (last.mediaS - first.mediaS) / (span / 1000);
+    }
+
+    held() {
+        return this.samples.some( (s) => s.held );
     }
 }
 
@@ -115,7 +121,8 @@ class PaceMeter extends EventEmitter {
     }
 
     /*
-     * info: { channel, channelName, title, file }. Returns the handle the
+     * info: { channel, channelName, title, file, held() }; held() says whether
+     * the item's output is backed up right now. Returns the handle the
      * ffmpeg's fd 3 is fed into, and ended when the process closes.
      */
     start(info = {}) {
@@ -135,7 +142,7 @@ class PaceMeter extends EventEmitter {
             if (block.end) {
                 return;
             }
-            item.meter.add(this.now(), block.mediaS);
+            item.meter.add(this.now(), block.mediaS, (typeof(info.held) === 'function') && (info.held() === true));
             this.emit('sample', { id, pace: item.meter.pace() });
         } );
         this.items.set(id, item);
@@ -156,6 +163,7 @@ class PaceMeter extends EventEmitter {
             drive: it.drive,
             startedAt: it.startedAt,
             pace: it.meter.pace(),
+            held: it.meter.held(),
         }) );
     }
 }

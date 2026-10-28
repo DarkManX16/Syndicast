@@ -143,6 +143,12 @@ class ScanGovernor {
         const ids = new Set();
         for (const item of this.live) {
             ids.add(item.id);
+            // held back by its reader (a slow viewer, or none left): its pace
+            // says nothing about what the scanner does to it
+            if (item.held === true) {
+                this.belowSince.delete(item.id);
+                continue;
+            }
             if ( (item.pace != null) && (item.pace < PACE_FLOOR) ) {
                 if (! this.belowSince.has(item.id)) {
                     this.belowSince.set(item.id, now);

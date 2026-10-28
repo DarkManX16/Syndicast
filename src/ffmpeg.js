@@ -770,6 +770,12 @@ class FFMPEG extends events.EventEmitter {
             channelName: this.channel.name,
             title: this.meterInfo.title,
             file: this.meterInfo.file,
+            // Read, never changed: a reader that is slow or gone leaves stdout
+            // paused with a full buffer, and the item waiting on it.
+            held: () => {
+                const out = child.stdout;
+                return (out != null) && ( (out.readableFlowing !== true) || (out.readableLength >= out.readableHighWaterMark) );
+            },
         } );
         pipe.on('data', (chunk) => {
             try {

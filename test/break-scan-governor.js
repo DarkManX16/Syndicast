@@ -113,6 +113,14 @@ module.exports = async () => {
     {
         const { g, feed } = rig();
         g.setWorking(true);
+        const at = feed(30000, [ stream(0.0, { held: true, title: 'ATHF promo [Party]' }) ], 0.3);
+        suite.check('an item held back by its reader (a slow viewer, or none left) never pauses the scanner, even at 0.000',
+            (at === null) && (g.mode() === 'gentle') && (g.paceReport().length === 0));
+    }
+
+    {
+        const { g, feed } = rig();
+        g.setWorking(true);
         feed(8000, [ stream(0.98) ], 0.3);
         feed(2000, [ stream(1.0) ], 0.3);
         const at = feed(8000, [ stream(0.98) ], 0.3);

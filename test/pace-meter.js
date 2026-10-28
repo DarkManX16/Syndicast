@@ -149,6 +149,25 @@ module.exports = async () => {
         const shown = testMeter.live();
         suite.check('the item appears in the meter with its channel, title and drive',
             (shown.length === 1) && (shown[0].channel === 902) && (shown[0].title === 'Family Guy - Death Is a Bitch') && (shown[0].drive === 'G:'));
+
+        // Whether its reader is holding it back, read from stdout without touching it.
+        const { Writable } = require('stream');
+        const sink = new Writable( { write(chunk, enc, cb) { cb(); } } );
+        child.stdout.pipe(sink);
+        const flowing = testMeter.items.get(shown[0].id);
+        const heldNow = () => flowing.meter.samples.length ? flowing.meter.samples[flowing.meter.samples.length - 1].held : null;
+        flowing.startedAt -= 10000;
+        flowing.meter.startedAt -= 10000;
+        child.stdio[3].write(block(2));
+        await new Promise( (r) => setImmediate(r) );
+        suite.check('a viewer reading as fast as it comes: not held',
+            heldNow() === false);
+        child.stdout.unpipe(sink);
+        child.stdout.write(Buffer.alloc(child.stdout.readableHighWaterMark));
+        child.stdio[3].write(block(3));
+        await new Promise( (r) => setImmediate(r) );
+        suite.check('the viewer gone, its output backed up: held, and shown so',
+            (heldNow() === true) && (testMeter.live()[0].held === true));
         child.emit('close', 0);
         suite.check('...and leaves it when the process closes',
             testMeter.live().length === 0);
