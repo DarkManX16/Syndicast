@@ -116,6 +116,10 @@ module.exports = async () => {
     let live = meter.live();
     suite.check('a live item shows its channel, title, drive and pace',
         (live.length === 1) && (live[0].channel === 2) && (live[0].drive === 'F:') && (Math.abs(live[0].pace - 1) < 1e-9));
+    clock += 500;
+    handle.feed(block(17.5, true));
+    suite.check('the final report, sent when ffmpeg flushes, does not move the pace',
+        Math.abs(meter.live()[0].pace - 1) < 1e-9, meter.live()[0].pace);
     handle.end();
     suite.check('...and is gone when its ffmpeg closes',
         meter.live().length === 0);

@@ -131,6 +131,10 @@ class PaceMeter extends EventEmitter {
         };
         item.meter = new ItemPace(item.startedAt);
         item.parser = new ProgressParser( (block) => {
+            // the last report comes when ffmpeg flushes, not in time with playback
+            if (block.end) {
+                return;
+            }
             item.meter.add(this.now(), block.mediaS);
             this.emit('sample', { id, pace: item.meter.pace() });
         } );
