@@ -269,6 +269,57 @@ module.exports = async function () {
             const quiet = pins.slotWarnings({ before: plain, after: swapped, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData, own: thu(19, 30) });
             suite.check('a swap that fits on time warns of nothing', quiet.pushed.length === 0 && quiet.lost.length === 0 && pins.sayWarnings(quiet).length === 0);
 
+            // Ron, Oct 29: the Venture Bros. special pinned to Fri 3:30am sat at 12:00am in the list,
+            // moved there by hand with its Flex. The next swap re-laid it back at 3:30am, the shows
+            // between came back 30 minutes earlier, and nothing said why: it read as the pin lost.
+            const handMoved = moveRows(swapped, thu(19, 30), thu(19));
+            const back = pins.slotWarnings({ before: handMoved, after: swapped, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData });
+            suite.check('slotWarnings names a pin moved by hand in the list that a re-lay puts back at its time',
+                Array.isArray(back.moved) && back.moved.length === 1 && back.moved[0].program.title === christmas.title && back.moved[0].wasAt === thu(19)
+                    && back.moved[0].nowAt === thu(19, 30) && back.pushed.length === 0 && back.lost.length === 0,
+                JSON.stringify({ moved: (back.moved || []).map((x) => [x.program.title, clock(x.wasAt), x.nowAt && clock(x.nowAt)]), pushed: back.pushed.length, lost: back.lost.length }));
+            suite.check('...in plain words',
+                pins.sayWarnings(back).join(' ') === "Arnold's Christmas is at Thu Oct 8, 7:00pm in the list, but it is pinned to Thu Oct 8, 7:30pm: re-making puts it back at its pinned time.",
+                pins.sayWarnings(back).join(' '));
+            const relaid = pins.slotWarnings({ before: swapped, after: swapped, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData });
+            suite.check('...and a pin already at its time is not named', Array.isArray(relaid.moved) && relaid.moved.length === 0, JSON.stringify(relaid.moved));
+
+            const gone = pins.slotWarnings({ before: swapped, after: plain, from: NOON8, to: NOON8 + 3 * DAY, schedule, getShowData });
+            suite.check('slotWarnings names a pin still to air that the re-lay does not hold',
+                Array.isArray(gone.moved) && gone.moved.length === 1 && gone.moved[0].nowAt === null && gone.moved[0].wasAt === thu(19, 30),
+                JSON.stringify((gone.moved || []).map((x) => [x.program.title, x.nowAt])));
+            suite.check('...in plain words', pins.sayWarnings(gone).join(' ') === "Arnold's Christmas, pinned to Thu Oct 8, 7:30pm, would be dropped.",
+                pins.sayWarnings(gone).join(' '));
+            // Moved by hand past its own time (to 8:00, before Shelby Woo): the re-lay keeps only pins
+            // still to air by their time.
+            const later = moveRows(swapped, thu(19, 30), thu(20, 30));
+            const passed = pins.slotWarnings({ before: later, after: plain, from: thu(20), to: thu(20) + 3 * DAY, schedule, getShowData });
+            suite.check('...one moved by hand past its pinned time, said so',
+                pins.sayWarnings(passed).join(' ') === "Arnold's Christmas is at Thu Oct 8, 8:00pm in the list, but it is pinned to Thu Oct 8, 7:30pm, which has passed: re-making drops it.",
+                pins.sayWarnings(passed).join(' '));
+
+            const worker = require('../src/relay-worker');
+            const base = worker.baselineSay({ current: handMoved, base: swapped, now: NOON8, at: thu(20), schedule, getShowData });
+            suite.check('the swap dialog says it first, red, with or without the swap',
+                base.alerts.includes("Arnold's Christmas is at Thu Oct 8, 7:00pm in the list, but it is pinned to Thu Oct 8, 7:30pm: re-making puts it back at its pinned time."),
+                JSON.stringify(base.alerts));
+            const replacing = worker.baselineSay({ current: swapped, base: plain, now: NOON8, at: thu(19, 30), schedule, getShowData });
+            suite.check('...but not the pin the swap itself replaces', replacing.alerts.length === 0, JSON.stringify(replacing.alerts));
+
+            // Create Lineup and Regenerate re-lay with no dialog of re-lays: the Time Slots dialog
+            // reads it from the list alone.
+            const listed = pins.outOfPlace({ programs: handMoved.programs, startTime: handMoved.startTime, now: NOON8 });
+            suite.check('outOfPlace reads a pin moved by hand from the list alone, for the Time Slots dialog',
+                pins.sayMoved(listed).join(' ') === "Arnold's Christmas is at Thu Oct 8, 7:00pm in the list, but it is pinned to Thu Oct 8, 7:30pm: re-making puts it back at its pinned time.",
+                pins.sayMoved(listed).join(' '));
+            const listedLater = pins.outOfPlace({ programs: later.programs, startTime: later.startTime, now: thu(20) });
+            suite.check('...one moved past its pinned time', pins.sayMoved(listedLater).join(' ').endsWith('which has passed: re-making drops it.'), pins.sayMoved(listedLater).join(' '));
+            const inPlace = [ swapped, pushedBoth, lateFirst ].map((l) => pins.outOfPlace({ programs: l.programs, startTime: l.startTime, now: NOON8 }).length);
+            suite.check('...and not one at its time, or one a program still on pushed late', inPlace.join() === '0,0,0', inPlace.join());
+
+            const undoText = pins.sayUndo({ label: 'X', at: thu(20), effects: { movedAlong: [], late: [], early: [] }, anyway: '', dropped: [], moved: back.moved });
+            suite.check('the undo prompt says it too', undoText.endsWith(" Arnold's Christmas is at Thu Oct 8, 7:00pm in the list, but it is pinned to Thu Oct 8, 7:30pm: re-making puts it back at its pinned time."), undoText);
+
             const said = pins.sayFit({ programs: lateFirst.programs, startTime: lateFirst.startTime, schedule, at: thu(20), item: ride, kind: 'swap', after: pushedBoth });
             suite.check('sayFit, given the re-lay, never says it fits when it would start late and run over',
                 ! said.includes('It fits:') && said.includes("can't start until 8:06:47: Hey Arnold! is still on until then")
@@ -647,6 +698,20 @@ function fixturePool() {
         out.push(episode('Shelby Woo', 1, n, { duration: 22 * MIN }));
     }
     return out;
+}
+// A lineup with the airing starting at `fromAt` and the Flex after it moved by hand to
+// just before the airing starting at `toAt`, as dragging the two rows does.
+function moveRows(lineup, fromAt, toAt) {
+    const starts = [];
+    lineup.programs.reduce((t, p) => { starts.push(t); return t + p.duration; }, lineup.startTime);
+    const i = starts.indexOf(fromAt);
+    let j = starts.indexOf(toAt);
+    if (i < 0 || j < 0 || ! lineup.programs[i + 1].isOffline) throw new Error('moveRows: no airing and Flex there');
+    const programs = lineup.programs.slice();
+    const rows = programs.splice(i, 2);
+    if (j > i) j -= 2;
+    programs.splice(j, 0, ...rows);
+    return { programs, startTime: lineup.startTime };
 }
 function mark(program, at, then) {
     const p = pins.makePin({ program, at, kind: 'swap', then, slotShow: 'tv.' + program.showTitle, now: NOW });

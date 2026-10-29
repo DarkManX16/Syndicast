@@ -41,7 +41,8 @@ function baselineSay({ current, base, now, at, schedule, getShowData }) {
         anyway: ( (anyway.movedAlong.length + anyway.late.length + anyway.early.length) > 0 )
             ? 'Re-making the lineup now also changes, with or without this swap: ' + pins.sayEffects(anyway) : '',
         dropped: anyway.dropped,
-        alerts: pins.sayWarnings(pins.slotWarnings({ before: current, after: base, from: now, to: now + WARN, schedule, getShowData })),
+        // A swap replaces the pinned airing at its own instant, if any: that one is not lost by accident.
+        alerts: pins.sayWarnings(pins.slotWarnings({ before: current, after: base, from: now, to: now + WARN, schedule, getShowData, replacing: at })),
         heldUntil: on ? on.start + on.program.duration : null,
     };
 }

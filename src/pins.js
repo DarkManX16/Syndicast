@@ -598,8 +598,15 @@ function sayEffects(effects) {
  * occurrences from `from` to `to` whose own show aired in `before` but has no
  * airing starting in them in `after`. The slot `own` - the new pin's instant -
  * is in is left out: the pin is there in its place.
+ *
+ * And `moved`: pins still to air in `before` that `after` doesn't air where
+ * `before` has them - one moved by hand in the list, which a re-lay puts back
+ * at its pinned time (Ron, Oct 29: the Venture Bros. special dragged from
+ * 3:30am to 12:00am), or one `after` doesn't hold at all (`nowAt` null). A pin
+ * `after` pushes late is `pushed`'s. `replacing`, the instant a swap is made
+ * at, leaves out the pinned airing there: the swap replaces it.
  */
-function slotWarnings({ before, after, from, to, schedule, getShowData, own }) {
+function slotWarnings({ before, after, from, to, schedule, getShowData, own, replacing }) {
     let pushed = [];
     let behind = null;
     walk(after.programs, after.startTime, from - DAY, loopEnd(after, from)).forEach( (x) => {
@@ -611,6 +618,7 @@ function slotWarnings({ before, after, from, to, schedule, getShowData, own }) {
             behind = { start: x.start, program: x.program };
         }
     } );
+    let moved = pinsMoved({ before, after, from, replacing });
     let airings = (lineup) => walk(lineup.programs, lineup.startTime, from - 3 * HOUR, to + 3 * HOUR).filter( (x) => ! x.program.isOffline );
     let was = airings(before);
     let now = airings(after);
@@ -632,13 +640,80 @@ function slotWarnings({ before, after, from, to, schedule, getShowData, own }) {
         }
         t = occ.end;
     }
-    return { pushed, lost };
+    return { pushed, lost, moved };
 }
 
-function sayWarnings({ pushed, lost }) {
+// slotWarnings' `moved`, for the prompts that re-lay without its other warnings (undo, delete).
+function pinsMoved({ before, after, from, replacing }) {
+    let pinKey = (pin) => `${pin.at}|${pin.made}|${pin.kind}`;
+    let placed = new Map();
+    walk(after.programs, after.startTime, from - DAY, loopEnd(after, from)).forEach( (x) => {
+        let pin = x.program.pin;
+        if ( pin && (typeof(pin.at) === 'number') && (x.start + x.program.duration > from) && ! placed.has(pinKey(pin)) ) {
+            placed.set(pinKey(pin), x.start);
+        }
+    } );
+    let moved = [];
+    let seen = new Set();
+    walk(before.programs, before.startTime, from - DAY, loopEnd(before, from)).forEach( (x) => {
+        let pin = x.program.pin;
+        if ( ! pin || (typeof(pin.at) !== 'number') || (x.start + x.program.duration <= from) || seen.has(pinKey(pin)) ) {
+            return;
+        }
+        seen.add(pinKey(pin));
+        let nowAt = placed.has(pinKey(pin)) ? placed.get(pinKey(pin)) : null;
+        if (nowAt === null) {
+            if ( ! ( (typeof(replacing) === 'number') && (Math.abs(x.start - replacing) <= SLACK) ) ) {
+                moved.push({ program: x.program, at: pin.at, wasAt: x.start, nowAt: null, passed: pin.at + x.program.duration <= from });
+            }
+        } else if ( (Math.abs(nowAt - x.start) > SLACK) && (nowAt <= pin.at + SLACK) ) {
+            moved.push({ program: x.program, at: pin.at, wasAt: x.start, nowAt: nowAt });
+        }
+    } );
+    return moved;
+}
+
+function sayMoved(moved) {
     let named = (p) => p.isOffline ? `The Flex in place of ${p.pin.was}` : p.title;
-    return pushed.map( (x) => `${named(x.program)}, pinned to ${dayClock(x.at)}, would start late, at ${clock(x.start)}`
-        + (x.behind ? `: ${showName(x.behind.program)} is still on until then.` : '.') )
+    return (moved || []).map( (x) => (x.nowAt !== null)
+        ? `${named(x.program)} is at ${dayClock(x.wasAt)} in the list, but it is pinned to ${dayClock(x.at)}: re-making puts it back at its pinned time.`
+        : (x.passed
+            ? `${named(x.program)} is at ${dayClock(x.wasAt)} in the list, but it is pinned to ${dayClock(x.at)}, which has passed: re-making drops it.`
+            : `${named(x.program)}, pinned to ${dayClock(x.at)}, would be dropped.`) );
+}
+
+/*
+ * slotWarnings' `moved` read from one lineup, with no re-lay to compare: for
+ * the Time Slots dialog, whose Create Lineup applies at once. A pin still to
+ * air whose row starts before its time - the generator never airs one early -
+ * or after it with Flex before it (a program still on pushes a pin to the
+ * moment it ends, Flex never does), or whose time has passed while its row is
+ * still ahead.
+ */
+function outOfPlace({ programs, startTime, now }) {
+    let lineup = { programs, startTime };
+    let out = [];
+    let seen = new Set();
+    let before = null;
+    walk(programs, startTime, now - DAY, loopEnd(lineup, now)).forEach( (x) => {
+        let pin = x.program.pin;
+        if ( pin && (typeof(pin.at) === 'number') && (x.start + x.program.duration > now) && ! seen.has(pin) ) {
+            seen.add(pin);
+            if (pin.at + x.program.duration <= now) {
+                out.push({ program: x.program, at: pin.at, wasAt: x.start, nowAt: null, passed: true });
+            } else if ( (x.start < pin.at - SLACK) || ( (x.start > pin.at + SLACK) && (before !== null) && before.isOffline ) ) {
+                out.push({ program: x.program, at: pin.at, wasAt: x.start, nowAt: pin.at });
+            }
+        }
+        before = x.program;
+    } );
+    return out;
+}
+
+function sayWarnings({ pushed, lost, moved }) {
+    let named = (p) => p.isOffline ? `The Flex in place of ${p.pin.was}` : p.title;
+    return sayMoved(moved).concat(pushed.map( (x) => `${named(x.program)}, pinned to ${dayClock(x.at)}, would start late, at ${clock(x.start)}`
+        + (x.behind ? `: ${showName(x.behind.program)} is still on until then.` : '.') ))
         .concat(lost.map( (x) => `${x.name} loses its ${dayClock(x.start)} slot.` ));
 }
 
@@ -671,13 +746,15 @@ function sayFirstSwap({ dropped }) {
         + ( (dropped.length > 0) ? sayDropped(dropped) : 'Nothing placed by hand from now on would be lost.' );
 }
 
-// The undo prompt, from the re-lay without the pin, worked out before asking.
-function sayUndo({ label, at, effects, anyway, dropped }) {
+// The undo prompt, from the re-lay without the pin, worked out before asking;
+// `moved`, slotWarnings' other pins a re-lay moves or drops.
+function sayUndo({ label, at, effects, anyway, dropped, moved }) {
     let changed = (effects.movedAlong.length + effects.late.length + (effects.early || []).length) > 0;
     return `Undo ${label}, pinned to ${dayClock(at)}? The slot's own programming comes back`
         + (changed ? ': ' + sayEffects(effects) : '.')
         + (anyway ? ' ' + anyway : '')
-        + ( (dropped.length > 0) ? ' ' + sayDropped(dropped) : '' );
+        + ( (dropped.length > 0) ? ' ' + sayDropped(dropped) : '' )
+        + sayMoved(moved).map( (s) => ' ' + s ).join('');
 }
 
 function sayKept(ahead) {
@@ -778,6 +855,9 @@ module.exports = {
     withPin: withPin,
     slotWarnings: slotWarnings,
     sayWarnings: sayWarnings,
+    sayMoved: sayMoved,
+    outOfPlace: outOfPlace,
+    pinsMoved: pinsMoved,
     label: label,
     makePin: makePin,
     removalPin: removalPin,

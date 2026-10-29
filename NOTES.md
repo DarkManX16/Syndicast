@@ -5408,6 +5408,78 @@ Romeo! was gone. And a swap took about 25 seconds with the page frozen.
   Dark? from 7:30pm to past midnight, unpinned, in other shows' slots: not from Swap
   as far as the code goes, not investigated.
 
+**A pin moved by hand in the list, said before a re-lay puts it back, Oct 29, 2026**
+(`swap-pin-moved`, from `blocks` at a0a3da1). Ron, on channel 1, swapped Family Guy at
+Fri Oct 30 1:00am for Robot Chicken's "Happy Russian Deathdog Dolloween 2 U". Before,
+his pinned Venture Bros. special "A Very Venture Halloween" was at 12:00am, then
+Futurama 12:30, Family Guy 1:00 ... Sealab 2:30-3:30. After, the special was gone from
+12:00am, Futurama was at 12:00 and everything after it 30 minutes earlier. He read it as
+the swap losing his pin and shifting the night.
+
+- **Measured on a copy taken Oct 29 at 1:10am Central** (channel 1 saved 12:48am, unchanged
+  since). The special's pin is `at` **Fri 3:30am**, the Venture Bros. slot: Ron swapped
+  "Guess Who's Coming to State Dinner?" there at 12:28am (`was`, `slotShow`). The schedule
+  is Fri 12:00 Futurama, 12:30 Family Guy, 1:00 Robot Chicken, 1:30 Aqua Teen, 2:00 Space
+  Ghost, 2:30 Sealab, 3:00 Home Movies, 3:30 Venture Bros.
+- **Ruled out: the generator.** Re-laid as of 12:28am (`progress-check --at`), the special
+  is at 3:30am. The saved list differs from that re-lay in 13 of 20,020 airings: the
+  special and its 7:30 of Flex sit at 12:00am, and the seven shows between are each 30
+  minutes late, back on time at 4:00 (Harvey Birdman). That is two rows moved in the list,
+  after the 12:28am re-lay and before the 12:48am save - every Flex length is the
+  re-lay's own. The file doesn't say which action moved them; Ron's drag log (the
+  footer's "Drag log", kept in his browser) would.
+- **Channel 2, the same twice.** Cheers "Bar Wars V: The Final Judgement", pinned at Wed
+  Oct 28 12:00:09am to Fri 5:30am (the Cheers slot), was saved 3.5 minutes later at 2:30am
+  with its Flex, the five shows between 30 minutes late (11 of 17,459 airings differ from
+  the re-lay at 12:00:09am). And in that save, already aired: Diff'rent Strokes "A Haunting
+  We Will Go", pinned to Wed 1:00am, sat at 2:30am, the three pins after it each 30
+  minutes earlier - the Halloween pins put in another order. Channel 3 has no pins ahead.
+- **Ruled out: the swap losing the pin.** Re-laid with the new pin as of 12:55am, the result
+  is Ron's after screenshot airing for airing, and the special is at **3:30am**, its pinned
+  time; 17 pins, the 16 before plus the new one. Nothing shifted early: every show is back
+  in its own slot.
+- **What was wrong: nothing said so.** `relayEffects` skips pinned airings, and
+  `slotWarnings` only looked for pins pushed late, so the dialog listed the seven shows
+  coming back 30 minutes earlier as "re-making also changes" and never named the special.
+  Undo and delete don't say it either - a delete applies at once - and Create Lineup and
+  Regenerate put a hand-moved pin back without a word. A row moved past its own pinned
+  time is worse: `pinsAhead` keeps only pins whose time is still ahead, so a re-lay drops
+  it silently.
+- **The fix** (`src/pins.js`). `pinsMoved` compares the pins still to air in the lineup
+  before a re-lay with where the re-lay puts them: one at a different time and back at its
+  pinned one, or not held at all. `slotWarnings` returns it as `moved`, and `sayWarnings`
+  says it first ("A Very Venture Halloween is at Fri Oct 30, 12:00am in the list, but it is
+  pinned to Fri Oct 30, 3:30am: re-making puts it back at its pinned time."), red, in the
+  swap and insert dialogs, as "with or without this"; the pinned airing a swap replaces
+  (`replacing`, the swap's instant) is left out. The undo prompt adds it (`sayUndo`'s
+  `moved`, not the pin undone); a delete asks first when a pin moves back, as when a re-lay
+  would drop something placed by hand. The Time Slots dialog reads it from the list alone
+  (`outOfPlace`: a pin row before its time, after it with Flex before it - a program still
+  on pushes a pin to the moment it ends, never Flex does - or past its time) and shows it
+  with the notes above Create Lineup. Regenerate (the redo button) still shows no dialog,
+  so it says nothing, as with everything else it drops.
+- **Not changed: a drag doesn't re-pin.** Moving a pinned row still leaves its pin at the
+  old time, so the next re-lay puts it back - now said first. Whether dragging a pinned row
+  should re-pin it to where it lands is Ron's call.
+- **Proof.** 12 checks in `test/pins.js`, 11 failing first (a pin moved by hand and put back,
+  one already in place, one dropped, one moved past its time, the swap dialog's baseline,
+  the replaced pin left out, `outOfPlace` three ways, the undo prompt); 2583 pass with them.
+  Every pin on channels 1-3, against a swap on every airing within 3 hours of it - an item
+  of the slot's show no longer than the airing, and the channel's longest item under 50
+  minutes, both Take over and Run late when it runs over - through the real re-lay worker
+  on the copy as of 1:10am (a scratch harness, never in the repo). Channel 1, 16 pins: 125
+  swaps re-laid (7 more the dialog refuses, running into a pin), no pin dropped; every pin
+  not at its pinned time in the list or the re-lay is said (132: the Venture Bros. special
+  each time, and pins a long item pushes late) - on `blocks` 123 went unsaid. Channel 2,
+  12 pins: 77 swaps, none dropped, 83 said, 0 unsaid. Channel 3: no pins still to air.
+  Live on a preview (port 18190, the copy): Swap on Family Guy at 1:00am shows the red line
+  above, applies with the special at 3:30am and 17 pins, and the Time Slots dialog notes it.
+- **Found, not fixed here.** The drag log's build stamp (407ee2d) writes
+  `window.__syndicastBundle` on the bundle's first line, and the re-lay worker loads the
+  same bundle with no `window`: it stops at once ("The re-lay worker stopped; re-lays run
+  in the page from now on"), so every swap freezes the page again. 18000 doesn't stamp
+  until Ron restarts it.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

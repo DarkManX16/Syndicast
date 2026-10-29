@@ -2906,9 +2906,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         from: now, to: now + year, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
                     let anywayText = ( (all.movedAlong.length + all.late.length + all.early.length) > 0 )
                         ? 'Re-making the lineup now also changes, with or without this undo: ' + pinTools.sayEffects(all) : '';
+                    // Other pins the re-lay moves back to their time or drops - not the one undone.
+                    let moved = pinTools.pinsMoved({ before: { programs: scope.channel.programs, startTime: start }, after: lineupOf(baseline), from: now })
+                        .filter( (m) => m.program !== program );
                     if (scope.undoPrompt && (scope.undoPrompt.program === program)) {
                         scope.undoPrompt = { program: program, working: false, result: result,
-                            text: pinTools.sayUndo({ label: label, at: program.pin.at, effects: own, anyway: anywayText, dropped: all.dropped }),
+                            text: pinTools.sayUndo({ label: label, at: program.pin.at, effects: own, anyway: anywayText, dropped: all.dropped, moved: moved }),
                             items: pinTools.droppedBehind(all.dropped) };
                     }
                 } catch (err) {
@@ -2990,17 +2993,21 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     let effects = pinTools.relayEffects({ before: { programs: scope.channel.programs, startTime: start },
                         after: { programs: result.programs, startTime: new Date(result.startTime).getTime() },
                         from: now, to: now + 400 * 24 * 60 * 60 * 1000, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
+                    // A pin moved by hand in the list goes back to its time: asked, as a drop is.
+                    let moved = pinTools.pinsMoved({ before: { programs: scope.channel.programs, startTime: start },
+                        after: { programs: result.programs, startTime: new Date(result.startTime).getTime() }, from: now });
                     let apply = () => { applyRelay(result); queueCatalogOps(ops); };
                     if (! pinTools.stillWanted(scope.undoPrompt, program)) {
                         // Cancelled while it was being worked out: nothing is applied or asked.
                         return;
                     }
-                    if (effects.dropped.length === 0) {
+                    if ( (effects.dropped.length === 0) && (moved.length === 0) ) {
                         scope.undoPrompt = null;
                         apply();
                     } else {
                         scope.undoPrompt = { program: program, working: false, result: result, title: 'Delete ' + prompt.label, go: 'Delete it',
-                            text: pinTools.sayDropped(effects.dropped), items: pinTools.droppedBehind(effects.dropped), afterApply: () => queueCatalogOps(ops) };
+                            text: [ pinTools.sayDropped(effects.dropped) ].concat(pinTools.sayMoved(moved)).filter( (s) => s !== '' ).join(' '),
+                            items: pinTools.droppedBehind(effects.dropped), afterApply: () => queueCatalogOps(ops) };
                     }
                 } catch (err) {
                     console.error(err);
