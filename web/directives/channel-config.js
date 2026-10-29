@@ -394,6 +394,23 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let y = program.$index;
                 let z = dropIndex + scope.currentStartIndex - 1;
                 let item = scope.channel.programs[y];
+                // A pinned airing on a Time Slots channel is re-pinned where it lands (Ron, Oct 29),
+                // through the swap dialog: nothing moves until a choice there is applied.
+                if ( scope.hasTimeSlots() && item && item.pin && ! item.isOffline ) {
+                    let before = z;
+                    programMove.drop( () => {
+                        if (scope.channel.programs.indexOf(item) !== y) {
+                            return;
+                        }
+                        let spot = pinTools.dropSpot({ programs: scope.channel.programs, startTime: new Date(scope.channel.startTime).getTime(),
+                            schedule: scope.channel.scheduleBackup, from: y, before: before });
+                        if (spot !== null) {
+                            openPlacing(spot.index, spot.mode, item);
+                        }
+                        $timeout();
+                    } );
+                    return false;
+                }
                 if (z >= y) {
                     z--;
                 }
@@ -2785,11 +2802,13 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             // A swap or insert dialog plans its re-lays once, through the same gate; they then run in the re-lay worker.
             let guardedPlan = (args) => relayGate.run( () => scope.timeSlots.plan(args) );
             scope.swapRequest = null;
-            let openPlacing = async (index, mode) => {
+            // `moving`: a pinned airing dragged to this spot, to be re-pinned here.
+            let openPlacing = async (index, mode, moving) => {
                 if (relayGate.busy()) {
                     return;
                 }
-                let why = pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
+                let why = (moving ? pinTools.whyNot({ airing: moving, now: Date.now(), what: 'move' }) : null)
+                    || pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
                 if (why !== null) {
                     scope.error.programs = why;
                     scope.error.tab = "programming";
@@ -2806,7 +2825,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
                 scope.swapRequest = {
-                    channel: scope.channel, index: index, mode: mode,
+                    channel: scope.channel, index: index, mode: mode, move: moving || null,
                     plan: guardedPlan, limit: scope.maxSize, catalogState: catalogFor,
                 };
                 $timeout();

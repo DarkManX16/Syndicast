@@ -320,6 +320,31 @@ module.exports = async function () {
             const undoText = pins.sayUndo({ label: 'X', at: thu(20), effects: { movedAlong: [], late: [], early: [] }, anyway: '', dropped: [], moved: back.moved });
             suite.check('the undo prompt says it too', undoText.endsWith(" Arnold's Christmas is at Thu Oct 8, 7:00pm in the list, but it is pinned to Thu Oct 8, 7:30pm: re-making puts it back at its pinned time."), undoText);
 
+            // Ron, Oct 29: he dragged those pins on purpose. A pinned row dropped elsewhere is
+            // re-pinned where it lands, through the swap dialog: before a program, a swap of that
+            // airing; before a Flex, an insert in the break after the program before it.
+            const rowAt = (l, t) => { let s = l.startTime; for (let i = 0; i < l.programs.length; i++) { if (s === t) return i; s += l.programs[i].duration; } return -1; };
+            const pinRow = rowAt(swapped, thu(19, 30));
+            const toRugrats = pins.dropSpot({ programs: swapped.programs, startTime: swapped.startTime, schedule, from: pinRow, before: rowAt(swapped, thu(19)) });
+            suite.check('dropSpot: a pinned row dropped before an airing re-pins as a swap of it, at its slot',
+                toRugrats !== null && toRugrats.mode === 'swap' && toRugrats.index === rowAt(swapped, thu(19)) && toRugrats.at === thu(19),
+                JSON.stringify(toRugrats));
+            const scary = rowAt(swapped, thu(20));
+            const intoBreak = pins.dropSpot({ programs: swapped.programs, startTime: swapped.startTime, schedule, from: pinRow, before: scary + 1 });
+            suite.check('...before a Flex, as an insert in the break after the airing before it',
+                intoBreak !== null && intoBreak.mode === 'insert' && intoBreak.index === scary && intoBreak.at === thu(20) + 22 * MIN,
+                JSON.stringify(intoBreak));
+            const stays = [ pinRow, pinRow + 1 ].map((b) => pins.dropSpot({ programs: swapped.programs, startTime: swapped.startTime, schedule, from: pinRow, before: b }));
+            suite.check('...and dropped back where it was, either side of itself, nothing', stays.every((x) => x === null), JSON.stringify(stays));
+
+            // Moved: the re-lay without the old pin and with the new, against the lineup with the old.
+            const movedTo7 = await lineup([mark(christmas, thu(19), 'take')]);
+            const move = worker.optionSay({ current: swapped, base: swapped, mine: movedTo7, now: NOON8, at: thu(19), schedule, item: christmas,
+                kind: 'swap', getShowData, moving: thu(19, 30) });
+            suite.check('a moved pin is not said to be dropped, and its old slot gets its own show back',
+                ! move.alerts.some((a) => a.includes('dropped')) && move.effects.includes('Best Man / Cool Party airs Thu Oct 8, 7:30pm instead'),
+                JSON.stringify({ alerts: move.alerts, effects: move.effects }));
+
             const said = pins.sayFit({ programs: lateFirst.programs, startTime: lateFirst.startTime, schedule, at: thu(20), item: ride, kind: 'swap', after: pushedBoth });
             suite.check('sayFit, given the re-lay, never says it fits when it would start late and run over',
                 ! said.includes('It fits:') && said.includes("can't start until 8:06:47: Hey Arnold! is still on until then")

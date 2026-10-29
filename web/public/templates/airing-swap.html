@@ -71,7 +71,7 @@
                         <div class="small">Or put it in a break where it fits:</div>
                         <div ng-repeat="b in breaks"><button class="btn btn-sm btn-link" ng-click="putInBreak(b)">{{b.text}}</button></div>
                     </div>
-                    <button class="btn btn-sm btn-outline-secondary" ng-click="back()">Pick something else</button>
+                    <button class="btn btn-sm btn-outline-secondary" ng-click="back()" ng-hide="moving">Pick something else</button>
                 </div>
             </div>
             <div class="modal-footer">

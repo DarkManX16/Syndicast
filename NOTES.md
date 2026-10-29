@@ -5458,12 +5458,26 @@ the swap losing his pin and shifting the night.
   on pushes a pin to the moment it ends, never Flex does - or past its time) and shows it
   with the notes above Create Lineup. Regenerate (the redo button) still shows no dialog,
   so it says nothing, as with everything else it drops.
-- **Not changed: a drag doesn't re-pin.** Moving a pinned row still leaves its pin at the
-  old time, so the next re-lay puts it back - now said first. Whether dragging a pinned row
-  should re-pin it to where it lands is Ron's call.
+- **A drag re-pins** (Ron, Oct 29: he dragged those rows on purpose). On a Time Slots
+  channel, a pinned airing dropped elsewhere in the list (not a pinned Flex) isn't moved
+  there: once the drag is over, `pins.dropSpot` reads where it landed - before an airing, a
+  swap of it, at its slot's start when it starts there; before a Flex, an insert in the
+  break after the airing before it; back where it was, nothing - and the swap dialog opens
+  as **Move** with the item already chosen. Its re-lay without the old pin and with the new
+  one is compared with the lineup with the old pin, so the fit ("It fits: 7:30 of Flex after
+  it"), Take over / Run late when it doesn't fit, the red warnings and the effects say what
+  moving it does, the old slot getting its own show back too; the moved pin is not said to
+  be dropped (`slotWarnings`' `moving`). Nothing changes until a choice is applied; Cancel
+  leaves the row where it was. One that is on air or aired, or a spot that is, is refused in
+  plain words, as Swap refuses; one that would run into another pin is refused by the
+  dialog's clash check. Pins dragged before this change keep their old time until dragged
+  again.
 - **Proof.** 12 checks in `test/pins.js`, 11 failing first (a pin moved by hand and put back,
   one already in place, one dropped, one moved past its time, the swap dialog's baseline,
   the replaced pin left out, `outOfPlace` three ways, the undo prompt); 2583 pass with them.
+  For the drag: 4 more, `dropSpot` three ways (failing first: no `dropSpot`) and a move's
+  option said without "would be dropped" and with the old slot's show back (failing first:
+  it said the moved pin would be dropped); 2587 pass.
   Every pin on channels 1-3, against a swap on every airing within 3 hours of it - an item
   of the slot's show no longer than the airing, and the channel's longest item under 50
   minutes, both Take over and Run late when it runs over - through the real re-lay worker
@@ -5474,6 +5488,15 @@ the swap losing his pin and shifting the night.
   12 pins: 77 swaps, none dropped, 83 said, 0 unsaid. Channel 3: no pins still to air.
   Live on a preview (port 18190, the copy): Swap on Family Guy at 1:00am shows the red line
   above, applies with the special at 3:30am and 17 pins, and the Time Slots dialog notes it.
+  The drag, on the same preview, through the editor's own drop handler (`dropFunction`, then
+  `endProgramDrag`, as a drop and its dragend call them - the pane was too small to drag
+  from 3:30am to 12:00am by mouse): after Create Lineup put the special back at 3:30am,
+  dropping it on Futurama's 12:00am row opened "Move ... pinned to Fri Oct 30, 3:30am, to
+  Fri Oct 30, 12:00am", said it fits with 7:30 of Flex and Family Guy at 12:30, and applied
+  with the special pinned to 12:00am in place of Futurama, Family Guy 12:30 ... Home Movies
+  3:00, "Guess Who's Coming to State Dinner?" back at 3:30am, still 16 pins. Dropped on
+  Robot Chicken's 1:45am half it offered Take over the 2:00 slot and Run late, with Space
+  Ghost's lost slot in red; Cancel left the list as it was.
 - **Found, not fixed here.** The drag log's build stamp (407ee2d) writes
   `window.__syndicastBundle` on the bundle's first line, and the re-lay worker loads the
   same bundle with no `window`: it stops at once ("The re-lay worker stopped; re-lays run

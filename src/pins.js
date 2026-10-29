@@ -237,7 +237,7 @@ function whyNot({ airing, now, what }) {
         return `${name} has already aired.`;
     }
     if (start <= now) {
-        let verb = ( { swap: 'swapped', remove: 'removed', undo: 'undone' } )[what] || 'changed';
+        let verb = ( { swap: 'swapped', remove: 'removed', undo: 'undone', move: 'moved' } )[what] || 'changed';
         return `${name} is on air now, so it can't be ${verb} - it finishes airing first. Pick an airing after it.`;
     }
     return null;
@@ -604,9 +604,10 @@ function sayEffects(effects) {
  * at its pinned time (Ron, Oct 29: the Venture Bros. special dragged from
  * 3:30am to 12:00am), or one `after` doesn't hold at all (`nowAt` null). A pin
  * `after` pushes late is `pushed`'s. `replacing`, the instant a swap is made
- * at, leaves out the pinned airing there: the swap replaces it.
+ * at, leaves out the pinned airing there: the swap replaces it; `moving`, the
+ * pinned time of a pin dragged elsewhere, leaves that one out: it is re-pinned.
  */
-function slotWarnings({ before, after, from, to, schedule, getShowData, own, replacing }) {
+function slotWarnings({ before, after, from, to, schedule, getShowData, own, replacing, moving }) {
     let pushed = [];
     let behind = null;
     walk(after.programs, after.startTime, from - DAY, loopEnd(after, from)).forEach( (x) => {
@@ -618,7 +619,7 @@ function slotWarnings({ before, after, from, to, schedule, getShowData, own, rep
             behind = { start: x.start, program: x.program };
         }
     } );
-    let moved = pinsMoved({ before, after, from, replacing });
+    let moved = pinsMoved({ before, after, from, replacing, moving });
     let airings = (lineup) => walk(lineup.programs, lineup.startTime, from - 3 * HOUR, to + 3 * HOUR).filter( (x) => ! x.program.isOffline );
     let was = airings(before);
     let now = airings(after);
@@ -644,7 +645,7 @@ function slotWarnings({ before, after, from, to, schedule, getShowData, own, rep
 }
 
 // slotWarnings' `moved`, for the prompts that re-lay without its other warnings (undo, delete).
-function pinsMoved({ before, after, from, replacing }) {
+function pinsMoved({ before, after, from, replacing, moving }) {
     let pinKey = (pin) => `${pin.at}|${pin.made}|${pin.kind}`;
     let placed = new Map();
     walk(after.programs, after.startTime, from - DAY, loopEnd(after, from)).forEach( (x) => {
@@ -657,7 +658,8 @@ function pinsMoved({ before, after, from, replacing }) {
     let seen = new Set();
     walk(before.programs, before.startTime, from - DAY, loopEnd(before, from)).forEach( (x) => {
         let pin = x.program.pin;
-        if ( ! pin || (typeof(pin.at) !== 'number') || (x.start + x.program.duration <= from) || seen.has(pinKey(pin)) ) {
+        if ( ! pin || (typeof(pin.at) !== 'number') || (x.start + x.program.duration <= from) || seen.has(pinKey(pin))
+            || ( (typeof(moving) === 'number') && (pin.at === moving) ) ) {
             return;
         }
         seen.add(pinKey(pin));
@@ -808,6 +810,33 @@ function removalPin({ airing, at, slotShow, now }) {
 // The pins in a lineup still to air, as the generator takes them. Each airing
 // is in the lineup once a cycle and its pin names its instant, so no walk is
 // needed: `startTime` is accepted for symmetry with the other readers.
+/*
+ * Where a pinned row dragged in the list lands, to be re-pinned there (Ron,
+ * Oct 29): `from` is its row, `before` the row it is dropped in front of, as
+ * the list shows them. Before an airing, a swap of that airing - at its slot's
+ * start when it starts there, as the swap dialog pins one; before a Flex, an
+ * insert in the break after the airing before it. Null when it would land
+ * where it is, or nowhere a swap or insert can go.
+ */
+function dropSpot({ programs, startTime, schedule, from, before }) {
+    if ( (before === from) || (before === from + 1) || (before < 0) || (before >= programs.length) ) {
+        return null;
+    }
+    let starts = [];
+    programs.reduce( (t, p) => { starts.push(t); return t + p.duration; }, startTime );
+    let row = programs[before];
+    if ( ! row.isOffline ) {
+        let around = slotAround({ schedule, at: starts[before] });
+        let at = ( (around !== null) && (Math.abs(starts[before] - around.start) <= SLACK) ) ? around.start : starts[before];
+        return { mode: 'swap', index: before, at: at };
+    }
+    let after = before - 1;
+    if ( (after < 0) || (after === from) || programs[after].isOffline ) {
+        return null;
+    }
+    return { mode: 'insert', index: after, at: starts[after] + programs[after].duration };
+}
+
 function pinsAhead({ programs, startTime, now }) {
     void startTime;
     return programs
@@ -858,6 +887,7 @@ module.exports = {
     sayMoved: sayMoved,
     outOfPlace: outOfPlace,
     pinsMoved: pinsMoved,
+    dropSpot: dropSpot,
     label: label,
     makePin: makePin,
     removalPin: removalPin,

@@ -17,7 +17,7 @@
  *            over in slices (slices) so the page never stops for the whole copy at once
  *   relay    { session, key, pins }  -> { placed, missing: [at], cached }
  *   baseline { session, key, now, at } -> { anyway, dropped, alerts, heldUntil }
- *   option   { session, key, base, now, at, item, kind } -> { effects, alerts, fitText, placed }
+ *   option   { session, key, base, now, at, item, kind, moving } -> { effects, alerts, fitText, placed }
  *   result   { session, key } -> the generator's result: { programs, startTime, ... }
  *   close    { session }
  */
@@ -47,12 +47,15 @@ function baselineSay({ current, base, now, at, schedule, getShowData }) {
     };
 }
 
-// What one choice does, against the same re-lay without the new pin.
-function optionSay({ current, base, mine, now, at, schedule, item, kind, getShowData }) {
-    let own = pins.relayEffects({ before: base, after: mine, from: Math.max(now, at - SAME), to: now + YEAR, schedule, getShowData });
+// What one choice does, against the same re-lay without the new pin - or, for a pin
+// dragged elsewhere, with it where it was (`moving`, its pinned time).
+function optionSay({ current, base, mine, now, at, schedule, item, kind, getShowData, moving }) {
+    // A move's effects start where the earlier of its two times is.
+    let first = (typeof(moving) === 'number') ? Math.min(at, moving) : at;
+    let own = pins.relayEffects({ before: base, after: mine, from: Math.max(now, first - SAME), to: now + YEAR, schedule, getShowData });
     return {
         effects: pins.sayEffects(own),
-        alerts: pins.sayWarnings(pins.slotWarnings({ before: base, after: mine, from: now, to: now + WARN, schedule, getShowData, own: at })),
+        alerts: pins.sayWarnings(pins.slotWarnings({ before: base, after: mine, from: now, to: now + WARN, schedule, getShowData, own: at, moving })),
         fitText: pins.sayFit({ programs: current.programs, startTime: current.startTime, schedule, at, item, kind, after: mine }),
         placed: pins.placedIn(mine, at),
     };
@@ -117,7 +120,7 @@ function handler({ generate, getShowData }) {
         }
         if (msg.type === 'option') {
             return optionSay({ current: s.current, base: madeOf(s, msg.base).lineup, mine: madeOf(s, msg.key).lineup,
-                now: msg.now, at: msg.at, schedule, item: msg.item, kind: msg.kind, getShowData });
+                now: msg.now, at: msg.at, schedule, item: msg.item, kind: msg.kind, getShowData, moving: msg.moving });
         }
         if (msg.type === 'result') {
             return madeOf(s, msg.key).res;
