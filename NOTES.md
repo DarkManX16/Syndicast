@@ -8074,3 +8074,32 @@ The drag log now says which code ran and what else went wrong:
 The stamp comes from the server's build code, so a server started before this change keeps building unstamped
 bundles until it restarts.
 
+
+**Step 4, the editor, Oct 29, 2026** (`list-lineup`). Suite 2678 at the start, 2682 at the end.
+Proved on the preview (port 18220, a full copy of `.dizquetv-dev` taken 6:09pm Central).
+
+- **What shipped.** Swap and Insert apply `keptRows` edits with no re-lay: one sentence, and
+  Run late / Take the next row when an item is too long. A drop on a Time Slots channel is
+  `keptRows.move`, asking first past a day. Delete of a row kept as it is is Put back, asked
+  in one sentence; this airing only is `removeOnly`; Holiday and Never air are `leaveOut` (the
+  slot takes its show's next episode). The library's add is an Insert after the first row in
+  view. The first-open list shows once per channel (Keep / Not now; `channel.handEditsKept`
+  records the answer), before any edit or Create Lineup. Kept rows show a pin (as they are)
+  or a clock (in time) with `rowNote`; the whole-list tools ask first and drop the marks.
+  Schedule notes name only slots the change gives another show (`opened`).
+- **On the preview, channel 1:** the first open (12 swaps, the special and its 11 airings; 3
+  aired swaps let go); Not now changed nothing and Swap asked again; Keep left 0 pins. Swap of
+  Family Guy at Fri 1:00am for Halloween on Spooner Street, read from Plex: "...; There's
+  Something About Paulie airs Sun Nov 1, 11:00pm.", applied in 108 ms. The special dragged
+  to 3:30 took the swap to 12:30; Put back of each, asked first, gave back the night. A drag
+  across two weeks asked ("This shifts 889 airings over 14 days. Move it?"); Cancel left the
+  list. Swap on the airing on air was refused in one sentence. Update Channel saved kept
+  rows, no pins: by instant 39,996 of 39,996 entries equal to the same edits in Node. After a
+  server restart and reload the night was as left; Create Lineup (catalogs from Plex) left
+  the night and all 1,331 rows of three weeks as left; saved again. Channels 2 and 3 show
+  their first-open lists as the Node runs did.
+- **Left for step 6:** the old pin path and re-lay worker (`src/relay-worker.js`,
+  `web/services/relay-worker.js`, the Time Slots editor's `plan`/`relay`, `pins.js`'s
+  `dropSpot`, `relayEffects` and the other re-lay sayings, and their tests) are no longer
+  called by the editor but not yet removed; the drag harness has no channel-page case (the
+  drop maps straight onto `move`, proved in the preview).

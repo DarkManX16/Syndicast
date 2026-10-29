@@ -511,9 +511,10 @@ module.exports = async function () {
         const undoModal = modalOf('<div ng-if="undoPrompt" class="modal"');
         suite.check('the delete prompt scrolls, so its buttons are always reachable',
             /class="modal"[^>]*overflow-y:\s*auto/.test(deleteModal) && /modal-body[^>]*max-height/.test(deleteModal), deleteModal.slice(0, 200));
-        suite.check('the undo and delete-confirm prompt scrolls and keeps its list behind "show them"',
+        // Since kept rows (src/kept-rows.js) it asks with one sentence: Put back, a long drag, a whole-list tool.
+        suite.check('the prompt that asks first scrolls, and says its one sentence',
             /class="modal"[^>]*overflow-y:\s*auto/.test(undoModal) && /modal-body[^>]*max-height/.test(undoModal)
-                && /ng-if="undoPrompt\.items\.length/.test(undoModal) && /show them/.test(undoModal), undoModal.slice(0, 200));
+                && /\{\{undoPrompt\.text\}\}/.test(undoModal), undoModal.slice(0, 200));
     }
 
     suite.log('-- inserts --');

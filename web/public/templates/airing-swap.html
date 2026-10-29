@@ -9,9 +9,6 @@
                 <div class="alert alert-warning py-1 px-2 small" ng-show="error">{{error}}</div>
 
                 <div ng-show="state === 'pick'">
-                    <div class="alert alert-danger py-1 px-2 small" ng-show="pickAlerts.length > 0">
-                        <div ng-repeat="a in pickAlerts track by $index">{{a}}</div>
-                    </div>
                     <div class="btn-group btn-group-sm" role="group" style="margin-bottom: 8px;">
                         <button type="button" class="btn" ng-class="source === 'show' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('show')">This show</button>
                         <button type="button" class="btn" ng-class="source === 'other' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('other')">Other shows on this channel</button>
@@ -31,7 +28,6 @@
                     </div>
                     <input type="text" class="form-control form-control-sm" placeholder="Filter by title or holiday" ng-model="filter.text" style="margin-bottom: 8px;">
                     <div class="small text-muted" ng-show="loading">Reading...</div>
-                    <div class="small text-muted" ng-show="preparing"><i class="fas fa-spinner fa-spin"></i> {{progress}}</div>
                     <div class="list-group" style="max-height: 50vh; overflow-y: auto;">
                         <button type="button" class="list-group-item list-group-item-action py-1 small"
                             ng-repeat="row in items | filter:visible track by $index" ng-click="choose(row)">
@@ -41,40 +37,23 @@
                                 {{row.length}}
                                 <span class="text-success" ng-show="row.fits">fits</span>
                                 <span class="text-danger" ng-show="!row.fits">runs {{row.over}} over</span>
-                                <span class="text-warning" ng-show="row.late">({{row.late}})</span>
                             </span>
                         </button>
                     </div>
                 </div>
 
-                <div ng-show="state === 'working'"><i class="fas fa-spinner fa-spin"></i> {{progress}}</div>
-
                 <div ng-show="state === 'choose'">
-                    <div class="alert alert-danger py-1 px-2" ng-show="alerts.length > 0">
-                        <div ng-repeat="a in alerts track by $index">{{a}}</div>
-                    </div>
-                    <p>{{fitText}}</p>
-                    <div class="alert alert-info py-1 px-2 small" ng-show="warning">{{warning}}
-                        <div ng-if="warningItems.length > 0">
-                            <a href="" ng-click="showWarningItems = !showWarningItems; $event.preventDefault()">{{showWarningItems ? 'hide them' : 'show them'}}</a>
-                            <ul ng-if="showWarningItems" class="pl-3 mb-0" style="max-height: 30vh; overflow-y: auto;">
-                                <li ng-repeat="line in warningItems | limitTo:300 track by $index">{{line}}</li>
-                                <li ng-if="warningItems.length > 300">...and {{warningItems.length - 300}} more</li>
-                            </ul>
-                        </div>
-                    </div>
                     <div class="card" ng-repeat="o in options" style="margin-bottom: 8px;">
                         <div class="card-body py-2 px-3">
-                            <button class="btn btn-sm btn-primary" ng-click="apply(o)">{{o.label}}</button>
-                            <span class="small" style="margin-left: 8px;">{{o.effects}}</span>
-                            <div class="small text-muted" ng-show="o.onAir">{{o.onAir}}</div>
+                            <button class="btn btn-sm btn-primary" ng-click="apply(o)" ng-disabled="o.refused">{{o.label}}</button>
+                            <span class="small" style="margin-left: 8px;">{{o.text}}</span>
                         </div>
                     </div>
                     <div ng-show="breaks.length > 0" style="margin-bottom: 8px;">
                         <div class="small">Or put it in a break where it fits:</div>
                         <div ng-repeat="b in breaks"><button class="btn btn-sm btn-link" ng-click="putInBreak(b)">{{b.text}}</button></div>
                     </div>
-                    <button class="btn btn-sm btn-outline-secondary" ng-click="back()" ng-hide="moving">Pick something else</button>
+                    <button class="btn btn-sm btn-outline-secondary" ng-click="back()">Pick something else</button>
                 </div>
             </div>
             <div class="modal-footer">

@@ -252,6 +252,10 @@ module.exports = async function () {
             ! out.some( (p) => p.title === 'Aired special' && (p.pin || p.kept) )
                 && out.some( (p) => p.title === 'NEXT - SGC2C' && ! p.kept ),
             '');
+        const again = kept.firstOpen({ programs: out, startTime: both.startTime, now: NOW, schedule: sched, getShowData });
+        suite.check('once answered, the first open finds nothing more to keep: kept rows aren\'t read as moved by hand',
+            again.keep.length === 0 && again.letGo.every( (x) => x.why === 'placed' ) && ! again.letGo.some( (x) => x.program.kept ),
+            JSON.stringify(again.keep.concat(again.letGo).map( (x) => [ x.why, x.program.title ] )));
         suite.check('...and nothing moves: every entry where it was',
             out.length === programs.length && out.every( (p, i) => p.duration === programs[i].duration )
                 && s[out.indexOf(sp)] === fri(0), '');
@@ -602,6 +606,36 @@ module.exports = async function () {
         const ob = kept.putBack({ lineup: { programs: old, startTime: base.startTime }, index: v, now: NOW, schedule: sched, catalog: base.programs });
         suite.check('a swap the first open converted: Put back finds the show\'s episodes, and the catalog the one past the end',
             ob.programs && JSON.stringify(ob.programs) === JSON.stringify(base.programs), ob.text || ob.refused);
+    }
+    {
+        // Delete's Holiday and Never air, on a Time Slots channel: no gap.
+        const i = indexAt(st, eve(0, 18));
+        const catalog = st.programs.concat([ episode('Hey Arnold!', 22, 22 * MIN) ]);
+        const out = kept.leaveOut({ lineup: st, index: i, now: NOW, schedule: ss, catalog });
+        const l = lineOf(out, st);
+        suite.check('leave out: the slot airs its show\'s next episode, each later one moves up one, the catalog\'s next at the end',
+            out.programs && rowAt(l, eve(0, 18)).title === 'Hey Arnold! 2' && ! rowAt(l, eve(0, 18)).kept
+                && rowAt(l, eve(1, 18)).title === 'Hey Arnold! 3' && rowAt(l, eve(20, 18)).title === 'Hey Arnold! 22'
+                && rowAt(l, eve(0, 19)).title === 'Hey Arnold! 2' && rowAt(l, eve(0, 19)).slotPosition === 'repeat',
+            out.text || out.refused);
+        suite.check('...and says so',
+            out.text === "Hey Arnold! 1 is left out; Hey Arnold! 2 airs at 6:00pm, and Hey Arnold!'s later episodes move up one. Hey Arnold! 3 runs 4:00 long at Fri Oct 30, 6:00pm, back on time at 7:00pm.",
+            out.text);
+        const swapped = kept.swap({ lineup: st, index: i, item: journal, now: NOW, schedule: ss });
+        suite.check('...but not a row kept as it is: Delete puts that back',
+            /Put back/.test(kept.leaveOut({ lineup: lineOf(swapped, st), index: i, now: NOW, schedule: ss }).refused || ''), '');
+
+        // What a kept row's mark says, on its row.
+        const sw = swapped.programs[i];
+        const dr = kept.move({ lineup: base, from: indexAt(base, fri(3, 30)), to: indexAt(base, fri(0)), now: NOW });
+        const mv = dr.programs[indexAt(base, fri(0))];
+        const sh = dr.programs[indexAt(lineOf(dr, base), fri(1))];
+        suite.check('each mark says what it keeps, in a line',
+            kept.rowNote(sw) === 'Swapped in for Hey Arnold! S01E01 Hey Arnold! 1: kept here until it airs. Delete puts it back.'
+                && kept.rowNote(mv) === 'Moved here from Fri Oct 30, 3:30am: kept here until it airs. Delete puts it back.'
+                && kept.rowNote(sh) === 'Kept at this time: it moved with the rows around it.'
+                && kept.rowNote(st.programs[i]) === '',
+            JSON.stringify([ kept.rowNote(sw), kept.rowNote(mv), kept.rowNote(sh) ]));
     }
     {
         // Sun Nov 1, 2026: 1:00-2:00am happens twice; the ripple runs through it by instants.

@@ -145,6 +145,13 @@ module.exports = async function () {
             rowAt(after, at) && rowAt(after, at).title === 'B Special', JSON.stringify(night(after, thu(19), thu(21))));
         suite.check('...and the Time Slots dialog says so, in one sentence',
             JSON.stringify(notes) === JSON.stringify([ "B Special at Thu Oct 8, 7:30pm is now in D's slot; it stays." ]), JSON.stringify(notes));
+        // A kept swap a drag moved into another show's slot: no schedule change, nothing to say.
+        const moved = kept.move({ lineup: made, from: indexAt(made, at), to: indexAt(made, thu(19)), now: NOON });
+        const quiet = kept.scheduleNotes({ programs: moved.programs, startTime: made.startTime, now: NOON, schedule: sched, opened: sched });
+        const loud = kept.scheduleNotes({ programs: moved.programs, startTime: made.startTime, now: NOON, schedule: changed, opened: sched });
+        suite.check('...only for a slot this schedule change gives another show, not one a drag moved it into',
+            quiet.length === 0 && loud.length === 0 && kept.scheduleNotes({ programs: made.programs, startTime: made.startTime, now: NOON, schedule: changed, opened: sched }).length === 1,
+            JSON.stringify([ quiet, loud ]));
 
         const onAir = await createLineup(made, sched, thu(19, 40));
         suite.check('a kept row on air is carried: at its time, once',

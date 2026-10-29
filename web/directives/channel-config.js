@@ -7,6 +7,7 @@ const transitionsEditor = require('../../src/transitions-editor');
 const showCatalog = require('../../src/show-catalog');
 const slotRounds = require('../../src/shuffle-rounds');
 const pinTools = require('../../src/pins');
+const keptRows = require('../../src/kept-rows');
 const buildCheck = require('../../src/build-check');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
@@ -394,18 +395,24 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let y = program.$index;
                 let z = dropIndex + scope.currentStartIndex - 1;
                 let item = scope.channel.programs[y];
-                // A pinned airing on a Time Slots channel is re-pinned where it lands (Ron, Oct 29),
-                // through the swap dialog: nothing moves until a choice there is applied.
-                if ( scope.hasTimeSlots() && item && item.pin && ! item.isOffline ) {
+                // On a Time Slots channel a row goes exactly where it is dropped, with its break,
+                // and the rows between shift like a playlist (src/kept-rows.js move); across more
+                // than a day it asks first.
+                if (scope.hasTimeSlots()) {
                     let before = z;
                     programMove.drop( () => {
-                        if (scope.channel.programs.indexOf(item) !== y) {
+                        let from = scope.channel.programs.indexOf(item);
+                        if ( (from === -1) || askFirstOpen() ) {
+                            $timeout();
                             return;
                         }
-                        let spot = pinTools.dropSpot({ programs: scope.channel.programs, startTime: new Date(scope.channel.startTime).getTime(),
-                            schedule: scope.channel.scheduleBackup, from: y, before: before });
-                        if (spot !== null) {
-                            openPlacing(spot.index, spot.mode, item);
+                        let move = (sure) => keptRows.move({ lineup: lineupMs(), from: from, to: before, now: Date.now(), sure: sure });
+                        let got = move(false);
+                        if (typeof(got.ask) === 'string') {
+                            scope.undoPrompt = { title: 'Move ' + commonProgramTools.getProgramDisplayTitle(item) + '?', text: got.ask, go: 'Move it',
+                                apply: () => applyEdit(move(true)) };
+                        } else {
+                            applyEdit(got);
                         }
                         $timeout();
                     } );
@@ -1341,6 +1348,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 for (let i = 0, l = selectedPrograms.length; i < l; i++) {
                     delete selectedPrograms[i].commercials;
                 }
+                if (scope.hasTimeSlots() && (scope.channel.programs.length > 0)) {
+                    insertFromLibrary(selectedPrograms);
+                    return;
+                }
 
                 var programListElement = document.getElementById("channelConfigProgramList");
                 if (insertPoint === "start") {
@@ -1427,14 +1438,20 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.deletePrompt = null;
             scope.removeItem = (x) => {
                 let program = scope.channel.programs[x];
-                if ( (typeof(program) !== 'undefined') && program.pin && scope.hasTimeSlots() ) {
-                    let why = pinTools.whyNot({ airing: program, now: Date.now(), what: 'undo' });
-                    if (why !== null) {
-                        scope.error.programs = why;
-                        scope.error.tab = "programming";
-                    } else if (! scope.relaying()) {
-                        startUndo(program);
+                if ( (typeof(program) !== 'undefined') && scope.hasTimeSlots() && ! program.isOffline && askFirstOpen() ) {
+                    return;
+                }
+                // A row kept as it is: Delete puts it back, after one sentence.
+                if ( (typeof(program) !== 'undefined') && scope.hasTimeSlots() && keptRows.keepsItem(program) ) {
+                    if (askFirstOpen()) {
+                        return;
                     }
+                    let got = keptRows.putBack({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
+                    if (! Array.isArray(got.programs)) {
+                        showError(got.refused);
+                        return;
+                    }
+                    scope.undoPrompt = { title: 'Put back?', text: got.text, go: 'Put it back', apply: () => applyEdit(got) };
                     return;
                 }
                 if ( (typeof(program) === 'undefined') || program.isOffline || ! getShowData(program).hasShow ) {
@@ -1447,21 +1464,17 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let label = commonProgramTools.getProgramDisplayTitle(program);
                 scope.deletePrompt = { index: x, program: program, label: label, others: others,
                     holiday: showCatalog.holidayOf(program.title) || 'Christmas' };
-                // On a Time Slots channel, each choice re-lays the lineup: the prompt says what
-                // gap the airing leaves, and offers a swap when it is more than a couple of minutes.
-                // While the list holds something placed by hand (a show just added from the library),
-                // a re-lay would drop it: the delete takes the airing out of the list, as before, and
-                // Holiday and Never air are still recorded.
-                let byHand = scope.hasTimeSlots() && (pinTools.deleteMode({ programs: scope.channel.programs,
-                    startTime: new Date(scope.channel.startTime).getTime(), from: Date.now(), to: Date.now() + 400 * 24 * 60 * 60 * 1000,
-                    schedule: scope.channel.scheduleBackup, getShowData: getShowData }) === 'splice');
-                scope.deletePrompt.byHand = byHand;
-                if (scope.hasTimeSlots() && ! byHand) {
+                // On a Time Slots channel each choice is an edit to the list, said before it is made:
+                // this airing only leaves kept Flex and its episode airs at its show's next airing;
+                // Holiday and Never air give the slot its show's next episode, with no gap.
+                if (scope.hasTimeSlots()) {
+                    let lineup = lineupMs();
+                    let now = Date.now();
                     scope.deletePrompt.timeSlots = true;
-                    scope.deletePrompt.gap = pinTools.sayRemoval({ programs: scope.channel.programs,
-                        startTime: new Date(scope.channel.startTime).getTime(), index: x, schedule: scope.channel.scheduleBackup });
+                    scope.deletePrompt.only = keptRows.removeOnly({ lineup, index: x, now, schedule: scope.channel.scheduleBackup });
+                    scope.deletePrompt.out = keptRows.leaveOut({ lineup, index: x, now, schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
                     // On air or aired: it can't be removed or swapped, but Holiday and Never air still work.
-                    scope.deletePrompt.blocked = pinTools.whyNot({ airing: program, now: Date.now(), what: 'remove' });
+                    scope.deletePrompt.blocked = pinTools.whyNot({ airing: program, now: now, what: 'remove' });
                 }
             }
             scope.finishDelete = (choice) => {
@@ -1480,7 +1493,21 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
                 if (prompt.timeSlots) {
-                    deleteByRelay(prompt, choice);
+                    // Worked out again on the list as it is now.
+                    let lineup = lineupMs();
+                    let now = Date.now();
+                    if (choice === 'only') {
+                        applyEdit(keptRows.removeOnly({ lineup, index: x, now, schedule: scope.channel.scheduleBackup }));
+                        return;
+                    }
+                    let got = keptRows.leaveOut({ lineup, index: x, now, schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
+                    if (Array.isArray(got.programs)) {
+                        applyEdit(got);
+                    } else {
+                        scope.lastChange = `${prompt.label} is left out from the next Create Lineup on.`;
+                    }
+                    queueCatalogOps([ { neverAir: [ showCatalog.neverAirEntry(prompt.program, getShowData, 'deleted', choice,
+                        (choice === 'holiday') ? prompt.holiday : undefined, now) ] } ]);
                     return;
                 }
                 pinTools.removeAiring(scope.channel.programs, prompt.program);
@@ -2681,6 +2708,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
 
             scope.onTimeSlotsButtonClick = async () => {
+                if (askFirstOpen()) {
+                    return;
+                }
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state );
@@ -2711,6 +2741,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
 
             scope.rerollTimeSlots = async () => {
+                if (askFirstOpen()) {
+                    return;
+                }
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
@@ -2788,79 +2821,150 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
 
             /*
-             * Swaps and inserts (src/pins.js; NOTES.md, "Swaps, inserts and
-             * Flex that keeps time"): only on a channel with a Time Slots
-             * schedule, since every one re-lays the lineup through it.
+             * Hand edits on a Time Slots channel (src/kept-rows.js; NOTES.md, "What
+             * you see is what airs: hand edits kept in the list"): Swap, Insert after,
+             * Delete, Remove this airing only, a drag and the library's add change the
+             * list itself, and each says what it did in one sentence. Nothing is
+             * re-laid; Create Lineup keeps every row edited by hand where it sits.
              */
             scope.hasTimeSlots = () => ! scope.hasNoTimeSlots() && (scope.timeSlots !== null);
             scope.canSwap = (x) => scope.hasTimeSlots() && (x !== null) && ! x.isOffline;
-            // Re-lays share the Time Slots editor's state: one at a time, and
-            // nothing else that changes the lineup or saves it while one runs.
-            let relayGate = pinTools.oneAtATime();
-            scope.relaying = () => relayGate.busy();
-            let guardedRelay = (args) => relayGate.run( () => scope.timeSlots.relay(args) );
-            // A swap or insert dialog plans its re-lays once, through the same gate; they then run in the re-lay worker.
-            let guardedPlan = (args) => relayGate.run( () => scope.timeSlots.plan(args) );
+            scope.lastChange = '';
+            let lineupMs = () => ({ programs: scope.channel.programs, startTime: new Date(scope.channel.startTime).getTime() });
+            let showError = (text) => {
+                scope.error.programs = text;
+                scope.error.tab = "programming";
+                $timeout();
+            };
+            // An edit's answer: its list, and its sentence under the Go to line; or why not.
+            let applyEdit = (got) => {
+                if (! Array.isArray(got.programs)) {
+                    if (typeof(got.refused) === 'string') {
+                        showError(got.refused);
+                    }
+                    return false;
+                }
+                scope.channel.programs = got.programs;
+                updateChannelDuration();
+                scope.lastChange = got.text || '';
+                return true;
+            };
+
+            /*
+             * The first open (Ron, Oct 29): a channel whose list still holds pins from
+             * before kept rows says once what it keeps where it sits and what it lets go.
+             * Keep makes them kept rows, saved with Update Channel; Not now changes
+             * nothing and it asks again - before any edit, Create Lineup or Regenerate.
+             */
+            scope.firstOpenPrompt = null;
+            let firstOpenAnswered = false;
+            let firstOpenFound = () => {
+                if ( firstOpenAnswered || ! scope.hasTimeSlots() || (typeof(scope.channel.handEditsKept) === 'string') ) {
+                    return null;
+                }
+                let lineup = lineupMs();
+                let found = keptRows.firstOpen({ programs: lineup.programs, startTime: lineup.startTime, now: Date.now(),
+                    schedule: scope.channel.scheduleBackup, getShowData: getShowData });
+                return found.needed ? found : null;
+            };
+            // True when the first open must be answered first: it shows, and what was asked waits.
+            let askFirstOpen = () => {
+                let found = firstOpenFound();
+                if (found === null) {
+                    return false;
+                }
+                scope.firstOpenPrompt = { lines: found.lines };
+                $timeout();
+                return true;
+            };
+            scope.finishFirstOpen = (keep) => {
+                scope.firstOpenPrompt = null;
+                if (keep) {
+                    let lineup = lineupMs();
+                    scope.channel.programs = keptRows.applyFirstOpen({ programs: lineup.programs, startTime: lineup.startTime, now: Date.now(),
+                        schedule: scope.channel.scheduleBackup, getShowData: getShowData });
+                    scope.channel.handEditsKept = new Date().toISOString();
+                    firstOpenAnswered = true;
+                    updateChannelDuration();
+                    scope.lastChange = 'Your swaps, inserts and moved rows are kept where they sit; Update Channel saves it.';
+                }
+                $timeout();
+            };
+            // Shown as the channel opens, once its list and its Time Slots editor are there.
+            let askedAtOpen = false;
+            scope.$watch( () => scope.hasTimeSlots() && Array.isArray(scope.channel.programs) && (scope.channel.programs.length > 0), (ready) => {
+                if (ready && ! askedAtOpen) {
+                    askedAtOpen = true;
+                    askFirstOpen();
+                }
+            } );
+
             scope.swapRequest = null;
-            // `moving`: a pinned airing dragged to this spot, to be re-pinned here.
-            let openPlacing = async (index, mode, moving) => {
-                if (relayGate.busy()) {
+            let openPlacing = (index, mode) => {
+                if (askFirstOpen()) {
                     return;
                 }
-                let why = (moving ? pinTools.whyNot({ airing: moving, now: Date.now(), what: 'move' }) : null)
-                    || pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
+                let why = pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
                 if (why !== null) {
-                    scope.error.programs = why;
-                    scope.error.tab = "programming";
-                    $timeout();
+                    showError(why);
                     return;
                 }
-                // Not opened for a server still running older code (src/build-check.js).
-                try {
-                    await buildCheck.guard({ fetchVersion: () => dizquetv.getCodeBuild(), run: async () => null });
-                } catch (err) {
-                    scope.error.programs = err.message;
-                    scope.error.tab = "programming";
-                    $timeout();
-                    return;
-                }
-                scope.swapRequest = {
-                    channel: scope.channel, index: index, mode: mode, move: moving || null,
-                    plan: guardedPlan, limit: scope.maxSize, catalogState: catalogFor,
-                };
+                scope.swapRequest = { channel: scope.channel, index: index, mode: mode, catalogState: catalogFor };
                 $timeout();
             };
             scope.startSwap = (index) => openPlacing(index, 'swap');
             scope.startInsert = (index) => openPlacing(index, 'insert');
-            // A re-lay's result, applied as Create Lineup's is.
-            let applyRelay = (result) => {
-                scope.channel.scheduleBackup = result.schedule;
-                readSlotsResult(result);
-                queueCatalogOps(result.catalogOps);
-            };
             scope.finishSwap = (result) => {
                 scope.swapRequest = null;
                 if (result) {
-                    applyRelay(result);
+                    applyEdit(result);
                 }
                 $timeout();
             };
-            scope.rowPinTitle = (x) => {
-                if (! x || ! x.pin) {
-                    return '';
+            // The library's add: inserted after the first row in view that takes it, one after another.
+            let insertFromLibrary = (selected) => {
+                if (askFirstOpen()) {
+                    return;
                 }
-                let what = x.isOffline ? 'Flex' : 'Pinned';
-                return `${what} for ${pinTools.dayClock(x.pin.at)}` + (x.pin.was ? `, in place of ${x.pin.was}` : '')
-                    + ' - kept by Create Lineup until it airs';
+                let text = [];
+                let after = null;
+                selected.forEach( (item) => {
+                    let lineup = lineupMs();
+                    let from = (after === null) ? Math.max(0, scope.currentStartIndex || 0) : lineup.programs.indexOf(after);
+                    for (let i = from; i < lineup.programs.length; i++) {
+                        if (lineup.programs[i].isOffline) {
+                            continue;
+                        }
+                        let got = keptRows.insertAfter({ lineup, index: i, item: item, now: Date.now() });
+                        if (Array.isArray(got.programs)) {
+                            scope.channel.programs = got.programs;
+                            after = got.programs.find( (p) => (p.kept && (p.title === item.title) && (p.duration === item.duration)
+                                && lineup.programs.indexOf(p) === -1) ) || null;
+                            text.push(got.text);
+                            break;
+                        }
+                    }
+                } );
+                updateChannelDuration();
+                scope.lastChange = text.join(' ');
             };
-            // The pins still to air, worked out again only when the lineup changes.
+
+            // What a kept row's mark says, and which: a pin for a row kept as it is, a clock for one kept in time.
+            scope.rowKeptTitle = (x) => (x && x.pin)
+                ? `Pinned for ${pinTools.dayClock(x.pin.at)}` + (x.pin.was ? `, in place of ${x.pin.was}` : '') + ': from before kept rows, kept where it sits once you answer the list'
+                : keptRows.rowNote(x);
+            scope.rowKeptIcon = (x) => ( (x && x.pin) || keptRows.keepsItem(x) ) ? 'fa-thumbtack' : 'fa-clock';
+            scope.rowDeleteTitle = (x) => (scope.hasTimeSlots() && x && keptRows.keepsItem(x)) ? 'Put back...' : 'Delete...';
+            // The edits still to air that keep a row as it is, worked out again only when the lineup changes.
             let pinListOf = { version: -1, list: [] };
             scope.pinList = () => {
                 let version = scope.flexTagVersion || 0;
                 if (pinListOf.version !== version) {
-                    let start = new Date(scope.channel.startTime).getTime();
-                    pinListOf = { version: version, list: pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: Date.now() })
-                        .map( (x) => ({ at: x.at, text: pinTools.dayClock(x.at) + ' ' + (x.program.isOffline ? 'Flex in place of ' + x.program.pin.was : pinTools.label(x.program)) }) ) };
+                    let lineup = lineupMs();
+                    pinListOf = { version: version, list: keptRows.keptAhead({ programs: lineup.programs, startTime: lineup.startTime, now: Date.now() })
+                        .filter( (x) => x.program.pin || keptRows.keepsItem(x.program) )
+                        .map( (x) => ({ at: x.at, text: pinTools.dayClock(x.at) + ' ' + (x.program.isOffline ? 'Flex' : pinTools.label(x.program))
+                            + (keptRows.rowNote(x.program) ? ' - ' + keptRows.rowNote(x.program).replace(/:.*$/, '') : '') }) ) };
                 }
                 return pinListOf.list;
             };
@@ -2895,55 +2999,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
             };
 
-            /*
-             * Deleting a pinned row undoes it: the lineup is re-laid without the
-             * pin first, and the prompt says what comes back, what a re-lay
-             * changes anyway and what it drops; only "Undo it" applies it.
-             */
+            // An edit that asks first, in one sentence: { title, text, go, apply }.
             scope.undoPrompt = null;
-            let startUndo = async (program) => {
-                let label = program.isOffline ? `Flex in place of ${program.pin.was}` : pinTools.label(program);
-                scope.undoPrompt = { program: program, working: true, text: `Working out what undoing ${label} does...`, result: null };
-                $timeout();
-                try {
-                    let start = new Date(scope.channel.startTime).getTime();
-                    let now = Date.now();
-                    let ahead = pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: now });
-                    // As the swap dialog does: the undo's own effects are the re-lay
-                    // without the pin against the same re-lay with it, both made from
-                    // one plan; what re-making the lineup changes anyway is said apart.
-                    let [ baseline, result ] = await guardedRelay({
-                        programs: commonProgramTools.slotPool(scope.channel.programs), limit: scope.maxSize,
-                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: await catalogFor(), now: now,
-                        pinSets: [ ahead, ahead.filter( (x) => x.program !== program ) ],
-                    });
-                    let lineupOf = (r) => ({ programs: r.programs, startTime: new Date(r.startTime).getTime() });
-                    let year = 400 * 24 * 60 * 60 * 1000;
-                    let own = pinTools.relayEffects({ before: lineupOf(baseline), after: lineupOf(result), from: Math.max(now, program.pin.at - 2000),
-                        to: now + year, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
-                    let all = pinTools.relayEffects({ before: { programs: scope.channel.programs, startTime: start }, after: lineupOf(baseline),
-                        from: now, to: now + year, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
-                    let anywayText = ( (all.movedAlong.length + all.late.length + all.early.length) > 0 )
-                        ? 'Re-making the lineup now also changes, with or without this undo: ' + pinTools.sayEffects(all) : '';
-                    // Other pins the re-lay moves back to their time or drops - not the one undone.
-                    let moved = pinTools.pinsMoved({ before: { programs: scope.channel.programs, startTime: start }, after: lineupOf(baseline), from: now })
-                        .filter( (m) => m.program !== program );
-                    if (scope.undoPrompt && (scope.undoPrompt.program === program)) {
-                        scope.undoPrompt = { program: program, working: false, result: result,
-                            text: pinTools.sayUndo({ label: label, at: program.pin.at, effects: own, anyway: anywayText, dropped: all.dropped, moved: moved }),
-                            items: pinTools.droppedBehind(all.dropped) };
-                    }
-                } catch (err) {
-                    console.error(err);
-                    scope.undoPrompt = null;
-                    scope.error.programs = (err && err.serverStale) ? err.message : (err && err.message === 'busy')
-                        ? 'Another swap is still being worked out - try again in a moment.'
-                        : 'Could not work out the undo: ' + ( (err && (err.data || err.message)) || err );
-                } finally {
-                    $timeout();
-                }
-            };
-            // Escape always leaves a prompt: the undo/confirm one, which sits on top, or the delete one.
+            // Escape always leaves a prompt: the asking one, which sits on top, or the delete one.
             let onEscape = (event) => {
                 let what = pinTools.escapeAction({ key: event.key, deletePrompt: scope.deletePrompt, undoPrompt: scope.undoPrompt });
                 if (what === null) {
@@ -2962,86 +3020,62 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.finishUndo = (yes) => {
                 let prompt = scope.undoPrompt;
                 scope.undoPrompt = null;
-                if (yes && (prompt !== null) && (prompt.result !== null)) {
-                    applyRelay(prompt.result);
-                    if (typeof(prompt.afterApply) === 'function') {
-                        prompt.afterApply();
-                    }
+                if (yes && (prompt !== null) && (typeof(prompt.apply) === 'function')) {
+                    prompt.apply();
                 }
                 $timeout();
             };
 
             /*
-             * Deleting an airing on a Time Slots channel re-lays the lineup, on the lineup
-             * as it is - the airing still in it, so its show's place is read before it:
-             *   only    a pinned Flex of the airing's length keeps its time; the episode airs
-             *           at its show's next slot;
-             *   holiday / never   the episode goes on the never-air list for the re-lay, and
-             *           the slot airs its show's next episode: no gap.
-             * It applies at once, unless the re-lay would drop something placed by hand: then
-             * the prompt names each item and asks.
+             * The whole-list tools rebuild the list, so on a Time Slots channel with
+             * hand edits they say so first, in one sentence; their result isn't kept
+             * (the marks come off). A tool that calls another runs it inside the
+             * first's answer.
              */
-            let deleteByRelay = async (prompt, choice) => {
-                let program = prompt.program;
-                scope.undoPrompt = { program: program, working: true, title: 'Delete ' + prompt.label, go: 'Delete it',
-                    text: 'Working out what deleting it does...', result: null };
-                $timeout();
-                try {
-                    let start = new Date(scope.channel.startTime).getTime();
-                    let now = Date.now();
-                    let ops = (choice === 'only') ? [] : [ { neverAir: [ showCatalog.neverAirEntry(program, getShowData, 'deleted', choice,
-                        (choice === 'holiday') ? prompt.holiday : undefined, now) ] } ];
-                    let base = await catalogFor();
-                    let state = showCatalog.applyOps(base, ops, now);
-                    state.channelNumber = base.channelNumber;
-                    state.unreadable = base.unreadable;
-                    let keep = pinTools.pinsAhead({ programs: scope.channel.programs, startTime: start, now: now });
-                    if (choice === 'only') {
-                        let schedule = scope.channel.scheduleBackup;
-                        let at = program.start.valueOf();
-                        let around = pinTools.slotAround({ schedule: schedule, at: at });
-                        if ( (around !== null) && (Math.abs(at - around.start) <= 10000) ) {
-                            at = around.start;
-                        }
-                        keep = pinTools.withPin(keep, pinTools.removalPin({ airing: program, at: at, slotShow: around ? around.showId : undefined, now: now }));
-                    }
-                    let result = await guardedRelay({
-                        programs: commonProgramTools.slotPool(scope.channel.programs), limit: scope.maxSize,
-                        backup: scope.channel.scheduleBackup, lineup: lineupOnAir, catalogState: state, pins: keep, now: now,
-                    });
-                    let effects = pinTools.relayEffects({ before: { programs: scope.channel.programs, startTime: start },
-                        after: { programs: result.programs, startTime: new Date(result.startTime).getTime() },
-                        from: now, to: now + 400 * 24 * 60 * 60 * 1000, schedule: scope.channel.scheduleBackup, getShowData: getShowData });
-                    // A pin moved by hand in the list goes back to its time: asked, as a drop is.
-                    let moved = pinTools.pinsMoved({ before: { programs: scope.channel.programs, startTime: start },
-                        after: { programs: result.programs, startTime: new Date(result.startTime).getTime() }, from: now });
-                    let apply = () => { applyRelay(result); queueCatalogOps(ops); };
-                    if (! pinTools.stillWanted(scope.undoPrompt, program)) {
-                        // Cancelled while it was being worked out: nothing is applied or asked.
-                        return;
-                    }
-                    if ( (effects.dropped.length === 0) && (moved.length === 0) ) {
-                        scope.undoPrompt = null;
-                        apply();
-                    } else {
-                        scope.undoPrompt = { program: program, working: false, result: result, title: 'Delete ' + prompt.label, go: 'Delete it',
-                            text: [ pinTools.sayDropped(effects.dropped) ].concat(pinTools.sayMoved(moved)).filter( (s) => s !== '' ).join(' '),
-                            items: pinTools.droppedBehind(effects.dropped), afterApply: () => queueCatalogOps(ops) };
-                    }
-                } catch (err) {
-                    console.error(err);
-                    let wanted = pinTools.stillWanted(scope.undoPrompt, program);
-                    scope.undoPrompt = null;
-                    if (! wanted) {
-                        return;
-                    }
-                    scope.error.programs = (err && err.serverStale) ? err.message : (err && err.message === 'busy')
-                        ? 'Another swap is still being worked out - try again in a moment.'
-                        : 'Could not delete it: ' + ( (err && (err.data || err.message)) || err );
-                } finally {
-                    $timeout();
-                }
+            const REBUILDS = {
+                sortShows: 'Sort', sortByDate: 'Sort by date', blockShuffle: 'Block shuffle', cyclicShuffle: 'Cyclic shuffle',
+                randomShuffle: 'Shuffle', equalizeShows: 'Equalize', replicate: 'Replicate', shuffleReplicate: 'Shuffle replicate',
+                doReruns: 'Reruns', addBreaks: 'Add breaks', padTimes: 'Pad times', nightChannel: 'Night channel',
+                slideAllPrograms: 'Slide', removeDuplicates: 'Remove duplicates', removeOffline: 'Remove Flex',
+                removeShows: 'Remove shows', recoverPositions: 'Restore positions',
+                tweakFrequencies: 'Frequency tweak', wipeSpecials: 'Remove specials', wipeSchedule: 'Clear the list',
             };
+            let rebuilding = false;
+            Object.keys(REBUILDS).forEach( (name) => {
+                let tool = scope[name];
+                if (typeof(tool) !== 'function') {
+                    return;
+                }
+                scope[name] = (...args) => {
+                    let marked = scope.hasTimeSlots() ? scope.channel.programs.filter( (p) => p.kept || p.pin ).length : 0;
+                    if (rebuilding || (marked === 0)) {
+                        return tool(...args);
+                    }
+                    scope.undoPrompt = { title: REBUILDS[name] + '?',
+                        text: `${REBUILDS[name]} rebuilds the whole list, so the ${marked} ${ (marked === 1) ? 'row' : 'rows' } you edited by hand are no longer kept.`,
+                        go: REBUILDS[name], apply: () => {
+                            rebuilding = true;
+                            try {
+                                tool(...args);
+                            } finally {
+                                rebuilding = false;
+                            }
+                            scope.channel.programs = scope.channel.programs.map( (p) => {
+                                if (! p.kept && ! p.pin) {
+                                    return p;
+                                }
+                                let copy = Object.assign({}, p);
+                                delete copy.kept;
+                                delete copy.pin;
+                                return copy;
+                            } );
+                            updateChannelDuration();
+                            scope.lastChange = `${REBUILDS[name]} rebuilt the list; nothing in it is kept by hand now.`;
+                        } };
+                    $timeout();
+                };
+            } );
+
 
 
 

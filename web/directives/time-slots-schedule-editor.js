@@ -905,7 +905,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             // The rows kept in the list, and a note for each swap or removal whose slot the schedule,
             // as it is edited here, now gives to another show: it stays where it is (Ron, Oct 29).
             let keptAhead = [];
-            scope.pinNoteList = () => keptRows.scheduleNotes({ rows: keptAhead, schedule: scope.schedule, nameOf: (id) => nameOf(id) });
+            scope.pinNoteList = () => keptRows.scheduleNotes({ rows: keptAhead, schedule: scope.schedule,
+                opened: scope.openedSchedule || undefined, nameOf: (id) => nameOf(id) });
             //`keepCatalogs`: a re-lay's, reading only the shows the last read didn't get.
             let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs) => {
                 scope.limit = limit;

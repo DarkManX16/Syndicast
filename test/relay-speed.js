@@ -108,12 +108,7 @@ module.exports = async function () {
 
     suite.log('-- undo plans once --');
     {
-        // Undo compares the lineup with the pin and without it: two re-lays of one plan,
-        // not two plans, two Plex checks and two workers.
-        const src = require('fs').readFileSync(require.resolve('../web/directives/channel-config.js'), 'utf8');
-        const undo = src.slice(src.indexOf('let startUndo = async'), src.indexOf('scope.finishUndo'));
-        suite.check('undo asks for both of its re-lays in one call, from one plan',
-            (undo.match(/guardedRelay\(/g) || []).length === 1 && /pinSets:/.test(undo), `${(undo.match(/guardedRelay\(/g) || []).length} calls`);
+        // Undo itself no longer re-lays: Put back is an edit to the list (src/kept-rows.js).
         const editor = require('fs').readFileSync(require.resolve('../web/directives/time-slots-schedule-editor.js'), 'utf8');
         const relayFn = editor.slice(editor.indexOf('let relay = async'), editor.indexOf('scope.linker('));
         suite.check('...and relay makes several pin sets from one plan and one worker session',

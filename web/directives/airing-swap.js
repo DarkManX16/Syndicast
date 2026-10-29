@@ -1,18 +1,18 @@
 /*
- * Swap an airing for another episode or item, pinned to its date and time
- * (src/pins.js). The dialog's re-lays are planned once, as it opens, by the
- * Time Slots editor (plan), and run in the re-lay worker (src/relay-worker.js,
- * off the page's main thread): the lineup without the swap, then for a pick
- * the lineup with it - twice when it runs into the next slot, once each way.
- * The dialog says in plain words what each choice does, first whatever pushes
- * a pin late or costs a show its slot; choosing one hands that re-lay to the
- * channel page, which applies it as Create Lineup's result. See NOTES.md,
- * Known issues, "Swaps, inserts and Flex that keeps time".
+ * Swap an airing for another episode or item, or insert one in the break
+ * after it: an edit to the list itself (src/kept-rows.js). A swap changes the
+ * row clicked and the Flex after it, and the episode it replaces airs at its
+ * show's next airing; an insert goes in the break. Before anything is applied
+ * the dialog says in one sentence what the edit does, and when the item is
+ * too long for its row, offers Run late or Take the next row. Nothing is
+ * re-laid. See NOTES.md, Known issues, "What you see is what airs: hand edits
+ * kept in the list".
  *
- * `request`: { channel, index, mode, plan, catalogState } from the channel
- * page; `onDone(result | null)`.
+ * `request`: { channel, index, mode, catalogState } from the channel page;
+ * `onDone({ programs, text } | null)`.
  */
 const pins = require('../../src/pins');
+const keptRows = require('../../src/kept-rows');
 const showCatalog = require('../../src/show-catalog');
 const constants = require('../../src/constants');
 const rounds = require('../../src/shuffle-rounds');
@@ -20,7 +20,7 @@ const swapRead = require('../../src/swap-read');
 
 const SAME = 2000;
 
-module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, catalogReader, relayWorker) {
+module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, catalogReader) {
     return {
         restrict: 'E',
         templateUrl: 'templates/airing-swap.html',
@@ -34,40 +34,21 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let channel = req.channel;
             let schedule = channel.scheduleBackup;
             let startTime = () => new Date(channel.startTime).getTime();
-            let lineupNow = () => ({ programs: channel.programs, startTime: channel.startTime });
-            let entry = pins.airingAt({ programs: channel.programs, startTime: startTime(), at: channel.programs[req.index].start.valueOf() });
-            let airing = channel.programs[req.index];
-            let around = pins.slotAround({ schedule, at: entry.start });
+            let lineupNow = () => ({ programs: channel.programs, startTime: startTime() });
             let isInsert = (req.mode === 'insert');
-            // A pinned airing dragged here (Ron, Oct 29): re-pinned at this spot, the item already
-            // chosen. Its old pin stays in the re-lay without the move, so what moving it does -
-            // its old slot getting its own show back too - is said as this choice's own effects.
-            let moving = req.move || null;
-            scope.moving = (moving !== null);
-            // Dropped where it sits, out of place: pinned there, to its row's time.
-            let inPlace = (moving !== null) && (moving === airing);
-            scope.verb = inPlace ? 'Pin' : (moving ? 'Move' : (isInsert ? 'Insert after' : 'Swap'));
-            // A swap sits at its slot's start when the airing is that close to it; an
-            // insert at the end of the airing, in the break after it.
-            let at = isInsert ? entry.start + airing.duration
-                : ( ( (around !== null) && (Math.abs(entry.start - around.start) <= constants.SLACK) ) ? around.start : entry.start );
-            let flexAfter = pins.walk(channel.programs, startTime(), entry.start, entry.start + 1)[0].flex;
-            // The slot's show the pin is made in: the airing's, or where a break was moved to.
-            let slotShowAt = (instant) => { let s = pins.slotAround({ schedule, at: instant }); return s ? s.showId : getShowData(airing).showId; };
+            scope.verb = isInsert ? 'Insert after' : 'Swap';
+            // The row clicked - or, for an insert moved to another break, the row before it.
+            let index = req.index;
+            let rowOf = (i) => keptRows.rowsOf(lineupNow()).find( (r) => r.index === i );
+            let row = rowOf(index);
+            let airing = row.program;
+            let around = pins.slotAround({ schedule, at: row.start });
             scope.showId = pins.swapShow({ airing, slotShow: around ? around.showId : undefined, getShowData });
             let retitle = () => {
-                if (inPlace) {
-                    scope.title = `${pins.label(moving)} where it sits, ${pins.dayClock(at)}, instead of its pinned ${pins.dayClock(moving.pin.at)}`;
-                    return;
-                }
-                scope.title = (moving ? `${pins.label(moving)}, pinned to ${pins.dayClock(moving.pin.at)}, to ` : '') + (isInsert
-                    ? `${pins.dayClock(at)}, in the break after ${pins.label(scope.afterProgram)}` + ( (scope.breakLength > 0) ? ` (${pins.length(scope.breakLength)} of Flex)` : '' )
-                    : `${pins.dayClock(at)} - ${pins.label(airing)}, ${pins.length(airing.duration)}` + ( (flexAfter > 0) ? `, then ${pins.length(flexAfter)} of Flex` : '' ));
+                scope.title = isInsert
+                    ? `${pins.dayClock(row.start + row.program.duration)}, in the break after ${pins.label(row.program)}` + ( (row.flex > 0) ? ` (${pins.length(row.flex)} of Flex)` : '' )
+                    : `${pins.dayClock(row.start)} - ${pins.label(airing)}, ${pins.length(airing.duration)}` + ( (row.flex > 0) ? `, then ${pins.length(row.flex)} of Flex` : '' );
             };
-            // The start of the program an insert follows - moved with it to another break.
-            let afterStart = entry.start;
-            scope.afterProgram = airing;
-            scope.breakLength = flexAfter;
             retitle();
             scope.state = 'pick';
             scope.filter = { text: '' };
@@ -75,12 +56,6 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             scope.items = [];
             scope.loading = false;
             scope.error = null;
-
-            // Swapping a pinned airing replaces its pin; inserting after one keeps it.
-            let ahead = () => pins.pinsAhead({ programs: channel.programs, startTime: startTime(), now: Date.now() })
-                .filter( (x) => isInsert || (x.program !== airing) );
-            // The pins kept with the new one: all but the one being moved.
-            let others = () => ahead().filter( (x) => x.program !== moving );
 
             // The shows this channel's slots play, for "Other shows on this channel".
             let names = new Map();
@@ -96,20 +71,17 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             scope.customShows = [];
             let customFromLineup = false;
 
-            // When the lineup re-made without the swap still has a program on at `at`,
-            // where that ends: an item can only start then (see baselineFor).
-            let heldUntil = null;
+            // Whether an item fits: a swap's room is the row and the Flex after it, an insert's the Flex.
             let describe = (p) => {
-                let fit = pins.fitAt({ programs: channel.programs, startTime: startTime(), schedule, at, duration: p.duration });
-                let overrun = (heldUntil === null) ? fit.overrun : Math.max(0, heldUntil + p.duration - fit.slotEnd);
+                let room = isInsert ? row.flex : row.program.duration + row.flex;
+                let overrun = p.duration - room;
                 return {
                     program: p,
                     label: pins.label(p),
                     length: pins.length(p.duration),
                     holiday: showCatalog.holidayOf(p.title),
                     fits: overrun <= constants.SLACK,
-                    over: pins.length(overrun),
-                    late: (heldUntil === null) ? '' : `starts late, at ${pins.clock(heldUntil)}`,
+                    over: pins.length(Math.max(0, overrun)),
                 };
             };
             let order = (a, b) => (getShowData(a).order - getShowData(b).order);
@@ -192,267 +164,103 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 $timeout();
             };
             scope.reload = () => load();
-            scope.visible = (row) => {
+            scope.visible = (r) => {
                 let f = scope.filter.text.trim().toLowerCase();
-                return (f === '') || row.label.toLowerCase().includes(f) || (row.holiday && row.holiday.toLowerCase().includes(f));
-            };
-
-            // What the dialog is doing while it works, in a line.
-            scope.progress = 'Working it out...';
-            let say = (text) => {
-                scope.progress = text;
-                $timeout();
-            };
-            // Every re-lay of this dialog is planned once, as of the moment it opened: the
-            // pool, every position's place and the program on air are the same for each.
-            let relayNow = Date.now();
-            let session = `swap-${relayNow}-${Math.random().toString(36).slice(2)}`;
-            // Its own worker, loading while the re-lays are planned.
-            relayWorker.begin(session);
-            let planned = null;
-            let planOf = () => {
-                if (planned === null) {
-                    planned = (async () => {
-                        let t0 = Date.now();
-                        say('Getting the lineup ready...');
-                        let made = await req.plan({
-                            programs: commonProgramTools.slotPool(channel.programs), limit: req.limit,
-                            backup: schedule, lineup: lineupNow, catalogState: await req.catalogState(), now: relayNow,
-                            onReading: (count) => say(`Reading ${count} ${ (count === 1) ? "show's catalog" : "shows' catalogs" } from Plex...`),
-                        });
-                        await relayWorker.open(session, made.inputs, { programs: channel.programs, startTime: startTime() });
-                        console.log(`Swap: planned the re-lays in ${Date.now() - t0} ms`);
-                        return made;
-                    })();
-                    planned.catch( () => { planned = null; } );
-                }
-                return planned;
-            };
-            // One re-lay in the worker, kept there by `key`; asked again with the same pins, not re-made.
-            let relayIn = async (key, list, what) => {
-                await planOf();
-                say(what);
-                let t0 = Date.now();
-                let got = await relayWorker.call({ type: 'relay', session, key, pins: list });
-                console.log(`Swap: re-laid the lineup (${key}) in ${Date.now() - t0} ms${got.cached ? ', kept from before' : ''}`);
-                return got;
-            };
-            /*
-             * A re-lay changes things no pin causes: what's on air re-airs at
-             * its show's next slot (stored progress's rule), and a lineup made
-             * before rounds starts rounds of its own when its carried ones end.
-             * So the swap's own effects are the re-lay with it against the
-             * same re-lay without it (made once, as the dialog opens), and the
-             * rest is said apart.
-             */
-            let baseline = null;
-            let baselineOf = () => {
-                if (baseline === null) {
-                    baseline = relayIn('base', ahead(), 'Re-making the lineup as it is...');
-                    baseline.catch( () => { baseline = null; } );
-                }
-                return baseline;
-            };
-            // What the lineup without the swap says about `at` - asked again when an insert moves.
-            let said = new Map();
-            let baselineFor = async (instant) => {
-                await baselineOf();
-                if (! said.has(instant)) {
-                    said.set(instant, await relayWorker.call({ type: 'baseline', session, key: 'base', now: relayNow, at: instant }));
-                }
-                return said.get(instant);
-            };
-            let relayWith = async (pin, what) => {
-                let base = await baselineFor(at);
-                let key = `${pin.pin.then}|${pin.pin.at}|${rounds.fileKey(pin)}`;
-                await relayIn(key, pins.withPin(others(), pin), what);
-                say('Working out what changes...');
-                let mine = await relayWorker.call({ type: 'option', session, key, base: 'base', now: relayNow, at, item: pin, kind: pin.pin.kind,
-                    moving: moving ? moving.pin.at : undefined });
-                return { key, placed: mine.placed, fitText: mine.fitText, effects: mine.effects, onAir: inPlace ? '' : base.anyway, dropped: base.dropped,
-                    alerts: mine.alerts.filter( (a) => ! base.alerts.includes(a) ), anywayAlerts: base.alerts };
+                return (f === '') || r.label.toLowerCase().includes(f) || (r.holiday && r.holiday.toLowerCase().includes(f));
             };
 
             // A holiday row names its episode by file; its program comes from the show's catalog.
-            let programOf = async (row) => {
-                if (row.program !== null) {
-                    return row.program;
+            let programOf = async (r) => {
+                if (r.program !== null) {
+                    return r.program;
                 }
-                let found = (await readShow(row.entry.showId)).find( (p) => rounds.fileKey(p) === row.entry.key );
+                let found = (await readShow(r.entry.showId)).find( (p) => rounds.fileKey(p) === r.entry.key );
                 if (typeof(found) === 'undefined') {
-                    throw new Error(`${row.entry.title} can't be found in its show any more - check the Catalog page.`);
+                    throw new Error(`${r.entry.title} can't be found in its show any more - check the Catalog page.`);
                 }
-                row.program = found;
+                r.program = found;
                 return found;
             };
 
-            scope.choose = async (row) => {
-                scope.state = 'working';
+            /*
+             * The edit, worked out on the list as it is: one choice when the item
+             * fits; Run late and Take the next row when a swap's item is too long
+             * (Take is refused, with its reason, when it would run into a row you
+             * placed); an insert too long for its break runs late, and the breaks
+             * nearby it fits whole are offered too.
+             */
+            scope.choose = async (r) => {
                 scope.error = null;
-                $timeout();
                 let p;
                 try {
-                    p = await programOf(row);
+                    p = await programOf(r);
                 } catch (err) {
                     scope.error = err.message;
-                    scope.state = 'pick';
                     $timeout();
                     return;
                 }
-                let clash = others().find( (x) => (x.at < at + p.duration) && (at < x.at + x.program.duration) );
-                if (clash) {
-                    scope.error = `That would run into your swap at ${pins.dayClock(clash.at)} (${clash.program.title}). Undo that one first, or pick something shorter.`;
-                    scope.state = 'pick';
-                    $timeout();
-                    return;
-                }
-                scope.chosen = row;
-                try {
-                    let make = (then) => pins.makePin({ program: p, at, kind: isInsert ? 'insert' : 'swap', then,
-                        was: (isInsert || inPlace) ? undefined : pins.label(airing), slotShow: slotShowAt(isInsert ? afterStart : at), now: Date.now() });
-                    let take = await relayWith(make('take'), `Re-making the lineup with ${p.title}...`);
-                    if (! take.placed) {
-                        // The generator leaves out a pin it can't place: never apply a re-lay without it.
-                        scope.error = `The lineup can't hold ${p.title} at ${pins.dayClock(at)}: it is past the end of what Create Lineup makes (${schedule.maxDays} days), or the lineup is full. Nothing was changed.`;
-                        scope.state = 'pick';
-                        return;
+                scope.chosen = r;
+                let now = Date.now();
+                let lineup = lineupNow();
+                let option = (label, got) => ({ label: label, got: got, text: got.programs ? got.text : got.refused, refused: ! got.programs });
+                scope.options = [];
+                scope.breaks = [];
+                if (isInsert) {
+                    let got = keptRows.insertAfter({ lineup, index, item: p, now });
+                    scope.options.push(option('Insert', got));
+                    if (got.programs && (p.duration > row.flex + constants.SLACK)) {
+                        scope.breaks = pins.breaksThatFit({ programs: channel.programs, startTime: startTime(), near: row.start + row.program.duration,
+                            within: 12 * 60 * 60 * 1000, duration: p.duration, notBefore: now })
+                            .filter( (b) => Math.abs(b.start - (row.start + row.program.duration)) > SAME )
+                            .map( (b) => ({ text: `${pins.dayClock(b.start)}, after ${pins.label(b.after.program)} - a break of ${pins.length(b.length)}`, after: b.after.program }) );
                     }
-                    let fit = pins.fitAt({ programs: channel.programs, startTime: startTime(), schedule, at, duration: p.duration });
-                    scope.fitText = take.fitText;
-                    scope.options = [];
-                    scope.breaks = [];
-                    if (fit.overrun <= constants.SLACK) {
-                        scope.options.push(Object.assign({ label: moving ? 'Move' : (isInsert ? 'Insert' : 'Swap') }, take));
+                } else {
+                    let got = keptRows.swap({ lineup, index, item: p, now, schedule });
+                    if (Array.isArray(got.choices)) {
+                        scope.options.push(option('Run late', keptRows.swap({ lineup, index, item: p, choice: 'late', now, schedule })));
+                        scope.options.push(option('Take the next row', keptRows.swap({ lineup, index, item: p, choice: 'take', now, schedule })));
                     } else {
-                        let late = await relayWith(make('late'), `Re-making the lineup with ${p.title} running late...`);
-                        let into = fit.runsInto ? ` ${pins.clock(fit.slotEnd)} slot` : ' next slot';
-                        let takeOver = Object.assign({ label: `Take over the${into}` }, take);
-                        let runLate = late.placed ? Object.assign({ label: 'Run late' }, late) : null;
-                        // An insert's first choice is to run late: it is the shortest way to
-                        // keep what follows; a swap's is to take the slot over.
-                        let ordered = isInsert ? [ runLate, takeOver ] : [ takeOver, runLate ];
-                        ordered.forEach( (o) => { if (o !== null) { scope.options.push(o); } } );
-                        if (isInsert) {
-                            scope.breaks = pins.breaksThatFit({ programs: channel.programs, startTime: startTime(), near: at, within: 12 * 60 * 60 * 1000, duration: p.duration, notBefore: Date.now() })
-                                .filter( (b) => Math.abs(b.start - at) > SAME )
-                                .map( (b) => ({ start: b.start, text: `${pins.dayClock(b.start)}, after ${pins.label(b.after.program)} - a break of ${pins.length(b.length)}`, after: b.after.program, afterStart: b.after.start, length: b.length }) );
-                        }
+                        scope.options.push(option('Swap', got));
                     }
-                    let dropped = scope.options[0].dropped;
-                    let firstSwap = ahead().length === 0 && ! channel.programs.some( (x) => x.pin );
-                    scope.warning = (firstSwap || dropped.length > 0)
-                        ? (firstSwap ? pins.sayFirstSwap({ dropped }) : pins.sayDropped(dropped)) : '';
-                    scope.warningItems = pins.droppedBehind(dropped);
-                    scope.showWarningItems = false;
-                    // Said first, before any choice: a pin pushed late, a show losing its slot.
-                    scope.alerts = scope.options[0].anywayAlerts.map( (a) => 'Re-making the lineup now, with or without this: ' + a )
-                        .concat( (scope.options.length === 1)
-                            ? scope.options[0].alerts
-                            : [].concat(...scope.options.map( (o) => o.alerts.map( (a) => `If you choose "${o.label}": ${a}` ) )) );
-                    scope.error = null;
-                    scope.state = 'choose';
-                } catch (err) {
-                    console.error(err);
-                    scope.error = (err && err.serverStale) ? err.message : (err && err.message === 'busy') ? 'Another swap or undo is still being worked out - try again in a moment.' : 'The lineup could not be re-made: ' + ( (err && (err.data || err.message)) || err );
-                    scope.state = 'pick';
-                } finally {
-                    $timeout();
                 }
+                if (scope.options.every( (o) => o.refused )) {
+                    scope.error = scope.options[0].text;
+                    scope.options = [];
+                    $timeout();
+                    return;
+                }
+                scope.state = 'choose';
+                $timeout();
             };
-            // "A break where it fits": the insert moves to that break and is worked out again.
-            scope.putInBreak = async (b) => {
-                let was = { at: at, afterStart: afterStart, afterProgram: scope.afterProgram, breakLength: scope.breakLength };
-                at = b.start;
-                afterStart = b.afterStart;
-                scope.afterProgram = b.after;
-                scope.breakLength = b.length;
+            // "A break where it fits": the insert goes after another program, worked out again.
+            scope.putInBreak = (b) => {
+                let i = channel.programs.indexOf(b.after);
+                if (i === -1) {
+                    return;
+                }
+                index = i;
+                row = rowOf(index);
                 retitle();
-                // The dialog's own re-lays are planned from the lineup as it is; only the pin moves.
-                await scope.choose(scope.chosen);
-                if (scope.state !== 'choose') {
-                    // Refused or failed: the dialog stays pointed at the break it was.
-                    at = was.at;
-                    afterStart = was.afterStart;
-                    scope.afterProgram = was.afterProgram;
-                    scope.breakLength = was.breakLength;
-                    retitle();
-                    $timeout();
-                }
+                scope.choose(scope.chosen);
             };
-            // The chosen lineup comes back from the worker only now, with what the plan hands back with it.
-            scope.apply = async (option) => {
-                scope.state = 'working';
-                say('Putting it in the list...');
-                try {
-                    let made = await planOf();
-                    let result = await relayWorker.call({ type: 'result', session, key: option.key });
-                    close();
-                    scope.onDone(Object.assign(result, { schedule: JSON.parse(JSON.stringify(made.schedule)), catalogOps: made.catalogOps }));
-                } catch (err) {
-                    console.error(err);
-                    scope.error = 'The lineup could not be put in the list: ' + ( (err && err.message) || err );
-                    scope.state = 'choose';
-                    $timeout();
+            scope.apply = (o) => {
+                if (! o.refused) {
+                    scope.onDone({ programs: o.got.programs, text: o.got.text });
                 }
             };
             scope.back = () => {
                 scope.state = 'pick';
                 scope.options = [];
-            };
-            let closed = false;
-            let close = () => {
-                if (! closed) {
-                    closed = true;
-                    relayWorker.call({ type: 'close', session }).catch( () => null );
+                if (index !== req.index) {
+                    index = req.index;
+                    row = rowOf(index);
+                    retitle();
                 }
             };
             scope.cancel = () => {
-                close();
                 scope.onDone(null);
             };
-            scope.$on('$destroy', close);
-
-            if (moving) {
-                // Nothing to pick: straight to what moving it here does. Refused, it says why and offers only Cancel.
-                scope.state = 'working';
-                scope.choose({ program: moving }).then( () => {
-                    if (scope.state === 'pick') {
-                        scope.state = 'refused';
-                        $timeout();
-                    }
-                } );
-            } else {
-                load();
-            }
-            // The lineup without the swap, worked out while Ron picks; then the picker's
-            // "fits" counts from wherever a program still on would hold the item back.
-            scope.preparing = true;
-            // Said while picking too (Ron, Oct 29): when the list is off - a pin dragged out of
-            // place - the airing clicked may sit in another show's slot, and "This show" is the slot's.
-            scope.pickAlerts = [];
-            baselineFor(at).then( (base) => {
-                heldUntil = base.heldUntil;
-                let own = getShowData(airing).showId;
-                let notes = [];
-                if ( ! moving && ! isInsert && ! airing.pin && around && (around.showId !== own) ) {
-                    notes.push(`${pins.dayClock(at)} is ${(names.get(around.showId) || around.showId.replace(/^(tv|custom)\./, ''))}'s slot in your schedule, `
-                        + `not ${getShowData(airing).showDisplayName}'s: the list is off here.`);
-                }
-                notes = notes.concat(base.alerts.map( (a) => 'Re-making the lineup now, with or without this: ' + a ));
-                if ( (notes.length > 0) && base.alerts.some( (a) => a.includes('in the list, but it is pinned to') ) ) {
-                    notes.push('To keep a pin where it sits in the list, drag it onto its own row: it is pinned there.');
-                }
-                scope.pickAlerts = notes;
-                // Only the fit is worked out again: a holiday row keeps its own label, and no program until picked.
-                scope.items.forEach( (r) => {
-                    let d = describe(r.program || { title: r.label, duration: r.entry.duration });
-                    Object.assign(r, { fits: d.fits, over: d.over, late: d.late });
-                } );
-                $timeout();
-            } ).catch( (err) => console.error(err) ).then( () => {
-                scope.preparing = false;
-                $timeout();
-            } );
+            load();
         },
     };
 };
