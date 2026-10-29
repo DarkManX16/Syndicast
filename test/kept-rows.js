@@ -483,6 +483,10 @@ module.exports = async function () {
             r.text === 'The Journal replaces Hey Arnold! 1 at 6:00pm; Hey Arnold! 1 airs Fri Oct 30, 6:00pm. Hey Arnold! 3 runs 4:00 long at Sun Nov 1, 6:00pm, back on time at 7:00pm.',
             r.text);
 
+        const early = kept.swap({ lineup: st, index: i, item: journal, now: NOW - 8 * DAY, schedule: ss });
+        suite.check('...but not a night more than a week away, which Create Lineup lays out again (Ron, Oct 29)',
+            early.text === 'The Journal replaces Hey Arnold! 1 at 6:00pm; Hey Arnold! 1 airs Fri Oct 30, 6:00pm.', early.text);
+
         const back = kept.putBack({ lineup: l, index: i, now: NOW, schedule: ss });
         suite.check('back undoes forward exactly: Put back on the swap gives the list as it was, JSON for JSON',
             back.programs && JSON.stringify(back.programs) === JSON.stringify(st.programs), back.text || back.refused);

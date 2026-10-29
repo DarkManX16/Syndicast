@@ -497,7 +497,11 @@ function sayLanded(landed) {
         : `${title(x.content)} airs ${pins.dayClock(x.start)}` ).join(' and ');
 }
 // " He's Too Sexy for His Fat runs 4:00 long at Tue Nov 3, 12:30am, back on time at 1:00am."
-function sayRunsLong(late) {
+// Only in the coming week: a night further off is laid out again by Create
+// Lineup before it airs (Ron, Oct 29).
+const SAID_AHEAD = 7 * DAY;
+function sayRunsLong(found, now) {
+    let late = found.filter( (x) => x.start < now + SAID_AHEAD );
     if (late.length === 0) {
         return '';
     }
@@ -558,7 +562,7 @@ function swap({ lineup, index, item, choice, now, schedule }) {
         if (r.off.length > 0) {
             edit.off = (edit.off || []).concat(r.off);
         }
-        let out = { programs: r.programs, text: text + sayLanded(r.landed) + '.' + said + sayRunsLong(r.late), edit: id };
+        let out = { programs: r.programs, text: text + sayLanded(r.landed) + '.' + said + sayRunsLong(r.late, now), edit: id };
         if (taken) {
             out.taken = taken;
         }
@@ -670,7 +674,7 @@ function removeOnly({ lineup, index, now, schedule }) {
     }
     return {
         programs: r.programs,
-        text: `Leaves ${pins.length(row.program.duration)} of Flex at ${clockAm(row.start)} in place of ${title(row.program)}${sayLanded(r.landed)}.${sayRunsLong(r.late)}`,
+        text: `Leaves ${pins.length(row.program.duration)} of Flex at ${clockAm(row.start)} in place of ${title(row.program)}${sayLanded(r.landed)}.${sayRunsLong(r.late, now)}`,
         edit: id,
     };
 }

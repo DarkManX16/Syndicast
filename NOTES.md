@@ -5890,6 +5890,9 @@ read as of 7:30am. Suite 2636 at the start, 2658 at the end.
     from the show's next airing, and the episode past the end from the catalog given (Play
     Next only; otherwise the last airing keeps its own).
   - The ripple is inside `swap`, `removeOnly` and `putBack`, not its own export.
+  - After the proof Ron asked (Oct 29) that the sentence name a night an episode moving
+    along runs long only when it is in the coming week; a night further off, Create Lineup
+    lays out again before it airs.
 - **On the copy** (`kept-check.js`, edits in order, each followed by Put back):
   - Channel 1, Ron's Friday after the first open (16 pins now, the special with its 11
     airings): Family Guy at 1:00am swapped (S2E20 standing in) - "Wasted Talent replaces
