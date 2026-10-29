@@ -900,8 +900,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //startDialog and relay.
             // The swaps and inserts to keep, and a note for each whose slot the schedule, as it is
             // edited here, now gives to another show.
+            // And one for each pin moved by hand in the list, which Create Lineup puts back at its time.
             let keptPins = [];
-            scope.pinNoteList = () => (keptPins.length === 0) ? [] : pinTools.pinNotes({ pins: keptPins, schedule: scope.schedule, nameOf: (id) => nameOf(id) }).map( (n) => n.text );
+            let movedPins = [];
+            scope.pinNoteList = () => movedPins.concat( (keptPins.length === 0) ? [] : pinTools.pinNotes({ pins: keptPins, schedule: scope.schedule, nameOf: (id) => nameOf(id) }).map( (n) => n.text ) );
             //`keepCatalogs`: a re-lay's, reading only the shows the last read didn't get.
             let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs) => {
                 scope.limit = limit;
@@ -975,12 +977,14 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 //The swaps and inserts Create Lineup will keep, for the note.
                 keptPins = [];
+                movedPins = [];
                 scope.keptPins = '';
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
                     let kept = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() });
                     scope.keptPins = pinTools.sayKept(kept);
                     keptPins = kept;
+                    movedPins = pinTools.sayMoved(pinTools.outOfPlace({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() }));
                 }
             }
 

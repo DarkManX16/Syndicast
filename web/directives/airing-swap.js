@@ -39,7 +39,12 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let airing = channel.programs[req.index];
             let around = pins.slotAround({ schedule, at: entry.start });
             let isInsert = (req.mode === 'insert');
-            scope.verb = isInsert ? 'Insert after' : 'Swap';
+            // A pinned airing dragged here (Ron, Oct 29): re-pinned at this spot, the item already
+            // chosen. Its old pin stays in the re-lay without the move, so what moving it does -
+            // its old slot getting its own show back too - is said as this choice's own effects.
+            let moving = req.move || null;
+            scope.moving = (moving !== null);
+            scope.verb = moving ? 'Move' : (isInsert ? 'Insert after' : 'Swap');
             // A swap sits at its slot's start when the airing is that close to it; an
             // insert at the end of the airing, in the break after it.
             let at = isInsert ? entry.start + airing.duration
@@ -49,9 +54,9 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let slotShowAt = (instant) => { let s = pins.slotAround({ schedule, at: instant }); return s ? s.showId : getShowData(airing).showId; };
             scope.showId = around ? around.showId : getShowData(airing).showId;
             let retitle = () => {
-                scope.title = isInsert
+                scope.title = (moving ? `${pins.label(moving)}, pinned to ${pins.dayClock(moving.pin.at)}, to ` : '') + (isInsert
                     ? `${pins.dayClock(at)}, in the break after ${pins.label(scope.afterProgram)}` + ( (scope.breakLength > 0) ? ` (${pins.length(scope.breakLength)} of Flex)` : '' )
-                    : `${pins.dayClock(at)} - ${pins.label(airing)}, ${pins.length(airing.duration)}` + ( (flexAfter > 0) ? `, then ${pins.length(flexAfter)} of Flex` : '' );
+                    : `${pins.dayClock(at)} - ${pins.label(airing)}, ${pins.length(airing.duration)}` + ( (flexAfter > 0) ? `, then ${pins.length(flexAfter)} of Flex` : '' ));
             };
             // The start of the program an insert follows - moved with it to another break.
             let afterStart = entry.start;
@@ -68,6 +73,8 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             // Swapping a pinned airing replaces its pin; inserting after one keeps it.
             let ahead = () => pins.pinsAhead({ programs: channel.programs, startTime: startTime(), now: Date.now() })
                 .filter( (x) => isInsert || (x.program !== airing) );
+            // The pins kept with the new one: all but the one being moved.
+            let others = () => ahead().filter( (x) => x.program !== moving );
 
             // The shows this channel's slots play, for "Other shows on this channel".
             let names = new Map();
@@ -252,9 +259,10 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let relayWith = async (pin, what) => {
                 let base = await baselineFor(at);
                 let key = `${pin.pin.then}|${pin.pin.at}|${rounds.fileKey(pin)}`;
-                await relayIn(key, pins.withPin(ahead(), pin), what);
+                await relayIn(key, pins.withPin(others(), pin), what);
                 say('Working out what changes...');
-                let mine = await relayWorker.call({ type: 'option', session, key, base: 'base', now: relayNow, at, item: pin, kind: pin.pin.kind });
+                let mine = await relayWorker.call({ type: 'option', session, key, base: 'base', now: relayNow, at, item: pin, kind: pin.pin.kind,
+                    moving: moving ? moving.pin.at : undefined });
                 return { key, placed: mine.placed, fitText: mine.fitText, effects: mine.effects, onAir: base.anyway, dropped: base.dropped,
                     alerts: mine.alerts.filter( (a) => ! base.alerts.includes(a) ), anywayAlerts: base.alerts };
             };
@@ -285,7 +293,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     $timeout();
                     return;
                 }
-                let clash = ahead().find( (x) => (x.at < at + p.duration) && (at < x.at + x.program.duration) );
+                let clash = others().find( (x) => (x.at < at + p.duration) && (at < x.at + x.program.duration) );
                 if (clash) {
                     scope.error = `That would run into your swap at ${pins.dayClock(clash.at)} (${clash.program.title}). Undo that one first, or pick something shorter.`;
                     scope.state = 'pick';
@@ -308,7 +316,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     scope.options = [];
                     scope.breaks = [];
                     if (fit.overrun <= constants.SLACK) {
-                        scope.options.push(Object.assign({ label: isInsert ? 'Insert' : 'Swap' }, take));
+                        scope.options.push(Object.assign({ label: moving ? 'Move' : (isInsert ? 'Insert' : 'Swap') }, take));
                     } else {
                         let late = await relayWith(make('late'), `Re-making the lineup with ${p.title} running late...`);
                         let into = fit.runsInto ? ` ${pins.clock(fit.slotEnd)} slot` : ' next slot';
@@ -398,7 +406,18 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             };
             scope.$on('$destroy', close);
 
-            load();
+            if (moving) {
+                // Nothing to pick: straight to what moving it here does. Refused, it says why and offers only Cancel.
+                scope.state = 'working';
+                scope.choose({ program: moving }).then( () => {
+                    if (scope.state === 'pick') {
+                        scope.state = 'refused';
+                        $timeout();
+                    }
+                } );
+            } else {
+                load();
+            }
             // The lineup without the swap, worked out while Ron picks; then the picker's
             // "fits" counts from wherever a program still on would hold the item back.
             scope.preparing = true;
