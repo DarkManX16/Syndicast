@@ -5911,6 +5911,71 @@ read as of 7:30am. Suite 2636 at the start, 2658 at the end.
     Thu Oct 29 4:30pm (114 Repeats follow): 162 of 162 positions each time, every Put back
     exact.
 
+**Step 3, Create Lineup keeps kept rows, Oct 29, 2026** (`list-lineup`). Proof on a fresh
+copy of `.dizquetv-dev` taken Thu Oct 29 at 5:23pm Central (identical to the live files at
+5:37pm), with a catalog snapshot from Plex taken then (0 errors), read as of 5:30pm. Suite
+2658 at the start, 2678 at the end.
+
+- **What shipped.** `keptRows.keptAhead`: every kept row still to air in the lineup the
+  generator made, at its instant in the list, read again at each Create Lineup - and pins
+  the first open hasn't converted yet, read as rows kept as they are. The generator places
+  them: a row kept as it is airs as it is, at its instant (a pin's rules, with take); a row
+  kept in time is a one-off slot of its position, airing that position's next episode with
+  the row's marks; a slot before a kept row gets only what fits whole before it, and the rest
+  is Flex - a kept row never waits. A kept row on air is carried once. The Time Slots dialog
+  hands Create Lineup and Regenerate the kept rows, says what it keeps in one sentence
+  (`sayKeptAhead`), and names a kept swap or removal whose slot the schedule now gives
+  another show (`scheduleNotes`: "B Special at Thu Oct 8, 7:30pm is now in D's slot; it
+  stays."). `progress-check.js` reads kept rows and takes `--first-open`, `--swap`,
+  `--remove`, `--move`, `--put-back` and `--save-edited`. `test/kept-generator.js`, 20 checks,
+  failing first where the old pin rules differ.
+- **Every writer of `channel.programs`, and `kept`.** Keep it, passing the row through: the
+  generator (kept rows and the carry), `adjustStartTimeToCurrentProgram` and on-demand's
+  rotation (the same objects), `cleanUpProgram` on save (it deletes five named fields), the
+  channel API (JSON as sent), the drag's splice (the same object; step 4 routes a Time Slots
+  drag through `keptRows.move`). Drop it on purpose: `show-orderers` `labelled` - an episode
+  a row kept in time left in the pool aired in its own slot with that row's mark, found with
+  a failing test and fixed - and a Repeat's copy, likewise; `slotPool` leaves rows kept as
+  they are out (step 2). Carry it wrongly, for step 4: the whole-list tools in
+  `channel-config.js` (sort, shuffles, equalize, remove duplicates and the rest) move the
+  same objects, so a mark rides along to wherever a row lands; by the design their result
+  isn't kept, so step 4 drops the marks and says so first. The library's add and Delete
+  make or remove rows (step 4 makes them Insert and Put back). Not reached: the two
+  migrations that rebuild programs (`migrateChannelsFrom51`, `commercialsRemover`) run only
+  for database versions long past; Random Slots and the guide don't touch Time Slots lists.
+- **Built differently from the plan.** The generator still takes the old `pins` argument,
+  and the old Swap's re-lay still hands it pins with clock times: kept rows ride in the same
+  list marked `kept: true`. Step 4 removes the old Swap, and with it the pin path and
+  `test/pins-generator.js`'s pin cases, which stay as they are until then rather than being
+  rewritten. "Wait for the first-open answer" moves to step 4 with the dialog itself; until
+  then Create Lineup keeps an unconverted pin where the list has it.
+- **On the copy.**
+  - Additive: channels 1-3 with every pin taken off, at 5:30pm, Fri 1:10am and Thu Nov 5
+    8:00pm, against `blocks`' own `progress-check --save`: 0 entries differ in all nine
+    (39,999, 35,377-35,407 and 37,578-37,608 entries), every position's record identical.
+  - Pins at their times: channel 2 with its 5 moved pins unmarked, its 40 pins at their
+    pinned times read as kept rows: 0 entries differ from `blocks` with the same pins. With
+    the first open as well, the 6 airings Ron's Friday drags moved are kept in time too,
+    so those shows (Full House, Roseanne, Murphy Brown, Coach overnight; Avatar and My Life
+    as a Teenage Robot at 5:00pm) air one more time that night and their later episodes are
+    one along - Ron's decision 3, and the only differences.
+  - Ron's Friday on channel 1 (16 pins at 7:30am, 13 swaps and the special still ahead at
+    5:30pm): the first open, the Family Guy swap, the special dragged back to 3:30, Put back
+    of the swap - after each, Create Lineup at 5:30pm gives the night 11pm-5am as the list
+    has it, to the second (17 rows), and all 1,329 rows of the next three weeks; 138 of 138
+    positions continue exactly; regenerated from its own output, 0 of 39,999 entries differ;
+    Create Lineup at Fri 1:10am, the airing on air carried, the rest of the night as the list
+    has it. Over the whole year the list and Create Lineup differ in 67 rows, all from Thu
+    Apr 15, 2027 on: the hour And Then There Were Fewer had is laid out again as two Robot
+    Chicken halves, and those shows' later episodes are one along.
+  - Channel 2's Friday (first open: 39 swaps, the insert, 5 moved rows, 6 kept in time):
+    Create Lineup gives Friday as the list has it (42 rows) and the next three weeks (1,034
+    rows); 163 of 163 positions.
+  - Regenerating channel 2 from its own output leaves 9 entries different only in four
+    display fields (`start`, `stop`, `$index`, `$breakAfterMs`) on a few episodes; `blocks`
+    does the same on the list with nothing kept, so it predates this and isn't chased here.
+  - Not tried in the browser: the dialog's part is checked in step 4's preview proof.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

@@ -1154,6 +1154,73 @@ function applyFirstOpen({ programs, startTime, now, schedule, getShowData }) {
     return out;
 }
 
+/*
+ * What Create Lineup keeps (src/services/time-slots-service.js): every kept
+ * row still to air in the lineup the generator made, at its instant in the
+ * list - read again each time, so it is always where the list has it. Rows
+ * kept as they are, and pins the first open hasn't answered for yet, air as
+ * they are; a row kept in time is its position's (`key`) one-off slot. A row
+ * that has aired is let go, and so is anything rotated past the lineup's end
+ * (pins.loopEnd), where the loop brings what aired round again.
+ *
+ *   [ { at, program, kept: true, key? } ]
+ */
+function keptAhead({ programs, startTime, now }) {
+    let lineup = { programs, startTime };
+    let end = pins.loopEnd(lineup, now);
+    return rowsOf(lineup)
+        .filter( (r) => (r.start + r.program.duration > now) && (r.start < end) && ( (keptKind(r.program) !== null) || r.program.pin ) )
+        .map( (r) => {
+            let x = { at: r.start, program: r.program, kept: true };
+            let key = (keptKind(r.program) === 'shifted') ? positionOf(r.program) : null;
+            if (key !== null) {
+                x.key = key;
+            }
+            return x;
+        } );
+}
+
+/*
+ * One sentence for each kept swap or removal still to air whose slot
+ * `schedule` now gives to another show (Ron, Oct 29: it stays where it is).
+ * `rows`, keptAhead's answer, when the caller has it - the Time Slots dialog
+ * asks on every redraw. `nameOf(showId)` names a show; without it, its id
+ * less the prefix.
+ */
+function scheduleNotes({ programs, startTime, now, rows, schedule, nameOf }) {
+    let name = (id) => ( (typeof(nameOf) === 'function') && nameOf(id) ) || String(id).replace(/^(tv|custom|movie)\./, '');
+    let notes = [];
+    (Array.isArray(rows) ? rows : keptAhead({ programs, startTime, now })).forEach( (x) => {
+        let edit = editsOf(x.program).slice().reverse().find( (e) => (e.kind === 'swap') || (e.kind === 'remove') );
+        let made = edit ? edit.show : (x.program.pin ? x.program.pin.slotShow : undefined);
+        let slot = slotProgress.slotAt(schedule, x.at);
+        if ( (typeof(made) !== 'string') || (slot === null) || (slot.showId === made) ) {
+            return;
+        }
+        let what = x.program.isOffline ? `The Flex in place of ${edit ? edit.was : 'an airing'}` : title(x.program);
+        let now = (slot.showId === 'flex.') ? 'Flex' : `${possessive(name(slot.showId))} slot`;
+        notes.push(`${what} at ${pins.dayClock(x.at)} is now in ${now}; it stays.`);
+    } );
+    return notes;
+}
+
+// "Create Lineup keeps 15 swaps, 1 insert and 12 rows kept in time where they sit in your list."
+const KEPT_WORDS = { swap: 'swap', insert: 'insert', remove: 'removal', moved: 'row you moved', shifted: 'row kept in time' };
+function sayKeptAhead(rows) {
+    if (rows.length === 0) {
+        return '';
+    }
+    let count = {};
+    rows.forEach( (x) => {
+        let kind = keptKind(x.program) || (x.program.pin && x.program.pin.kind) || 'swap';
+        count[kind] = (count[kind] || 0) + 1;
+    } );
+    let parts = Object.keys(KEPT_WORDS).filter( (k) => count[k] ).map( (k) => (count[k] === 1)
+        ? `1 ${KEPT_WORDS[k]}` : `${count[k]} ${KEPT_WORDS[k].replace(/^(\w+)/, '$1s')}` );
+    let list = (parts.length === 1) ? parts[0] : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+    return `Create Lineup keeps ${list} where they sit in your list.`;
+}
+
 module.exports = {
     keptKind: keptKind,
     keepsItem: keepsItem,
@@ -1166,5 +1233,8 @@ module.exports = {
     removeOnly: removeOnly,
     move: move,
     putBack: putBack,
+    keptAhead: keptAhead,
+    scheduleNotes: scheduleNotes,
+    sayKeptAhead: sayKeptAhead,
     clockAm: clockAm,
 };

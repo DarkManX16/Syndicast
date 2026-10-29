@@ -6,6 +6,7 @@ const random = require('../helperFuncs').random;
 const throttle = require('./throttle');
 const orderers = require("./show-orderers");
 const slotProgress = require('../slot-progress');
+const keptRows = require('../kept-rows');
 
 const MINUTE = 60*1000;
 const DAY = 24*60*MINUTE;
@@ -76,6 +77,11 @@ function addProgramToShow(show, program) {
  * `pins`, optional, are swaps and inserts fixed to a date and time -
  * [{ at, then, program }], `program` carrying its `pin` mark - placed by the
  * four rules in NOTES.md ("Swaps, inserts and Flex that keeps time").
+ * Entries marked `kept: true` are kept rows instead (src/kept-rows.js
+ * keptAhead; NOTES.md, "What you see is what airs"): `at` is the row's
+ * instant in the list. A row kept as it is airs as it is; one with a `key`,
+ * kept in time, airs that position's next episode. A kept row never waits for
+ * the slot before it: that slot gets only what fits whole before it.
  *
  * `carry`, optional, is the program on air as the lineup is made - or the
  * one whose break is on air - { start, program }: it stays where it is, and
@@ -218,8 +224,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
                 }
                 let copy = Object.assign( {}, state.list[state.index] );
                 delete copy.shuffleOrder;
-                // A repeat of a pinned airing is not itself pinned.
+                // A repeat of a pinned or kept airing is not itself pinned or kept.
                 delete copy.pin;
+                delete copy.kept;
                 copy.slotPosition = slotProgress.label('repeat');
                 return copy;
             },
@@ -390,6 +397,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
      * pushes out airs at its show's next slot.
      */
     const SLACK = constants.SLACK;
+    let keptKindOf = keptRows.keptKind;
     let pins = (Array.isArray(pinsIn) ? pinsIn : [])
         .filter( (x) => (x !== null) && (typeof(x) === 'object') && (typeof(x.at) === 'number')
             && (typeof(x.program) === 'object') && (x.program !== null) && (x.at + x.program.duration > ts) )
@@ -447,11 +455,29 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     let nextPin = 0;
     let lastPin = null;
     let runningLate = false;
+    // A row kept in time is a one-off slot of its position, at its instant.
+    let keptEpisode = (pin) => {
+        let [ showId, order, excluded ] = JSON.parse(pin.key);
+        if ( (typeof(showsById[showId]) === 'undefined') || ! positions.plays(order) ) {
+            return null;
+        }
+        let position = positions.forSlot({ time: -1, showId: showId, order: order, seasons: { excludeSeasons: excluded } });
+        let next = position.current();
+        if ( (next === null) || (typeof(next) === 'undefined') || next.isOffline ) {
+            return null;
+        }
+        position.next();
+        return Object.assign( {}, next, { kept: JSON.parse(JSON.stringify(pin.program.kept)) } );
+    };
     let placePin = () => {
         let pin = pins[nextPin++];
         let program = Object.assign( {}, pin.program );
-        delete program.slotPosition;
-        delete program.shuffleOrder;
+        if (pin.kept) {
+            program = (typeof(pin.key) === 'string') ? (keptEpisode(pin) || program) : program;
+        } else {
+            delete program.slotPosition;
+            delete program.shuffleOrder;
+        }
         let start = t;
         if (program.isOffline) {
             // its own entry, never merged, so the next run finds it again
@@ -461,8 +487,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             pushProgram(program);
         }
         // `ownEnd`: where it would end from its own time - take covers no slot past it (pushedPast).
-        lastPin = { start: start, end: t, then: (pin.then === 'late') ? 'late' : 'take', kind: program.pin ? program.pin.kind : undefined,
-            ownEnd: pin.at + program.duration };
+        lastPin = { start: start, end: t, then: ( ! pin.kept && (pin.then === 'late') ) ? 'late' : 'take',
+            kind: program.pin ? program.pin.kind : (keptKindOf(program) || undefined), ownEnd: pin.at + program.duration };
         runningLate = false;
     };
 
@@ -477,12 +503,16 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         // are filled as the generator always has, so what follows is what it was -
         // unless it is a pin, which keeps its own choice for them (rule 3).
         let carriedPin = carry.program.pin;
+        let carriedKind = keptKindOf(carry.program);
         lastPin = ( (typeof(carriedPin) === 'object') && (carriedPin !== null) && (typeof(carriedPin.at) === 'number') )
             ? { start: carry.start, end: t, then: (carriedPin.then === 'late') ? 'late' : 'take', kind: carriedPin.kind,
                 ownEnd: carriedPin.at + carry.program.duration }
-            : { start: carry.start, end: t, then: 'carry' };
-        // A pin the program on air is itself was carried, not placed again.
-        pins = pins.filter( (x) => ! ( x.program.pin && carry.program.pin && (x.program.pin.at === carry.program.pin.at) ) );
+            : ( (carriedKind !== null) && (carriedKind !== 'shifted') )
+                ? { start: carry.start, end: t, then: 'take', kind: carriedKind, ownEnd: t }
+                : { start: carry.start, end: t, then: 'carry' };
+        // A pin the program on air is itself was carried, not placed again; nor a kept row.
+        pins = pins.filter( (x) => ! ( x.program.pin && carry.program.pin && (x.program.pin.at === carry.program.pin.at) )
+            && ! ( x.kept && ! x.program.isOffline && (Math.abs(x.at - carry.start) <= SLACK) ) );
     } else if (ts > t0) {
         pushFlex( ( (typeof(flexOnAir) !== 'undefined') ? flexOnAir.at : ts ) - t0 );
     }
@@ -629,10 +659,12 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             continue;
         }
         if (pinInside) {
-            // rule 1: programs that start before the pin; the pin waits for the last to end
+            // rule 1: programs that start before the pin; the pin waits for the last to end -
+            // but a kept row never waits: only what fits whole before it
             let pads = [];
             let total = 0;
-            while ( (item !== null) && ! item.isOffline && (total < remaining - SLACK) ) {
+            let fits = (x) => ! pins[nextPin].kept || (total + x.duration <= remaining + SLACK);
+            while ( (item !== null) && ! item.isOffline && (total < remaining - SLACK) && fits(item) ) {
                 let padded = makePadded(item);
                 pads.push(padded);
                 advanceSlot(slot);

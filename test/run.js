@@ -52,6 +52,7 @@ const suites = [
     './slot-progress',
     './progress-generators',
     './pins-generator',
+    './kept-generator',
     './pins',
     './kept-rows',
     './build-check',

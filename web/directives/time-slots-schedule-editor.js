@@ -5,6 +5,7 @@ const slotRounds = require('../../src/shuffle-rounds');
 const showCatalog = require('../../src/show-catalog');
 const episodeStart = require('../../src/episode-start');
 const pinTools = require('../../src/pins');
+const keptRows = require('../../src/kept-rows');
 const buildCheck = require('../../src/build-check');
 const poolSeasons = require('../../src/pool-seasons');
 const catalogKeep = require('../../src/catalog-keep');
@@ -623,7 +624,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     let now = Date.now();
                     // The swaps and inserts Create Lineup will keep: a slot one takes doesn't
                     // air its show, so a row's "when" counts the next slot instead.
-                    let pinsNow = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now });
+                    // A row kept in time airs its slot's show, so only rows kept as they are count.
+                    let pinsNow = keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now })
+                        .filter( (x) => x.program.pin || keptRows.keepsItem(x.program) );
                     let rowCarry = pinTools.carryAt({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: now, schedule: scope.schedule });
                     model = episodeStart.plan({
                         pins: pinsNow,
@@ -864,13 +867,14 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //instead of the lineup's own (src/pins.js) - for a re-lay.
             let makeLineup = async(fromInstant, pinsToKeep, atNow) => {
                 let { run, carry, history, t0 } = await planLineup(atNow);
-                //Swaps and inserts still to air stay pinned to their times.
+                //Every row kept in the list stays where the list has it (src/kept-rows.js) - a
+                //re-lay's pins aside, which the old Swap still hands over.
                 let keep = Array.isArray(pinsToKeep) ? pinsToKeep : [];
                 if ( ! Array.isArray(pinsToKeep) && (typeof(scope.lineup) === 'function') ) {
                     let onAir = scope.lineup();
-                    keep = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0 });
+                    keep = keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0 });
                 }
-                if ( (carry !== null) && carry.program.pin ) {
+                if ( (carry !== null) && (carry.program.pin || keptRows.keptKind(carry.program)) ) {
                     keep = keep.filter( (x) => x.program !== carry.program );
                 }
                 let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history, keep, carry );
@@ -898,12 +902,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //editor has them, read again when Create Lineup runs.
             //Everything the dialog needs, without showing it - shared by
             //startDialog and relay.
-            // The swaps and inserts to keep, and a note for each whose slot the schedule, as it is
-            // edited here, now gives to another show.
-            // And one for each pin moved by hand in the list, which Create Lineup puts back at its time.
-            let keptPins = [];
-            let movedPins = [];
-            scope.pinNoteList = () => movedPins.concat( (keptPins.length === 0) ? [] : pinTools.pinNotes({ pins: keptPins, schedule: scope.schedule, nameOf: (id) => nameOf(id) }).map( (n) => n.text ) );
+            // The rows kept in the list, and a note for each swap or removal whose slot the schedule,
+            // as it is edited here, now gives to another show: it stays where it is (Ron, Oct 29).
+            let keptAhead = [];
+            scope.pinNoteList = () => keptRows.scheduleNotes({ rows: keptAhead, schedule: scope.schedule, nameOf: (id) => nameOf(id) });
             //`keepCatalogs`: a re-lay's, reading only the shows the last read didn't get.
             let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs) => {
                 scope.limit = limit;
@@ -975,16 +977,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if ( (typeof(catalogState) === 'object') && (catalogState !== null) && ! catalogState.unreadable ) {
                     readMissing();
                 }
-                //The swaps and inserts Create Lineup will keep, for the note.
-                keptPins = [];
-                movedPins = [];
+                //The rows Create Lineup will keep, read once as the dialog opens, for the notes.
+                keptAhead = [];
                 scope.keptPins = '';
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
-                    let kept = pinTools.pinsAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() });
-                    scope.keptPins = pinTools.sayKept(kept);
-                    keptPins = kept;
-                    movedPins = pinTools.sayMoved(pinTools.outOfPlace({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() }));
+                    keptAhead = keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() });
+                    scope.keptPins = keptRows.sayKeptAhead(keptAhead);
                 }
             }
 
