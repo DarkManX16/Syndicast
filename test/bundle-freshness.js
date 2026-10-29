@@ -99,11 +99,29 @@ module.exports = async function run() {
         suite.check('checker is not stale after a clean build', checker.isStale() === false);
         {
             // The drag log stamps each entry with this, so a log says which build the page ran.
-            const m = built && built.match(/^window\.__syndicastBundle = (\{.*?\});\r?\n/);
+            const m = built && built.match(/^self\.__syndicastBundle = (\{.*?\});\r?\n/);
             let stamp = null;
             try { stamp = m && JSON.parse(m[1]); } catch (e) { stamp = null; }
             suite.check('the bundle opens with its own stamp: the commit it was built from, whether modified, and when',
                 stamp && stamp.commit === 'abc1234' && stamp.modified === true && !isNaN(Date.parse(stamp.built)), m ? m[1] : (built || '').slice(0, 80));
+        }
+        {
+            // The re-lay worker (src/relay-worker.js, started from bundle.js) runs this same
+            // first line in a Worker scope, which has `self` but no `window` - see NOTES.md,
+            // "A pin's choice through every re-lay, and Swap made fast".
+            const firstLine = (built || '').split('\n')[0] + '\n';
+            const vm = require('vm');
+            const sandbox = { self: {} };
+            let threw = null;
+            try {
+                vm.runInNewContext(firstLine, sandbox);
+            } catch (err) {
+                threw = err;
+            }
+            suite.check('the stamp line runs with no `window` global, as in the re-lay worker',
+                threw === null, threw ? threw.message : firstLine);
+            suite.check('the stamp still lands where the drag log and the worker both read it',
+                threw === null && sandbox.self.__syndicastBundle && sandbox.self.__syndicastBundle.commit === 'abc1234');
         }
 
         // ---- a changed web file triggers a rebuild ----------------------------

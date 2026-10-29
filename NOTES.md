@@ -5502,6 +5502,17 @@ the swap losing his pin and shifting the night.
   same bundle with no `window`: it stops at once ("The re-lay worker stopped; re-lays run
   in the page from now on"), so every swap freezes the page again. 18000 doesn't stamp
   until Ron restarts it.
+- **Fixed, Oct 29, 2026** (`relay-worker-stamp` branch, not merged). `src/web-bundle.js`
+  now stamps the bundle's first line as `self.__syndicastBundle = ...` instead of
+  `window.__syndicastBundle` - `self` is the global object in both the page and a Worker,
+  so the re-lay worker no longer dies on its own first line. The drag log
+  (`web/services/drag-recorder.js`) still reads `window.__syndicastBundle` and sees the
+  same stamp, since `self` and `window` are the same object there.
+  `test/bundle-freshness.js` runs the built bundle's first line in a sandbox with `self`
+  but no `window` (a Worker's own scope) and checks it doesn't throw - it did, with exactly
+  the console error above, before this fix. `npm test`: 2589/2589. Checked on a worktree
+  preview (port 18190, a copy of `.dizquetv-dev`): a Swap's re-lay runs in the worker with
+  no console error. 18000 is still unstamped until Ron restarts it; awaiting his OK to merge.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
