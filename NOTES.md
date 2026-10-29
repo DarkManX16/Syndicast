@@ -1625,6 +1625,15 @@ for the full spec, stages and acceptance tests.
       next episode and when it airs; "change" picks another from the show's
       full catalog (Play Next: start at it; Shuffle and Rerun: air it next),
       once. It replaces Start from season in Time Slots.*
+- [ ] Special days: a date's own Time Slots and a block for the day, for
+      marathons and movie days - *designed Oct 28-29, 2026 (Opus 5.5) with Ron's
+      decisions, not built. A special day replaces the regular schedule for its
+      hours only, survives regenerations until it has aired, can name a block
+      that covers the whole day, and either advances the regular show positions
+      or leaves them where they are; shows it displaces carry on as after a
+      Swap. Rows can be a show, a custom show or one picked movie or item, at
+      set times or back to back on the next :00 or :30. See "Special days" under
+      Known issues and [docs/special-days-plan.md](docs/special-days-plan.md).*
 - [ ] Save time-slot editing progress without generating a lineup
 
       `channel.scheduleBackup` already round-trips the schedule -
@@ -3402,6 +3411,13 @@ be built:
       Ron tried the editor himself on the preview, a real drag included.
       Ahead of Special days, whose plan then reads "kept row" for "pin". See
       "What you see is what airs" under Known issues.
+- [ ] Special days, for marathons and movie days (Opus 5.5 designs, Sonnet 5
+      builds). **Designed Oct 28-29, 2026**, with Ron's decisions; put on the
+      must list ahead of midrolls step 2 because it has a date - channel 1's
+      all-day Toonami marathon on Fri Jan 1, 2027 - and because it changes the
+      Time Slots generator, stored progress and block resolution, which 1.0
+      should ship already proven. See "Special days" under Known issues and
+      [docs/special-days-plan.md](docs/special-days-plan.md).
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
@@ -6026,6 +6042,285 @@ copy of `.dizquetv-dev` taken Thu Oct 29 at 5:23pm Central (identical to the liv
     display fields (`start`, `stop`, `$index`, `$breakAfterMs`) on a few episodes; `blocks`
     does the same on the list with nothing kept, so it predates this and isn't chased here.
   - Not tried in the browser: the dialog's part is checked in step 4's preview proof.
+
+### Special days
+
+Designed Oct 28-29, 2026 (Opus 5.5) from Ron's brief and agreed Oct 29, with
+his decisions below; **not built**. Build plan in
+[docs/special-days-plan.md](docs/special-days-plan.md). Settles the spec's open
+question 4, one-off airings, which waited "until a one-off marathon is actually
+wanted": this is it. Measured on a copy of `.dizquetv-dev`'s channels taken Wed
+Oct 28 at 7:27pm Central; channel 1's saved lineup was made Oct 26 and is
+labelled (stored progress), 40,000 programs.
+
+#### What it is
+
+A **special day** is a stretch of time on given dates - usually 6:00am to 6:00am,
+but any length up to a week - with its own Time Slots. Inside it, its rows
+replace the regular schedule; outside it, nothing changes. It can name a
+**block for the day**, which then covers the whole stretch: its mix, its
+transitions, its guide name. It is saved with the schedule, so every Create
+Lineup keeps it until it has aired. Nothing is added to the block's own weekly
+airings, so no block is left behind afterwards.
+
+Ron's first use: an all-day Toonami marathon on channel 1, **Fri Jan 1, 2027
+6:00am to Sat Jan 2 6:00am**, a full Toonami cycle of shows and movies. Later:
+Christmas and Halloween marathons, and movie days.
+
+#### Channel 1 on Jan 1, measured
+
+- **What the day displaces:** 62 airings of 50 shows, from Waynehead at 6:00am
+  Friday to The Smurfs at 5:45am Saturday. The regular schedule starts again
+  with Baby Looney Tunes at 6:00am Saturday.
+- **Toonami** is 16 shows, four an afternoon, Mon, Tue, Wed and Fri 3-5pm:
+  Ronin Warriors, Sailor Moon, Dragon Ball, Dragon Ball Z; Voltron, The
+  Transformers, The Big O, the Gundam custom show; G.I. Joe ('89), Transformers:
+  Robots In Disguise, Batman Beyond, He-Man (2002); X-Men: Evolution, Justice
+  League, Superman: The Animated Series, Batman/New Batman Adventures. Toonami
+  Midnight Run (Sat 1-3am, its own block) and Cartoon Cartoon Fridays (Fri
+  5-11pm) both fall inside the window.
+- **Toonami's transitions:** Entering 3 out and 2 in steps, Leaving 2 out,
+  Between shows 2 out and 1 in, Between episodes none.
+- **Movies** are almost all in custom shows: Cartoon Theatre Movies holds 11,
+  46 to 99 minutes (median 77); a plain "Movies" slot draws on loose movies in
+  the lineup, of which channel 1 has one.
+- **Where the shows stand either side**, in the saved lineup: X-Men: Evolution
+  airs S2E2 Thu Dec 31 11:30pm, S2E3 Fri Jan 1 3:00pm, S2E4 Mon Jan 4 11:30pm.
+  Sailor Moon S1E25 Mon Dec 28, S1E26 Sat Jan 2 2:30am, S1E27 Mon Jan 4. I Am
+  Weasel S4E4 Thu Dec 31, S4E5-7 Fri Jan 1 5:00pm, S4E8 Mon Jan 4 2:30pm.
+
+#### What Ron decided, Oct 29
+
+1. **Advance or keep apart is set once per day.** Advance: the day's episodes
+   carry on the regular show positions, and the regular slots pick up where the
+   day leaves them. Keep apart: the day keeps its own place for each show and
+   the regular positions don't move. Per row may come later.
+2. **A kept-apart day starts each show at the first episode of its range**,
+   unless he picks a start.
+3. **An episode start on an Advance day is a jump on that date**: the position
+   jumps there when the day reaches it, and the regular slots carry on from
+   wherever the day leaves it.
+4. **The example layout** is Toonami's 16 weekday shows going round to fill the
+   day (three times, at half an hour each), with movies added where he wants
+   them - not the Toonami AcTN overnight shows.
+
+And, with the approval:
+
+5. **Movies.** A row can play a movie, or a custom show of movies, and he can
+   pick which movie airs in it.
+6. **Back to back**, an option for a special day: each row starts when the one
+   before it ends, rounded up to the next :00 or :30, so a 47-minute and a
+   95-minute movie both fit without a long stretch of Flex. The day still ends
+   at its end time, catching up the way a swap does if the last item runs over.
+7. **"Preview this day" shows exactly when each show and movie will air.**
+
+#### The design
+
+**A special day** has a name, a start and an end (a date and a clock time
+each), an optional block, **Advance** or **Keep apart**, a layout - **Set times**
+or **Back to back** - and its rows. Special days never overlap one another, and
+a day's end is after its start and within a week of it.
+
+**A row** is one of:
+
+- **a show or custom show with an order mode** - Play Next, Shuffle, Rerun or
+  Ordered shuffle, with season settings - exactly as a regular slot, including
+  a custom show of movies, which plays its movies in its order or shuffled;
+- **Movies**, the existing slot of loose movies in the lineup;
+- **This item**: one movie, custom-show item or episode, picked as Swap picks -
+  from a custom show's list, a show's catalog (holiday episodes marked), or one
+  item from the Plex library. The row carries the program itself, so it airs
+  even when nothing in the lineup has it. A picked item never moves a position,
+  in either mode - like a swap, it is placed, not played from a show's thread -
+  so picking a Cartoon Theatre movie leaves Cartoon Theatre's own rotation where
+  it was.
+
+Repeat a slot is not offered on a special day: a marathon re-airing its own
+earlier rows is a row of the same show.
+
+**Set times** works like the regular schedule: each row has a clock time inside
+the day and runs to the next, filled as a regular slot is - as many whole
+episodes as fit, Flex after, a program longer than its slot sliding over and
+the later rows running late within the schedule's lateness. The first row is
+at the day's start. Good for a day of half-hour shows.
+
+**Back to back** has no clock times on the rows: they air in order. The first
+starts at the day's start; each next row starts at the first :00 or :30 at or
+after the moment the one before it ended - a program ending up to 10 seconds
+past the half hour (the generator's `SLACK`) counts as ending on it. A row plays
+its first item and then any more that also finish by that next :00 or :30, the
+same rule a regular slot fills by: two 11-minute halves share a half hour, a
+22-minute episode has its 8 minutes of Flex, a 47-minute movie at 6:00 ends at
+6:47 and the next row is at 7:00, and a 95-minute movie at 7:00 ends at 8:35
+and the next row is at 9:00. No Flex stretch is ever longer than 30 minutes.
+When the rows run out before the day ends, the list **starts again from the
+top** (each row's show playing its next episode, and a This item row its item
+again), which is how a full Toonami cycle fills 24 hours from 16 rows; Preview
+says so. A row whose start would be at or after the day's end doesn't air.
+
+**The edges.** At the start, a program still on finishes first - nothing is cut,
+as with a swap - and the day's first row starts the moment it ends (Set times)
+or at the next :00 or :30 (Back to back). At the end, when the last item runs
+past the end time, the regular schedule runs late and catches up exactly as
+after a swap set to run late (pin rule 3, `late`): programs one after another
+from the moment it ends, the breaks after them shortened, until one starts on
+time. On channel 1, whose slots are half-hour and whose lateness is a full day,
+nothing turns to Flex.
+
+**Advance and Keep apart.**
+- *Advance:* each row of a show plays from that show's regular position - one
+  show, one order, one season range - so the day continues the threads. With
+  Toonami going round three times, X-Men: Evolution airs S2E3, S2E4 and S2E5
+  on Jan 1 and the weeknight strip picks up at S2E6 on Mon Jan 4; Sailor Moon
+  airs S1E26-28 and Monday's slot picks up at S1E29. A row's episode start (decision 3) is a jump on that date:
+  "X-Men: Evolution jumps to S1E1 on Fri Jan 1; your strip carries on from
+  wherever the day leaves it."
+- *Keep apart:* each row plays from a position of the day's own - the same show,
+  order and range, tagged with the special day - which starts at its range's
+  first episode, or the start picked on the row (decision 2). Its airings are
+  labelled with the tag, so they never count as a place for a regular position.
+  The regular positions don't move: Mon Jan 4 airs X-Men S2E3 and Sailor Moon
+  S1E26, the episodes Jan 1 would have aired.
+
+**Shows the day displaces carry on where they left off**, in both modes: a
+position moves only when one of its episodes airs, which is already how a swap
+pushes an episode to its show's next slot (pin rule 4). I Am Weasel's three
+Friday 5pm episodes, S4E5-7, wait: Mon Jan 4 2:30pm airs S4E5 instead of S4E8.
+The same for the other 49 shows.
+
+**Every other date keeps its schedule.** Outside the day, every airing is in the
+slot it was in, with its show and its time. The only differences are episode
+numbers, and only for shows the day touches: by the number of airings it
+displaced, and in Advance mode also the number it aired.
+
+**The block for the day.** `resolveContext` - the one place playback, the
+transitions, the guide and the Schedule tab ask what context covers a moment -
+checks special days first: a moment inside a special day that names a block
+belongs to that block, ahead of every block airing and day-part. It is the same
+block object, so the day and any regular airing of the block inside it are one
+context, with no boundary between them. On Jan 1: the break before the first row
+is a boundary entering Toonami, so Toonami's sign-on plays at 6:00am; every
+break inside is Toonami's, its mix and its Between shows steps; Cartoon Cartoon
+Fridays and the Midnight Run don't sign on or off that night; and the break
+after the day's last item, which keeps Toonami as the context it started in, is
+a boundary leaving it, so Toonami's sign-off plays before CN City (Day) at 6:00am
+Saturday. A step limited to certain days of the week goes by the real day. A
+special day with no block leaves the overlay as it is. Nothing is written to the
+block, so once the date has passed nothing resolves differently.
+
+**Regenerations.** Create Lineup sends the special days with the schedule, and
+the generator lays out each one that hasn't ended. A Keep-apart day's start and
+a jump on an Advance day are kept on the row until the day begins, so running
+Create Lineup any number of times before Jan 1 gives the same day. Run during
+the day, the program on air stays where it is (the carry) and the rest of the
+day carries on from what has aired. Once the day has ended it is listed as
+**Aired**, greyed, with **Copy to another date** - for next year's - and Create
+Lineup ignores it.
+
+**Swaps inside a special day** are not offered: the Programming tab's Swap,
+Insert after and Remove this airing only say "This airs in New Year's Toonami
+Marathon. Change it in Time Slots, Special days." In a Back to back day a pin
+would fix one time while every later row moves with what airs before it, and
+the day is already a plan made by hand. Pins already ahead inside a window when
+a special day is added over them are named by the dialog, and are placed at
+their times as now (pin rule 1); in a Back to back day the next row starts at
+the next :00 or :30 after the pin.
+
+**Repeat slots.** A regular Repeat whose source occurrence falls inside a special
+day finds no airing of its source and airs a Rerun of its show - the existing
+fallback for a source that aired nothing.
+
+**Holidays.** A special day can name a holiday (Christmas, Halloween,
+Thanksgiving and the rest of the Catalog page's list). A row can then play **its
+show's episodes set aside for that holiday** ("Holiday: I'll place it myself"),
+in order or shuffled, from a position of the day's own whatever the day's mode,
+since those episodes are never in a regular position; when they have all aired
+that day the row plays the show's next regular episode. Measured: 37 Christmas
+episodes set aside on channel 1, 164 on channel 2, 48 on channel 3; 20, 101 and
+41 for Halloween.
+
+**Clock changes.** A special day's times are clock times on its dates. A Set times
+row inside the skipped spring hour doesn't air; on the fall-back night each row
+airs once, at its first occurrence, and the row before the repeated hour simply
+runs an hour longer, filled as usual. Back to back rounds to the next :00 or :30
+in real time.
+
+**Seeing it beforehand.**
+- **Preview this day**, on the special day: the day laid out by the real
+  generator, as a re-lay is, so it is exactly what Create Lineup will save: every
+  show and movie with its start and end to the second, the Flex after it, the
+  steps each break plays, rows that won't air, the list starting again, and how
+  late the regular schedule runs after the day and when it is back on time. It
+  also counts what the day displaces and what moves along ("50 shows give way;
+  X-Men: Evolution carries on at S2E6 Mon Jan 4").
+- **The Schedule tab** gets a week chooser. A week holding a special day draws
+  the day's block as the band and the day's airings as chips, at their times
+  in the lineup, so a Back to back day reads as it will air; a day not yet in
+  the lineup is drawn hatched, "Not in the lineup yet - run Create Lineup".
+- **The transitions Preview** gets a "from" date, to walk the week of Jan 1.
+- **The guide** is built from the lineup and `resolveContext`, so it shows the
+  marathon at its times as soon as Jan 1 is within the guide's range, with the
+  block's guide name on any long Flex.
+
+#### Shapes
+
+```js
+// on the Time Slots schedule, saved as scheduleBackup
+schedule.specialDays = [{
+  id: 'sd_mvq2k1ab_x7c9',
+  name: "New Year's Toonami Marathon",
+  from: { date: '2027-01-01', time: 21600000 },   // a local date, and ms after its midnight
+  to:   { date: '2027-01-02', time: 21600000 },
+  blockId: 'bl_muhiaegd_erj2f5',                    // or null
+  positions: 'advance',                             // 'advance' | 'apart'
+  layout: 'back',                                   // 'back' | 'times'
+  holiday: null,                                    // or 'Christmas', ...
+  slots: [
+    { showId: 'tv.Ronin Warriors', order: 'next' },              // 'times': also `at`, ms after from.date's midnight
+    { showId: 'tv.X-Men: Evolution', order: 'next', start: { key, order } },
+    { showId: 'custom.<Cartoon Theatre Movies>', item: { program } },  // This item
+    { showId: 'tv.Hey Arnold!', order: 'next', holidayOnly: true },     // a holiday day's row
+  ],
+  made: '2026-10-29T...Z',
+}];
+
+// on each airing the generator emits inside a special day
+program.specialDay = 'sd_mvq2k1ab_x7c9';
+program.slotPosition = 'next||@sd_mvq2k1ab_x7c9';   // Keep apart: the day's own position
+// a This item airing: specialDay, and no slotPosition
+```
+
+A pure module, `src/special-days.js`, holds the rules: a day's instants, which
+day covers a moment, validation, the back to back rounding, Fill from a block,
+the tag on keys and labels. The generator, `slotProgress.slotAt` (which
+`placeOf`, Episode start and `src/pins.js` already ask what slot owns a moment),
+`resolveContext` and the editor all reach it, so they can't disagree.
+
+#### What this doesn't change
+
+- A schedule without special days generates exactly what it does now, program
+  for program; a channel without a Time Slots schedule has none to add.
+- Playback, filler, cards and the lineup cursor: a special day's airings are
+  ordinary programs and its Flex is Flex. The lineup still loops: an un-renewed
+  lineup that loops brings the marathon's airings round again at the same point
+  of the cycle, as it does pins, without the block - regenerating before the
+  loop (channel 1: Aug 3, 2027) avoids it, as it avoids the reruns.
+- Random Slots: not offered, like pins; none of Ron's channels uses it.
+- Day-parts and blocks as configured, and their weekly airings.
+
+#### Chosen in the design, beyond Ron's decisions
+
+Said here so they can be changed before they are built:
+- A Back to back day whose rows run out **starts again from the top**, rather
+  than handing the rest of the day back to the regular schedule (which would air
+  regular shows under the day's block) or filling it with Flex.
+- **No swaps inside a special day**; edit its rows instead.
+- **A picked item never moves a position**, in either mode.
+- Special days **don't overlap**, and last **at most a week**.
+- **Fill from a block** copies the block's slots once, in the order they air
+  through the week (for Toonami: Mon, Tue, Wed, Fri); Back to back then goes
+  round them, and Set times fills the day by repeating them at their own
+  lengths.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
