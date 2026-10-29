@@ -896,6 +896,7 @@ function oneAtATime() {
 
 module.exports = {
     oneAtATime: oneAtATime,
+    loopEnd: loopEnd,
     placedIn: placedIn,
     withPin: withPin,
     slotWarnings: slotWarnings,

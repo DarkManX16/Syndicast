@@ -5814,6 +5814,50 @@ walk, `carryAt`, `fitAt`, `breaksThatFit`, the clock words) stays there.
 - The program on air can't be swapped, removed, dragged or dropped before (`whyNot`), as
   now.
 
+#### Build record
+
+**Step 1, the rules, pure, Oct 29, 2026** (`list-lineup`, from `list-lineup-design` at
+15bab4c). Proof on a copy of `.dizquetv-dev` taken Thu Oct 29 at 5:27am Central (channels,
+custom shows, filler, aliases; identical to the live files at 5:46am), read as of 5:35am.
+Suite 2592 at the start, 2636 at the end.
+
+- **What shipped.** `src/kept-rows.js`: the first open (`firstOpen`, `applyFirstOpen`), swap in
+  place with Run late and Take the next row, Insert after, Remove this airing only, the drag
+  (`move`), Put back for an insert and a drag, and each one's sentence. `test/kept-rows.js`, 44
+  checks, failing first. `scripts/kept-check.js` drives them on a copy. Nothing calls them yet.
+- **Built differently from the shape above.** A row's mark is a list of its edits, each with
+  its own kind (`kept.edits: [ { id, kind, ... } ]`), with no `kind` of its own: a swap a drag
+  later moved is both, and Put back undoes the latest edit that keeps it as it is
+  (`keptKind`). Put back of a swap or a removal needs the episodes moved back along, so it
+  comes with step 2; until then it is refused.
+- **The first open, on the copy.** Channel 1: keeps 15 swaps, Thu 5:00pm to Fri 4:30pm, and A
+  Very Venture Halloween at 12:00am (pinned to 3:30am) with the 11 airings it moved, until
+  4:00am; lets go nothing. Channel 2: keeps 39 swaps, the insert Naimina Enkiyio, and six pins
+  where they sit (Fright Night, on air at 5:30am, pinned 3:00am; The Unplanned Child and
+  Halloween, Fri 12:30 and 1:00am, with 2 airings each; Frightmare, Interview with a Campfire
+  with 2, Lunatic Lake), 46 pins and 6 airings in all; lets go 7 pins that aired from 2:00 to
+  5:30am this morning. Channel 3: keeps nothing; lets go Trail Mix-Up's aired insert. No
+  airing on any channel is placed by hand.
+- **Found on the copy, fixed with a failing test first.** Channel 2's Fonsillectomy, pinned
+  to 5:30am and dragged to 5:00am, had aired by 5:35 though its pinned time hadn't come: read
+  as kept at its next airing a year on, its span took 17,010 airings. A pin has aired once its
+  airing in the list has ended, or its pinned time has passed and the list only has it again
+  most of a loop later. Also: a run-late whose first row is a removal's Flex named "undefined"
+  (it names the first program now); and Put back on an airing nobody edited said it "only
+  moved with the rows around it".
+- **Ron's Friday, edit by edit, on channel 1** (`kept-check.js --first-open --swap
+  "2026-10-30T01:00:00|S2E20" --move ... --put-back ...`, S2E20 standing in for the Halloween
+  episode): the swap changes 2 entries, its row and its Flex ("Wasted Talent replaces There's
+  Something About Paulie at 1:00am."); dragging the special to 3:30 moves the 11 airings 30
+  minutes earlier with the swapped Family Guy at 12:30, still in place of Paulie; Put back
+  takes the special to 12:00am, then to its pinned 3:30am, every row on its slot's time.
+  Nothing outside the night printed changes at any step.
+- **Every insert and every drag on Friday Oct 30, then Put back** (a scratch harness, never in
+  the repo): an insert 13:58 longer than its break after each airing, and a drag of each
+  airing to the row three hours before it - channel 1, 61 and 61; channel 2, 50 and 50 - each
+  gives back the list exactly, JSON for JSON, once a new break is written as the generator
+  writes one (`{ duration, isOffline }`).
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's
