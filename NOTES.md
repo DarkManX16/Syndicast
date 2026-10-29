@@ -2655,7 +2655,10 @@ on shows.
       a swap or insert is pinned to its date and time, and Create Lineup keeps
       it until it airs; whatever it pushes out airs at its show's next slot.
       See "Swaps, inserts and Flex that keeps time" under Known issues, and
-      [docs/swaps-plan.md](docs/swaps-plan.md).*
+      [docs/swaps-plan.md](docs/swaps-plan.md).* *Redesigned Oct 29, 2026,
+      not built: hand edits are kept where they sit in the list, a swap
+      changes only its row and the Flex after it, and nothing re-lays over
+      them - "What you see is what airs" under Known issues.*
 - [x] Program rows show the episode title, with a slot-fit gauge
 
       A slot-fit gauge built around how Ron schedules, in place of a plain
@@ -3345,6 +3348,13 @@ be built:
       under Known issues, and [docs/swaps-plan.md](docs/swaps-plan.md), whose
       first four steps let a Halloween episode be placed on channel 3 well
       before Oct 31.
+- [ ] What you see is what airs: hand edits kept in the list - swaps in
+      place, drags that stay, nothing rebuilt over a hand edit (Opus 5.5
+      designs and builds the core, Sonnet 5.5 the editor). **Designed Oct 29,
+      2026** with Ron's decisions; six build steps, each proved on copies of
+      the real data, in [docs/list-lineup-plan.md](docs/list-lineup-plan.md).
+      Ahead of Special days, whose plan then reads "kept row" for "pin". See
+      "What you see is what airs" under Known issues.
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
@@ -4817,6 +4827,10 @@ that day's 3am backup. Suite 1919 at the start, 2009/2009 at the end.
 
 ### Swaps, inserts and Flex that keeps time
 
+*How hand edits are kept - a pin's clock time, and a re-lay on every swap - is
+redesigned as of Oct 29, 2026: see "What you see is what airs: hand edits kept in the
+list" below. What is measured and decided here still stands otherwise.*
+
 Designed Oct 11, 2026 (Opus 5.5) from Ron's brief and agreed the same day, with
 his decisions below; built on the `swaps` branch, from `blocks` at edeb025.
 Build plan in [docs/swaps-plan.md](docs/swaps-plan.md). Covers two roadmap
@@ -5539,6 +5553,266 @@ the swap losing his pin and shifting the night.
   the console error above, before this fix. `npm test`: 2589/2589. Checked on a worktree
   preview (port 18190, a copy of `.dizquetv-dev`): a Swap's re-lay runs in the worker with
   no console error. 18000 is still unstamped until Ron restarts it; awaiting his OK to merge.
+
+### What you see is what airs: hand edits kept in the list
+
+Designed Oct 29, 2026 (Opus 5.5) from Ron's brief and agreed the same day, with his
+decisions below. Replaces how "Swaps, inserts and Flex that keeps time" (above) keeps
+hand edits: a pin's clock time, and a re-lay on every swap. Build plan in
+[docs/list-lineup-plan.md](docs/list-lineup-plan.md). Measured on a copy of
+`.dizquetv-dev`'s channels taken Thu Oct 29 at 5:02am Central, read as of 5:05am.
+
+Ron's brief, in his words: swapping is frustrating to use; rethink it around one rule,
+*what I see in the list is what airs*.
+
+1. Swap replaces exactly the airing I clicked. Nothing else moves except the Flex right
+   after it.
+2. A swapped-in episode belongs to the show airing it replaced, not to a clock time, so
+   if the night shifts, it shifts with that airing.
+3. Dragging a row puts it exactly where I drop it, and the rows in between shift like a
+   playlist until the night is back on time. It stays that way.
+4. Anything I've hand-edited stays exactly as I left it through Create Lineup, later
+   swaps, undo and restarts, until it airs.
+5. Episodes aren't lost: one I swap out airs at that show's next airing, and stored
+   progress stays correct.
+6. One plain sentence about what a change does, not walls of warnings.
+
+#### Why it goes wrong today, measured
+
+- **A pin has two times.** `pin.at` is a clock time stored on the row; where the row sits
+  in the list is another. Every swap, insert, undo, delete-by-re-lay and Create Lineup
+  re-lays the whole lineup through the generator from the slots and the `pin.at` times.
+  A drag only moves rows in the list - except a pinned row since 044d045, which opens
+  Move - so the list can show one night while the pins hold another, and the next re-lay
+  puts the pins back. Everything since Oct 29's "A pin moved by hand in the list, said
+  before a re-lay puts it back" says so in red; it doesn't stop it.
+- **Ron's Friday Oct 30, channel 1.** The list has "A Very Venture Halloween" at Fri
+  12:00am, pinned to 3:30am (the Venture Bros. slot), and the 11 airings after it - Futurama
+  12:30, Family Guy 1:00, Robot Chicken 1:30 and 1:45, Aqua Teen 2:00 and 2:15, Space
+  Ghost 2:30 and 2:45, Sealab 3:00 and 3:15, Home Movies 3:30 - each in the slot after
+  its own; Harvey Birdman is on time at 4:00. Re-laid as of 5:05am with a Family Guy
+  episode pinned to 1:00am, as a swap of the row there makes it (`progress-check --pin`,
+  S2E20 standing in for the Halloween episode, which is in Plex and not in the pool):
+  the special goes back to 3:30, Futurama to 12:00, Family Guy's "There's Something
+  About Paulie" to 12:30, the swapped-in Family Guy airs at 1:00 in Robot Chicken's slot,
+  and both Robot Chicken halves go to the next week. Family Guy twice; exactly what Ron
+  saw.
+- **Channel 2 holds the same trap.** 47 pins still to air; five sit away from their
+  pinned times, all Friday Oct 30: Mad About You at 12:30am (pinned 2:00), NewsRadio at
+  1:00am (pinned 3:00), Danny Phantom at 5:53pm (6:31), All Grown Up! at 6:17pm (5:00) and
+  As Told By Ginger at 7:02pm (5:44), with 6 airings between them in other shows' slots
+  (Full House 1:30am to Coach 3:00am; Avatar 5:00pm, My Life as a Teenage Robot 5:30pm).
+  Channel 3 has no pin still to air.
+- **Stored progress is not at fault.** Regenerated as of 5:05am with nothing changed,
+  every position continues exactly: 138 of 138, 163 of 163, 142 of 142.
+- **What would count as "placed by hand" today.** Over one cycle from 5:05am, no airing
+  on any channel is unlabelled and unpinned: the old NEXT promos and bumpers are already
+  gone from all three lists. What isn't a slot's own is the pins (16, 47, 0 still to
+  air), the 11 and 6 airings above, and pins that have aired but come round again as the
+  list loops (channel 2: 6, Thu Nov 4, 2027 2:00-5:30am; channel 3: Trail Mix-Up, an
+  insert of Oct 25).
+- **Why not tell hand edits from the generator by re-laying and comparing.** The same
+  regeneration differs from the saved list in 37, 447 and 178 airings on channels 1-3
+  over 400 days - Happy Days alone 338 on channel 2 - for reasons other than hand edits
+  (not chased: the run had no catalog snapshot, and the list predates later catalog and
+  schedule changes). A comparison would keep things Ron never touched, so the marks are
+  explicit.
+
+#### What Ron decided, Oct 29
+
+1. **A schedule change doesn't move kept rows.** When Ron changes a slot in Time Slots
+   and runs Create Lineup, every kept row stays at its time; the dialog says in one
+   sentence when a kept swap now sits in another show's slot.
+2. **Drags follow the playlist rule anywhere.** When a drag would shift more than that
+   one night, the editor asks first, in one sentence.
+3. **The first open of each channel, one time.** Every pin still to air (swaps and
+   inserts) and every row moved by a drag is kept where it sits in the list now, not at
+   its old pinned time. Old bumpers and promos placed by hand before transitions are
+   *not* kept: Create Lineup replaces them, since the transition steps play them now.
+   Before anything is saved, the editor shows the list of what it keeps and what it lets
+   go.
+
+And: build in steps, each proved on copies of the real data; show the plan before
+building.
+
+#### The design
+
+**The list is the lineup.** An edit changes the list, and nothing rebuilds over it.
+
+**Kept rows.** Every hand edit marks the rows it touches as kept (`kept`, shape below).
+A kept row has no stored clock time: its time is where it sits in the list, read the way
+every airing's time is read (`startTime` plus everything before it). There is no second
+time to disagree with the list, so nothing can be "put back". Two kinds:
+
+- **Kept as it is** - a swap, an insert, a removal's Flex, a row Ron dragged: the time and
+  the item both stay.
+- **Kept in time** - a row a drag or a run-late shifted: its time stays; its episode is
+  still its show's next, so it takes part in moving episodes along (below).
+
+The mark is saved on the row in `channel.programs` with Update Channel, so it survives
+restarts; Cancel drops the editor's changes as now. Once a kept row has aired, the next
+Create Lineup lets it go with the rest of what has aired; the loop bringing an aired kept
+row round again doesn't keep it.
+
+**Swap.** The clicked row's item is replaced in place, and the Flex right after it grows or
+shrinks by the difference. No re-lay. When the new item is longer than the row and its
+Flex, two choices, each said in one sentence:
+
+- **Run late** - the rows after it shift later, each break shorter, until one starts on
+  time; they become kept in time. "Runs 14:09 long: Kids Next Door starts 8:44pm, back on
+  time at 9:30pm."
+- **Take the next row** - the item runs into the next row, whose episode goes to its
+  show's next airing like a swapped-out one. "Takes Kids Next Door's 8:30pm; Operation:
+  L.I.C.O.R.I.C.E. airs Fri Dec 25, 8:00pm."
+
+**A swap belongs to its airing.** It is a row; whatever shifts the night - a drag before
+it, a run-late - moves it with its neighbours, and nothing ever moves it back.
+
+**Drag.** On a Time Slots channel, a row goes exactly where it is dropped, with the Flex
+after it. The rows between the two places shift like a playlist - later when the row
+moves earlier, earlier when it moves later - and the night is back on time where the row
+came from. The dragged row is kept as it is, the rows between kept in time. A drag whose
+rows between span more than 24 hours asks first, e.g. "This shifts 412 airings over 9
+days. Move it?". The Move dialog, "Pin ... where it sits" and `pins.dropSpot` go.
+
+**Insert after** puts the item in the break after an airing and shifts the rows after it
+later until a break absorbs it, as Run late does. **Remove this airing only** leaves kept
+Flex of the airing's length. **Delete** of a kept row is Put back (below).
+
+**Episodes move along; nothing is lost.** The episode a swap or Remove pushes out airs at
+its show's next airing that is not kept as it is, and each later airing of that position
+moves one along, to the lineup's end - the ripple. It reaches rows kept in time (their
+time stays, their episode moves along) and skips rows kept as they are. The ripple is a
+list edit, not a re-lay: each rippled row keeps its start, and the Flex after it takes
+the difference in length. When an episode is longer than its row's room, that row runs
+late until a break absorbs it, and the sentence says so. A Repeat whose source is a
+rippled airing follows its source.
+
+**Stored progress** reads places as now, with one change of name: a row kept as it is
+never counts as its show's place and never joins a pool (as a pin today); a row kept in
+time is an ordinary labelled airing. So after the ripple the position's next episode is
+the one swapped out, at its next airing, and Create Lineup carries on from there.
+
+**Create Lineup and Regenerate** keep every kept row at its time in the list. The generator
+reads the kept rows from the list it is given (no separate `pins` list) and fills only
+the rest from the slots. A row kept as it is is placed as a pin is now. A row kept in
+time is a one-off slot of its own position at that instant, filled with the position's
+next episode. Between kept rows, a slot that starts in the gap and fits whole is filled;
+otherwise the gap is Flex. The program on air is carried as now. `then` goes: every
+take-over or run-late Ron chose is already in the list as rows. A schedule change leaves
+kept rows where they are (decision 1), and the Time Slots dialog says so ("Halloween on
+Spooner Street at Fri Oct 30, 1:00am is now in Robot Chicken's slot; it stays.").
+
+**Put back** (each kept row's button, and Delete on one) undoes the edit that made it, on
+the list as it is now, leaving every other edit exactly as it is:
+
+- a swap's row takes its show's episode again, and the ripple runs back one;
+- a dragged row goes back to where it came from, the rows between shifting back;
+- an insert comes out, the rows after it shifting back earlier;
+- a removal's Flex gets its show's episode back.
+
+**One sentence.** Each change says what it does in one plain sentence before it is
+applied ("Halloween on Spooner Street replaces There's Something About Paulie at 1:00am;
+Paulie airs Sun Nov 1, 11:00pm."). Gone: the red "re-making puts it back" and "pushed
+late" lines, "re-making also changes" lists, the first-swap warning and the dropped-items
+lists - a swap no longer re-lays, and nothing placed by hand is dropped.
+
+**The first open** of a channel with a Time Slots schedule (decision 3) shows, once, before
+anything changes:
+
+- **Keeping, as they sit in your list:** each pin still to air, where it sits (named when
+  it isn't at its pinned time); and the rows a drag moved - an airing sitting in another
+  show's slot, and every airing between a pin and its pinned time.
+- **Letting go - Create Lineup replaces these:** airings no slot made and no pin (old
+  bumpers and promos); pins that have aired and only come round again as the list loops.
+
+On channel 1 today: keeping 16 swaps, and A Very Venture Halloween at Fri Oct 30 12:00am
+with the 11 airings after it until 4:00am; letting go nothing. Channel 2: keeping 47 and
+the 6 between; letting go the 6 aired pins of Thu Oct 29 coming round. Channel 3: keeping
+nothing; letting go Trail Mix-Up's aired insert. OK converts `pin` to `kept` in the
+editor's copy, saved with Update Channel; Cancel converts nothing and the list shows again
+at the next open. Create Lineup and Regenerate wait until it is answered.
+
+#### Ron's Friday Oct 30, under the design
+
+1. First open: the special stays at 12:00am; Futurama 12:30 to Home Movies 3:30 are kept
+   in time; Harvey Birdman 4:00 on time.
+2. Swap Family Guy at 1:00am: the Halloween episode is in that row; Paulie airs Sun Nov 1,
+   11:00pm (Family Guy's next airing), He's Too Sexy for His Fat moves to Tue 12:30am, and
+   on. Robot Chicken stays at 1:30 and 1:45.
+3. Create Lineup: nothing from 12:00 to 4:00am changes.
+4. Drag the special back to 3:30: the 11 rows shift 30 minutes earlier; the Halloween
+   Family Guy goes to 12:30 with them, still in place of Paulie.
+5. Put back the swap: Paulie returns to that row and Family Guy's later episodes move
+   back one; the special and its night stay.
+
+#### Fit with Special days and stage 6 midrolls
+
+Both read the lineup; neither is built yet (Special days designed on
+`special-days-design`, 7a39cef, not merged; midrolls step 1 merged, step 2 on
+`midrolls-step2`).
+
+- **Special days.** Its design already refuses swaps inside a day (`pins.whyNot`); here
+  every hand edit is refused there - Swap, Insert, Remove, a drag into, out of or inside
+  the day - with its sentence ("This airs in New Year's Toonami Marathon. Change it in
+  Time Slots, Special days."). A kept row made before a day covered its time stays, and
+  the day is laid out around it as the Special days plan lays a pin (its Task 2: "Pins
+  inside a day are placed by rule 1"; Back to back's next row at the next :00 or :30
+  after it); the Special days dialog's note of pins inside a day's window names kept rows
+  instead. Both need the generator to place a row at a dated instant: here a row kept in
+  time, there a Set times row. Whichever is built first provides it; this plan builds it
+  in its step 3, and the Special days plan's Tasks 2, 3 and 5 then read "kept row" for
+  "pin" and `keptRows.whyNot` for `pins.whyNot`. The ripple reaches an Advance day's rows of
+  the show (they are the regular position) and never a Keep-apart day's (tagged).
+  Recommended order: this first - swaps are in use every day, Special days' first use is
+  Jan 1, 2027.
+- **Midrolls.** They borrow only from the Flex after a program and never write
+  `channel.programs`, so kept marks are invisible to them, as to playback, the guide,
+  filler and transitions. A swap's Flex after it grows or shrinks, and that airing's
+  midrolls with it; a drag carries a row's Flex, so its midrolls are unchanged; Run late
+  shortens the breaks it shifts, and their midrolls. Midrolls step 2 changes no file
+  this does.
+
+#### Shapes
+
+```js
+// on a row of channel.programs: an episode, a custom-show item, a movie, or Flex
+program.kept = {
+  kind: 'swap',            // 'swap' | 'insert' | 'remove' | 'moved' (kept as it is) | 'shifted' (kept in time)
+  edits: [ 'e1793253720000' ],  // the edits that keep it; Put back takes its own out, and a row with none left is ordinary
+  was: "Family Guy S02E16 There's Something About Paulie",  // swap and remove: what it replaced
+  show: 'tv.Family Guy',   // swap and remove: whose airing it is
+  from: 1793253600000,     // moved: where it sat before the drag, for Put back
+  made: '2026-10-29T10:02:00.000Z',
+};
+```
+
+`pin` is read only by the first open, which converts it. `src/kept-rows.js` (new, pure, tested
+in Node, bundled as `src/pins.js` is) holds the first-open sort, the list edits, the
+ripple, Put back, `whyNot` and the sentences; what of `src/pins.js` still serves (the
+walk, `carryAt`, `fitAt`, `breaksThatFit`, the clock words) stays there.
+
+#### Choices made beyond Ron's decisions
+
+- The row Ron drags keeps its episode; the rows it shifts take their show's next episodes
+  (said Oct 29 in the design he approved).
+- The library's add on a Time Slots channel goes in as an Insert at the scroll position,
+  kept; "at the end of list" isn't offered there (it lands past the lineup's end, where
+  nothing keeps it).
+- The whole-list programming tools (sort, block shuffle, equalize and the rest) still work
+  as now on a Time Slots channel and their result isn't kept; on a list with kept rows they
+  say first, in one sentence, that they rebuild the list.
+- A ripple runs to the lineup's end, as stored progress already moves a position.
+
+#### What this doesn't change
+
+- A lineup with no kept rows generates exactly as now.
+- Playback, the guide, filler, transitions, cards and midrolls: a kept row is an ordinary
+  program, kept Flex is Flex.
+- Random Slots, and channels without a Time Slots schedule: drag, delete and the library
+  work as now.
+- The program on air can't be swapped, removed, dragged or dropped before (`whyNot`), as
+  now.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
