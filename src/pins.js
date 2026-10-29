@@ -770,6 +770,13 @@ function sayKept(ahead) {
 
 // "Hey Arnold! S03E23 Best Man / Cool Party"; a custom-show item by its place
 // in the show; a movie or anything else by its title.
+// The show a swap's "This show" lists: the airing's own (Ron, Oct 29: wherever it sits
+// in the list now, not the show of the slot it's in), or the slot's for a movie or Flex.
+function swapShow({ airing, slotShow, getShowData }) {
+    let own = getShowData(airing);
+    return (own.hasShow && /^(tv|custom)\./.test(own.showId)) ? own.showId : slotShow;
+}
+
 function label(program) {
     if (typeof(program.customShowId) !== 'undefined') {
         return `${program.customShowName} #${program.customOrder + 1} ${program.title}`;
@@ -897,6 +904,7 @@ module.exports = {
     outOfPlace: outOfPlace,
     pinsMoved: pinsMoved,
     dropSpot: dropSpot,
+    swapShow: swapShow,
     label: label,
     makePin: makePin,
     removalPin: removalPin,

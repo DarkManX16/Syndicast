@@ -54,7 +54,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let flexAfter = pins.walk(channel.programs, startTime(), entry.start, entry.start + 1)[0].flex;
             // The slot's show the pin is made in: the airing's, or where a break was moved to.
             let slotShowAt = (instant) => { let s = pins.slotAround({ schedule, at: instant }); return s ? s.showId : getShowData(airing).showId; };
-            scope.showId = around ? around.showId : getShowData(airing).showId;
+            scope.showId = pins.swapShow({ airing, slotShow: around ? around.showId : undefined, getShowData });
             let retitle = () => {
                 if (inPlace) {
                     scope.title = `${pins.label(moving)} where it sits, ${pins.dayClock(at)}, instead of its pinned ${pins.dayClock(moving.pin.at)}`;
@@ -436,7 +436,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 let notes = [];
                 if ( ! moving && ! isInsert && ! airing.pin && around && (around.showId !== own) ) {
                     notes.push(`${pins.dayClock(at)} is ${(names.get(around.showId) || around.showId.replace(/^(tv|custom)\./, ''))}'s slot in your schedule, `
-                        + `not ${getShowData(airing).showDisplayName}'s: the list is off here, so "This show" offers the slot's show.`);
+                        + `not ${getShowData(airing).showDisplayName}'s: the list is off here.`);
                 }
                 notes = notes.concat(base.alerts.map( (a) => 'Re-making the lineup now, with or without this: ' + a ));
                 if ( (notes.length > 0) && base.alerts.some( (a) => a.includes('in the list, but it is pinned to') ) ) {

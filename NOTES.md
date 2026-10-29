@@ -5491,6 +5491,13 @@ the swap losing his pin and shifting the night.
   three red lines over Robot Chicken's episodes; the special dropped on its own row pinned at
   12:00am, Family Guy 12:30 ... Home Movies 3:00, Venture Bros.' own episode at 3:30, 16
   pins; Swap on Family Guy at 12:30 then listed Family Guy episodes with no red lines.
+- **"This show" is the airing's own show** (Ron, Oct 29: "I should be able to get their
+  respective episodes to swap regardless of what timeslot it's in"). `pins.swapShow`: the
+  airing's TV or custom show wherever it sits; the slot's only for a movie or Flex. The red
+  line still says when the airing isn't its slot's show. Ron had swapped the Venture Bros.
+  episode, dragged it to 12:00am and probably saved before swapping others. Two checks,
+  failing first; 2592 pass. On the same preview: Futurama at 12:30am and Family Guy at
+  1:00am, still off their slots, list Futurama's and Family Guy's episodes.
 - **Proof.** 12 checks in `test/pins.js`, 11 failing first (a pin moved by hand and put back,
   one already in place, one dropped, one moved past its time, the swap dialog's baseline,
   the replaced pin left out, `outOfPlace` three ways, the undo prompt); 2583 pass with them.

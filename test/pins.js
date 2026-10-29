@@ -343,6 +343,13 @@ module.exports = async function () {
             suite.check('...but a pin out of place, dropped where it sits, is re-pinned there',
                 inPlace2.every((x) => x !== null && x.mode === 'swap' && x.index === movedRow && x.at === thu(19)), JSON.stringify(inPlace2));
 
+            // Ron, Oct 29: "This show" is the airing's own show, whatever slot it sits in now.
+            const futurama = episode('Futurama', 2, 14, { title: 'How Hermes Requisitioned His Groove Back' });
+            suite.check('swapShow: the airing\'s own show, not the slot\'s it sits in',
+                pins.swapShow({ airing: futurama, slotShow: 'tv.Family Guy', getShowData }) === 'tv.Futurama');
+            suite.check('...and the slot\'s for an airing of no show',
+                pins.swapShow({ airing: { title: 'A Movie', type: 'movie', duration: 90 * MIN }, slotShow: 'tv.Family Guy', getShowData }) === 'tv.Family Guy');
+
             // Moved: the re-lay without the old pin and with the new, against the lineup with the old.
             const movedTo7 = await lineup([mark(christmas, thu(19), 'take')]);
             const move = worker.optionSay({ current: swapped, base: swapped, mine: movedTo7, now: NOON8, at: thu(19), schedule, item: christmas,
