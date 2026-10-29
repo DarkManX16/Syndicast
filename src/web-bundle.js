@@ -147,9 +147,10 @@ class BundleFreshnessChecker {
                 out.on('error', reject);
                 out.on('finish', resolve);
                 // The bundle's first line names its own build, so the page can say which code it
-                // runs (the drag log stamps every entry with it).
+                // runs (the drag log stamps every entry with it) - and so can the re-lay worker
+                // (src/relay-worker.js), which runs this same bundle with `self` but no `window`.
                 const stamp = Object.assign({}, this.stamp(), { built: new Date().toISOString() });
-                out.write(`window.__syndicastBundle = ${JSON.stringify(stamp)};\n`);
+                out.write(`self.__syndicastBundle = ${JSON.stringify(stamp)};\n`);
                 bundleStream.pipe(out);
             });
             fs.renameSync(tmpOut, this.outFile);
