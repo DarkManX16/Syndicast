@@ -453,9 +453,18 @@ function recentAirings({ programs, startTime, now, spanMs, since }) {
         .map( (a) => ({ start: a.start, program: a.program }) );
 }
 
+// Kinds of hand edit that keep a row as it is (src/kept-rows.js, which needs
+// this module, so it is read here and not from there).
+const KEPT_AS_IT_IS = [ 'swap', 'insert', 'remove', 'moved' ];
+function keptAsItIs(program) {
+    return (typeof(program.kept) === 'object') && (program.kept !== null) && Array.isArray(program.kept.edits)
+        && program.kept.edits.some( (e) => KEPT_AS_IT_IS.indexOf(e.kind) !== -1 );
+}
+
 function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
-    // A swap or insert pinned by hand (src/pins.js) never counts for a position.
-    if (program.isOffline || program.pin) {
+    // A swap or insert pinned by hand (src/pins.js), or a row kept as it is,
+    // never counts for a position; a row kept in time is an ordinary airing.
+    if (program.isOffline || program.pin || keptAsItIs(program)) {
         return null;
     }
     let show = getShowData(program);
@@ -1036,4 +1045,5 @@ module.exports = {
     followRetime: followRetime,
     movedRepeatOf: movedRepeatOf,
     repeatHistory: repeatHistory,
+    keptAsItIs: keptAsItIs,
 };

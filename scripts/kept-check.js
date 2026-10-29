@@ -15,6 +15,12 @@
  *       [--put-back "<local time>"]           Put back on the row there
  *       [--around "<local time>"]             the night printed: three hours before, six after (default: the first edit's)
  *
+ * A swap or a removal also says how the episode it pushed out moved along:
+ * its position's later airings, each with the one before's episode; every
+ * other change, counted; and each position's record as Create Lineup would
+ * read it from the list (slot-progress planProgress), before and after. A
+ * Put back says which earlier list it gives back, JSON for JSON.
+ *
  * Reads only the channel file it is given; writes nothing.
  *
  * See NOTES.md, Known issues, "What you see is what airs: hand edits kept in the list".
@@ -23,6 +29,8 @@ const fs = require('fs');
 const path = require('path');
 const kept = require('../src/kept-rows');
 const pins = require('../src/pins');
+const slotProgress = require('../src/slot-progress');
+const rounds = require('../src/shuffle-rounds');
 const getShowData = require('../web/services/get-show-data')();
 
 const MIN = 60 * 1000;
@@ -57,13 +65,15 @@ function starts(lineup) {
     return out;
 }
 
-// The row starting at a local time (within 2 s), round the loop to its next airing.
+// The row starting at a local time (within 2 s), round the loop to its next
+// airing: a program, or a removal's kept Flex.
 function rowAt(lineup, local) {
     let t = Date.parse(local);
     let total = lineup.programs.reduce( (a, p) => a + p.duration, 0 );
     let s = starts(lineup);
-    let i = s.findIndex( (x, k) => ! lineup.programs[k].isOffline && Math.abs( (((t - x) % total) + total) % total ) <= SAME
-        || ! lineup.programs[k].isOffline && Math.abs( (((x - t) % total) + total) % total ) <= SAME );
+    let isRow = (p) => ! p.isOffline || p.kept;
+    let i = s.findIndex( (x, k) => isRow(lineup.programs[k]) && Math.abs( (((t - x) % total) + total) % total ) <= SAME
+        || isRow(lineup.programs[k]) && Math.abs( (((x - t) % total) + total) % total ) <= SAME );
     if (i === -1) {
         throw new Error('no airing starts at ' + local);
     }
@@ -121,6 +131,52 @@ function changed(before, after) {
     return moved;
 }
 
+/*
+ * The pushed-out episode's position, read before and after: its airings after
+ * the edited row, kept-as-it-is rows left out. After the edit each should be
+ * at the same start with the episode the one before it had, the first with
+ * the episode pushed out, and the last episode gone past the list's end.
+ */
+function along(before, after, index, was, now) {
+    let key = kept.positionOf(was);
+    if (key === null) {
+        return [ `  moved along: nothing - ${pins.label(was)} has no position (placed by hand, or a Repeat)` ];
+    }
+    let from = starts(before)[index];
+    // Past the end of the lineup the generator made: what aired, rotated there.
+    let horizon = pins.loopEnd(before, now);
+    let seq = (l, past) => {
+        let s = starts(l);
+        let out = [];
+        l.programs.forEach( (p, i) => {
+            if ( (s[i] > from) && ( (s[i] < horizon) !== past ) && ! p.isOffline && ! p.pin && ! kept.keepsItem(p) && (kept.positionOf(p) === key) ) {
+                out.push({ t: s[i], f: rounds.fileKey(p), p: p });
+            }
+        } );
+        return out;
+    };
+    let b = seq(before, false);
+    let a = seq(after, false);
+    let rb = seq(before, true);
+    let ra = seq(after, true);
+    let rotatedSame = (rb.length === ra.length) && rb.every( (x, k) => (x.f === ra[k].f) && (x.t === ra[k].t) );
+    let expect = [ rounds.fileKey(was) ].concat( b.map( (x) => x.f ) );
+    let wrong = a.filter( (x, k) => x.f !== expect[k] ).length;
+    let moved = a.filter( (x, k) => (k < b.length) && (x.t !== b[k].t) );
+    let lines = [ `  moved along: ${pins.showName(was)}, ${a.length} later airings (${b.length} before), ${a.length - wrong} with the episode of the one before`
+        + (a.length > 0 ? `; ${title(was)} at ${fmt(a[0].t)}` : '') + (b.length > 0 ? `; past the end: ${pins.label(b[b.length - 1].p)} (last at ${fmt(b[b.length - 1].t)})` : '') ];
+    lines.push(`    lineup made to ${fmt(horizon)}; aired airings rotated after it: ${rb.length}, ${rotatedSame ? 'all as they were' : 'CHANGED'}`);
+    lines.push(`    starts moved: ${moved.length}` + moved.slice(0, 3).map( (x) => ` ${fmt(x.t)} ${pins.label(x.p)}` ).join(';'));
+    a.slice(0, 3).forEach( (x, k) => lines.push(`    ${fmt(x.t)}  ${pins.label(x.p)}   (was ${b[k] ? pins.label(b[k].p) : '-'})`) );
+    return lines;
+}
+const title = (p) => p.isOffline ? 'Flex' : p.title;
+
+// Each position's record as Create Lineup reads it from the list.
+function progressOf(lineup, now, schedule, pool) {
+    return slotProgress.planProgress({ programs: lineup.programs, startTime: lineup.startTime, now, openedSchedule: schedule, schedule, pool, getShowData }).positions;
+}
+
 function main() {
     let args = parseArgs(process.argv.slice(2));
     let file = path.join(args.data, 'channels', args.channel + '.json');
@@ -144,7 +200,10 @@ function main() {
     }
 
     let now = args.at;
+    let pool = channel.programs;
+    let earlier = [];
     args.edits.forEach( (e, n) => {
+        earlier.push(JSON.stringify(lineup.programs));
         let parts = e.spec.split('|');
         let index = rowAt(lineup, parts[0]);
         let around = isNaN(args.around) ? Date.parse(parts[0]) : args.around;
@@ -155,15 +214,15 @@ function main() {
         let r;
         now += 1;
         if (e.what === 'swap') {
-            r = kept.swap({ lineup, index, item: itemFor(lineup, index, parts[1]), choice: parts[2], now });
+            r = kept.swap({ lineup, index, item: itemFor(lineup, index, parts[1]), choice: parts[2], now, schedule });
         } else if (e.what === 'insert') {
             r = kept.insertAfter({ lineup, index, item: itemFor(lineup, index, parts[1]), now });
         } else if (e.what === 'remove') {
-            r = kept.removeOnly({ lineup, index, now });
+            r = kept.removeOnly({ lineup, index, now, schedule });
         } else if (e.what === 'move') {
             r = kept.move({ lineup, from: index, to: rowAt(lineup, parts[1]), now, sure: true });
         } else {
-            r = kept.putBack({ lineup, index, now });
+            r = kept.putBack({ lineup, index, now, schedule, catalog: pool });
         }
         if (! r.programs) {
             console.log('  NOT APPLIED: ' + (r.refused || r.ask || JSON.stringify(r)));
@@ -176,7 +235,29 @@ function main() {
         let moved = changed(lineup, after);
         let outside = moved.filter( (x) => (x.start < from) || (x.start >= to) );
         console.log(`  entries new or moved: ${moved.length}, of them outside the night printed: ${outside.length}`);
-        outside.slice(0, 5).forEach( (x) => console.log(`    ${fmt(x.start)} ${x.program.isOffline ? 'Flex ' + mmss(x.program.duration) : pins.label(x.program)}`) );
+        if ( (e.what === 'swap') || (e.what === 'remove') ) {
+            let was = lineup.programs[index];
+            along(lineup, after, index, was, args.at).forEach( (l) => console.log(l) );
+            let key = kept.positionOf(was);
+            let ofIt = moved.filter( (x) => ! x.program.isOffline && (kept.positionOf(x.program) === key) && ! kept.keepsItem(x.program) );
+            let repeats = moved.filter( (x) => x.program.slotPosition === 'repeat' );
+            let flexes = moved.filter( (x) => x.program.isOffline );
+            let others = moved.filter( (x) => (ofIt.indexOf(x) === -1) && (repeats.indexOf(x) === -1) && (flexes.indexOf(x) === -1) );
+            console.log(`  changed entries: ${ofIt.length} of the position, ${repeats.length} Repeats, ${flexes.length} Flex, ${others.length} other`);
+            repeats.slice(0, 3).forEach( (x) => console.log(`    Repeat ${fmt(x.start)}  ${pins.label(x.program)}`) );
+            others.slice(0, 6).forEach( (x) => console.log(`    other ${fmt(x.start)}  ${x.program.isOffline ? 'Flex' : pins.label(x.program)}${kept.keptKind(x.program) ? ' [' + kept.keptKind(x.program) + ']' : ''}`) );
+            let p0 = progressOf(lineup, args.at, schedule, pool);
+            let p1 = progressOf(after, args.at, schedule, pool);
+            let keys = Object.keys(Object.assign({}, p0, p1));
+            let same = keys.filter( (k) => JSON.stringify(p0[k]) === JSON.stringify(p1[k]) );
+            console.log(`  stored progress read from the list: ${same.length} of ${keys.length} positions continue exactly as before`);
+            keys.filter( (k) => same.indexOf(k) === -1 ).slice(0, 4).forEach( (k) => console.log(`    differs ${k}: ${JSON.stringify(p0[k])} -> ${JSON.stringify(p1[k])}`) );
+        }
+        if (e.what === 'put-back') {
+            let json = JSON.stringify(after.programs);
+            let k = earlier.findIndex( (x) => x === json );
+            console.log( (k === -1) ? '  gives back: no earlier list exactly' : `  gives back: the list before edit ${k + 1}, JSON for JSON (${after.programs.length} entries)` );
+        }
         lineup = after;
     } );
 }

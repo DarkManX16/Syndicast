@@ -5858,6 +5858,56 @@ Suite 2592 at the start, 2636 at the end.
   gives back the list exactly, JSON for JSON, once a new break is written as the generator
   writes one (`{ duration, isOffline }`).
 
+**Step 2, episodes move along, Oct 29, 2026** (`list-lineup`). Proof on a fresh copy of
+`.dizquetv-dev` taken Thu Oct 29 at 7:24am Central (identical to the live files at 7:33am),
+read as of 7:30am. Suite 2636 at the start, 2658 at the end.
+
+- **What shipped.** A swap (fitting, Run late or Take the next row) and Remove this airing
+  only push the episode out to its position's next airing, each later airing taking the one
+  before's episode, with its label, so a Shuffle's rounds move with it; Repeats follow their
+  source, the swapped-in item included. Put back of a swap or a removal runs it back, and of
+  a take brings back the rows it took. `slot-progress` `placeOf`: a row kept as it is is
+  never a place, a row kept in time is; `slotPool` leaves rows kept as they are out. 22 new
+  checks in `test/kept-rows.js`, failing first, on a weekday-strip fixture (Play Next, a
+  Shuffle, a Repeat, a longer episode, an hour on Saturdays).
+- **Built differently from the plan.**
+  - The ripple stops at the end of the lineup the generator made (`pins.loopEnd`), not
+    the list's last entry. After its days of Flex, Create Lineup's carry has rotated what
+    aired since the lineup was made, and `planProgress` reads it as aired: channel 3 holds
+    Oct 26-28's Doug there. Rewritten, they read as Doug going round its range
+    (`wrapped: true`), found on the copy and fixed with a failing test first.
+  - A row an episode moving along runs late is marked `late`, which keeps nothing: it is
+    only Put back's record, and Create Lineup lays that night out again. Run late chosen in
+    a swap still keeps its rows in time. Found on channel 1: And Then There Were Fewer
+    (43:34), laid out Thu Apr 15 with the hour, moves to Fri Apr 16's half hour; kept in
+    time, that night would have stayed late for good.
+  - The edit records what Put back needs: `pos` (the label) for an episode that moves
+    along, or `item` for an airing with no position (restored as it was); `took` for a take;
+    `off`, what fell past the end. Put back brings in the last episode that fell for that
+    position, whichever edit pushed it, so two swaps of a show undone in either order leave
+    its episodes in order.
+  - A swap the first open made from a pin has no such record: Put back finds the position
+    from the show's next airing, and the episode past the end from the catalog given (Play
+    Next only; otherwise the last airing keeps its own).
+  - The ripple is inside `swap`, `removeOnly` and `putBack`, not its own export.
+- **On the copy** (`kept-check.js`, edits in order, each followed by Put back):
+  - Channel 1, Ron's Friday after the first open (16 pins now, the special with its 11
+    airings): Family Guy at 1:00am swapped (S2E20 standing in) - "Wasted Talent replaces
+    There's Something About Paulie at 1:00am; There's Something About Paulie airs Sun Nov 1,
+    11:00pm." plus the Apr 16 night above. 225 later Family Guy airings, each the one
+    before's episode, no start moved; 225 + 216 breaks + the swap + 4 rows on Apr 16
+    changed, nothing else; 138 of 138 positions continue exactly. The special dragged to
+    3:30 takes the swap to 12:30; Put back of the swap there, then of the drag, gives back
+    the list after the first open, JSON for JSON (40,000 entries).
+  - Channel 2: Hey Arnold! Mon Nov 2 6:30pm (the weekday strip; the Friday Shuffle
+    untouched), Are You Afraid of the Dark? Mon Nov 2 8:00pm (51 Saturday Repeats follow
+    it), and Remove on Tue Nov 3 6:30pm: 212, 207 and 211 airings along, 164 of 164
+    positions each time, every Put back exact.
+  - Channel 3: Doug Mon Nov 2 1:30pm and Remove Tue Nov 3 (Saturday's Shuffle untouched;
+    the 3 aired Doug airings rotated after Oct 21, 2027 left as they were), Kim Possible
+    Thu Oct 29 4:30pm (114 Repeats follow): 162 of 162 positions each time, every Put back
+    exact.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

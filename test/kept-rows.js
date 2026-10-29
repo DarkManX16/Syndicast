@@ -6,12 +6,15 @@
  */
 const { MIN, HOUR, DAY, Suite } = require('./support');
 const kept = require('../src/kept-rows');
+const slotProgress = require('../src/slot-progress');
 const getShowData = require('../web/services/get-show-data')();
 
 const SEC = 1000;
 const THU = new Date('2026-10-29T00:00:00').getTime();
 const NOW = new Date('2026-10-29T05:05:00').getTime();
 const fri = (h, m) => new Date(`2026-10-30T${String(h).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}:00`).getTime();
+// The next Friday night, a week on: Sun Nov 1 falls back in between.
+const nov6 = (h, m) => new Date(2026, 10, 6, h, m || 0).getTime();
 
 // Channel 1's Friday night, as the generator lays it: half hours of 22:30 and 7:30
 // of Flex, Robot Chicken in two halves of 11:35, Waynehead the rest of the week.
@@ -101,6 +104,56 @@ function withPin(l, at, special, extra) {
     }
     return { programs, startTime: l.startTime };
 }
+
+// A weekday strip, three weeks from Thu Oct 29: Hey Arnold! Play Next at 6:00pm (an
+// hour on Saturdays), Doug Shuffle at 6:30 except Saturdays, a Repeat of 6:00 at 7:00,
+// Flex until the next evening. Hey Arnold! 3 runs 34 minutes. Slot days count from
+// Thursday, as the epoch week does.
+const SAT = 2;
+const DOUG = [ [ 3, 1, 4, 2 ], [ 2, 4, 1, 3 ], [ 4, 3, 2, 1 ], [ 1, 2, 3, 4 ], [ 3, 1, 4, 2 ] ];
+function stripSchedule() {
+    let slots = [];
+    for (let d = 0; d < 7; d++) {
+        slots.push({ time: d * DAY + 18 * HOUR, showId: 'tv.Hey Arnold!', order: 'next' });
+        if (d !== SAT) {
+            slots.push({ time: d * DAY + 18 * HOUR + 30 * MIN, showId: 'tv.Doug', order: 'shuffle' });
+        }
+        slots.push({ time: d * DAY + 19 * HOUR, showId: 'tv.Hey Arnold!', order: 'repeat', repeatOf: d * DAY + 18 * HOUR });
+        slots.push({ time: d * DAY + 19 * HOUR + 30 * MIN, showId: 'flex.', order: 'next' });
+    }
+    return { period: 7 * DAY, lateness: DAY, pad: 5 * MIN, slots };
+}
+const eve = (day, h, m) => new Date(2026, 9, 29 + day, h, m || 0).getTime();
+function strip() {
+    let programs = [];
+    let t = THU;
+    let add = (p) => { programs.push(p); t += p.duration; };
+    let gapTo = (until) => { if (until > t) { add(flex(until - t)); } };
+    let doug = 0;
+    for (let day = 0; day < 21; day++) {
+        gapTo(eve(day, 18));
+        let ha = episode('Hey Arnold!', day + 1, (day === 2) ? 34 * MIN : 22 * MIN);
+        add(ha);
+        if (new Date(eve(day, 18)).getDay() !== 6) {
+            gapTo(eve(day, 18, 30));
+            let round = Math.floor(doug / 4);
+            add(episode('Doug', DOUG[round][doug % 4], 22 * MIN, { slotPosition: `shuffle||${round}` }));
+            doug++;
+        }
+        gapTo(eve(day, 19));
+        add(Object.assign({}, ha, { slotPosition: 'repeat' }));
+    }
+    gapTo(eve(21, 0));
+    return { programs, startTime: THU };
+}
+// Each airing as "start title", for comparing two lists row by row.
+const airs = (l) => {
+    let s = starts(l);
+    return l.programs.map( (p, i) => p.isOffline ? null : `${new Date(s[i]).toString().slice(0, 21)} ${p.title} ${p.slotPosition || ''}` ).filter( (x) => x !== null );
+};
+// The list's shape: each entry's title or Flex, length and kind of mark.
+const shape = (l) => l.programs.map( (p) => [ p.isOffline ? 'Flex' : p.title, p.duration, kept.keptKind(p) ] );
+const lineOf = (r, l0) => ({ programs: r.programs, startTime: l0.startTime });
 
 module.exports = async function () {
     const suite = new Suite('kept-rows');
@@ -221,8 +274,8 @@ module.exports = async function () {
             kept.keptKind(row) === 'swap' && row.kept.edits[0].was === 'Futurama S01E01 Futurama 1' && row.kept.edits[0].show === 'tv.Futurama'
                 && ! ('slotPosition' in row) && base.programs[i].kept === undefined,
             JSON.stringify(row.kept));
-        suite.check('...and says so in one sentence',
-            short.text === 'Anthology of Interest replaces Futurama 1 at 12:00am.', short.text);
+        suite.check('...and says so in one sentence, with where the episode it pushed out airs',
+            short.text === 'Anthology of Interest replaces Futurama 1 at 12:00am; Futurama 1 airs Fri Nov 6, 12:00am.', short.text);
 
         const longer = kept.swap({ lineup: base, index: i, item: episode('Futurama', 98, 25 * MIN), now: NOW });
         suite.check('a longer item that fits: the Flex after it shrinks',
@@ -248,7 +301,7 @@ module.exports = async function () {
                 return kept.keptKind(p) === 'shifted' && p.kept.edits[0].id === late.programs[i].kept.edits[0].id;
             } ) && ! late.programs.find( (x) => x.title === 'Aqua Teen Hunger Force 1' ).kept, '');
         suite.check('...and says so',
-            late.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am. Runs 14:09 long: Family Guy starts 12:44:09am, back on time at 1:30am.",
+            late.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am; Futurama 1 airs Fri Nov 6, 12:00am. Runs 14:09 long: Family Guy starts 12:44:09am, back on time at 1:30am.",
             late.text);
 
         const take = kept.swap({ lineup: base, index: i, item: special, choice: 'take', now: NOW });
@@ -259,7 +312,7 @@ module.exports = async function () {
                 && take.taken.length === 1 && take.taken[0].title === 'Family Guy 1',
             JSON.stringify(takeNight));
         suite.check('...and says so',
-            take.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am and takes Family Guy's 12:30am.", take.text);
+            take.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am and takes Family Guy's 12:30am; Futurama 1 airs Fri Nov 6, 12:00am and Family Guy 1 airs Fri Nov 6, 12:30am.", take.text);
 
         const onAir = indexAt(base, new Date('2026-10-29T05:00:00').getTime());
         const refused = kept.swap({ lineup: base, index: onAir, item: special, now: NOW });
@@ -298,7 +351,7 @@ module.exports = async function () {
                 && rem.programs[j].kept.edits[0].was === 'Family Guy S01E01 Family Guy 1'
                 && JSON.stringify(starts({ programs: rem.programs, startTime: base.startTime })) === JSON.stringify(starts(base)),
             rem.text);
-        suite.check('...and says so', rem.text === 'Leaves 22:30 of Flex at 12:30am in place of Family Guy 1.', rem.text);
+        suite.check('...and says so', rem.text === 'Leaves 22:30 of Flex at 12:30am in place of Family Guy 1; Family Guy 1 airs Fri Nov 6, 12:30am.', rem.text);
 
         // Channel 2, Oct 29 proof: a long insert just before a removal's Flex.
         const r2 = { programs: rem.programs, startTime: base.startTime };
@@ -394,6 +447,172 @@ module.exports = async function () {
             shiftedOnly.refused);
     }
 
-    suite.check('nothing above changed the list it was given', JSON.stringify(base.programs) === JSON.stringify(lineup().programs), '');
+    suite.log('-- episodes move along --');
+    const ss = stripSchedule();
+    const st = strip();
+    const journal = { type: 'episode', showTitle: 'Hey Arnold!', title: 'The Journal', season: 0, episode: 3, duration: 22 * MIN, serverKey: 'srv', key: '/e/journal' };
+    const rowAt = (l, t) => l.programs[indexAt(l, t)];
+    const ha = (l) => airs(l).filter( (x) => / Hey Arnold! \d+ next\|$/.test(x) || /The Journal/.test(x) );
+    {
+        const i = indexAt(st, eve(0, 18));
+        const r = kept.swap({ lineup: st, index: i, item: journal, now: NOW, schedule: ss });
+        const l = lineOf(r, st);
+        const edit = r.programs[i].kept.edits[0];
+        suite.check('forward: the pushed-out episode at its next airing, each later one along, to the end',
+            [ 1, 2, 3, 4, 10, 20 ].every( (d) => rowAt(l, eve(d, 18)).title === `Hey Arnold! ${d}` )
+                && edit.off.length === 1 && edit.off[0].title === 'Hey Arnold! 21' && edit.pos === 'next|',
+            JSON.stringify(ha(l).slice(0, 5)));
+        // Sunday's Doug runs late behind a longer Hey Arnold!, below.
+        const doug = (x) => airs(x).filter( (a) => / Doug /.test(a) && ! a.startsWith('Sun Nov 01') );
+        suite.check('...every other position\'s airings as they were, to the second',
+            JSON.stringify(doug(l)) === JSON.stringify(doug(st)) && doug(st).length === 17, doug(st).length);
+        suite.check('...a Repeat follows its source: the swapped-in episode, then each day\'s new one',
+            rowAt(l, eve(0, 19)).title === 'The Journal' && rowAt(l, eve(0, 19)).slotPosition === 'repeat' && ! rowAt(l, eve(0, 19)).kept
+                && [ 1, 2, 5, 20 ].every( (d) => (rowAt(l, eve(d, 19)).title === `Hey Arnold! ${d}`) && (rowAt(l, eve(d, 19)).slotPosition === 'repeat') ),
+            [ 0, 1, 2 ].map( (d) => rowAt(l, eve(d, 19)) && rowAt(l, eve(d, 19)).title ).join(', '));
+        const sunDoug = l.programs[indexAt(l, eve(3, 18, 34))];
+        suite.check('a longer episode runs late: Sunday\'s 34-minute Hey Arnold! 3 puts Doug at 6:34, back on time at 7:00',
+            sunDoug && sunDoug.title === 'Doug 4' && rowAt(l, eve(3, 19)).title === 'Hey Arnold! 3',
+            JSON.stringify(airs(l).filter( (a) => a.startsWith('Sun Nov 01 2026 18') || a.startsWith('Sun Nov 01 2026 19') )));
+        suite.check('...marked only for Put back: nothing keeps that night, so Create Lineup lays it out again',
+            kept.keptKind(sunDoug) === null && sunDoug.kept.edits.length === 1 && sunDoug.kept.edits[0].kind === 'late' && sunDoug.kept.edits[0].id === edit.id
+                && sunDoug.kept.edits[0].cut === 4 * MIN && kept.keptKind(rowAt(l, eve(3, 18))) === null && rowAt(l, eve(3, 18)).kept.edits[0].cut === -4 * MIN
+                && /Nothing to put back/.test(kept.putBack({ lineup: l, index: indexAt(l, eve(3, 18, 34)), now: NOW }).refused || ''),
+            JSON.stringify(sunDoug.kept));
+        suite.check('...and the sentence says where the episode airs, and where one runs long',
+            r.text === 'The Journal replaces Hey Arnold! 1 at 6:00pm; Hey Arnold! 1 airs Fri Oct 30, 6:00pm. Hey Arnold! 3 runs 4:00 long at Sun Nov 1, 6:00pm, back on time at 7:00pm.',
+            r.text);
+
+        const back = kept.putBack({ lineup: l, index: i, now: NOW, schedule: ss });
+        suite.check('back undoes forward exactly: Put back on the swap gives the list as it was, JSON for JSON',
+            back.programs && JSON.stringify(back.programs) === JSON.stringify(st.programs), back.text || back.refused);
+        suite.check('...and says so',
+            back.text === "Hey Arnold! 1 is back at 6:00pm; Hey Arnold!'s later episodes move back one.", back.text);
+
+        const before = slotProgress.planProgress({ programs: st.programs, startTime: st.startTime, now: NOW, openedSchedule: ss, schedule: ss, pool: st.programs, getShowData });
+        const after = slotProgress.planProgress({ programs: r.programs, startTime: st.startTime, now: NOW, openedSchedule: ss, schedule: ss, pool: r.programs.concat([ st.programs[i] ]), getShowData });
+        const places = slotProgress.readPlaces({ programs: r.programs, startTime: st.startTime, now: NOW, schedule: ss, getShowData });
+        const haPlace = places.get(slotProgress.positionKey('tv.Hey Arnold!', 'next', undefined));
+        suite.check('planProgress on the result: Hey Arnold!\'s place is the pushed-out episode at its next airing; every position\'s record as before',
+            haPlace && haPlace.start === eve(1, 18) && haPlace.program.title === 'Hey Arnold! 1'
+                && JSON.stringify(after.positions) === JSON.stringify(before.positions),
+            JSON.stringify(after.positions).slice(0, 300));
+    }
+    {
+        // Create Lineup's carry rotates a list: what aired since it was made goes after the
+        // generator's days of Flex at its end, where stored progress reads it as aired.
+        const aired = Object.assign(episode('Hey Arnold!', 0, 22 * MIN), {});
+        const rotated = { programs: st.programs.concat([ flex(2 * DAY), aired, flex(8 * MIN) ]), startTime: st.startTime };
+        const r = kept.swap({ lineup: rotated, index: indexAt(rotated, eve(0, 18)), item: journal, now: NOW, schedule: ss });
+        const tail = r.programs.slice(-3);
+        suite.check('the ripple stops where the generator\'s lineup ends: the aired airings rotated after it are left as they are',
+            JSON.stringify(tail) === JSON.stringify(rotated.programs.slice(-3)) && r.programs[indexAt(rotated, eve(0, 18))].kept.edits[0].off[0].title === 'Hey Arnold! 21',
+            JSON.stringify(tail.map( (p) => p.title || 'Flex' )));
+    }
+    {
+        // Ron dragged Monday's Hey Arnold! 5 there (kept as it is); Tuesday's moved with it (kept in time).
+        const programs = st.programs.slice();
+        const mon = indexAt(st, eve(4, 18));
+        const tue = indexAt(st, eve(5, 18));
+        programs[mon] = Object.assign({}, programs[mon], { kept: { edits: [ { id: 'eM', kind: 'moved', from: eve(4, 18), made: 'x' } ] } });
+        programs[tue] = Object.assign({}, programs[tue], { kept: { edits: [ { id: 'eM', kind: 'shifted', made: 'x' } ] } });
+        const m = { programs, startTime: st.startTime };
+        const r = kept.swap({ lineup: m, index: indexAt(m, eve(0, 18)), item: journal, now: NOW, schedule: ss });
+        const l = lineOf(r, st);
+        suite.check('a kept-as-it-is airing of the show is skipped, a kept-in-time one takes part',
+            rowAt(l, eve(4, 18)).title === 'Hey Arnold! 5' && kept.keptKind(rowAt(l, eve(4, 18))) === 'moved'
+                && rowAt(l, eve(5, 18)).title === 'Hey Arnold! 4' && kept.keptKind(rowAt(l, eve(5, 18))) === 'shifted'
+                && rowAt(l, eve(6, 18)).title === 'Hey Arnold! 6',
+            JSON.stringify(ha(l).slice(3, 7)));
+
+        const places = (x) => slotProgress.readPlaces({ programs: x, startTime: st.startTime, now: NOW, schedule: ss, getShowData })
+            .get(slotProgress.positionKey('tv.Hey Arnold!', 'next', undefined));
+        const first = indexAt(st, eve(0, 18));
+        const asMoved = st.programs.slice();
+        asMoved[first] = Object.assign({}, asMoved[first], { kept: { edits: [ { id: 'eM', kind: 'moved', from: 0, made: 'x' } ] } });
+        const asShifted = st.programs.slice();
+        asShifted[first] = Object.assign({}, asShifted[first], { kept: { edits: [ { id: 'eM', kind: 'shifted', made: 'x' } ] } });
+        suite.check('placeOf: a row kept as it is is never its show\'s place; one kept in time is',
+            places(asMoved).start === eve(1, 18) && places(asShifted).start === eve(0, 18), '');
+        const pool = require('../web/services/common-program-tools')(getShowData).slotPool([ programs[mon], programs[tue] ]);
+        suite.check('slotPool leaves out rows kept as they are, as it leaves out pins',
+            pool.length === 1 && pool[0].title === 'Hey Arnold! 6', pool.map( (p) => p.title ).join(', '));
+    }
+    {
+        const i = indexAt(st, eve(0, 18, 30));
+        const r = kept.swap({ lineup: st, index: i, item: Object.assign({}, journal, { showTitle: 'Doug', title: 'Doug\'s Halloween', key: '/e/dh' }), now: NOW, schedule: ss });
+        const was = airs(st).filter( (a) => / Doug \d/.test(a) );
+        const now = airs(lineOf(r, st)).filter( (a) => / Doug \d/.test(a) );
+        suite.check('Shuffle: the round\'s order moves along the same way, each episode with its round',
+            now.length === was.length - 1 && now.every( (a, k) => a.slice(0, 21) === was[k + 1].slice(0, 21) && a.slice(22) === was[k].slice(22) ),
+            JSON.stringify(now.slice(0, 5)));
+    }
+    {
+        const i = indexAt(base, fri(1));
+        const r = kept.swap({ lineup: base, index: i, item: episode('Robot Chicken', 99, 11 * MIN + 35 * SEC, { title: 'Robot Chicken special' }), now: NOW, schedule: sched });
+        const l = lineOf(r, base);
+        const j = indexAt(l, fri(1, 15));
+        suite.check('two-halves slot: the room is the half - Robot Chicken 1 at 1:15 with its 3:25, Aqua Teen at 1:30',
+            l.programs[j].title === 'Robot Chicken 1' && l.programs[j + 1].duration === 3 * MIN + 25 * SEC
+                && rowAt(l, fri(1, 30)).title === 'Aqua Teen Hunger Force 1' && rowAt(l, nov6(1)).title === 'Robot Chicken 2', '');
+
+        // A second swap of the same show the same night, then Put back of the first.
+        const r2 = kept.swap({ lineup: l, index: j, item: episode('Robot Chicken', 98, 11 * MIN + 35 * SEC, { title: 'Second special' }), now: NOW + 1, schedule: sched });
+        const undone = kept.putBack({ lineup: lineOf(r2, base), index: i, now: NOW + 2, schedule: sched });
+        const alone = kept.swap({ lineup: base, index: indexAt(base, fri(1, 15)), item: episode('Robot Chicken', 98, 11 * MIN + 35 * SEC, { title: 'Second special' }), now: NOW + 1, schedule: sched });
+        suite.check('Put back of a swap after a later swap of the same show: as if only the later one were made',
+            undone.programs && JSON.stringify(shape(lineOf(undone, base))) === JSON.stringify(shape(lineOf(alone, base))), undone.text || undone.refused);
+        const both = kept.putBack({ lineup: lineOf(undone, base), index: j, now: NOW + 3, schedule: sched });
+        suite.check('...and Put back of the later one too: the list as it was, JSON for JSON',
+            both.programs && JSON.stringify(both.programs) === JSON.stringify(base.programs), both.text || both.refused);
+    }
+    {
+        const i = indexAt(st, eve(0, 18));
+        const rem = kept.removeOnly({ lineup: st, index: i, now: NOW, schedule: ss });
+        const l = lineOf(rem, st);
+        suite.check('remove: the episode at its next airing, as a swap\'s; Put back gives the list as it was',
+            rowAt(l, eve(1, 18)).title === 'Hey Arnold! 1'
+                && JSON.stringify(kept.putBack({ lineup: l, index: i, now: NOW, schedule: ss }).programs) === JSON.stringify(st.programs),
+            rem.text);
+    }
+    {
+        const i = indexAt(base, fri(0));
+        const special = episode('Specials', 1, 44 * MIN + 9 * SEC, { title: "'Twas the Fight Before Christmas" });
+        const take = kept.swap({ lineup: base, index: i, item: special, choice: 'take', now: NOW, schedule: sched });
+        const tl = lineOf(take, base);
+        const tb = kept.putBack({ lineup: tl, index: i, now: NOW, schedule: sched });
+        suite.check('take: the taken row\'s episode at its next airing; Put back gives back both rows, JSON for JSON',
+            rowAt(tl, nov6(0, 30)).title === 'Family Guy 1' && rowAt(tl, nov6(0)).title === 'Futurama 1'
+                && tb.programs && JSON.stringify(tb.programs) === JSON.stringify(base.programs),
+            tb.text || tb.refused);
+        const late = kept.swap({ lineup: base, index: i, item: special, choice: 'late', now: NOW, schedule: sched });
+        const lb = kept.putBack({ lineup: lineOf(late, base), index: i, now: NOW, schedule: sched });
+        suite.check('late: Put back gives back the rows it ran late, JSON for JSON',
+            lb.programs && JSON.stringify(lb.programs) === JSON.stringify(base.programs), lb.text || lb.refused);
+
+        // A swap made before this design: no record of its room or what fell off the end.
+        const v = indexAt(base, fri(3, 30));
+        const sw = kept.swap({ lineup: base, index: v, item: Object.assign(episode('The Venture Bros.', 0, 22 * MIN + 30 * SEC, { title: 'A Very Venture Halloween' })), now: NOW, schedule: sched });
+        const old = sw.programs.slice();
+        old[v] = Object.assign({}, old[v], { kept: { edits: [ { id: 'e1', kind: 'swap', was: 'x', show: 'tv.The Venture Bros.', made: 'x' } ] } });
+        const ob = kept.putBack({ lineup: { programs: old, startTime: base.startTime }, index: v, now: NOW, schedule: sched, catalog: base.programs });
+        suite.check('a swap the first open converted: Put back finds the show\'s episodes, and the catalog the one past the end',
+            ob.programs && JSON.stringify(ob.programs) === JSON.stringify(base.programs), ob.text || ob.refused);
+    }
+    {
+        // Sun Nov 1, 2026: 1:00-2:00am happens twice; the ripple runs through it by instants.
+        const i = indexAt(base, new Date('2026-10-31T23:30:00').getTime());
+        const r = kept.swap({ lineup: base, index: i, item: episode('Waynehead', 0, 22 * MIN + 30 * SEC, { title: 'Waynehead special' }), now: NOW, schedule: sched });
+        const wb = airs(base).filter( (a) => / Waynehead \d/.test(a) );
+        const wa = airs(lineOf(r, base)).filter( (a) => / Waynehead \d/.test(a) );
+        const k0 = wb.findIndex( (a) => a.startsWith('Sat Oct 31 2026 23:30') );
+        suite.check('across the fall-back night: every Waynehead airing at its instant with the one before\'s episode',
+            JSON.stringify(starts(lineOf(r, base))) === JSON.stringify(starts(base))
+                && wa.length === wb.length - 1 && wa.slice(k0).every( (a, k) => a.slice(0, 21) === wb[k0 + k + 1].slice(0, 21) && a.slice(22) === wb[k0 + k].slice(22) ),
+            JSON.stringify(wa.slice(k0, k0 + 6)));
+    }
+
+    suite.check('nothing above changed the list it was given', JSON.stringify(base.programs) === JSON.stringify(lineup().programs)
+        && JSON.stringify(st.programs) === JSON.stringify(strip().programs), '');
     return suite;
 };

@@ -9,7 +9,9 @@
  *
  * A row's edits, oldest first. 'swap', 'insert', 'remove' and 'moved' keep the
  * row as it is (its time and its item); 'shifted' keeps only its time - a row
- * a drag or a run-late moved. Put back undoes one edit, on the list as it is
+ * a drag or a run-late moved. 'late' keeps nothing: a row an episode moving
+ * along ran late, recorded only so Put back can restore it - Create Lineup
+ * lays that night out again. Put back undoes one edit, on the list as it is
  * now, and a row whose last edit goes is ordinary again.
  *
  * Every edit takes a lineup ({ programs, startTime }) and returns a new
@@ -22,13 +24,15 @@
  */
 
 const slotProgress = require('./slot-progress');
+const rounds = require('./shuffle-rounds');
 const pins = require('./pins');
 const SLACK = require('./constants').SLACK;
 const showDataOf = require('../web/services/get-show-data')();
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
-const DAY = 24 * 60 * MINUTE;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 // Two starts this close are the same airing: saved lineups start a fraction
 // of a second off the minute.
 const SAME = 2 * SECOND;
@@ -58,7 +62,7 @@ function amount(ms) {
     return pins.length(ms);
 }
 const possessive = (name) => /s$/.test(name) ? name + "'" : name + "'s";
-const title = (p) => p.isOffline ? 'Flex' : p.title;
+const title = (p) => p.isOffline ? 'Flex' : String(p.title).trim();
 const an = (word) => (/^[aeiou]/.test(word) ? 'an ' : 'a ') + word;
 const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${ (n === 1) ? '' : 's' }`;
 
@@ -69,7 +73,7 @@ function editsOf(program) {
 // The row's kind: its latest edit that keeps the item, else 'shifted'; null
 // for a row nothing keeps.
 function keptKind(program) {
-    let edits = editsOf(program);
+    let edits = editsOf(program).filter( (e) => e.kind !== 'late' );
     if (edits.length === 0) {
         return null;
     }
@@ -195,13 +199,329 @@ function sayLate(overrun, late) {
 }
 
 /*
+ * Episodes move along (Ron's rule 5). An episode an edit pushes out airs at
+ * its position's next airing, and each later airing of the position takes the
+ * episode of the one before, to the end of the lineup the generator made;
+ * Put back runs it the other way. That end is pins.loopEnd: after its days of
+ * Flex, Create Lineup's carry has rotated what aired since the lineup was
+ * made, which stored progress reads as aired, so nothing past it changes.
+ *
+ * A position is a show, a mode and a range, read from the airing's label
+ * (src/slot-progress.js), so an episode and its label move together - a
+ * Shuffle's rounds with them. A row kept as it is isn't the position's; a row
+ * kept in time is. Each row keeps its start and the break after it takes the
+ * difference; an episode longer than its row's room runs late until a break
+ * absorbs it, marked 'late' - nothing keeps that night. A Repeat of an airing
+ * that changes follows it.
+ */
+
+// The position an episode counts for, or null: Flex, a Repeat, an airing no slot made.
+function positionOf(content) {
+    if (content.isOffline) {
+        return null;
+    }
+    let parsed = slotProgress.parseLabel(content.slotPosition);
+    let show = showDataOf(content);
+    if ( (parsed === null) || (parsed.mode === 'repeat') || ! show.hasShow ) {
+        return null;
+    }
+    return slotProgress.positionKey(show.showId, parsed.mode, { excludeSeasons: parsed.excluded });
+}
+
+// What a row airs, without the marks that belong to the row.
+function contentOf(program) {
+    let c = Object.assign({}, program);
+    delete c.kept;
+    return c;
+}
+// `content` in the row `row`, which keeps its own marks.
+function filled(row, content) {
+    let c = contentOf(content);
+    if (editsOf(row).length > 0) {
+        c.kept = { edits: editsOf(row).map( (e) => Object.assign({}, e) ) };
+    }
+    return c;
+}
+
+// The first entry at or after the end of the lineup the generator made.
+function endOf(lineup, starts, now) {
+    let horizon = pins.loopEnd(lineup, now);
+    let i = starts.findIndex( (t) => t >= horizon );
+    return (i === -1) ? lineup.programs.length : i;
+}
+
+const startsOf = ({ programs, startTime }) => {
+    let out = new Array(programs.length);
+    let t = startTime;
+    for (let i = 0; i < programs.length; i++) {
+        out[i] = t;
+        t += programs[i].duration;
+    }
+    return out;
+};
+
+// Marked by edit `id` - 'shifted', kept in time, or 'late', only run late -
+// `cut` shorter than its row was: one mark per edit and kind.
+function markShifted(program, id, cut, now, kind) {
+    let edits = editsOf(program);
+    let mine = edits.find( (e) => (e.id === id) && (e.kind === kind) );
+    if (! mine) {
+        return withEdit(program, { id: id, kind: kind, cut: cut, made: iso(now) });
+    }
+    let copy = Object.assign({}, program);
+    copy.kept = { edits: edits.map( (e) => Object.assign({}, e, (e === mine) ? { cut: (e.cut || 0) + cut } : {}) ) };
+    return copy;
+}
+
+// The rows after `after` and before `end` that air position `key`: none kept as it is.
+function chainOf(programs, after, key, end) {
+    let out = [];
+    for (let i = after + 1; i < end; i++) {
+        let p = programs[i];
+        if ( ! p.isOffline && ! p.pin && ! keepsItem(p) && (positionOf(p) === key) ) {
+            out.push(i);
+        }
+    }
+    return out;
+}
+
+// `contents`: what each row will air, by index, where it changes.
+const airingAt = (programs, contents, i) => contents.has(i) ? contents.get(i) : contentOf(programs[i]);
+
+// Forward: `pushed` at its position's next airing after row `after`, each later
+// one's episode at the next, before `end`. What falls off the end.
+function pushAlong(programs, contents, after, pushed, end) {
+    let carry = pushed;
+    chainOf(programs, after, positionOf(pushed), end).forEach( (i) => {
+        let here = airingAt(programs, contents, i);
+        contents.set(i, carry);
+        carry = here;
+    } );
+    return carry;
+}
+
+// Back: row `head` takes the next airing's episode, each later one the next
+// one's, the last `entering(its own)`. False when nothing can fill `head`.
+function pullBack(programs, contents, head, key, entering, end) {
+    let seq = [ head ].concat(chainOf(programs, head, key, end));
+    let last = airingAt(programs, contents, seq[seq.length - 1]);
+    for (let j = 0; j < seq.length - 1; j++) {
+        contents.set(seq[j], airingAt(programs, contents, seq[j + 1]));
+    }
+    let next = entering( (seq.length > 1) ? last : null );
+    if (next) {
+        contents.set(seq[seq.length - 1], next);
+    } else if (seq.length === 1) {
+        return false;
+    }
+    return true;
+}
+
+/*
+ * A Repeat follows its source: an airing labelled 'repeat', in a Repeat slot,
+ * holding what an airing of the slot it repeats held before a change, a period
+ * or less earlier, airs what that airing airs now - a copy, as the generator
+ * makes one. `changes`: [{ index, start, was, now }].
+ */
+function followRepeats({ programs, starts, contents, changes, schedule, end }) {
+    let sources = changes.filter( (c) => c.was && ! c.now.isOffline );
+    if ( (sources.length === 0) || ! schedule || ! Array.isArray(schedule.slots) ) {
+        return;
+    }
+    let findSlot = slotProgress.slotFinder(schedule);
+    let period = (typeof(schedule.period) === 'number') ? schedule.period : DAY;
+    let first = sources.reduce( (a, c) => Math.min(a, c.index), Infinity );
+    for (let i = first + 1; i < end; i++) {
+        let p = programs[i];
+        if ( (p.slotPosition !== 'repeat') || p.isOffline || keepsItem(p) ) {
+            continue;
+        }
+        let slot = findSlot(starts[i]);
+        if ( (slot === null) || (slot.order !== 'repeat') ) {
+            continue;
+        }
+        let file = rounds.fileKey(p);
+        let source = null;
+        sources.forEach( (c) => {
+            if ( (c.start < starts[i]) && (c.start >= starts[i] - period - HOUR) && (rounds.fileKey(c.was) === file)
+                 && ( (source === null) || (c.start > source.start) ) ) {
+                let s = findSlot(c.start);
+                if ( (s !== null) && (s.time === slot.repeatOf) ) {
+                    source = c;
+                }
+            }
+        } );
+        if (source !== null) {
+            let copy = contentOf(source.now);
+            delete copy.shuffleOrder;
+            copy.slotPosition = slotProgress.label('repeat');
+            contents.set(i, copy);
+        }
+    }
+}
+
+/*
+ * The list laid out again from its first changed row: each row keeps its
+ * start and airs `contents` where given; its block - the program and the
+ * break after it - is `targets` long where given, else as long as it is plus
+ * what edit `undo` cut from it (its marks come off). A program longer than
+ * its block runs late, and the rows after shorten their breaks until it is
+ * absorbed, marked `kind` by edit `id` with what each was cut, for Put back.
+ * Rows that don't change keep their entries. `watch`: rows whose new start is
+ * wanted; `late`: each run late, where it starts and when it's back on time.
+ */
+function layout({ lineup, contents, targets, undo, id, kind, now, watch }) {
+    let programs = lineup.programs;
+    let rows = rowsOf(lineup);
+    let touched = new Set( [ ...contents.keys(), ...targets.keys() ] );
+    if (undo) {
+        rows.forEach( (r) => {
+            if (editsOf(r.program).some( (e) => e.id === undo )) {
+                touched.add(r.index);
+            }
+        } );
+    }
+    let startOf = new Map();
+    let late = [];
+    if (touched.size === 0) {
+        return { programs, startOf, late };
+    }
+    let first = Infinity;
+    let lastTouched = -1;
+    touched.forEach( (i) => { first = Math.min(first, i); lastTouched = Math.max(lastTouched, i); } );
+    let k0 = rows.findIndex( (r) => r.index >= first );
+    let out = programs.slice(0, rows[k0].index);
+    let t = rows[k0].start;
+    let behind = 0;
+    let open = null;
+    for (let k = k0; k < rows.length; k++) {
+        let row = rows[k];
+        if ( (behind === 0) && (row.index > lastTouched) ) {
+            out = out.concat(programs.slice(row.index));
+            break;
+        }
+        let p = row.program;
+        let room = blockOf(row);
+        let mine = undo ? editsOf(p).filter( (e) => e.id === undo ) : [];
+        if (mine.length > 0) {
+            mine.forEach( (e) => { room += e.cut || 0; } );
+            p = withoutEdit(p, undo);
+        }
+        if (targets.has(row.index)) {
+            room = targets.get(row.index);
+        }
+        if (contents.has(row.index)) {
+            p = filled(p, contents.get(row.index));
+        }
+        if (watch && watch.has(row.index)) {
+            startOf.set(row.index, t);
+        }
+        let d = p.duration;
+        let block = (behind + d <= room) ? room - behind : d;
+        if ( (behind > 0) || (d > room) ) {
+            p = markShifted(p, id, room - block, now, kind);
+        }
+        if ( (behind === 0) && (d > room) ) {
+            open = { program: p, start: t, over: d - room };
+        }
+        let gap = block - d;
+        if (gap === row.flex) {
+            out = out.concat([ p ], programs.slice(row.index + 1, row.last + 1));
+        } else {
+            out.push(p);
+            if (gap > 0) {
+                out.push(flex(gap));
+            }
+        }
+        t += block;
+        behind += block - room;
+        if ( (open !== null) && (behind === 0) ) {
+            open.onTime = t;
+            late.push(open);
+            open = null;
+        }
+    }
+    if (open !== null) {
+        late.push(open);
+    }
+    return { programs: out, startOf, late };
+}
+
+/*
+ * After an edit at row `at` replaced `was` with `into` and pushed out `pushed`
+ * (the episodes of `was` and of any rows it took): each at its position's
+ * next airing. Returns the list, where each landed (`start` null when the
+ * list has no later airing of its position), what ran late, and what fell off
+ * the list's end, in the order it fell, for Put back.
+ */
+function rippleOut({ lineup, at, was, into, pushed, id, now, schedule }) {
+    let programs = lineup.programs;
+    let contents = new Map();
+    let out = pushed.map(contentOf).filter( (c) => positionOf(c) !== null );
+    let off = [];
+    let starts = startsOf(lineup);
+    let end = endOf(lineup, starts, now);
+    out.slice().reverse().forEach( (c) => off.push(pushAlong(programs, contents, at, c, end)) );
+    let changes = [ { index: at, start: starts[at], was: contentOf(was), now: into } ];
+    contents.forEach( (c, i) => changes.push({ index: i, start: starts[i], was: contentOf(programs[i]), now: c }) );
+    let landedAt = new Map();
+    contents.forEach( (c, i) => { if (out.indexOf(c) !== -1) { landedAt.set(c, i); } } );
+    followRepeats({ programs, starts, contents, changes, schedule, end });
+    let laid = layout({ lineup, contents, targets: new Map(), id, kind: 'late', now, watch: new Set(landedAt.values()) });
+    return {
+        programs: laid.programs,
+        landed: out.map( (c) => ({ content: c, start: landedAt.has(c) ? laid.startOf.get(landedAt.get(c)) : null }) ),
+        late: laid.late,
+        off: off,
+    };
+}
+
+// What an edit records of the airing it pushes out, for Put back: its label
+// when it moves along (it comes back from its next airing), else itself.
+function recordOut(edit, program) {
+    if (positionOf(contentOf(program)) !== null) {
+        edit.pos = program.slotPosition;
+    } else {
+        edit.item = contentOf(program);
+    }
+    return edit;
+}
+
+// "; There's Something About Paulie airs Sun Nov 1, 11:00pm"
+function sayLanded(landed) {
+    if (landed.length === 0) {
+        return '';
+    }
+    return '; ' + landed.map( (x) => (x.start === null)
+        ? `${title(x.content)} waits for ${possessive(pins.showName(x.content))} next airing after the list ends`
+        : `${title(x.content)} airs ${pins.dayClock(x.start)}` ).join(' and ');
+}
+// " He's Too Sexy for His Fat runs 4:00 long at Tue Nov 3, 12:30am, back on time at 1:00am."
+function sayRunsLong(late) {
+    if (late.length === 0) {
+        return '';
+    }
+    let x = late[0];
+    let text = ` ${title(x.program)} runs ${pins.length(x.over)} long at ${pins.dayClock(x.start)}`;
+    if (typeof(x.onTime) === 'number') {
+        let sameDay = (new Date(x.onTime)).toDateString() === (new Date(x.start)).toDateString();
+        text += `, back on time at ${sameDay ? clockAm(x.onTime) : dayClockAm(x.onTime)}`;
+    }
+    if (late.length > 1) {
+        text += `; ${late.length - 1} more after it run long`;
+    }
+    return text + '.';
+}
+
+/*
  * The item for the airing at `index`, in place. The Flex after it takes the
  * difference; when the item is longer than the row and its Flex, `choice`
  * says what gives: 'late', the rows after run late until a break absorbs it;
  * 'take', it takes the rows it runs into. Without one, it answers with the
- * choices.
+ * choices. The episode it replaces, and each it takes, airs at its
+ * position's next airing (rippleOut); `schedule` lets Repeats follow.
  */
-function swap({ lineup, index, item, choice, now }) {
+function swap({ lineup, index, item, choice, now, schedule }) {
     let rows = rowsOf(lineup);
     let k = rows.findIndex( (r) => r.index === index );
     let row = rows[k];
@@ -223,21 +543,37 @@ function swap({ lineup, index, item, choice, now }) {
     let id = earlier ? earlier.id : newId(programs, now);
     let swapped = stripped(item);
     swapped.kept = { edits: editsOf(row.program).map( (e) => Object.assign({}, e) ) };
+    let edit = swapped.kept.edits.find( (e) => e.id === id );
+    // A swap swapped again pushes nothing out: what it replaces was placed by hand.
+    let pushed = [];
     if (! earlier) {
-        swapped.kept.edits.push({ id: id, kind: 'swap', was: pins.label(row.program), show: showOf(row.program), room: room, made: iso(now) });
+        edit = recordOut({ id: id, kind: 'swap', was: pins.label(row.program), show: showOf(row.program), room: room, made: iso(now) }, row.program);
+        swapped.kept.edits.push(edit);
+        pushed.push(row.program);
     }
-    let text = `${title(item)} replaces ${title(row.program)} at ${clockAm(row.start)}.`;
+    let text = `${title(item)} replaces ${title(row.program)} at ${clockAm(row.start)}`;
     let head = programs.slice(0, row.index).concat([ swapped ]);
+    let moveAlong = (list, said, taken) => {
+        let r = rippleOut({ lineup: { programs: list, startTime: lineup.startTime }, at: row.index, was: row.program, into: swapped, pushed, id, now, schedule });
+        if (r.off.length > 0) {
+            edit.off = (edit.off || []).concat(r.off);
+        }
+        let out = { programs: r.programs, text: text + sayLanded(r.landed) + '.' + said + sayRunsLong(r.late), edit: id };
+        if (taken) {
+            out.taken = taken;
+        }
+        return out;
+    };
     if (overrun <= 0) {
         let rest = (room - item.duration > 0) ? [ flex(room - item.duration) ] : [];
-        return { programs: head.concat(rest, programs.slice(row.last + 1)), text: text, edit: id };
+        return moveAlong(head.concat(rest, programs.slice(row.last + 1)), '');
     }
     if (choice === 'late') {
         let late = runLate({ programs, rows, k: k + 1, late: overrun, id, now });
         if (late === null) {
             return { refused: `${title(item)} is too long to catch up before the list ends.` };
         }
-        return { programs: head.concat(late.entries), text: `${text} ${sayLate(overrun, late)}`, edit: id };
+        return moveAlong(head.concat(late.entries), ' ' + sayLate(overrun, late));
     }
     let taken = [];
     let j = k + 1;
@@ -254,12 +590,20 @@ function swap({ lineup, index, item, choice, now }) {
     }
     let rest = (room - item.duration > 0) ? [ flex(room - item.duration) ] : [];
     let names = taken.map( (q) => `${possessive(pins.showName(q.program))} ${clockAm(q.start)}` ).join(' and ');
-    return {
-        programs: head.concat(rest, programs.slice(taken[taken.length - 1].last + 1)),
-        text: `${text.slice(0, -1)} and takes ${names}.`,
-        edit: id,
-        taken: taken.map( (q) => q.program ),
-    };
+    text += ` and takes ${names}`;
+    // Each row taken comes back with Put back: its room, and its episode as the swap's.
+    edit.took = (edit.took || []).concat(taken.map( (q) => {
+        let t = recordOut({ room: blockOf(q) }, q.program);
+        if (typeof(t.pos) === 'string') {
+            t.show = showOf(q.program);
+        }
+        if (editsOf(q.program).length > 0) {
+            t.kept = JSON.parse(JSON.stringify(q.program.kept));
+        }
+        return t;
+    } ));
+    pushed = pushed.concat(taken.map( (q) => q.program ));
+    return moveAlong(head.concat(rest, programs.slice(taken[taken.length - 1].last + 1)), '', taken.map( (q) => q.program ));
 }
 
 /*
@@ -302,8 +646,9 @@ function insertAfter({ lineup, index, item, now }) {
     return { programs: head.concat(late.entries), text: `${text}. ${sayLate(overrun, late)}`, edit: id };
 }
 
-// "Remove this airing only": kept Flex of the airing's length; every row where it was.
-function removeOnly({ lineup, index, now }) {
+// "Remove this airing only": kept Flex of the airing's length; every row where
+// it was, and its episode at its position's next airing.
+function removeOnly({ lineup, index, now, schedule }) {
     let rows = rowsOf(lineup);
     let row = rows.find( (r) => r.index === index );
     if ( (typeof(row) === 'undefined') || row.program.isOffline ) {
@@ -315,10 +660,19 @@ function removeOnly({ lineup, index, now }) {
     }
     let id = newId(lineup.programs, now);
     let gap = flex(row.program.duration);
-    gap.kept = { edits: [ { id: id, kind: 'remove', was: pins.label(row.program), show: showOf(row.program), made: iso(now) } ] };
+    let edit = recordOut({ id: id, kind: 'remove', was: pins.label(row.program), show: showOf(row.program), made: iso(now) }, row.program);
+    gap.kept = { edits: editsOf(row.program).map( (e) => Object.assign({}, e) ).concat([ edit ]) };
     let programs = lineup.programs.slice();
     programs[index] = gap;
-    return { programs: programs, text: `Leaves ${pins.length(row.program.duration)} of Flex at ${clockAm(row.start)} in place of ${title(row.program)}.`, edit: id };
+    let r = rippleOut({ lineup: { programs, startTime: lineup.startTime }, at: index, was: row.program, into: gap, pushed: [ row.program ], id, now, schedule });
+    if (r.off.length > 0) {
+        edit.off = r.off;
+    }
+    return {
+        programs: r.programs,
+        text: `Leaves ${pins.length(row.program.duration)} of Flex at ${clockAm(row.start)} in place of ${title(row.program)}${sayLanded(r.landed)}.${sayRunsLong(r.late)}`,
+        edit: id,
+    };
 }
 
 /*
@@ -426,12 +780,158 @@ function undoMove(lineup, index, edit) {
 }
 
 /*
- * Put back on the row at `index`: undoes its latest edit that keeps it as it
- * is, on the list as it is now; every other edit stays as it is.
+ * Undoes a swap or a removal: the row, and any it took, back at their rooms
+ * with their episodes - each from its position's next airing, the later
+ * airings moving back one - and the rows it ran late back on time.
+ *
+ * What comes back in at the list's end is the last episode that fell off it
+ * for that position, whichever edit pushed it, so two swaps of a show undone
+ * in either order leave its episodes in order; the episodes still past the end
+ * pass to the edits still made. A swap the first open made from a pin records
+ * no label and nothing that fell off: its position is the show's next airing's,
+ * and the episode past the end the next in `catalog` (or the list), for Play
+ * Next. Null when an episode can't be found.
  */
-function putBack({ lineup, index, now }) {
+function undoReplace({ lineup, row, edit, now, schedule, catalog }) {
+    let programs = lineup.programs;
+    let rest = withoutEdit(row.program, edit.id);
+    let holes = [ { room: (typeof(edit.room) === 'number') ? edit.room : blockOf(row), kept: rest.kept, pos: edit.pos, show: edit.show, item: edit.item } ]
+        .concat( (Array.isArray(edit.took) ? edit.took : []).map( (t) => Object.assign({}, t, t.kept ? { kept: JSON.parse(JSON.stringify(t.kept)) } : {}) ) );
+    // Each hole a row of its room until it is filled.
+    let p0 = programs.slice(0, row.index)
+        .concat(holes.map( (h) => Object.assign({ duration: h.room, isOffline: false }, h.kept ? { kept: h.kept } : {}) ), programs.slice(row.last + 1));
+
+    let keyOf = (h, at) => {
+        if (h.item) {
+            return null;
+        }
+        let parsed = slotProgress.parseLabel(h.pos);
+        if ( (parsed !== null) && (parsed.mode !== 'repeat') && (typeof(h.show) === 'string') ) {
+            return slotProgress.positionKey(h.show, parsed.mode, { excludeSeasons: parsed.excluded });
+        }
+        for (let i = at + 1; i < end; i++) {
+            let p = p0[i];
+            if ( ! p.isOffline && ! p.pin && ! keepsItem(p) && (showOf(p) === h.show) && (positionOf(p) !== null) ) {
+                return positionOf(p);
+            }
+        }
+        return null;
+    };
+
+    // What fell off the end, by position, in the order it fell.
+    let owners = [];
+    programs.forEach( (p) => editsOf(p).forEach( (e) => {
+        if (Array.isArray(e.off) && (e.off.length > 0)) {
+            owners.push(e);
+        }
+    } ) );
+    owners.sort( (a, b) => (a.made !== b.made) ? ( (a.made < b.made) ? -1 : 1 ) : ( (a.id < b.id) ? -1 : (a.id > b.id) ? 1 : 0 ) );
+    let fell = new Map();
+    owners.forEach( (e) => e.off.forEach( (c, k) => {
+        let key = positionOf(c);
+        if (key !== null) {
+            if (! fell.has(key)) {
+                fell.set(key, { slots: [], values: [] });
+            }
+            fell.get(key).slots.push({ owner: e, k: k });
+            fell.get(key).values.push(c);
+        }
+    } ) );
+    let popped = new Set();
+    let successor = (key, last) => {
+        let [ showId, mode, excluded ] = JSON.parse(key);
+        if ( (mode !== 'next') || (last === null) ) {
+            return null;
+        }
+        let seen = new Set();
+        let candidates = slotProgress.candidatesFor(Array.isArray(catalog) ? catalog : programs, showId, { excludeSeasons: excluded }, showDataOf)
+            .filter( (p) => ! seen.has(rounds.fileKey(p)) && seen.add(rounds.fileKey(p)) );
+        let i = candidates.findIndex( (p) => rounds.fileKey(p) === rounds.fileKey(last) );
+        if (i === -1) {
+            return null;
+        }
+        let c = stripped(candidates[ (i + 1) % candidates.length ]);
+        c.slotPosition = last.slotPosition;
+        return c;
+    };
+    let entering = (key) => (last) => {
+        let f = fell.get(key);
+        if (f && (f.values.length > 0)) {
+            popped.add(key);
+            return f.values.pop();
+        }
+        return successor(key, last);
+    };
+
+    let starts = startsOf({ programs: p0, startTime: lineup.startTime });
+    let end = endOf({ programs: p0, startTime: lineup.startTime }, starts, now);
+    let contents = new Map();
+    let shows = [];
+    for (let j = 0; j < holes.length; j++) {
+        let h = holes[j];
+        let at = row.index + j;
+        let key = keyOf(h, at);
+        if (key !== null) {
+            if (! pullBack(p0, contents, at, key, entering(key), end)) {
+                return null;
+            }
+            shows.push(pins.showName(contents.get(at)));
+        } else if (h.item) {
+            contents.set(at, contentOf(h.item));
+        } else {
+            return null;
+        }
+    }
+    let changes = [];
+    contents.forEach( (c, i) => changes.push({ index: i, start: starts[i], was: (i === row.index) ? contentOf(row.program) : (i > row.index + holes.length - 1) ? contentOf(p0[i]) : null, now: c }) );
+    followRepeats({ programs: p0, starts, contents, changes, schedule, end });
+    let targets = new Map(holes.map( (h, j) => [ row.index + j, h.room ] ));
+    let laid = layout({ lineup: { programs: p0, startTime: lineup.startTime }, contents, targets, undo: edit.id, id: newId(programs, now), kind: 'late', now }).programs;
+
+    // The episodes still past the end pass to the edits still made, in order.
+    let offs = new Map();
+    popped.forEach( (key) => {
+        let f = fell.get(key);
+        let left = f.values.slice();
+        f.slots.filter( (s) => s.owner !== edit ).forEach( (s) => {
+            if (! offs.has(s.owner.id)) {
+                offs.set(s.owner.id, s.owner.off.slice());
+            }
+            offs.get(s.owner.id)[s.k] = (left.length > 0) ? left.shift() : undefined;
+        } );
+    } );
+    if (offs.size > 0) {
+        laid = laid.map( (p) => {
+            if (! editsOf(p).some( (e) => offs.has(e.id) )) {
+                return p;
+            }
+            let copy = Object.assign({}, p);
+            copy.kept = { edits: editsOf(p).map( (e) => offs.has(e.id)
+                ? Object.assign({}, e, { off: offs.get(e.id).filter( (c) => typeof(c) !== 'undefined' ) })
+                : Object.assign({}, e) ) };
+            return copy;
+        } );
+    }
+    let t = row.start;
+    let back = holes.map( (h, j) => {
+        let said = `${title(contents.get(row.index + j))} is back at ${clockAm(t)}`;
+        t += h.room;
+        return said;
+    } ).join(', and ');
+    let unique = shows.filter( (s, i) => shows.indexOf(s) === i );
+    let along = (unique.length === 0) ? '.' : (unique.length === 1) ? `; ${possessive(unique[0])} later episodes move back one.` : '; their later episodes move back one.';
+    return { programs: laid, text: back + along };
+}
+
+/*
+ * Put back on the row at `index`: undoes its latest edit that keeps it as it
+ * is, on the list as it is now; every other edit stays as it is. `schedule`
+ * lets Repeats follow; `catalog`, the show's episodes, finds the one past the
+ * list's end when nothing recorded it.
+ */
+function putBack({ lineup, index, now, schedule, catalog }) {
     let program = lineup.programs[index];
-    let edits = editsOf(program);
+    let edits = editsOf(program).filter( (e) => e.kind !== 'late' );
     let edit = edits.slice().reverse().find( (e) => ITEM.indexOf(e.kind) !== -1 );
     if (edits.length === 0) {
         return { refused: `Nothing to put back: ${title(program)} is as Create Lineup made it.` };
@@ -457,7 +957,11 @@ function putBack({ lineup, index, now }) {
         }
         return { programs: out, text: `${title(program)} goes back to ${pins.dayClock(edit.from)}.` };
     }
-    return { refused: `Put back for a ${edit.kind} isn't built yet.` };
+    let out = undoReplace({ lineup, row, edit, now, schedule, catalog });
+    if (out === null) {
+        return { refused: `${title(program)} can't be put back: the episode it replaced isn't in the list any more.` };
+    }
+    return out;
 }
 
 /*
@@ -649,6 +1153,7 @@ function applyFirstOpen({ programs, startTime, now, schedule, getShowData }) {
 module.exports = {
     keptKind: keptKind,
     keepsItem: keepsItem,
+    positionOf: positionOf,
     rowsOf: rowsOf,
     firstOpen: firstOpen,
     applyFirstOpen: applyFirstOpen,
