@@ -9,6 +9,9 @@
                 <div class="alert alert-warning py-1 px-2 small" ng-show="error">{{error}}</div>
 
                 <div ng-show="state === 'pick'">
+                    <div class="alert alert-danger py-1 px-2 small" ng-show="pickAlerts.length > 0">
+                        <div ng-repeat="a in pickAlerts track by $index">{{a}}</div>
+                    </div>
                     <div class="btn-group btn-group-sm" role="group" style="margin-bottom: 8px;">
                         <button type="button" class="btn" ng-class="source === 'show' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('show')">This show</button>
                         <button type="button" class="btn" ng-class="source === 'other' ? 'btn-primary' : 'btn-outline-primary'" ng-click="setSource('other')">Other shows on this channel</button>

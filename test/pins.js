@@ -336,6 +336,19 @@ module.exports = async function () {
                 JSON.stringify(intoBreak));
             const stays = [ pinRow, pinRow + 1 ].map((b) => pins.dropSpot({ programs: swapped.programs, startTime: swapped.startTime, schedule, from: pinRow, before: b }));
             suite.check('...and dropped back where it was, either side of itself, nothing', stays.every((x) => x === null), JSON.stringify(stays));
+            // Ron, Oct 29: his specials were dragged before a drag re-pinned. Dropped where it
+            // sits, a pin out of place is re-pinned there - the way to keep where he put it.
+            const movedRow = rowAt(handMoved, thu(19));
+            const inPlace2 = [ movedRow, movedRow + 1 ].map((b) => pins.dropSpot({ programs: handMoved.programs, startTime: handMoved.startTime, schedule, from: movedRow, before: b }));
+            suite.check('...but a pin out of place, dropped where it sits, is re-pinned there',
+                inPlace2.every((x) => x !== null && x.mode === 'swap' && x.index === movedRow && x.at === thu(19)), JSON.stringify(inPlace2));
+
+            // Ron, Oct 29: "This show" is the airing's own show, whatever slot it sits in now.
+            const futurama = episode('Futurama', 2, 14, { title: 'How Hermes Requisitioned His Groove Back' });
+            suite.check('swapShow: the airing\'s own show, not the slot\'s it sits in',
+                pins.swapShow({ airing: futurama, slotShow: 'tv.Family Guy', getShowData }) === 'tv.Futurama');
+            suite.check('...and the slot\'s for an airing of no show',
+                pins.swapShow({ airing: { title: 'A Movie', type: 'movie', duration: 90 * MIN }, slotShow: 'tv.Family Guy', getShowData }) === 'tv.Family Guy');
 
             // Moved: the re-lay without the old pin and with the new, against the lineup with the old.
             const movedTo7 = await lineup([mark(christmas, thu(19), 'take')]);
