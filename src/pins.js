@@ -807,23 +807,29 @@ function removalPin({ airing, at, slotShow, now }) {
     };
 }
 
-// The pins in a lineup still to air, as the generator takes them. Each airing
-// is in the lineup once a cycle and its pin names its instant, so no walk is
-// needed: `startTime` is accepted for symmetry with the other readers.
 /*
  * Where a pinned row dragged in the list lands, to be re-pinned there (Ron,
  * Oct 29): `from` is its row, `before` the row it is dropped in front of, as
  * the list shows them. Before an airing, a swap of that airing - at its slot's
  * start when it starts there, as the swap dialog pins one; before a Flex, an
- * insert in the break after the airing before it. Null when it would land
- * where it is, or nowhere a swap or insert can go.
+ * insert in the break after the airing before it. Dropped where it is, nothing
+ * - unless its row isn't at its pinned time (dragged before a drag re-pinned):
+ * then it is re-pinned where it sits. Null when nothing is to be done, or it
+ * lands nowhere a swap or insert can go.
  */
 function dropSpot({ programs, startTime, schedule, from, before }) {
-    if ( (before === from) || (before === from + 1) || (before < 0) || (before >= programs.length) ) {
+    if ( (before < 0) || (before >= programs.length) ) {
         return null;
     }
     let starts = [];
     programs.reduce( (t, p) => { starts.push(t); return t + p.duration; }, startTime );
+    if ( (before === from) || (before === from + 1) ) {
+        let pin = programs[from].pin;
+        if ( ! pin || (typeof(pin.at) !== 'number') || (Math.abs(starts[from] - pin.at) <= SLACK) ) {
+            return null;
+        }
+        before = from;
+    }
     let row = programs[before];
     if ( ! row.isOffline ) {
         let around = slotAround({ schedule, at: starts[before] });
@@ -837,6 +843,9 @@ function dropSpot({ programs, startTime, schedule, from, before }) {
     return { mode: 'insert', index: after, at: starts[after] + programs[after].duration };
 }
 
+// The pins in a lineup still to air, as the generator takes them. Each airing
+// is in the lineup once a cycle and its pin names its instant, so no walk is
+// needed: `startTime` is accepted for symmetry with the other readers.
 function pinsAhead({ programs, startTime, now }) {
     void startTime;
     return programs

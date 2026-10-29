@@ -44,7 +44,9 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             // its old slot getting its own show back too - is said as this choice's own effects.
             let moving = req.move || null;
             scope.moving = (moving !== null);
-            scope.verb = moving ? 'Move' : (isInsert ? 'Insert after' : 'Swap');
+            // Dropped where it sits, out of place: pinned there, to its row's time.
+            let inPlace = (moving !== null) && (moving === airing);
+            scope.verb = inPlace ? 'Pin' : (moving ? 'Move' : (isInsert ? 'Insert after' : 'Swap'));
             // A swap sits at its slot's start when the airing is that close to it; an
             // insert at the end of the airing, in the break after it.
             let at = isInsert ? entry.start + airing.duration
@@ -54,6 +56,10 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let slotShowAt = (instant) => { let s = pins.slotAround({ schedule, at: instant }); return s ? s.showId : getShowData(airing).showId; };
             scope.showId = around ? around.showId : getShowData(airing).showId;
             let retitle = () => {
+                if (inPlace) {
+                    scope.title = `${pins.label(moving)} where it sits, ${pins.dayClock(at)}, instead of its pinned ${pins.dayClock(moving.pin.at)}`;
+                    return;
+                }
                 scope.title = (moving ? `${pins.label(moving)}, pinned to ${pins.dayClock(moving.pin.at)}, to ` : '') + (isInsert
                     ? `${pins.dayClock(at)}, in the break after ${pins.label(scope.afterProgram)}` + ( (scope.breakLength > 0) ? ` (${pins.length(scope.breakLength)} of Flex)` : '' )
                     : `${pins.dayClock(at)} - ${pins.label(airing)}, ${pins.length(airing.duration)}` + ( (flexAfter > 0) ? `, then ${pins.length(flexAfter)} of Flex` : '' ));
@@ -263,7 +269,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 say('Working out what changes...');
                 let mine = await relayWorker.call({ type: 'option', session, key, base: 'base', now: relayNow, at, item: pin, kind: pin.pin.kind,
                     moving: moving ? moving.pin.at : undefined });
-                return { key, placed: mine.placed, fitText: mine.fitText, effects: mine.effects, onAir: base.anyway, dropped: base.dropped,
+                return { key, placed: mine.placed, fitText: mine.fitText, effects: mine.effects, onAir: inPlace ? '' : base.anyway, dropped: base.dropped,
                     alerts: mine.alerts.filter( (a) => ! base.alerts.includes(a) ), anywayAlerts: base.alerts };
             };
 
@@ -303,7 +309,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 scope.chosen = row;
                 try {
                     let make = (then) => pins.makePin({ program: p, at, kind: isInsert ? 'insert' : 'swap', then,
-                        was: isInsert ? undefined : pins.label(airing), slotShow: slotShowAt(isInsert ? afterStart : at), now: Date.now() });
+                        was: (isInsert || inPlace) ? undefined : pins.label(airing), slotShow: slotShowAt(isInsert ? afterStart : at), now: Date.now() });
                     let take = await relayWith(make('take'), `Re-making the lineup with ${p.title}...`);
                     if (! take.placed) {
                         // The generator leaves out a pin it can't place: never apply a re-lay without it.
@@ -421,8 +427,22 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             // The lineup without the swap, worked out while Ron picks; then the picker's
             // "fits" counts from wherever a program still on would hold the item back.
             scope.preparing = true;
+            // Said while picking too (Ron, Oct 29): when the list is off - a pin dragged out of
+            // place - the airing clicked may sit in another show's slot, and "This show" is the slot's.
+            scope.pickAlerts = [];
             baselineFor(at).then( (base) => {
                 heldUntil = base.heldUntil;
+                let own = getShowData(airing).showId;
+                let notes = [];
+                if ( ! moving && ! isInsert && ! airing.pin && around && (around.showId !== own) ) {
+                    notes.push(`${pins.dayClock(at)} is ${(names.get(around.showId) || around.showId.replace(/^(tv|custom)\./, ''))}'s slot in your schedule, `
+                        + `not ${getShowData(airing).showDisplayName}'s: the list is off here, so "This show" offers the slot's show.`);
+                }
+                notes = notes.concat(base.alerts.map( (a) => 'Re-making the lineup now, with or without this: ' + a ));
+                if ( (notes.length > 0) && base.alerts.some( (a) => a.includes('in the list, but it is pinned to') ) ) {
+                    notes.push('To keep a pin where it sits in the list, drag it onto its own row: it is pinned there.');
+                }
+                scope.pickAlerts = notes;
                 // Only the fit is worked out again: a holiday row keeps its own label, and no program until picked.
                 scope.items.forEach( (r) => {
                     let d = describe(r.program || { title: r.label, duration: r.entry.duration });
