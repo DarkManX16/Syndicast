@@ -107,6 +107,8 @@ function evalCondition(expr, x) {
         // Swaps (src/pins.js): the pin mark, and the Swap button - shown
         // wherever it can be, as on a Time Slots channel's row.
         case 'x.pin': return !!x.pin;
+        // Hand edits kept in the list (src/kept-rows.js): the mark on a kept row.
+        case 'rowKept(x)': return !!(x.pin || x.kept);
         case 'canSwap(x)': return !x.isOffline;
         default:
             throw new Error(`program-row-heights.js doesn't know how to evaluate ng-if="${expr}" - update evalCondition`);
@@ -128,6 +130,9 @@ function evalInterpolation(expr, x) {
         case 'rowNames(x)': return x.$$names;
         case 'rowNamesTitle(x)': return x.$$namesTitle;
         case 'rowPinTitle(x)': return x.pin ? 'Pinned' : '';
+        case 'rowKeptTitle(x)': return (x.pin || x.kept) ? 'Kept here until it airs' : '';
+        case 'rowKeptIcon(x)': return 'fa-thumbtack';
+        case 'rowDeleteTitle(x)': return 'Delete...';
         default:
             throw new Error(`program-row-heights.js doesn't know how to interpolate "{{ ${expr} }}" - update evalInterpolation`);
     }

@@ -80,11 +80,14 @@ function sortedPrograms(show) {
  * never reach another, carrying its position's label and nothing a previous
  * lineup left on the program - in particular no Shuffle number on a Play Next
  * airing, which used to ride along from the old lineup and found the next
- * run's Shuffle at the wrong place.
+ * run's Shuffle at the wrong place, and no mark of a hand edit (src/kept-rows.js):
+ * an episode a kept row left in the pool airs in its slot as an ordinary airing.
  */
 function labelled(program, text) {
     let copy = Object.assign( {}, program );
     delete copy.shuffleOrder;
+    delete copy.kept;
+    delete copy.pin;
     copy.slotPosition = text;
     return copy;
 }

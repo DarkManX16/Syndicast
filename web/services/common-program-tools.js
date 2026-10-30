@@ -1,3 +1,4 @@
+const slotProgress = require('../../src/slot-progress');
 //This is an exact copy of the file with the same now in the nodejs
 //one of these days, we'll figure out how to share the code.
 module.exports = function (getShowData) {
@@ -497,8 +498,9 @@ module.exports = function (getShowData) {
         shuffle: shuffle,
         removeDuplicates: removeDuplicates,
         // What the slot editors draw on: one copy of each episode in the
-        // lineup, never a pinned swap or insert (src/pins.js).
-        slotPool: (progs) => removeDuplicates( progs.filter( (p) => ! p.pin ) ),
+        // lineup, never a pinned swap or insert (src/pins.js) or a row kept as
+        // it is (src/kept-rows.js).
+        slotPool: (progs) => removeDuplicates( progs.filter( (p) => ! p.pin && ! slotProgress.keptAsItIs(p) ) ),
         removeSpecials: removeSpecials,
         sortByDate: sortByDate,
         getProgramDisplayTitle: getProgramDisplayTitle,
