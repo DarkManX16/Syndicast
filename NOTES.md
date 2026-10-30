@@ -31,8 +31,8 @@ below says what we do and why. **Syndicast innovates.**
   merge left Cancel and Update Channel unclickable and sent library adds into the
   lineup; Resolved has both.
   1. Opening and closing a channel editor with Cancel, and with Update Channel.
-  2. The first-open list answered both ways: Not now, and Keep them, each
-     followed by Cancel or Update Channel.
+  2. Opening a channel whose list still holds pins from before kept rows: kept
+     silently, no dialog, nothing said, Update Channel saves it.
   3. Adding a show from the library at the end of the list: it joins the
      channel; nothing in the lineup moves or is kept.
   4. Deleting episodes.
@@ -47,14 +47,17 @@ below says what we do and why. **Syndicast innovates.**
   each control with the real mouse at its middle after checking nothing covers
   it there (a covered button fails, naming what covers it). It saves a channel
   and a filler list, so it refuses port 18000. `--only` runs some of them
-  (`first-open-not-now`, `first-open-keep`, `open-cancel`, `open-update`,
-  `library-add`, `delete`, `add-delete-create`, `swap-drag-put-back`, `create-lineup`,
-  `filler`); the
-  first-open pair answers only a channel whose list still asks, so run it on a
-  fresh copy. `npm test` holds what runs without a server: `test/editor-footer.js`
-  (the footer buttons, in a real browser) and `test/kept-editor.js` (the
-  library's add). After the script, look at the preview yourself as well: it
-  checks what each workflow saves, not how the page reads.
+  (`first-open-silent`, `open-cancel`, `open-update`, `library-add`, `delete`,
+  `add-delete-create`, `swap-drag-put-back`, `create-lineup`, `filler`);
+  `first-open-silent` only has something to keep on a channel whose list still
+  holds pins from before kept rows, so run it on a fresh copy - every other
+  workflow's own `openEditor()` fails loudly if the old dialog ever shows, on
+  any channel. `npm test` holds what runs without a server: `test/editor-footer.js`
+  (the footer buttons, in a real browser), `test/kept-editor.js` (the
+  library's add and Delete) and `test/first-open-silent.js` (the silent apply
+  itself, and the lineup's-end guard against the old "Keep them" bug).
+  After the script, look at the preview yourself as well: it checks what each
+  workflow saves, not how the page reads.
 
 ## Feature roadmap
 
@@ -7118,6 +7121,44 @@ which delete he meant and left kept Flex. Fixed on `simple-delete`, not merged.
   `sayKept`, `clearWrong`), `test/kept-editor.js` (the page's Delete, lifted: no prompt, never
   air, a holiday entry left alone) and the workflow script's `delete` and `add-delete-create`.
   Suite 2636 before, 2647 after (the dialog-note checks went with the notes).
+
+### The first open asked; now it just keeps them
+
+Ron, Oct 30, 2026: the first-open dialog ("Your edits by hand, from now on kept where they
+sit", Not now / Keep them) blocked Time Slots and every other edit until answered, and
+confused more than it helped - he always chose Keep them anyway. Fixed on
+`first-open-silent` (built on `simple-delete`), not merged.
+
+- **No dialog, ever.** The channel page's `scope.firstOpenPrompt`, `finishFirstOpen` and the
+  template's modal are gone. `ensureHandEditsKept` (`web/directives/channel-config.js`) calls
+  the same `keptRows.firstOpen`/`applyFirstOpen` the dialog used to, the first time a channel
+  with pins from before kept rows is opened, swapped, inserted, dragged, deleted from, or
+  sent to Time Slots/Create Lineup - silently, with nothing asked and nothing said. A channel
+  with nothing to keep or let go is untouched and read for this once, same as before.
+- **Still guarded against the old "Keep them" bug.** The lineup's-end check that stopped a
+  stale pin from being read as still to air (`firstOpen`, above) carries over unchanged, since
+  this branch builds on `simple-delete`; `ensureHandEditsKept` only ever calls the same
+  guarded pure function, never a shortcut of its own.
+- **Real data, on a copy of `.dizquetv-dev` taken Oct 30 (port 18250).** Channel 2's 53 pins
+  from before kept rows - never answered, `handEditsKept` unset - opened once, kept 39 real
+  swaps/inserts/dragged rows and let the rest go, with nothing shown and nothing said; Update
+  Channel saved `handEditsKept`. Channel 3 (1 pin, already aired) read as nothing to keep. The
+  workflow script's full list ran twice against a fresh copy, channel 3: all nine workflows
+  passed both times.
+- **A pre-existing `swap-drag-put-back` flake, found and fixed along the way.** It failed with
+  `TypeError: Cannot read properties of undefined (reading 'k')`, reproduced identically
+  running the unmodified `simple-delete` copy of the script against the same server - not
+  caused by this change. Cause: after Put back's row is found by `r.show === row.show`,
+  `row.show` is the airing's name from *before* `swapOne()` replaced it, so once the swap has
+  landed nothing ever matches it again. Fixed to find the row by where it sits (`r.start ===
+  row.start`), which a swap never moves.
+- **Guarded by** `test/first-open-silent.js` (lifted from the source, as `test/kept-editor.js`
+  is: the dialog is gone from both the script and the template; a real swap kept silently,
+  with no prompt and no message; answered once; a channel with nothing to keep left alone; and
+  the exact channel 1 "pin past the lineup's end" shape, run through the editor's own silent
+  apply rather than through `firstOpen` directly, kept nothing). `test/kept-editor.js`'s Delete
+  tests updated for `ensureHandEditsKept` in place of `askFirstOpen`. Suite 2647 before, 2658
+  after.
 
 ### Cancel and Update Channel covered after the first-open list
 

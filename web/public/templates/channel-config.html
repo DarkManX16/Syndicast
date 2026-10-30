@@ -1273,21 +1273,5 @@
             </div>
         </div>
     </div>
-    <!-- The first open of a channel with pins from before kept rows (Ron, Oct 29): once, before anything changes. -->
-    <div ng-if="firstOpenPrompt" class="modal" tabindex="-1" role="dialog" style="display: block; overflow-y: auto; background-color: rgba(0, 0, 0, .5);">
-        <div class="modal-dialog modal-lg" role="document">
-            <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Your edits by hand, from now on kept where they sit</h5></div>
-                <div class="modal-body small" style="max-height: 60vh; overflow-y: auto;">
-                    <div ng-repeat="line in firstOpenPrompt.lines track by $index" ng-class="{'font-weight-bold': line.endsWith(':'), 'mt-2': $index > 0 && line.endsWith(':'), 'ml-3': !line.endsWith(':')}">{{line}}</div>
-                    <div class="text-muted mt-2">Keep makes them part of your list, saved with Update Channel. Not now changes nothing, and this shows again before your next edit or Create Lineup.</div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-sm btn-link" ng-click="finishFirstOpen(false)">Not now</button>
-                    <button class="btn btn-sm btn-primary" ng-click="finishFirstOpen(true)">Keep them</button>
-                </div>
-            </div>
-        </div>
-    </div>
     <random-slots-schedule-editor linker="registerRandomSlots" on-done="onRandomSlotsDone"></random-slots-schedule-editor>
 </div>

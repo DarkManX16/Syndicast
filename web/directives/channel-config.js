@@ -400,8 +400,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (scope.hasTimeSlots()) {
                     let before = z;
                     programMove.drop( () => {
+                        ensureHandEditsKept();
                         let from = scope.channel.programs.indexOf(item);
-                        if ( (from === -1) || askFirstOpen() ) {
+                        if (from === -1) {
                             $timeout();
                             return;
                         }
@@ -1452,10 +1453,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (typeof(program) === 'undefined') {
                     return;
                 }
+                ensureHandEditsKept();
+                program = scope.channel.programs[x];
                 if (scope.hasTimeSlots() && keptRows.keepsItem(program)) {
-                    if (askFirstOpen()) {
-                        return;
-                    }
                     let got = keptRows.putBack({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
                     if (! Array.isArray(got.programs)) {
                         showError(got.refused);
@@ -2674,9 +2674,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
 
             scope.onTimeSlotsButtonClick = async () => {
-                if (askFirstOpen()) {
-                    return;
-                }
+                ensureHandEditsKept();
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state );
@@ -2707,9 +2705,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
 
             scope.rerollTimeSlots = async () => {
-                if (askFirstOpen()) {
-                    return;
-                }
+                ensureHandEditsKept();
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
@@ -2817,12 +2813,15 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
 
             /*
-             * The first open (Ron, Oct 29): a channel whose list still holds pins from
-             * before kept rows says once what it keeps where it sits and what it lets go.
-             * Keep makes them kept rows, saved with Update Channel; Not now changes
-             * nothing and it asks again - before any edit, Create Lineup or Regenerate.
+             * The first open (Ron, Oct 30): a channel whose list still holds pins from
+             * before kept rows has them kept silently, the first time the channel is
+             * edited or Create Lineup runs - no prompt, no message. Every pin still to
+             * air, and every row a drag moved, becomes a kept row exactly as
+             * applyFirstOpen decides it; a pin that has aired, and an airing no slot
+             * made, just let go and rebuild normally. Edits made here never add a pin,
+             * so a list with nothing to keep or let go is read for this once, not on
+             * every edit.
              */
-            scope.firstOpenPrompt = null;
             let firstOpenAnswered = false;
             let firstOpenFound = () => {
                 if ( firstOpenAnswered || ! scope.hasTimeSlots() || (typeof(scope.channel.handEditsKept) === 'string') ) {
@@ -2832,49 +2831,34 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let found = keptRows.firstOpen({ programs: lineup.programs, startTime: lineup.startTime, now: Date.now(),
                     schedule: scope.channel.scheduleBackup, getShowData: getShowData });
                 if (! found.needed) {
-                    // Nothing to answer, and edits made here never add a pin: not read again.
+                    // Nothing to keep or let go, and edits made here never add a pin: not read again.
                     firstOpenAnswered = true;
                     return null;
                 }
                 return found;
             };
-            // True when the first open must be answered first: it shows, and what was asked waits.
-            let askFirstOpen = () => {
+            let ensureHandEditsKept = () => {
                 let found = firstOpenFound();
                 if (found === null) {
-                    return false;
+                    return;
                 }
-                scope.firstOpenPrompt = { lines: found.lines };
-                $timeout();
-                return true;
+                let lineup = lineupMs();
+                scope.channel.programs = keptRows.applyFirstOpen({ programs: lineup.programs, startTime: lineup.startTime, now: Date.now(),
+                    schedule: scope.channel.scheduleBackup, getShowData: getShowData });
+                scope.channel.handEditsKept = new Date().toISOString();
+                firstOpenAnswered = true;
+                updateChannelDuration();
             };
-            scope.finishFirstOpen = (keep) => {
-                scope.firstOpenPrompt = null;
-                if (keep) {
-                    let lineup = lineupMs();
-                    scope.channel.programs = keptRows.applyFirstOpen({ programs: lineup.programs, startTime: lineup.startTime, now: Date.now(),
-                        schedule: scope.channel.scheduleBackup, getShowData: getShowData });
-                    scope.channel.handEditsKept = new Date().toISOString();
-                    firstOpenAnswered = true;
-                    updateChannelDuration();
-                    scope.lastChange = 'Your swaps, inserts and moved rows are kept where they sit; Update Channel saves it.';
-                }
-                $timeout();
-            };
-            // Shown as the channel opens, once its list and its Time Slots editor are there.
-            let askedAtOpen = false;
+            // Run as the channel opens, once its list and its Time Slots editor are there.
             scope.$watch( () => scope.hasTimeSlots() && Array.isArray(scope.channel.programs) && (scope.channel.programs.length > 0), (ready) => {
-                if (ready && ! askedAtOpen) {
-                    askedAtOpen = true;
-                    askFirstOpen();
+                if (ready) {
+                    ensureHandEditsKept();
                 }
             } );
 
             scope.swapRequest = null;
             let openPlacing = (index, mode) => {
-                if (askFirstOpen()) {
-                    return;
-                }
+                ensureHandEditsKept();
                 let why = pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
                 if (why !== null) {
                     showError(why);
@@ -2894,9 +2878,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
             // The library's add: one after another after the first row in view that takes them.
             let insertFromLibrary = (selected) => {
-                if (askFirstOpen()) {
-                    return;
-                }
+                ensureHandEditsKept();
                 let lineup = lineupMs();
                 for (let i = Math.max(0, scope.currentStartIndex || 0); i < lineup.programs.length; i++) {
                     if (lineup.programs[i].isOffline) {

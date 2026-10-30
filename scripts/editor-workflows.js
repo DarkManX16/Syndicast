@@ -14,8 +14,9 @@
  * .dizquetv-dev; it refuses port 18000.
  *
  * Workflows, in order (each from a fresh page):
- *   first-open-not-now   the first-open list answered Not now; Cancel closes the editor
- *   first-open-keep      answered Keep them; Update Channel saves the answer
+ *   first-open-silent    opening a channel whose list still holds pins from before kept
+ *                        rows keeps them at once - no dialog, nothing said; Update Channel
+ *                        saves it
  *   open-cancel          open the editor, Cancel
  *   open-update          open the editor, Update Channel: saved, the lineup as it was
  *   library-add          a show from the library at the end of the list: it joins the
@@ -29,8 +30,9 @@
  *                        Lineup; kept rows stay; saved
  *   filler               a filler list: drag a clip, delete one, Done; saved
  *
- * The first-open workflows answer only a channel whose list still asks; once
- * answered and saved they say so and pass over it.
+ * first-open-silent passes over a channel whose list has nothing from before kept
+ * rows to answer for; every workflow's openEditor() fails loudly if the old
+ * first-open dialog ever shows - it never should, on any channel, any more.
  */
 const fs = require('fs');
 
@@ -176,21 +178,12 @@ function makeRunner(opts, page) {
             throw new Check(`channel ${opts.channel}'s editor didn't open with its list`);
         }
         await sleep(1500);
-    };
-    // Waits out the first-open list when it shows, answered with `answer`; says whether it showed.
-    const passFirstOpen = async (answer) => {
-        for (let i = 0; i < 10 && !(await firstOpenShowing()); i++) {
-            await sleep(300);
-        }
-        if (!(await firstOpenShowing())) {
-            return false;
-        }
-        await clickText('.modal-footer button', answer, `the first-open list's ${answer}`);
-        await sleep(500);
+        // The old first-open dialog is gone for good (NOTES.md, "What you see is what
+        // airs"): hand edits from before kept rows are kept the moment the list is read,
+        // never asked about.
         if (await firstOpenShowing()) {
-            throw new Check(`the first-open list stayed after ${answer}`);
+            throw new Check('the first-open list showed: it should be kept silently now, never asked');
         }
-        return true;
     };
     const closeWith = async (name) => {
         await click(await footerButton(name), `the editor's ${name}`);
@@ -364,37 +357,31 @@ function makeRunner(opts, page) {
     };
 
     const workflows = {
-        'first-open-not-now': async () => {
+        'first-open-silent': async () => {
             await openEditor();
-            if (!(await passFirstOpen('Not now'))) {
-                return 'not shown: this channel\'s list was answered already';
-            }
-            await closeWith('Cancel');
-            return 'Not now closed the list; Cancel closed the editor';
-        },
-        'first-open-keep': async () => {
-            await openEditor();
-            if (!(await passFirstOpen('Keep them'))) {
-                return 'not shown: this channel\'s list was answered already';
+            const kept = (await rowsInView()).filter((r) => r.kept);
+            if (kept.length === 0) {
+                return 'nothing to keep: this channel\'s list has nothing from before kept rows';
             }
             const said = await lastChange();
+            if (said) {
+                throw new Check(`kept silently was meant to say nothing, and said "${said}"`);
+            }
             await closeWith('Update Channel');
             const saved = await api(`/api/channel/${opts.channel}`);
             if (typeof saved.handEditsKept !== 'string') {
-                throw new Check('Update Channel didn\'t save the answer (handEditsKept)');
+                throw new Check('Update Channel didn\'t save the silent first open (handEditsKept)');
             }
-            return `Keep them said "${said}"; Update Channel saved it`;
+            return `${kept.length} row(s) in view kept at once, nothing asked, nothing said; Update Channel saved it`;
         },
         'open-cancel': async () => {
             await openEditor();
-            await passFirstOpen('Not now');
             await closeWith('Cancel');
             return 'opened, Cancel closed it';
         },
         'open-update': async () => {
             const before = await api(`/api/channel/${opts.channel}`);
             await openEditor();
-            await passFirstOpen('Not now');
             await closeWith('Update Channel');
             const after = await api(`/api/channel/${opts.channel}`);
             sameAirings(airings(before, 14), airings(after, 14), 'Update Channel with nothing changed');
@@ -403,7 +390,6 @@ function makeRunner(opts, page) {
         'library-add': async () => {
             const before = await api(`/api/channel/${opts.channel}`);
             await openEditor();
-            await passFirstOpen('Keep them');
             const keptInView = async () => (await rowsInView()).filter((r) => r.kept).length;
             const keptBefore = await keptInView();
             // The library opened and cancelled first: nothing added, nothing said.
@@ -434,7 +420,6 @@ function makeRunner(opts, page) {
         },
         'delete': async () => {
             await openEditor();
-            await passFirstOpen('Keep them');
             const row = await plainRow(3);
             const keptBefore = (await rowsInView()).filter((r) => r.kept).length;
             await click(await (await rowHandle(row.k)).$('button[title="Delete..."]'), `${row.show} at ${row.start}'s Delete`);
@@ -459,7 +444,6 @@ function makeRunner(opts, page) {
             const before = await api(`/api/channel/${opts.channel}`);
             const neverBefore = (await api(`/api/channel/${opts.channel}/catalog`)).neverAir || {};
             await openEditor();
-            await passFirstOpen('Keep them');
             const { n } = await addShowAtEnd();
             const rowText = (k) => rowHandle(k).then((h) => h.evaluate((el) => el.textContent.replace(/\s+/g, ' ').trim()));
             const gone = [];
@@ -528,7 +512,6 @@ function makeRunner(opts, page) {
         },
         'swap-drag-put-back': async () => {
             await openEditor();
-            await passFirstOpen('Keep them');
             const said = [];
             const { row, text } = await swapOne();
             said.push(text);
@@ -560,8 +543,10 @@ function makeRunner(opts, page) {
             if (moved.length === 0) {
                 throw new Check(`the dragged ${from.show} row isn't marked kept`);
             }
-            // Put back the swap.
-            const again = (await rowsInView()).find((r) => r.kept && r.show === row.show && r.canSwap);
+            // Put back the swap, found by where it sits - not by its show, which swapping
+            // changed: `row.show` is the airing's name from before swapOne() replaced it, so a
+            // row.show match never finds anything once the swap has landed.
+            const again = (await rowsInView()).find((r) => r.kept && r.start === row.start && r.canSwap);
             const back = await (await rowHandle(again.k)).$('button[title="Put back..."]');
             if (!back) {
                 throw new Check(`the swapped ${row.show} row has no Put back`);
@@ -576,7 +561,6 @@ function makeRunner(opts, page) {
         'create-lineup': async () => {
             const before = await api(`/api/channel/${opts.channel}`);
             await openEditor();
-            await passFirstOpen('Keep them');
             // A kept row of its own first, so there is one for Create Lineup to keep.
             const swap = await swapOne();
             const swappedIn = (/^(.*) replaces /.exec(swap.text) || [])[1];

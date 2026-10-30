@@ -49,7 +49,7 @@ function libraryAdd(src, { timeSlots, insertPoint, programs, selected }) {
 
 // A row's Delete (`scope.removeItem`) on a stand-in page with the real kept-rows and catalog
 // code: what it leaves in the list, what it asks, and what it queues for the Catalog page.
-async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, index, firstOpenUnanswered, neverAir }) {
+async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, index, neverAir }) {
     const getShowData = require('../web/services/get-show-data')();
     const scope = {
         hasTimeSlots: () => timeSlots, hasNoTimeSlots: () => ! timeSlots, hasNoRandomSlots: () => ! randomSlots,
@@ -57,7 +57,7 @@ async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, 
         error: {},
     };
     const queued = [];
-    let asked = 0;
+    let applied = 0;
     const page = {
         keptRows: require('../src/kept-rows'),
         pinTools: require('../src/pins'),
@@ -66,7 +66,7 @@ async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, 
         commonProgramTools: require('../web/services/common-program-tools')(getShowData),
         getShowData: getShowData,
         lineupMs: () => ({ programs: scope.channel.programs, startTime: new Date(scope.channel.startTime).getTime() }),
-        askFirstOpen: () => { asked++; return !! firstOpenUnanswered; },
+        ensureHandEditsKept: () => { applied++; },
         queueCatalogOps: (ops) => ops.forEach( (op) => queued.push(op) ),
         updateChannelDuration: () => {},
         showError: (text) => { scope.error.programs = text; },
@@ -78,7 +78,7 @@ async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, 
         `let applyEdit = ${liftArrow(src, 'applyEdit')}; return ${liftArrow(src, 'removeItem', 'scope.')};`);
     const removeItem = make(scope, ...Object.values(page));
     await removeItem(index);
-    return { programs: scope.channel.programs, prompt: scope.deletePrompt || scope.undoPrompt || null, queued, asked,
+    return { programs: scope.channel.programs, prompt: scope.deletePrompt || scope.undoPrompt || null, queued, applied,
         said: scope.lastChange || '', error: scope.error.programs || '' };
 }
 
@@ -183,11 +183,11 @@ module.exports = async function () {
         suite.check('...and Create Lineup leaves it out: never air, for the Catalog page to bring back',
             never(inLineup) === 'Kim Possible 4 deleted/never', never(inLineup));
 
-        const atEnd = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: programs.length - 1, firstOpenUnanswered: true });
-        suite.check('Time Slots, an episode added at the end: gone at once, even with the first-open list still to answer',
-            (atEnd.prompt === null) && (titles(atEnd) === 'Recess 1, Kim Possible 4, Recess 2, House of Mouse 1')
+        const atEnd = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: programs.length - 1 });
+        suite.check('Time Slots, an episode added at the end: gone at once, with the first open kept silently and nothing asked',
+            (atEnd.prompt === null) && (atEnd.applied === 1) && (titles(atEnd) === 'Recess 1, Kim Possible 4, Recess 2, House of Mouse 1')
                 && (never(atEnd) === 'House of Mouse 2 deleted/never'),
-            `${titles(atEnd)}; ${never(atEnd)}; asked ${atEnd.asked}`);
+            `${titles(atEnd)}; ${never(atEnd)}; applied ${atEnd.applied}`);
 
         const plain = await deleteOnPage(src, { timeSlots: false, programs, startTime, index: 2 });
         suite.check('a channel without slots: gone at once, as before; no never-air, since there is no Create Lineup',
