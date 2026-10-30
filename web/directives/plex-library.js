@@ -7,6 +7,8 @@ module.exports = function (plex, dizquetv, $timeout, commonProgramTools) {
             onFinish: "=onFinish",
             height: "=height",
             positionChoice: "=positionChoice",
+            // A Time Slots channel with a lineup: the add joins the channel, or goes in here, kept.
+            timeSlots: "<timeSlots",
             visible: "=visible",
             limit: "=limit",
         },
@@ -16,6 +18,11 @@ module.exports = function (plex, dizquetv, $timeout, commonProgramTools) {
                 scope.limit = 1000000000;
             }
             scope.insertPoint = "end";
+            scope.$watch('timeSlots', (timeSlots) => {
+                if (timeSlots && (scope.insertPoint === "start")) {
+                    scope.insertPoint = "end";
+                }
+            });
             scope.customShows = [];
             scope.origins = [];
             scope.currentOrigin = undefined;

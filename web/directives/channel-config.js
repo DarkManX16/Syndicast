@@ -1348,9 +1348,17 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 for (let i = 0, l = selectedPrograms.length; i < l; i++) {
                     delete selectedPrograms[i].commercials;
                 }
-                if (scope.hasTimeSlots() && (scope.channel.programs.length > 0)) {
+                // On a Time Slots channel (Ron, Oct 30) the library's add joins the channel, after
+                // the lineup, for Time Slots and Create Lineup: nothing in the lineup moves or is
+                // kept. Only "Insert into the lineup here" puts them in it, as kept inserts.
+                let timeSlotsLineup = scope.hasTimeSlots() && (scope.channel.programs.length > 0);
+                if (timeSlotsLineup && (insertPoint === "current")) {
                     insertFromLibrary(selectedPrograms);
                     return;
+                }
+                if (timeSlotsLineup) {
+                    insertPoint = "end";
+                    scope.lastChange = `${selectedPrograms.length} added to the channel at the end of the list, for Time Slots and Create Lineup to use; nothing in the lineup moved.`;
                 }
 
                 var programListElement = document.getElementById("channelConfigProgramList");
