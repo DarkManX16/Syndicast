@@ -374,6 +374,54 @@ module.exports = async function () {
             before.text);
     }
 
+    suite.log('-- delete a plain Flex row --');
+    {
+        const flexAfterFuturama = indexAt(base, fri(0)) + 1;
+        const movedUp = fri(0) + 22 * MIN + 30 * SEC; // Family Guy's new start once the gap closes
+        suite.check('picked row is Futurama\'s own Flex', base.programs[flexAfterFuturama].isOffline && base.programs[flexAfterFuturama].duration === 7 * MIN + 30 * SEC, '');
+
+        suite.check('not a Flex row: refused', typeof(kept.deleteFlex({ lineup: base, index: indexAt(base, fri(0)) }).refused) === 'string', '');
+
+        // isPlainFlex: what the channel editor checks before it picks this path over the ordinary splice.
+        suite.check('isPlainFlex: true for a plain Flex row, false for a program, a redirect or a kept Flex',
+            kept.isPlainFlex(base.programs[flexAfterFuturama]) === true
+                && ! kept.isPlainFlex(base.programs[indexAt(base, fri(0))])
+                && ! kept.isPlainFlex({ isOffline: true, type: 'redirect', duration: 60000 })
+                && ! kept.isPlainFlex(kept.removeOnly({ lineup: base, index: indexAt(base, fri(0, 30)), now: NOW }).programs[indexAt(base, fri(0, 30))]),
+            '');
+
+        // Nothing kept anywhere: every row after it moves that much earlier, same as today - but said.
+        const none = kept.deleteFlex({ lineup: base, index: flexAfterFuturama });
+        const noneLineup = { programs: none.programs, startTime: base.startTime };
+        suite.check('with nothing kept ahead: the Flex is gone and every later row moves 7:30 earlier',
+            noneLineup.programs.length === base.programs.length - 1
+                && indexAt(noneLineup, movedUp) !== -1 && noneLineup.programs[indexAt(noneLineup, movedUp)].title === 'Family Guy 1',
+            none.text);
+        suite.check('...and says so', none.text === 'Removes 7:30 of Flex at 12:22:30am; every row after it moves that much earlier.', none.text);
+
+        // A kept swap ahead, at Aqua Teen's slot: the gap closes only up to it.
+        const swapped = kept.swap({ lineup: base, index: indexAt(base, fri(1, 30)),
+            item: episode('Aqua Teen Hunger Force', 99, 11 * MIN, { title: 'ATHF Special' }), now: NOW, schedule: sched });
+        const list = lineOf(swapped, base);
+        const del = kept.deleteFlex({ lineup: list, index: flexAfterFuturama });
+        const out = { programs: del.programs, startTime: base.startTime };
+        suite.check('the rows between move 7:30 earlier; the kept swap stays exactly where it sits',
+            out.programs[indexAt(out, movedUp)].title === 'Family Guy 1'
+                && out.programs[indexAt(out, fri(1, 30))].title === 'ATHF Special' && kept.keptKind(out.programs[indexAt(out, fri(1, 30))]) === 'swap'
+                && JSON.stringify(night(out, fri(1, 30), fri(4, 30))) === JSON.stringify(night(list, fri(1, 30), fri(4, 30))),
+            del.text);
+        suite.check('...and says so, naming the kept row that stops it',
+            del.text === 'Removes 7:30 of Flex at 12:22:30am; ATHF Special at 1:30am and everything after it stays where it is.', del.text);
+
+        // A kept row right after the deleted Flex: inserted fresh, with nothing to merge into.
+        const swappedNow = kept.swap({ lineup: base, index: indexAt(base, fri(0, 30)),
+            item: episode('Family Guy', 99, 20 * MIN, { title: 'Family Guy Special' }), now: NOW, schedule: sched });
+        const delAdjacent = kept.deleteFlex({ lineup: lineOf(swappedNow, base), index: flexAfterFuturama });
+        const outAdjacent = { programs: delAdjacent.programs, startTime: base.startTime };
+        suite.check('right next to the deleted Flex: the kept row still stays at its own time',
+            outAdjacent.programs[indexAt(outAdjacent, fri(0, 30))].title === 'Family Guy Special', delAdjacent.text);
+    }
+
     suite.log('-- drag --');
     {
         const from = indexAt(base, fri(3, 30));

@@ -1455,6 +1455,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
                 if ( (typeof(program) === 'undefined') || program.isOffline || ! getShowData(program).hasShow ) {
+                    // A plain Flex row on a Time Slots channel: the gap it leaves closes
+                    // only up to the next kept row, which stays exactly where it sits.
+                    if (scope.hasTimeSlots() && keptRows.isPlainFlex(program)) {
+                        applyEdit(keptRows.deleteFlex({ lineup: lineupMs(), index: x }));
+                        return;
+                    }
                     scope.channel.programs.splice(x, 1)
                     updateChannelDuration()
                     return;
