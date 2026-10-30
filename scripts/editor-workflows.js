@@ -308,6 +308,14 @@ function makeRunner(opts, page) {
             await passFirstOpen('Keep them');
             const keptInView = async () => (await rowsInView()).filter((r) => r.kept).length;
             const keptBefore = await keptInView();
+            // The library opened and cancelled first: nothing added, nothing said.
+            const saidBefore = await lastChange();
+            await click(await find('button[ng-click="showPlexLibrary()"]', null, 'the library button (+)'), 'the library button (+)');
+            await clickText('.modal-footer button[ng-click="_onFinish([])"]', 'Cancel', 'the library\'s Cancel');
+            await sleep(800);
+            if ((await lastChange()) !== saidBefore) {
+                throw new Check(`the library's Cancel said "${await lastChange()}"`);
+            }
             await click(await find('button[ng-click="showPlexLibrary()"]', null, 'the library button (+)'), 'the library button (+)');
             // The library dialog: the Plex origin's libraries, the show filtered, its plus.
             const choice = await page.waitForFunction(() => {

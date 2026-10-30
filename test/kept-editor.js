@@ -32,10 +32,11 @@ function libraryAdd(src, { timeSlots, insertPoint, programs, selected }) {
     const scope = { hasTimeSlots: () => timeSlots, channel: { programs: programs.slice() }, currentStartIndex: 2,
         $apply: (f) => f() };
     const calls = [];
+    let scrolled = false;
     const page = {
         document: { getElementById: () => ({ scrollTo: () => {} }) },
         insertFromLibrary: (items) => calls.push(items.length),
-        scrollToLast: () => {},
+        scrollToLast: () => { scrolled = true; },
         updateChannelDuration: () => {},
         setTimeout: (f) => f(),
     };
@@ -43,7 +44,7 @@ function libraryAdd(src, { timeSlots, insertPoint, programs, selected }) {
     const importPrograms = new Function('scope', ...Object.keys(page), `return ${liftArrow(src, 'importPrograms', 'scope.')};`)(
         scope, ...Object.values(page));
     importPrograms(selected.slice(), insertPoint);
-    return { programs: scope.channel.programs, keptInserts: calls };
+    return { programs: scope.channel.programs, keptInserts: calls, said: scope.lastChange || '', scrolled };
 }
 
 module.exports = async function () {
@@ -103,6 +104,12 @@ module.exports = async function () {
         let here = libraryAdd(src, { timeSlots: true, insertPoint: 'current', programs: lineup, selected: houseOfMouse });
         suite.check('Time Slots, insert here at the scroll position: the one choice that puts them in the lineup, kept',
             (here.keptInserts.length === 1) && (here.keptInserts[0] === 3), `${here.keptInserts.length} kept inserts`);
+
+        // The library's Cancel hands over an empty selection and no choice.
+        let cancel = libraryAdd(src, { timeSlots: true, insertPoint: undefined, programs: lineup, selected: [] });
+        suite.check('Time Slots, the library\'s Cancel: nothing added, nothing said, the list stays where it was scrolled',
+            sameRows(cancel) && (cancel.programs.length === lineup.length) && (cancel.said === '') && !cancel.scrolled && (cancel.keptInserts.length === 0),
+            `said "${cancel.said}", scrolled ${cancel.scrolled}`);
 
         let plain = libraryAdd(src, { timeSlots: false, insertPoint: 'start', programs: lineup, selected: houseOfMouse });
         suite.check('a channel without Time Slots: "at the beginning" puts them first, as always',

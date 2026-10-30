@@ -1352,6 +1352,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 // the lineup, for Time Slots and Create Lineup: nothing in the lineup moves or is
                 // kept. Only "Insert into the lineup here" puts them in it, as kept inserts.
                 let timeSlotsLineup = scope.hasTimeSlots() && (scope.channel.programs.length > 0);
+                if (timeSlotsLineup && (selectedPrograms.length === 0)) {
+                    // The library's Cancel.
+                    return;
+                }
                 if (timeSlotsLineup && (insertPoint === "current")) {
                     insertFromLibrary(selectedPrograms);
                     return;

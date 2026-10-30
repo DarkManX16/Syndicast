@@ -7114,9 +7114,15 @@ choice of its own ("Choices made beyond Ron's decisions"). Fixed on `editor-regr
   the one choice, with a row's Insert after, that places items in the lineup. "At the
   beginning" isn't offered: it would move every airing, kept rows too; asked for anyway, the
   add joins at the end. Channels without Time Slots keep all three choices as before.
-- **Guarded by** six checks in `test/kept-editor.js` (`importPrograms` lifted from the page;
-  3 failed before the fix) and the workflow script's `library-add`, which fails as soon as
-  rows in view become kept after Done, then checks what Update Channel saved.
+- **Found on the preview after the fix:** the library's own Cancel hands the add an empty
+  selection; on a Time Slots channel it said "0 added to the channel..." and scrolled to the
+  list's end. It does nothing there now (a check failed first).
+- **Guarded by** seven checks in `test/kept-editor.js` (`importPrograms` lifted from the page;
+  3 failed before the fix, the Cancel one before its own) and the workflow script's
+  `library-add`, which cancels the library once, then adds the show and fails as soon as
+  rows in view become kept after Done, then checks what Update Channel saved. On the build
+  before the fix it failed with "18 rows in view became kept" and the wall of sentences Ron
+  saw.
 
 ### Two viewers of a channel took turns with the offline screen
 
