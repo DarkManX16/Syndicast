@@ -276,14 +276,27 @@ div.channel-tools p {
   margin-top: 0.01rem;
 }
 
+/* The pane is capped at programmingHeight(): the lines above the list take what
+   they need and the list (and the tools beside it) the rest, so the list never
+   spills over the footer's Cancel and Update Channel. NOTES.md, Resolved,
+   "Cancel and Update Channel covered after the first-open list". */
 div.programming-panes {
   padding-top: 0;
   padding-bottom: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  /* minmax(0, ...): a grid track would otherwise widen to the list's longest
+     unwrapped line (a break's filler tags), thousands of pixels. */
+  grid-template-columns: minmax(0, 1fr);
+}
+div.programming-panes > div.row {
+  min-height: 0;
 }
 div.programming-panes div.reverse {
   flex-direction: row-reverse;
 }
 div.programming-panes div.programming-pane {
+  max-height: 100%;
   overflow-y: auto;
   padding-top: 0;
   padding-bottom: 0;

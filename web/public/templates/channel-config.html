@@ -166,6 +166,8 @@
                 <div class="modal-body programming-panes" ng-show="tab == 'programming'"
                      ng-style="{'max-height':programmingHeight()}"
                 >
+                    <!-- What sits above the list; the list takes the rest of the pane (style.css, programming-panes). -->
+                    <div class="programming-head">
                     <div class="small d-flex flex-wrap align-items-center" ng-if="hasTimeSlots() && hasPrograms()" style="margin-bottom: 6px;">
                         <span style="margin-right: 6px;">Go to</span>
                         <input type="date" class="form-control form-control-sm" style="width: auto; margin-right: 4px;" ng-model="goTo.date">
@@ -176,8 +178,9 @@
                         </span>
                     </div>
                     <div class="small text-info" ng-if="hasTimeSlots() && lastChange" style="margin-bottom: 6px;"><i class="fas fa-info-circle"></i> {{lastChange}}</div>
-                    <div class="small" ng-if="hasTimeSlots() && showPins.open" style="margin-bottom: 6px;">
+                    <div class="small" ng-if="hasTimeSlots() && showPins.open" style="margin-bottom: 6px; max-height: 7.5rem; overflow-y: auto;">
                         <div ng-repeat="p in pinList() track by $index"><a href="" ng-click="goToAiring(p.at)">{{p.text}}</a></div>
+                    </div>
                     </div>
                     <div class='row' ng-class="{'reverse': reverseTools }" >
                         <div vs-repeat="{size: programRowHeight}" vs-repeat-options="vsRepeatDragOptions" ng-class="{'programming-pane': true, 'col':true, 'd-block': showShuffleOptions, 'd-sm-none': showShuffleOptions, 'd-md-block' : showShuffleOptions, container: true, 'list-group': true, 'list-group-root': true, 'programming-programs': true}" ng-show="hasPrograms()"
@@ -185,7 +188,6 @@
                             dnd-list=""
                             ng-init="setUpWatcher()"
                             ng-if="true"
-                            ng-style="{'max-height':programmingHeight()}"
                             id="channelConfigProgramList"
                         >
                             <div ng-repeat="x in channel.programs track by x.$index"
@@ -231,7 +233,6 @@
                             "col-xl-4"  : !hasAdvancedTools(),
                             "col-lg-3"  : !hasAdvancedTools()
                         }'   class='programming-pane tools-pane' ng-show="showShuffleOptions"
-                            ng-style="{'max-height':programmingHeight()}"
                         >
 
                             <div class="row">
@@ -1253,7 +1254,7 @@
     <frequency-tweak programs="_programFrequencies" message="_frequencyMessage" modified="_frequencyModified" on-done="tweakFrequencies"></frequency-tweak>
     <remove-shows program-infos="_removablePrograms" on-done="removeShows" deleted="_deletedProgramNames"></remove-shows>
     <flex-config offline-title="Add Flex Time" program="_addingOffline" on-done="finishedAddingOffline"></flex-config>
-    <plex-library limit="libraryLimit" height="300" visible="displayPlexLibrary" position-choice=true on-finish="importPrograms"></plex-library>
+    <plex-library limit="libraryLimit" height="300" visible="displayPlexLibrary" position-choice=true time-slots="hasTimeSlots() && hasPrograms()" on-finish="importPrograms"></plex-library>
     <plex-library height="300" limit=1 visible="showFallbackPlexLibrary" on-finish="importFallback"></plex-library>
     <channel-redirect visible="_displayRedirect" on-done="finishRedirect" form-title="_redirectTitle" program="_selectedRedirect" ></channel-redirect>
     <!-- Deleting an airing: this airing only, or out of the rotation for good.

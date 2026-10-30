@@ -202,9 +202,11 @@
                     <div class="flex-grow-1" ng-show="positionChoice === true"">
                         <select class="form-select form-select-sm custom-select" ng-model="insertPoint"
                         id="position-selector">
-                            <option value="end">Insert at the end of list</option>
-                            <option value="start">Insert at the beginning of list</option>
-                            <option value="current">Insert at current scroll position</option>
+                            <option value="end" ng-if="!timeSlots">Insert at the end of list</option>
+                            <option value="start" ng-if="!timeSlots">Insert at the beginning of list</option>
+                            <option value="current" ng-if="!timeSlots">Insert at current scroll position</option>
+                            <option value="end" ng-if="timeSlots">Add to the channel, for Time Slots and Create Lineup (end of list)</option>
+                            <option value="current" ng-if="timeSlots">Insert into the lineup here, kept (after the first airing in view)</option>
                         </select>
 
                     </div>

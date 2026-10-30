@@ -18,6 +18,36 @@ below says what we do and why. **Syndicast innovates.**
   against the real `.dizquetv-dev` while the other one is live. Start a
   worktree preview by hand instead, on a spare port, with `-d` pointing at a
   copy of `.dizquetv-dev`.
+- **Workflows that must keep working.** Every session that changes the editor -
+  the channel editor, Swap and Insert, the library dialog, Time Slots, the filler
+  editor, their templates, `style.css`, or what the page bundles from `src/`
+  (`kept-rows.js`, `pins.js`, `slot-progress.js`) - runs this whole list with
+  real clicks on a preview on a copy of `.dizquetv-dev` before merging, and its
+  report says what each one did. Ron added this Oct 30, 2026, after the kept-rows
+  merge left Cancel and Update Channel unclickable and sent library adds into the
+  lineup; Resolved has both.
+  1. Opening and closing a channel editor with Cancel, and with Update Channel.
+  2. The first-open list answered both ways: Not now, and Keep them, each
+     followed by Cancel or Update Channel.
+  3. Adding a show from the library at the end of the list: it joins the
+     channel; nothing in the lineup moves or is kept.
+  4. Deleting episodes.
+  5. Swap, drag, and Put back.
+  6. Time Slots and Create Lineup.
+  7. Filler list editing.
+
+  `node scripts/editor-workflows.js --url http://localhost:<port> --channel 3`
+  does all seven against a running preview, from a fresh page each, clicking
+  each control with the real mouse at its middle after checking nothing covers
+  it there (a covered button fails, naming what covers it). It saves a channel
+  and a filler list, so it refuses port 18000. `--only` runs some of them
+  (`first-open-not-now`, `first-open-keep`, `open-cancel`, `open-update`,
+  `library-add`, `delete`, `swap-drag-put-back`, `create-lineup`, `filler`); the
+  first-open pair answers only a channel whose list still asks, so run it on a
+  fresh copy. `npm test` holds what runs without a server: `test/editor-footer.js`
+  (the footer buttons, in a real browser) and `test/kept-editor.js` (the
+  library's add). After the script, look at the preview yourself as well: it
+  checks what each workflow saves, not how the page reads.
 
 ## Feature roadmap
 
@@ -5803,9 +5833,13 @@ walk, `carryAt`, `fitAt`, `breaksThatFit`, the clock words) stays there.
 
 - The row Ron drags keeps its episode; the rows it shifts take their show's next episodes
   (said Oct 29 in the design he approved).
-- The library's add on a Time Slots channel goes in as an Insert at the scroll position,
+- ~~The library's add on a Time Slots channel goes in as an Insert at the scroll position,
   kept; "at the end of list" isn't offered there (it lands past the lineup's end, where
-  nothing keeps it).
+  nothing keeps it).~~ **Reversed by Ron, Oct 30:** the library's add joins the channel at
+  the end of the list, for Time Slots and Create Lineup, as it always did; nothing in the
+  lineup moves or is kept. Only "Insert into the lineup here" (the library's other choice
+  on a Time Slots channel) or a row's Insert after puts an item in the lineup, kept. See
+  Resolved, "The library's add went into the lineup on a Time Slots channel".
 - The whole-list programming tools (sort, block shuffle, equalize and the rest) still work
   as now on a Time Slots channel and their result isn't kept; on a list with kept rows they
   say first, in one sentence, that they rebuild the list.
@@ -7032,6 +7066,63 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### Cancel and Update Channel covered after the first-open list
+
+Ron, Oct 30, 2026, channel 3: after answering the first-open list ("Keep them", and also
+"Not now"), the channel editor's Cancel and Update Channel couldn't be clicked; only
+reloading the page got him out. Fixed on `editor-regressions`.
+
+- **Not a dialog left behind.** The first-open dialog is an `ng-if` and goes. On a preview
+  of a copy (port 18230, 1400-wide pane 768 high), what sat on top of the buttons' middle was
+  a program row of the list.
+- **Why.** The Programming pane is capped at `programmingHeight()` (30rem), and the program
+  list inside it was capped at the same 30rem. On a Time Slots channel, every line above the
+  list - "Go to" (since Oct 11), the sentence an edit leaves (since the kept-rows editor,
+  Oct 29), the list of edits still to air - pushed the list's bottom past the pane by its
+  height, over the footer. Program rows are `list-group-item`, `position: relative`, so they
+  paint above the footer's buttons and take their clicks.
+- **Measured, channel 3 on the copy.** Before any answer, and on the build from before the
+  merge (9d74509), the list spilled 37px: the top 20 of each button's 31 pixel rows were
+  covered, only the bottom third took a click. Keep them adds the sentence: 67px, nothing
+  left to click. Not now on the merged build left the same 37px; a click in the middle of
+  the button missed.
+- **Fixed.** The pane is a grid: the lines above the list sit in one head block that takes
+  what it needs, and the list (and the tools beside it) the rest (`style.css`,
+  `programming-panes`). The edits-still-to-air list scrolls past 7.5rem. The pane is the
+  same height as before - the editor doesn't scroll on the Programming tab, so a taller pane
+  would push the footer off a short window.
+- **Guarded by** `test/editor-footer.js` (the real pane and footer under Angular and
+  vs-repeat in a real browser; every pixel row of both buttons, three states; a real click
+  reaches each - 3 of 13 passed before the fix) and the workflow script in Rules.
+
+### The library's add went into the lineup on a Time Slots channel
+
+Ron, Oct 30, 2026, channel 3: House of Mouse (57 episodes) added with "Insert at the end of
+list" went into tonight's lineup as kept inserts after the first row in view, with a wall of
+"goes in after / runs long" sentences. The kept-rows editor (step 4) had made every library
+add on a Time Slots channel an Insert at the scroll position, whatever was chosen, on a
+choice of its own ("Choices made beyond Ron's decisions"). Fixed on `editor-regressions`.
+
+- **As it always did.** On a Time Slots channel the library's add joins the channel at the
+  end of the list, after the lineup, for Time Slots and Create Lineup; nothing in the lineup
+  moves or is kept, and one sentence says so. Rows past the lineup's end are outside
+  `pins.loopEnd`, so the ripple and `keptAhead` never reach them; the first open lists them
+  under "Letting go", as it did before.
+- **The library's choices there** are "Add to the channel, for Time Slots and Create Lineup
+  (end of list)" and "Insert into the lineup here, kept (after the first airing in view)" -
+  the one choice, with a row's Insert after, that places items in the lineup. "At the
+  beginning" isn't offered: it would move every airing, kept rows too; asked for anyway, the
+  add joins at the end. Channels without Time Slots keep all three choices as before.
+- **Found on the preview after the fix:** the library's own Cancel hands the add an empty
+  selection; on a Time Slots channel it said "0 added to the channel..." and scrolled to the
+  list's end. It does nothing there now (a check failed first).
+- **Guarded by** seven checks in `test/kept-editor.js` (`importPrograms` lifted from the page;
+  3 failed before the fix, the Cancel one before its own) and the workflow script's
+  `library-add`, which cancels the library once, then adds the show and fails as soon as
+  rows in view become kept after Done, then checks what Update Channel saved. On the build
+  before the fix it failed with "18 rows in view became kept" and the wall of sentences Ron
+  saw.
 
 ### Two viewers of a channel took turns with the offline screen
 
