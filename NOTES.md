@@ -13,6 +13,11 @@ below says what we do and why. **Syndicast innovates.**
   Never stop or signal any process you didn't start.
 - Docs and code describe our designs on their own terms and never name other
   playout programs.
+- Never use `preview_start` from a worktree: it resolves `.claude/launch.json`
+  against the main checkout, not the worktree, and can start a second server
+  against the real `.dizquetv-dev` while the other one is live. Start a
+  worktree preview by hand instead, on a spare port, with `-d` pointing at a
+  copy of `.dizquetv-dev`.
 
 ## Feature roadmap
 
