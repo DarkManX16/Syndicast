@@ -680,6 +680,48 @@ function insertMany({ lineup, index, items, now }) {
     return { programs, texts };
 }
 
+/*
+ * Delete of a plain Flex row (no program, nothing kept) on a Time Slots
+ * channel. The gap it leaves closes only up to the next kept row still ahead:
+ * the rows between - none of them kept - move that much earlier, same as an
+ * ordinary delete; a Flex of its length goes back in right before the kept
+ * row, merged into the break already there when one is, so the kept row and
+ * everything after it stays exactly where it sits. With no kept row ahead,
+ * every later row moves earlier, as it does today - only now said.
+ */
+function deleteFlex({ lineup, index }) {
+    let programs = lineup.programs;
+    let p = programs[index];
+    if ( (typeof(p) === 'undefined') || ! isBreak(p) ) {
+        return { refused: 'Pick a Flex block to delete.' };
+    }
+    let at = startsOf(lineup)[index];
+    let next = -1;
+    for (let i = index + 1; i < programs.length; i++) {
+        if (isKept(programs[i])) {
+            next = i;
+            break;
+        }
+    }
+    let out = programs.slice(0, index).concat(programs.slice(index + 1));
+    if (next === -1) {
+        return {
+            programs: out,
+            text: `Removes ${pins.length(p.duration)} of Flex at ${clockAm(at)}; every row after it moves that much earlier.`,
+        };
+    }
+    let insertAt = next - 1;
+    if ( (insertAt > 0) && isBreak(out[insertAt - 1]) ) {
+        out[insertAt - 1] = flex(out[insertAt - 1].duration + p.duration);
+    } else {
+        out.splice(insertAt, 0, flex(p.duration));
+    }
+    return {
+        programs: out,
+        text: `Removes ${pins.length(p.duration)} of Flex at ${clockAm(at)}; ${title(programs[next])} at ${clockAm(startsOf(lineup)[next])} and everything after it stays where it is.`,
+    };
+}
+
 // "Remove this airing only": kept Flex of the airing's length; every row where
 // it was, and its episode at its position's next airing.
 function removeOnly({ lineup, index, now, schedule }) {
@@ -1334,6 +1376,7 @@ module.exports = {
     keptKind: keptKind,
     keepsItem: keepsItem,
     isKept: isKept,
+    isPlainFlex: isBreak,
     positionOf: positionOf,
     rowsOf: rowsOf,
     firstOpen: firstOpen,
@@ -1341,6 +1384,7 @@ module.exports = {
     swap: swap,
     insertAfter: insertAfter,
     insertMany: insertMany,
+    deleteFlex: deleteFlex,
     removeOnly: removeOnly,
     leaveOut: leaveOut,
     rowNote: rowNote,
