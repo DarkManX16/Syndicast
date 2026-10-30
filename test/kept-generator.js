@@ -12,6 +12,7 @@
 const { MIN, HOUR, DAY, Suite } = require('./support');
 const timeSlotsService = require('../src/services/time-slots-service');
 const kept = require('../src/kept-rows');
+const episodeStart = require('../src/episode-start');
 const pinTools = require('../src/pins');
 const slotProgress = require('../src/slot-progress');
 const getShowData = require('../web/services/get-show-data')();
@@ -194,6 +195,22 @@ module.exports = async function () {
         suite.check('an edit before a kept row, then Create Lineup: each row where the list has it',
             sameNight(m2, l2, ...DAYS) && rowAt(m2, thu(19, 34)) && rowAt(m2, thu(19, 34)).title === 'A S1E1',
             JSON.stringify(night(m2, thu(19), thu(21))));
+
+        // A's next episode, as Create Lineup would place it now (a range change, say), is a 44-minute
+        // special - 22 minutes longer than A's kept-in-time row has room for: B's kept row at 8pm falls
+        // inside the overrun, so Create Lineup pushes it later.
+        const keep = kept.keptAhead({ programs: list.programs, startTime: list.startTime, now: NOON });
+        const key = slotProgress.positionKey('tv.A', 'next', undefined);
+        const special = episode('A', 41, 44 * MIN);
+        const progress = { positions: { [key]: { next: slotProgress.ref(special, getShowData), wrapped: false } } };
+        const described = episodeStart.describe({ schedule: sched, progress: progress, pool: POOL.concat([ special ]), now: NOON, pins: [] });
+        const durationOf = (k) => { const e = described.get(k); return (e && e.program) ? e.program.duration : null; };
+        const notes = kept.longerAhead({ rows: keep, durationOf: durationOf });
+        suite.check('A\'s longer next episode pushes B\'s kept row, named in one sentence',
+            JSON.stringify(notes) === JSON.stringify([ "A's next episode runs 22:00 longer: Create Lineup will push B S1E1 at 8:00pm later." ]),
+            JSON.stringify(notes));
+        const quiet = kept.longerAhead({ rows: keep, durationOf: () => 22 * MIN });
+        suite.check('...and nothing to say when the next episode fits as it did', quiet.length === 0, JSON.stringify(quiet));
     }
 
     suite.log('-- run late and take, as rows --');

@@ -1355,6 +1355,37 @@ function scheduleNotes({ programs, startTime, now, rows, schedule, opened, nameO
     return notes;
 }
 
+/*
+ * One sentence for each row kept in time whose position's next episode - as
+ * Create Lineup would place it now, from `durationOf(key)` - runs longer than
+ * the item sitting in that row today: a kept row never waits, so every other
+ * kept row still ahead that the overrun reaches is pushed later, with no room
+ * to wait for it (Ron, Oct 29; "Set aside" in NOTES.md). `rows`, keptAhead's
+ * answer; `durationOf(key)` is the position's next episode's duration, or
+ * null/undefined when there isn't one (not asked, or no slot plays it any
+ * more). `nameOf(showId)` names a show, as scheduleNotes takes it.
+ */
+function longerAhead({ rows, durationOf, nameOf }) {
+    let name = (id) => ( (typeof(nameOf) === 'function') && nameOf(id) ) || String(id).replace(/^(tv|custom|movie)\./, '');
+    let notes = [];
+    rows.filter( (x) => typeof(x.key) === 'string' ).forEach( (x) => {
+        let duration = (typeof(durationOf) === 'function') ? durationOf(x.key) : undefined;
+        if ( (typeof(duration) !== 'number') || (duration <= x.program.duration + SLACK) ) {
+            return;
+        }
+        let newEnd = x.at + duration;
+        let pushed = rows.filter( (y) => (y !== x) && (y.at > x.at) && (y.at < newEnd - SLACK) ).sort( (a, b) => a.at - b.at );
+        if (pushed.length === 0) {
+            return;
+        }
+        let [ showId ] = JSON.parse(x.key);
+        let names = pushed.map( (y) => `${title(y.program)} at ${clockAm(y.at)}` );
+        let list = (names.length === 1) ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+        notes.push(`${possessive(name(showId))} next episode runs ${pins.length(duration - x.program.duration)} longer: Create Lineup will push ${list} later.`);
+    } );
+    return notes;
+}
+
 // "Create Lineup keeps 15 swaps, 1 insert and 12 rows kept in time where they sit in your list."
 const KEPT_WORDS = { swap: 'swap', insert: 'insert', remove: 'removal', moved: 'row you moved', shifted: 'row kept in time' };
 function sayKeptAhead(rows) {
@@ -1392,6 +1423,7 @@ module.exports = {
     putBack: putBack,
     keptAhead: keptAhead,
     scheduleNotes: scheduleNotes,
+    longerAhead: longerAhead,
     sayKeptAhead: sayKeptAhead,
     clockAm: clockAm,
 };
