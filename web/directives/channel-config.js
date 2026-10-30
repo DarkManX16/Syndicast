@@ -5,7 +5,6 @@ const slotWeek = require('../../src/slot-week');
 const transitions = require('../../src/transitions');
 const transitionsEditor = require('../../src/transitions-editor');
 const showCatalog = require('../../src/show-catalog');
-const slotRounds = require('../../src/shuffle-rounds');
 const pinTools = require('../../src/pins');
 const keptRows = require('../../src/kept-rows');
 const buildCheck = require('../../src/build-check');
@@ -1440,21 +1439,20 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
             }
             /*
-             * Deleting an episode, custom-show item or movie asks which is meant:
-             * this airing only, as before, or out of the channel's rotation for
-             * good - a holiday Ron places himself, or never air (the never-air
-             * list, src/show-catalog.js; queued and saved after Update Channel).
-             * Flex and redirects go at once, as before.
+             * Delete takes the row out of the list at once (Ron, Oct 30): no prompt,
+             * nothing kept, no episode moved along. On a channel with a slot schedule
+             * the episode goes on the channel's never-air list (src/show-catalog.js;
+             * saved after Update Channel), so Create Lineup leaves it out; the Catalog
+             * page brings it back. On a Time Slots channel the gap closes only up to
+             * the next kept row, which stays where it sits (src/kept-rows.js
+             * deleteRow), and a kept row's Delete is Put back.
              */
-            scope.holidayNames = showCatalog.HOLIDAYS.map( (h) => h.name ).concat(['Other']);
-            scope.deletePrompt = null;
             scope.removeItem = (x) => {
                 let program = scope.channel.programs[x];
-                if ( (typeof(program) !== 'undefined') && scope.hasTimeSlots() && ! program.isOffline && askFirstOpen() ) {
+                if (typeof(program) === 'undefined') {
                     return;
                 }
-                // A row kept as it is: Delete puts it back, after one sentence.
-                if ( (typeof(program) !== 'undefined') && scope.hasTimeSlots() && keptRows.keepsItem(program) ) {
+                if (scope.hasTimeSlots() && keptRows.keepsItem(program)) {
                     if (askFirstOpen()) {
                         return;
                     }
@@ -1466,74 +1464,24 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     scope.undoPrompt = { title: 'Put back?', text: got.text, go: 'Put it back', apply: () => applyEdit(got) };
                     return;
                 }
-                if ( (typeof(program) === 'undefined') || program.isOffline || ! getShowData(program).hasShow ) {
-                    // A plain Flex row on a Time Slots channel: the gap it leaves closes
-                    // only up to the next kept row, which stays exactly where it sits.
-                    if (scope.hasTimeSlots() && keptRows.isPlainFlex(program)) {
-                        applyEdit(keptRows.deleteFlex({ lineup: lineupMs(), index: x }));
-                        return;
-                    }
-                    scope.channel.programs.splice(x, 1)
-                    updateChannelDuration()
-                    return;
-                }
-                let key = slotRounds.fileKey(program);
-                let others = scope.channel.programs.filter( (p, i) => (i !== x) && ! p.isOffline && (slotRounds.fileKey(p) === key) ).length;
-                let label = commonProgramTools.getProgramDisplayTitle(program);
-                scope.deletePrompt = { index: x, program: program, label: label, others: others,
-                    holiday: showCatalog.holidayOf(program.title) || 'Christmas' };
-                // On a Time Slots channel each choice is an edit to the list, said before it is made:
-                // this airing only leaves kept Flex and its episode airs at its show's next airing;
-                // Holiday and Never air give the slot its show's next episode, with no gap.
                 if (scope.hasTimeSlots()) {
-                    let lineup = lineupMs();
-                    let now = Date.now();
-                    scope.deletePrompt.timeSlots = true;
-                    scope.deletePrompt.only = keptRows.removeOnly({ lineup, index: x, now, schedule: scope.channel.scheduleBackup });
-                    scope.deletePrompt.out = keptRows.leaveOut({ lineup, index: x, now, schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
-                    // On air or aired: it can't be removed or swapped, but Holiday and Never air still work.
-                    scope.deletePrompt.blocked = pinTools.whyNot({ airing: program, now: now, what: 'remove' });
-                }
-            }
-            scope.finishDelete = (choice) => {
-                let prompt = scope.deletePrompt;
-                scope.deletePrompt = null;
-                if ( (prompt === null) || (choice === null) ) {
-                    return;
-                }
-                // The row the prompt was opened for, even if the list moved meanwhile.
-                let x = (scope.channel.programs[prompt.index] === prompt.program) ? prompt.index : scope.channel.programs.indexOf(prompt.program);
-                if (x === -1) {
-                    return;
-                }
-                if (choice === 'swap') {
-                    openPlacing(x, 'swap');
-                    return;
-                }
-                if (prompt.timeSlots) {
-                    // Worked out again on the list as it is now.
-                    let lineup = lineupMs();
-                    let now = Date.now();
-                    if (choice === 'only') {
-                        applyEdit(keptRows.removeOnly({ lineup, index: x, now, schedule: scope.channel.scheduleBackup }));
+                    if (! applyEdit(keptRows.deleteRow({ lineup: lineupMs(), index: x, now: Date.now() }))) {
                         return;
                     }
-                    let got = keptRows.leaveOut({ lineup, index: x, now, schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
-                    if (Array.isArray(got.programs)) {
-                        applyEdit(got);
-                    } else {
-                        scope.lastChange = `${prompt.label} is left out from the next Create Lineup on.`;
-                    }
-                    queueCatalogOps([ { neverAir: [ showCatalog.neverAirEntry(prompt.program, getShowData, 'deleted', choice,
-                        (choice === 'holiday') ? prompt.holiday : undefined, now) ] } ]);
+                } else {
+                    scope.channel.programs.splice(x, 1);
+                    updateChannelDuration();
+                }
+                let slots = ! scope.hasNoTimeSlots() || ! scope.hasNoRandomSlots();
+                if (! slots || program.isOffline || ! getShowData(program).hasShow) {
                     return;
                 }
-                pinTools.removeAiring(scope.channel.programs, prompt.program);
-                updateChannelDuration()
-                if (choice !== 'only') {
-                    queueCatalogOps([ { neverAir: [ showCatalog.neverAirEntry(prompt.program, getShowData, 'deleted', choice,
-                        (choice === 'holiday') ? prompt.holiday : undefined, Date.now()) ] } ]);
-                }
+                // One already on the list - a holiday, say - keeps its entry as it is.
+                return catalogFor().then( (state) => {
+                    if (! showCatalog.isNeverAir(state, program)) {
+                        queueCatalogOps([ { neverAir: [ showCatalog.neverAirEntry(program, getShowData, 'deleted', 'never', undefined, Date.now()) ] } ]);
+                    }
+                } );
             }
             scope.knownChannels = [
                 { id: -1, description: "# Channel #"},
@@ -3017,18 +2965,13 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
 
             // An edit that asks first, in one sentence: { title, text, go, apply }.
             scope.undoPrompt = null;
-            // Escape always leaves a prompt: the asking one, which sits on top, or the delete one.
+            // Escape always leaves the asking prompt.
             let onEscape = (event) => {
-                let what = pinTools.escapeAction({ key: event.key, deletePrompt: scope.deletePrompt, undoPrompt: scope.undoPrompt });
-                if (what === null) {
+                if (pinTools.escapeAction({ key: event.key, undoPrompt: scope.undoPrompt }) === null) {
                     return;
                 }
                 event.preventDefault();
-                if (what === 'undo') {
-                    scope.finishUndo(false);
-                } else {
-                    scope.finishDelete(null);
-                }
+                scope.finishUndo(false);
                 $timeout();
             };
             document.addEventListener('keydown', onEscape);

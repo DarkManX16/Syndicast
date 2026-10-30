@@ -226,6 +226,25 @@ module.exports = async function () {
                 JSON.stringify(r2.keep.concat(r2.letGo).map( (x) => [ x.why, x.program.title, new Date(x.start).toString().slice(0, 21) ] )));
         }
 
+        // Channel 1, Oct 30 at 2:26am: A Very Venture Halloween, pinned to Fri 3:30am and
+        // dragged to 12:00am, had aired by then, and Create Lineup's carry had rotated it past
+        // the lineup's end Flex, a year on. Its pinned time was still ahead, so it was read as
+        // a pin still to air sitting away from its time, and the 19,068 airings between its
+        // pinned time and the list's end were kept in time.
+        {
+            const tail = base.programs.concat([ flex(2 * DAY) ]);
+            const special = withPin({ programs: tail, startTime: base.startTime }, fri(3, 30), { title: 'A Very Venture Halloween', duration: 22 * MIN + 30 * SEC });
+            const k = indexAt(special, fri(3, 30));
+            const rotated = special.programs.slice();
+            const row = rotated.splice(k, 1)[0];
+            rotated.splice(k, 0, flex(row.duration));
+            rotated.push(row, flex(7 * MIN + 30 * SEC));
+            const r3 = kept.firstOpen({ programs: rotated, startTime: base.startTime, now: NOW, schedule: sched, getShowData });
+            const why = r3.keep.concat(r3.letGo).filter( (x) => x.program.title === 'A Very Venture Halloween' ).map( (x) => x.why ).join();
+            suite.check('a pin past the lineup\'s end has aired and only comes round as the list loops, whatever its pinned time: let go, nothing kept in time',
+                why === 'aired' && r3.keep.length === 0, `${why}; keep ${r3.keep.length}`);
+        }
+
         suite.check('the lines say what is kept and what is let go, plainly',
             JSON.stringify(g.lines) === JSON.stringify([
                 'Keeping, as they sit in your list:',
@@ -374,13 +393,44 @@ module.exports = async function () {
             before.text);
     }
 
-    suite.log('-- delete a plain Flex row --');
+    suite.log('-- delete a row: a plain Flex row, or an episode --');
     {
         const flexAfterFuturama = indexAt(base, fri(0)) + 1;
         const movedUp = fri(0) + 22 * MIN + 30 * SEC; // Family Guy's new start once the gap closes
         suite.check('picked row is Futurama\'s own Flex', base.programs[flexAfterFuturama].isOffline && base.programs[flexAfterFuturama].duration === 7 * MIN + 30 * SEC, '');
 
-        suite.check('not a Flex row: refused', typeof(kept.deleteFlex({ lineup: base, index: indexAt(base, fri(0)) }).refused) === 'string', '');
+        // An episode (Ron, Oct 30): Delete takes it out at once, as before kept rows - no
+        // prompt, nothing kept, no episode moved along. Its break stays; the gap closes as a
+        // Flex row's does.
+        const marks = (l) => l.programs.filter( (p) => p.kept ).length;
+        const ep = kept.deleteRow({ lineup: base, index: indexAt(base, fri(0)), now: NOW });
+        const epLineup = { programs: ep.programs || [], startTime: base.startTime };
+        suite.check('an episode: gone from the list, every later row 22:30 earlier, nothing kept, nothing said',
+            epLineup.programs.length === base.programs.length - 1 && ! epLineup.programs.some( (p) => p.title === 'Futurama 1' )
+                && epLineup.programs[indexAt(epLineup, fri(0) + 7 * MIN + 30 * SEC)].title === 'Family Guy 1'
+                && marks(epLineup) === 0 && ep.text === '',
+            JSON.stringify([ ep.refused, ep.text, night(epLineup, fri(0), fri(1)) ]));
+        const swappedAhead = lineOf(kept.swap({ lineup: base, index: indexAt(base, fri(1, 30)),
+            item: episode('Aqua Teen Hunger Force', 99, 11 * MIN, { title: 'ATHF Special' }), now: NOW, schedule: sched }), base);
+        const epKept = kept.deleteRow({ lineup: swappedAhead, index: indexAt(swappedAhead, fri(0)), now: NOW });
+        const epKeptLineup = { programs: epKept.programs || [], startTime: base.startTime };
+        suite.check('...with a kept swap ahead: the rows between 22:30 earlier, the swap where it sits, no other row kept',
+            epKeptLineup.programs[indexAt(epKeptLineup, fri(0) + 7 * MIN + 30 * SEC)].title === 'Family Guy 1'
+                && epKeptLineup.programs[indexAt(epKeptLineup, fri(1, 30))].title === 'ATHF Special'
+                && JSON.stringify(night(epKeptLineup, fri(1, 30), fri(4, 30))) === JSON.stringify(night(swappedAhead, fri(1, 30), fri(4, 30)))
+                && marks(epKeptLineup) === 1,
+            JSON.stringify([ epKept.refused, night(epKeptLineup, fri(0), fri(2)) ]));
+        const pool = base.programs.concat([ flex(2 * DAY), episode('House of Mouse', 1, 22 * MIN), episode('House of Mouse', 2, 22 * MIN) ]);
+        const poolLineup = { programs: pool, startTime: base.startTime };
+        const epPool = kept.deleteRow({ lineup: poolLineup, index: pool.length - 2, now: NOW });
+        suite.check('...one added at the end of the list, past the lineup: gone, every airing of the lineup as it was',
+            Array.isArray(epPool.programs) && epPool.programs.length === pool.length - 1
+                && epPool.programs[pool.length - 2].title === 'House of Mouse 2'
+                && epPool.programs.slice(0, base.programs.length).every( (p, k) => p === base.programs[k] ),
+            JSON.stringify(epPool.refused));
+        suite.check('a kept row isn\'t deleted here (its Delete is Put back), nor the airing on air',
+            typeof(kept.deleteRow({ lineup: swappedAhead, index: indexAt(swappedAhead, fri(1, 30)), now: NOW }).refused) === 'string'
+                && typeof(kept.deleteRow({ lineup: base, index: indexAt(base, THU + 5 * HOUR), now: NOW }).refused) === 'string', '');
 
         // isPlainFlex: what the channel editor checks before it picks this path over the ordinary splice.
         suite.check('isPlainFlex: true for a plain Flex row, false for a program, a redirect or a kept Flex',
@@ -391,7 +441,7 @@ module.exports = async function () {
             '');
 
         // Nothing kept anywhere: every row after it moves that much earlier, same as today - but said.
-        const none = kept.deleteFlex({ lineup: base, index: flexAfterFuturama });
+        const none = kept.deleteRow({ lineup: base, index: flexAfterFuturama });
         const noneLineup = { programs: none.programs, startTime: base.startTime };
         suite.check('with nothing kept ahead: the Flex is gone and every later row moves 7:30 earlier',
             noneLineup.programs.length === base.programs.length - 1
@@ -403,7 +453,7 @@ module.exports = async function () {
         const swapped = kept.swap({ lineup: base, index: indexAt(base, fri(1, 30)),
             item: episode('Aqua Teen Hunger Force', 99, 11 * MIN, { title: 'ATHF Special' }), now: NOW, schedule: sched });
         const list = lineOf(swapped, base);
-        const del = kept.deleteFlex({ lineup: list, index: flexAfterFuturama });
+        const del = kept.deleteRow({ lineup: list, index: flexAfterFuturama });
         const out = { programs: del.programs, startTime: base.startTime };
         suite.check('the rows between move 7:30 earlier; the kept swap stays exactly where it sits',
             out.programs[indexAt(out, movedUp)].title === 'Family Guy 1'
@@ -416,7 +466,7 @@ module.exports = async function () {
         // A kept row right after the deleted Flex: inserted fresh, with nothing to merge into.
         const swappedNow = kept.swap({ lineup: base, index: indexAt(base, fri(0, 30)),
             item: episode('Family Guy', 99, 20 * MIN, { title: 'Family Guy Special' }), now: NOW, schedule: sched });
-        const delAdjacent = kept.deleteFlex({ lineup: lineOf(swappedNow, base), index: flexAfterFuturama });
+        const delAdjacent = kept.deleteRow({ lineup: lineOf(swappedNow, base), index: flexAfterFuturama });
         const outAdjacent = { programs: delAdjacent.programs, startTime: base.startTime };
         suite.check('right next to the deleted Flex: the kept row still stays at its own time',
             outAdjacent.programs[indexAt(outAdjacent, fri(0, 30))].title === 'Family Guy Special', delAdjacent.text);
@@ -716,6 +766,56 @@ module.exports = async function () {
             JSON.stringify(starts(lineOf(r, base))) === JSON.stringify(starts(base))
                 && wa.length === wb.length - 1 && wa.slice(k0).every( (a, k) => a.slice(0, 21) === wb[k0 + k + 1].slice(0, 21) && a.slice(22) === wb[k0 + k].slice(22) ),
             JSON.stringify(wa.slice(k0, k0 + 6)));
+    }
+
+    suite.log('-- what the Time Slots dialog says, and clearing marks no edit of Ron\'s made --');
+    {
+        // Ron's Friday drag (a real one: the moved row and the rows it shifted share its id),
+        // a real swap on Saturday night, and the marks Oct 29-30 left that no edit of Ron's
+        // made: rows kept in time by an edit with no row of its own still ahead, the Venture
+        // special's swap and move rotated past the lineup's end with the rows it "shifted",
+        // a removal's kept Flex, and a swap that has aired.
+        const drag = kept.move({ lineup: base, from: indexAt(base, fri(3, 30)), to: indexAt(base, fri(0)), now: NOW });
+        const sat = (h, m) => new Date(2026, 9, 31, h, m || 0).getTime();
+        const sw = kept.swap({ lineup: lineOf(drag, base), index: indexAt(lineOf(drag, base), sat(20)),
+            item: episode('Waynehead', 0, 22 * MIN + 30 * SEC, { title: 'Waynehead special' }), now: NOW, schedule: sched });
+        const p = sw.programs.slice();
+        const l0 = { programs: p, startTime: base.startTime };
+        const mark = (t, edit) => {
+            const k = indexAt(l0, t);
+            p[k] = Object.assign({}, p[k], { kept: { edits: ((p[k].kept && p[k].kept.edits) || []).concat([ edit ]) } });
+        };
+        for (let h = 1; h < 12; h++) {
+            mark(sat(h), { id: 'e1793345175611.5', kind: 'shifted', made: '2026-10-30T07:26:15.611Z' });
+            mark(sat(h, 30), { id: 'e1793345175611.4', kind: 'shifted', made: '2026-10-30T07:26:15.611Z' });
+        }
+        mark(THU + 3 * HOUR, { id: 'eAired', kind: 'swap', was: 'Waynehead 7', show: 'tv.Waynehead', made: '2026-10-28T10:00:00.000Z' });
+        const sunday = indexAt(l0, new Date(2026, 10, 1, 21, 0).getTime());
+        p[sunday] = { duration: p[sunday].duration, isOffline: true, kept: { edits: [ { id: 'eRemove', kind: 'remove', was: 'Waynehead 9', show: 'tv.Waynehead' } ] } };
+        p.push(flex(2 * DAY), Object.assign(episode('The Venture Bros.', 0, 22 * MIN + 30 * SEC, { title: 'A Very Venture Halloween' }), {
+            kept: { edits: [ { id: 'e1793345175611.3', kind: 'swap', was: 'The Venture Bros. S02E09' }, { id: 'e1793345175611.4', kind: 'moved', from: fri(3, 30) } ] } }));
+        const marked = { programs: p, startTime: base.startTime };
+
+        const said = kept.sayKept(kept.keptAhead({ programs: p, startTime: base.startTime, now: NOW }));
+        suite.check('the dialog: one short line, naming only your swaps, inserts and dragged rows',
+            said === 'Your 1 swap and 1 dragged row stay where they are.', said);
+        suite.check('...and nothing when only rows kept in time are ahead',
+            kept.sayKept(kept.keptAhead({ programs: p, startTime: base.startTime, now: NOW }).filter( (x) => kept.keptKind(x.program) === 'shifted' )) === '', '');
+
+        const c = kept.clearWrong({ programs: p, startTime: base.startTime, now: NOW });
+        const after = { programs: c.programs, startTime: base.startTime };
+        const kinds = (l) => l.programs.reduce( (a, q) => { (q.kept ? q.kept.edits : []).forEach( (e) => { a[e.kind] = (a[e.kind] || 0) + 1; } ); return a; }, {} );
+        suite.check('clearWrong: the rows kept in time by no edit still ahead, the marks past the lineup\'s end, the removal\'s and the aired swap\'s go',
+            JSON.stringify(kinds(after)) === JSON.stringify({ moved: 1, shifted: 8, swap: 1 })
+                && c.cleared === 25 && c.left === 10,
+            JSON.stringify([ kinds(marked), kinds(after), c.cleared, c.left ]));
+        suite.check('...Ron\'s drag and swap keep theirs, and nothing moves: every entry the same length, in the same place',
+            JSON.stringify(night(after, fri(0), fri(4, 1))) === JSON.stringify(night(lineOf(drag, base), fri(0), fri(4, 1)))
+                && kept.keptKind(after.programs[indexAt(after, sat(20))]) === 'swap'
+                && after.programs.length === p.length && after.programs.every( (q, k) => q.duration === p[k].duration ),
+            '');
+        suite.check('...the removal\'s Flex is plain Flex again, and clearing twice clears nothing more',
+            kept.isPlainFlex(after.programs[sunday]) && kept.clearWrong({ programs: c.programs, startTime: base.startTime, now: NOW }).cleared === 0, '');
     }
 
     suite.check('nothing above changed the list it was given', JSON.stringify(base.programs) === JSON.stringify(lineup().programs)

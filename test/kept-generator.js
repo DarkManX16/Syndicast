@@ -12,7 +12,6 @@
 const { MIN, HOUR, DAY, Suite } = require('./support');
 const timeSlotsService = require('../src/services/time-slots-service');
 const kept = require('../src/kept-rows');
-const episodeStart = require('../src/episode-start');
 const pinTools = require('../src/pins');
 const slotProgress = require('../src/slot-progress');
 const getShowData = require('../web/services/get-show-data')();
@@ -137,22 +136,12 @@ module.exports = async function () {
         suite.check('regenerated from its own output: identical, JSON for JSON',
             JSON.stringify(again.programs) === JSON.stringify(made.programs) && again.startTime === made.startTime, '');
 
-        // Ron changes the 7:30 slot to D: the swap stays, and says so.
+        // Ron changes the 7:30 slot to D: the swap stays.
         const changed = JSON.parse(JSON.stringify(sched));
         changed.slots[1].showId = 'tv.D';
-        const notes = kept.scheduleNotes({ programs: made.programs, startTime: made.startTime, now: NOON, schedule: changed });
         const after = await createLineup(made, changed, NOON);
         suite.check('a schedule change under a kept swap: the swap stays where it is',
             rowAt(after, at) && rowAt(after, at).title === 'B Special', JSON.stringify(night(after, thu(19), thu(21))));
-        suite.check('...and the Time Slots dialog says so, in one sentence',
-            JSON.stringify(notes) === JSON.stringify([ "B Special at Thu Oct 8, 7:30pm is now in D's slot; it stays." ]), JSON.stringify(notes));
-        // A kept swap a drag moved into another show's slot: no schedule change, nothing to say.
-        const moved = kept.move({ lineup: made, from: indexAt(made, at), to: indexAt(made, thu(19)), now: NOON });
-        const quiet = kept.scheduleNotes({ programs: moved.programs, startTime: made.startTime, now: NOON, schedule: sched, opened: sched });
-        const loud = kept.scheduleNotes({ programs: moved.programs, startTime: made.startTime, now: NOON, schedule: changed, opened: sched });
-        suite.check('...only for a slot this schedule change gives another show, not one a drag moved it into',
-            quiet.length === 0 && loud.length === 0 && kept.scheduleNotes({ programs: made.programs, startTime: made.startTime, now: NOON, schedule: changed, opened: sched }).length === 1,
-            JSON.stringify([ quiet, loud ]));
 
         const onAir = await createLineup(made, sched, thu(19, 40));
         suite.check('a kept row on air is carried: at its time, once',
@@ -195,22 +184,6 @@ module.exports = async function () {
         suite.check('an edit before a kept row, then Create Lineup: each row where the list has it',
             sameNight(m2, l2, ...DAYS) && rowAt(m2, thu(19, 34)) && rowAt(m2, thu(19, 34)).title === 'A S1E1',
             JSON.stringify(night(m2, thu(19), thu(21))));
-
-        // A's next episode, as Create Lineup would place it now (a range change, say), is a 44-minute
-        // special - 22 minutes longer than A's kept-in-time row has room for: B's kept row at 8pm falls
-        // inside the overrun, so Create Lineup pushes it later.
-        const keep = kept.keptAhead({ programs: list.programs, startTime: list.startTime, now: NOON });
-        const key = slotProgress.positionKey('tv.A', 'next', undefined);
-        const special = episode('A', 41, 44 * MIN);
-        const progress = { positions: { [key]: { next: slotProgress.ref(special, getShowData), wrapped: false } } };
-        const described = episodeStart.describe({ schedule: sched, progress: progress, pool: POOL.concat([ special ]), now: NOON, pins: [] });
-        const durationOf = (k) => { const e = described.get(k); return (e && e.program) ? e.program.duration : null; };
-        const notes = kept.longerAhead({ rows: keep, durationOf: durationOf });
-        suite.check('A\'s longer next episode pushes B\'s kept row, named in one sentence',
-            JSON.stringify(notes) === JSON.stringify([ "A's next episode runs 22:00 longer: Create Lineup will push B S1E1 at 8:00pm later." ]),
-            JSON.stringify(notes));
-        const quiet = kept.longerAhead({ rows: keep, durationOf: () => 22 * MIN });
-        suite.check('...and nothing to say when the next episode fits as it did', quiet.length === 0, JSON.stringify(quiet));
     }
 
     suite.log('-- run late and take, as rows --');

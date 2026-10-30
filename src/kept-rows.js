@@ -681,21 +681,34 @@ function insertMany({ lineup, index, items, now }) {
 }
 
 /*
- * Delete of a plain Flex row (no program, nothing kept) on a Time Slots
- * channel. The gap it leaves closes only up to the next kept row still ahead:
- * the rows between - none of them kept - move that much earlier, same as an
- * ordinary delete; a Flex of its length goes back in right before the kept
- * row, merged into the break already there when one is, so the kept row and
- * everything after it stays exactly where it sits. With no kept row ahead,
- * every later row moves earlier, as it does today - only now said.
+ * Delete on a Time Slots channel of a plain Flex row, or of an episode (any
+ * row nothing keeps as it is): it leaves the list at once, as before kept
+ * rows - nothing kept, nothing moved along (Ron, Oct 30). The gap it leaves
+ * closes only up to the next kept row still ahead: the rows between move that
+ * much earlier, same as an ordinary delete; a Flex of its length goes back in
+ * right before the kept row, merged into the break already there when one is,
+ * so the kept row and everything after it stays exactly where it sits. With no
+ * kept row ahead, every later row moves earlier. A Flex row's delete says so in
+ * one line; an episode's says nothing - the list shows it gone. A kept row's
+ * Delete is Put back, and the airing on air stays.
  */
-function deleteFlex({ lineup, index }) {
+function deleteRow({ lineup, index, now }) {
     let programs = lineup.programs;
     let p = programs[index];
-    if ( (typeof(p) === 'undefined') || ! isBreak(p) ) {
-        return { refused: 'Pick a Flex block to delete.' };
+    if (typeof(p) === 'undefined') {
+        return { refused: 'Pick a row to delete.' };
+    }
+    if (keepsItem(p) || p.pin) {
+        return { refused: `${title(p)} is kept where you put it: Put back takes it out.` };
     }
     let at = startsOf(lineup)[index];
+    if (! p.isOffline) {
+        let why = pins.whyNot({ airing: Object.assign({}, p, { start: at }), now: now, what: 'remove' });
+        if (why !== null) {
+            return { refused: why };
+        }
+    }
+    let said = (rest) => p.isOffline ? `Removes ${pins.length(p.duration)} of Flex at ${clockAm(at)}; ${rest}.` : '';
     let next = -1;
     for (let i = index + 1; i < programs.length; i++) {
         if (isKept(programs[i])) {
@@ -705,10 +718,7 @@ function deleteFlex({ lineup, index }) {
     }
     let out = programs.slice(0, index).concat(programs.slice(index + 1));
     if (next === -1) {
-        return {
-            programs: out,
-            text: `Removes ${pins.length(p.duration)} of Flex at ${clockAm(at)}; every row after it moves that much earlier.`,
-        };
+        return { programs: out, text: said('every row after it moves that much earlier') };
     }
     let insertAt = next - 1;
     if ( (insertAt > 0) && isBreak(out[insertAt - 1]) ) {
@@ -718,7 +728,7 @@ function deleteFlex({ lineup, index }) {
     }
     return {
         programs: out,
-        text: `Removes ${pins.length(p.duration)} of Flex at ${clockAm(at)}; ${title(programs[next])} at ${clockAm(startsOf(lineup)[next])} and everything after it stays where it is.`,
+        text: said(`${title(programs[next])} at ${clockAm(startsOf(lineup)[next])} and everything after it stays where it is`),
     };
 }
 
@@ -1144,14 +1154,17 @@ function firstOpen({ programs, startTime, now, schedule, getShowData }) {
     }, startTime );
     let rows = rowsOf(lineup);
     let blockAt = new Map(rows.map( (r) => [ r.index, blockOf(r) ] ));
+    let end = pins.loopEnd(lineup, now);
 
     programs.forEach( (p, i) => {
         if ( ! p.pin || (typeof(p.pin.at) !== 'number') ) {
             return;
         }
-        // Aired: its airing in the list has ended, whatever its pinned time; or its
-        // pinned time has passed and the list only has it again most of a loop later.
-        let aired = comesRound[i] || ( (p.pin.at + p.duration <= now) && (next[i] - p.pin.at > total / 2) );
+        // Aired: its airing in the list has ended, whatever its pinned time; or it sits
+        // past the lineup's end, where Create Lineup's carry rotates what aired (channel
+        // 1's Venture special, Oct 30); or its pinned time has passed and the list only
+        // has it again most of a loop later.
+        let aired = comesRound[i] || (next[i] >= end) || ( (p.pin.at + p.duration <= now) && (next[i] - p.pin.at > total / 2) );
         if (aired) {
             letGo.push({ index: i, start: next[i], program: p, why: 'aired' });
         } else {
@@ -1166,7 +1179,7 @@ function firstOpen({ programs, startTime, now, schedule, getShowData }) {
     } );
 
     // What a drag moved, up to where the generator's own last days begin.
-    let horizon = pins.loopEnd(lineup, now) - 14 * DAY;
+    let horizon = end - 14 * DAY;
     let spans = keep.filter( (x) => typeof(x.pinnedAt) === 'number' ).map( (x) => (x.start < x.pinnedAt)
         ? { by: x.program, from: x.start + SAME, to: x.pinnedAt + (blockAt.get(x.index) || x.program.duration) - SAME }
         : { by: x.program, from: x.pinnedAt - SAME, to: x.start - SAME } );
@@ -1326,81 +1339,75 @@ function keptAhead({ programs, startTime, now }) {
 }
 
 /*
- * One sentence for each kept swap or removal still to air whose slot
- * `schedule` now gives to another show (Ron, Oct 29: it stays where it is).
- * `opened`, the schedule as the dialog opened: only a slot the change gives
- * another show is named, not one a drag already moved the row into. `rows`,
- * keptAhead's answer, when the caller has it - the Time Slots dialog asks on
- * every redraw. `nameOf(showId)` names a show; without it, its id less the
- * prefix.
+ * The Time Slots dialog's one line (Ron, Oct 30): your own swaps, inserts and
+ * dragged rows that Create Lineup keeps, and nothing when there are none - rows
+ * kept in time only moved with them, and aren't counted. `rows`, keptAhead's
+ * answer. "Your 2 swaps and 1 insert stay where they are."
  */
-function scheduleNotes({ programs, startTime, now, rows, schedule, opened, nameOf }) {
-    let name = (id) => ( (typeof(nameOf) === 'function') && nameOf(id) ) || String(id).replace(/^(tv|custom|movie)\./, '');
-    let notes = [];
-    (Array.isArray(rows) ? rows : keptAhead({ programs, startTime, now })).forEach( (x) => {
-        let edit = editsOf(x.program).slice().reverse().find( (e) => (e.kind === 'swap') || (e.kind === 'remove') );
-        let made = edit ? edit.show : (x.program.pin ? x.program.pin.slotShow : undefined);
-        let slot = slotProgress.slotAt(schedule, x.at);
-        if ( (typeof(made) !== 'string') || (slot === null) || (slot.showId === made) ) {
-            return;
+const SAID = { swap: 'swap', insert: 'insert', moved: 'dragged row' };
+function sayKept(rows) {
+    let count = {};
+    rows.forEach( (x) => {
+        let kind = keptKind(x.program) || (x.program.pin && x.program.pin.kind);
+        if (SAID[kind]) {
+            count[kind] = (count[kind] || 0) + 1;
         }
-        let was = opened ? slotProgress.slotAt(opened, x.at) : null;
-        if ( (was !== null) && (was.showId === slot.showId) ) {
-            return;
-        }
-        let what = x.program.isOffline ? `The Flex in place of ${edit ? edit.was : 'an airing'}` : title(x.program);
-        let now = (slot.showId === 'flex.') ? 'Flex' : `${possessive(name(slot.showId))} slot`;
-        notes.push(`${what} at ${pins.dayClock(x.at)} is now in ${now}; it stays.`);
     } );
-    return notes;
+    let parts = Object.keys(SAID).filter( (k) => count[k] ).map( (k) => `${count[k]} ${SAID[k]}${ (count[k] === 1) ? '' : 's' }` );
+    if (parts.length === 0) {
+        return '';
+    }
+    let list = (parts.length === 1) ? parts[0] : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+    let n = Object.keys(count).reduce( (a, k) => a + count[k], 0 );
+    return `Your ${list} ${ (n === 1) ? 'stays where it is' : 'stay where they are' }.`;
 }
 
 /*
- * One sentence for each row kept in time whose position's next episode - as
- * Create Lineup would place it now, from `durationOf(key)` - runs longer than
- * the item sitting in that row today: a kept row never waits, so every other
- * kept row still ahead that the overrun reaches is pushed later, with no room
- * to wait for it (Ron, Oct 29; "Set aside" in NOTES.md). `rows`, keptAhead's
- * answer; `durationOf(key)` is the position's next episode's duration, or
- * null/undefined when there isn't one (not asked, or no slot plays it any
- * more). `nameOf(showId)` names a show, as scheduleNotes takes it.
+ * Takes off the marks no edit of Ron's still to air accounts for (Ron, Oct 30:
+ * only real swaps, inserts and drags are kept). Nothing moves; only marks come
+ * off:
+ *   - every mark on a row Create Lineup lets go anyway: aired, or past the
+ *     lineup's end, where the loop brings what aired round again;
+ *   - a removal's kept Flex ('remove'), which Delete no longer leaves;
+ *   - a row kept in time ('shifted') by an edit with no swap, insert or dragged
+ *     row of its own still ahead - the first open's on Oct 30, on channel 1.
+ * A row only an episode moving along ran late ('late') keeps its record, for
+ * Put back. `cleared`, the rows that lost a mark; `left`, those still marked.
  */
-function longerAhead({ rows, durationOf, nameOf }) {
-    let name = (id) => ( (typeof(nameOf) === 'function') && nameOf(id) ) || String(id).replace(/^(tv|custom|movie)\./, '');
-    let notes = [];
-    rows.filter( (x) => typeof(x.key) === 'string' ).forEach( (x) => {
-        let duration = (typeof(durationOf) === 'function') ? durationOf(x.key) : undefined;
-        if ( (typeof(duration) !== 'number') || (duration <= x.program.duration + SLACK) ) {
-            return;
+function clearWrong({ programs, startTime, now }) {
+    let lineup = { programs, startTime };
+    let end = pins.loopEnd(lineup, now);
+    let starts = startsOf(lineup);
+    let ahead = (i) => (starts[i] + programs[i].duration > now) && (starts[i] < end);
+    let owners = new Set();
+    programs.forEach( (p, i) => {
+        if (ahead(i)) {
+            editsOf(p).filter( (e) => [ 'swap', 'insert', 'moved' ].indexOf(e.kind) !== -1 ).forEach( (e) => owners.add(e.id) );
         }
-        let newEnd = x.at + duration;
-        let pushed = rows.filter( (y) => (y !== x) && (y.at > x.at) && (y.at < newEnd - SLACK) ).sort( (a, b) => a.at - b.at );
-        if (pushed.length === 0) {
-            return;
+    } );
+    let cleared = 0;
+    let left = 0;
+    let out = programs.map( (p, i) => {
+        let edits = editsOf(p);
+        if (edits.length === 0) {
+            return p;
         }
-        let [ showId ] = JSON.parse(x.key);
-        let names = pushed.map( (y) => `${title(y.program)} at ${clockAm(y.at)}` );
-        let list = (names.length === 1) ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-        notes.push(`${possessive(name(showId))} next episode runs ${pins.length(duration - x.program.duration)} longer: Create Lineup will push ${list} later.`);
+        let keep = ahead(i) ? edits.filter( (e) => (e.kind !== 'remove') && ( (e.kind !== 'shifted') || owners.has(e.id) ) ) : [];
+        if (keep.length === edits.length) {
+            left++;
+            return p;
+        }
+        cleared++;
+        let copy = Object.assign({}, p);
+        if (keep.length === 0) {
+            delete copy.kept;
+        } else {
+            copy.kept = { edits: keep.map( (e) => Object.assign({}, e) ) };
+            left++;
+        }
+        return copy;
     } );
-    return notes;
-}
-
-// "Create Lineup keeps 15 swaps, 1 insert and 12 rows kept in time where they sit in your list."
-const KEPT_WORDS = { swap: 'swap', insert: 'insert', remove: 'removal', moved: 'row you moved', shifted: 'row kept in time' };
-function sayKeptAhead(rows) {
-    if (rows.length === 0) {
-        return '';
-    }
-    let count = {};
-    rows.forEach( (x) => {
-        let kind = keptKind(x.program) || (x.program.pin && x.program.pin.kind) || 'swap';
-        count[kind] = (count[kind] || 0) + 1;
-    } );
-    let parts = Object.keys(KEPT_WORDS).filter( (k) => count[k] ).map( (k) => (count[k] === 1)
-        ? `1 ${KEPT_WORDS[k]}` : `${count[k]} ${KEPT_WORDS[k].replace(/^(\w+)/, '$1s')}` );
-    let list = (parts.length === 1) ? parts[0] : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
-    return `Create Lineup keeps ${list} where they sit in your list.`;
+    return { programs: out, cleared, left };
 }
 
 module.exports = {
@@ -1415,15 +1422,14 @@ module.exports = {
     swap: swap,
     insertAfter: insertAfter,
     insertMany: insertMany,
-    deleteFlex: deleteFlex,
+    deleteRow: deleteRow,
     removeOnly: removeOnly,
     leaveOut: leaveOut,
     rowNote: rowNote,
     move: move,
     putBack: putBack,
     keptAhead: keptAhead,
-    scheduleNotes: scheduleNotes,
-    longerAhead: longerAhead,
-    sayKeptAhead: sayKeptAhead,
+    sayKept: sayKept,
+    clearWrong: clearWrong,
     clockAm: clockAm,
 };

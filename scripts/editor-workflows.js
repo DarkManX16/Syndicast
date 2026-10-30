@@ -20,9 +20,13 @@
  *   open-update          open the editor, Update Channel: saved, the lineup as it was
  *   library-add          a show from the library at the end of the list: it joins the
  *                        channel, nothing in the lineup moves or is kept; saved
- *   delete               Remove this airing only on an episode; Cancel drops it
+ *   delete               Delete an episode: it goes at once, nothing asked or kept; Cancel
+ *   add-delete-create    a show added at the end, five of its episodes deleted, each gone
+ *                        at once; the Time Slots dialog's one line; Create Lineup leaves
+ *                        the five out (never air); saved
  *   swap-drag-put-back   Swap an airing, drag a row, Put back each; Cancel
- *   create-lineup        Time Slots..., Create Lineup; kept rows stay; saved
+ *   create-lineup        Time Slots... (at most one short line about kept rows), Create
+ *                        Lineup; kept rows stay; saved
  *   filler               a filler list: drag a clip, delete one, Done; saved
  *
  * The first-open workflows answer only a channel whose list still asks; once
@@ -136,6 +140,23 @@ function makeRunner(opts, page) {
         const el = document.querySelector('.programming-head .text-info');
         return el ? el.textContent.trim() : '';
     });
+    // The title of a dialog open over the editor, or null.
+    const modalOpen = () => page.evaluate(() => {
+        const t = [...document.querySelectorAll('.modal-title')].filter((x) => x.getClientRects().length > 0).map((x) => x.textContent.trim())
+            .filter((x) => !/^\d+ - /.test(x));
+        return t.length > 0 ? t.join(' / ') : null;
+    });
+    // What the Time Slots dialog says about kept rows: at most one short line, or it fails.
+    const dialogNotes = async () => {
+        const notes = await page.evaluate(() => [...document.querySelectorAll('.modal-body .small, .modal-body .alert')]
+            .filter((el) => el.getClientRects().length > 0)
+            .map((el) => el.textContent.replace(/\s+/g, ' ').trim())
+            .filter((x, i, all) => x && all.indexOf(x) === i && /kept|keeps|stays where|stay where|runs .* longer|will push/i.test(x)));
+        if (notes.length > 1 || notes.some((x) => x.length > 100 || /runs .* longer|will push|kept in time/i.test(x))) {
+            throw new Check(`the Time Slots dialog says more than one short line about kept rows: ${notes.map((x) => `"${x.slice(0, 120)}"`).join(' ')}`);
+        }
+        return notes;
+    };
     const footerButton = (name) => find('.modal-footer button', name, `the editor's ${name}`);
 
     const openEditor = async () => {
@@ -265,6 +286,83 @@ function makeRunner(opts, page) {
         return { row, text };
     };
 
+    // The library's add of opts.show "at the end of list", from the editor open on the
+    // Programming tab: how many episodes it added, and the choice it showed.
+    const addShowAtEnd = async () => {
+        await click(await find('button[ng-click="showPlexLibrary()"]', null, 'the library button (+)'), 'the library button (+)');
+        // The library dialog: the Plex origin's libraries, the show filtered, its plus.
+        const choice = await page.waitForFunction(() => {
+            const s = document.getElementById('position-selector');
+            return (s && s.getClientRects().length > 0 && s.selectedIndex !== -1) ? s.options[s.selectedIndex].textContent.trim() : null;
+        }, { timeout: 30000, polling: 300 }).catch(() => null);
+        if (choice === null) {
+            throw new Check('the library\'s position choice didn\'t show');
+        }
+        const choiceText = await choice.jsonValue();
+        if (!/end of list/.test(choiceText)) {
+            throw new Check(`the library's choice is "${choiceText}", not the end of the list`);
+        }
+        const libraries = await page.waitForFunction(() => {
+            const items = [...document.querySelectorAll('.plex-panel > li.list-group-item')].filter((li) => li.getClientRects().length > 0);
+            return items.length > 0 ? items.length : null;
+        }, { timeout: 60000, polling: 500 }).catch(() => null);
+        if (libraries === null) {
+            throw new Check('the library showed no Plex libraries');
+        }
+        // Which library holds the show, asked of Plex itself, so only that one is opened.
+        let library = null;
+        for (const server of await api('/api/plex-servers')) {
+            const plex = (path) => fetch(server.uri + path, { headers: { 'X-Plex-Token': server.accessToken, Accept: 'application/json' } }).then((r) => r.json());
+            for (const d of (await plex('/library/sections')).MediaContainer.Directory.filter((x) => x.type === 'show')) {
+                const found = (await plex(`/library/sections/${d.key}/all?title=${encodeURIComponent(opts.show)}`)).MediaContainer.Metadata || [];
+                if (found.some((m) => m.title === opts.show)) {
+                    library = d.title;
+                    break;
+                }
+            }
+            if (library !== null) {
+                break;
+            }
+        }
+        if (library === null) {
+            throw new Check(`${opts.show} isn't a show in any Plex library`);
+        }
+        const head = await page.waitForFunction((name) => [...document.querySelectorAll('.plex-panel > li.list-group-item > div.library-item-hover')]
+            .find((d) => d.textContent.trim() === name) || null, { timeout: 30000, polling: 500 }, library).catch(() => null);
+        if (head === null) {
+            throw new Check(`the ${library} library isn't in the library dialog (${await libraries.jsonValue()} shown)`);
+        }
+        await click(head.asElement(), `the ${library} library`);
+        const showRow = await page.waitForFunction((title) => [...document.querySelectorAll('.plex-panel li.list-group-item-secondary > div.library-item-hover')]
+            .find((d) => { const t = d.textContent.trim(); return t === title || t.startsWith(`${title} (`); }) || null,
+            { timeout: 90000, polling: 500 }, opts.show).catch(() => null);
+        if (showRow === null) {
+            throw new Check(`${opts.show} didn't show in the ${library} library`);
+        }
+        const plus = await showRow.asElement().$('span.flex-pull-right');
+        await click(plus, `${opts.show}'s plus`);
+        // How many are picked, once the library has finished reading them (it shows the last 10).
+        const pickedCount = () => page.evaluate(() => {
+            const total = [...document.querySelectorAll('.text-info.small')]
+                .find((d) => /elements added in total/.test(d.textContent) && d.getClientRects().length > 0);
+            return total ? parseInt(total.textContent.trim(), 10)
+                : document.querySelectorAll('button[ng-click="selection.splice(selection.length + x,1)"]').length;
+        });
+        let n = null;
+        for (let i = 0, last = -1, steady = 0; i < 120 && steady < 6; i++) {
+            await sleep(500);
+            n = await pickedCount();
+            steady = (n !== null && n > 0 && n === last) ? steady + 1 : 0;
+            last = n;
+        }
+        if (!(n > 0)) {
+            throw new Check(`${opts.show}'s episodes weren't picked`);
+        }
+        await clickText('.modal-footer button', 'Done', 'the library\'s Done');
+        await sleep(1500);
+        return { n, choiceText };
+    };
+
     const workflows = {
         'first-open-not-now': async () => {
             await openEditor();
@@ -316,77 +414,7 @@ function makeRunner(opts, page) {
             if ((await lastChange()) !== saidBefore) {
                 throw new Check(`the library's Cancel said "${await lastChange()}"`);
             }
-            await click(await find('button[ng-click="showPlexLibrary()"]', null, 'the library button (+)'), 'the library button (+)');
-            // The library dialog: the Plex origin's libraries, the show filtered, its plus.
-            const choice = await page.waitForFunction(() => {
-                const s = document.getElementById('position-selector');
-                return (s && s.getClientRects().length > 0 && s.selectedIndex !== -1) ? s.options[s.selectedIndex].textContent.trim() : null;
-            }, { timeout: 30000, polling: 300 }).catch(() => null);
-            if (choice === null) {
-                throw new Check('the library\'s position choice didn\'t show');
-            }
-            const choiceText = await choice.jsonValue();
-            if (!/end of list/.test(choiceText)) {
-                throw new Check(`the library's choice is "${choiceText}", not the end of the list`);
-            }
-            const libraries = await page.waitForFunction(() => {
-                const items = [...document.querySelectorAll('.plex-panel > li.list-group-item')].filter((li) => li.getClientRects().length > 0);
-                return items.length > 0 ? items.length : null;
-            }, { timeout: 60000, polling: 500 }).catch(() => null);
-            if (libraries === null) {
-                throw new Check('the library showed no Plex libraries');
-            }
-            // Which library holds the show, asked of Plex itself, so only that one is opened.
-            let library = null;
-            for (const server of await api('/api/plex-servers')) {
-                const plex = (path) => fetch(server.uri + path, { headers: { 'X-Plex-Token': server.accessToken, Accept: 'application/json' } }).then((r) => r.json());
-                for (const d of (await plex('/library/sections')).MediaContainer.Directory.filter((x) => x.type === 'show')) {
-                    const found = (await plex(`/library/sections/${d.key}/all?title=${encodeURIComponent(opts.show)}`)).MediaContainer.Metadata || [];
-                    if (found.some((m) => m.title === opts.show)) {
-                        library = d.title;
-                        break;
-                    }
-                }
-                if (library !== null) {
-                    break;
-                }
-            }
-            if (library === null) {
-                throw new Check(`${opts.show} isn't a show in any Plex library`);
-            }
-            const head = await page.waitForFunction((name) => [...document.querySelectorAll('.plex-panel > li.list-group-item > div.library-item-hover')]
-                .find((d) => d.textContent.trim() === name) || null, { timeout: 30000, polling: 500 }, library).catch(() => null);
-            if (head === null) {
-                throw new Check(`the ${library} library isn't in the library dialog (${await libraries.jsonValue()} shown)`);
-            }
-            await click(head.asElement(), `the ${library} library`);
-            const showRow = await page.waitForFunction((title) => [...document.querySelectorAll('.plex-panel li.list-group-item-secondary > div.library-item-hover')]
-                .find((d) => { const t = d.textContent.trim(); return t === title || t.startsWith(`${title} (`); }) || null,
-                { timeout: 90000, polling: 500 }, opts.show).catch(() => null);
-            if (showRow === null) {
-                throw new Check(`${opts.show} didn't show in the ${library} library`);
-            }
-            const plus = await showRow.asElement().$('span.flex-pull-right');
-            await click(plus, `${opts.show}'s plus`);
-            // How many are picked, once the library has finished reading them (it shows the last 10).
-            const pickedCount = () => page.evaluate(() => {
-                const total = [...document.querySelectorAll('.text-info.small')]
-                    .find((d) => /elements added in total/.test(d.textContent) && d.getClientRects().length > 0);
-                return total ? parseInt(total.textContent.trim(), 10)
-                    : document.querySelectorAll('button[ng-click="selection.splice(selection.length + x,1)"]').length;
-            });
-            let n = null;
-            for (let i = 0, last = -1, steady = 0; i < 120 && steady < 6; i++) {
-                await sleep(500);
-                n = await pickedCount();
-                steady = (n !== null && n > 0 && n === last) ? steady + 1 : 0;
-                last = n;
-            }
-            if (!(n > 0)) {
-                throw new Check(`${opts.show}'s episodes weren't picked`);
-            }
-            await clickText('.modal-footer button', 'Done', 'the library\'s Done');
-            await sleep(1500);
+            const { n, choiceText } = await addShowAtEnd();
             const said = await lastChange();
             const keptNow = await keptInView();
             if (keptNow > keptBefore) {
@@ -408,16 +436,95 @@ function makeRunner(opts, page) {
             await openEditor();
             await passFirstOpen('Keep them');
             const row = await plainRow(3);
-            const trash = await (await rowHandle(row.k)).$('button[title="Delete..."]');
-            await click(trash, `${row.show} at ${row.start}'s Delete`);
-            await clickText('.modal button', /^Remove this airing only/, 'Remove this airing only');
+            const keptBefore = (await rowsInView()).filter((r) => r.kept).length;
+            await click(await (await rowHandle(row.k)).$('button[title="Delete..."]'), `${row.show} at ${row.start}'s Delete`);
             await sleep(800);
-            const said = await lastChange();
-            if (!said) {
-                throw new Check('Remove this airing only said nothing');
+            if (await modalOpen()) {
+                throw new Check(`Delete asked something: "${await modalOpen()}"`);
             }
+            const after = await rowsInView();
+            if (after.some((r) => r.start === row.start && r.show === row.show)) {
+                throw new Check(`${row.show} at ${row.start} is still in the list after Delete`);
+            }
+            if (after.filter((r) => r.kept).length > keptBefore) {
+                throw new Check('Delete marked rows as kept');
+            }
+            const said = await lastChange();
             await closeWith('Cancel');
-            return `${row.show} at ${row.start}: "${said}"; Cancel dropped it`;
+            return `${row.show} at ${row.start} went at once, nothing asked, nothing kept${said ? `; "${said}"` : ', nothing said'}; Cancel dropped it`;
+        },
+        'add-delete-create': async () => {
+            // Ron, Oct 30: add a show at the end of the list, delete five of its episodes,
+            // see them go, then Create Lineup.
+            const before = await api(`/api/channel/${opts.channel}`);
+            const neverBefore = (await api(`/api/channel/${opts.channel}/catalog`)).neverAir || {};
+            await openEditor();
+            await passFirstOpen('Keep them');
+            const { n } = await addShowAtEnd();
+            const rowText = (k) => rowHandle(k).then((h) => h.evaluate((el) => el.textContent.replace(/\s+/g, ' ').trim()));
+            const gone = [];
+            for (let i = 0; i < 5; i++) {
+                await page.evaluate(() => document.getElementById('channelConfigProgramList').scrollTo(0, 1e9));
+                await sleep(800);
+                const box = await page.evaluate(() => {
+                    const r = document.getElementById('channelConfigProgramList').getBoundingClientRect();
+                    return { top: r.top, bottom: r.bottom };
+                });
+                const mine = (await rowsInView()).filter((r) => r.show.startsWith(opts.show) && !r.kept && r.top >= box.top && r.top <= box.bottom - 30);
+                if (mine.length < 2) {
+                    throw new Check(`no ${opts.show} row in view at the end of the list to delete`);
+                }
+                const row = mine[mine.length - 2];
+                const text = await rowText(row.k);
+                await click(await (await rowHandle(row.k)).$('button[title="Delete..."]'), `"${text.slice(0, 60)}"'s Delete`);
+                await sleep(800);
+                if (await modalOpen()) {
+                    throw new Check(`Delete asked something: "${await modalOpen()}"`);
+                }
+                const still = await page.evaluate((t) => [...document.querySelectorAll('#channelConfigProgramList .psr-row')]
+                    .some((r) => r.textContent.replace(/\s+/g, ' ').trim() === t), text);
+                if (still) {
+                    throw new Check(`"${text.slice(0, 60)}" is still in the list after Delete`);
+                }
+                gone.push((/ E\d+ (.*?) [\d:]+$/.exec(text) || [])[1] || text);
+            }
+            const said = await lastChange();
+            const timeSlotsShowing = await page.evaluate(() => [...document.querySelectorAll('button[title="Time Slots..."]')].some((b) => b.getClientRects().length > 0));
+            if (!timeSlotsShowing) {
+                await clickText('button[ng-click="toggleTools()"]', /Tools/, 'Tools');
+            }
+            await clickText('button[title="Time Slots..."]', /Time Slots\.\.\./, 'Time Slots...');
+            await find('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
+            const notes = await dialogNotes();
+            await clickText('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
+            const closed = await page.waitForFunction(() => ![...document.querySelectorAll('.modal-title')]
+                .some((t) => t.textContent.trim() === 'Time Slots' && t.getClientRects().length > 0), { timeout: 300000, polling: 1000 }).catch(() => null);
+            if (closed === null) {
+                throw new Check('Create Lineup didn\'t finish in 5 minutes');
+            }
+            await sleep(2000);
+            await closeWith('Update Channel');
+            const after = await api(`/api/channel/${opts.channel}`);
+            const neverAir = (await api(`/api/channel/${opts.channel}/catalog`)).neverAir || {};
+            const changed = Object.keys(neverBefore).filter((k) => JSON.stringify(neverAir[k]) !== JSON.stringify(neverBefore[k]));
+            if (changed.length > 0) {
+                throw new Check(`${changed.length} never-air entries already there changed, e.g. ${JSON.stringify(neverAir[changed[0]])}`);
+            }
+            const added = Object.keys(neverAir).filter((k) => !(k in neverBefore)).map((k) => neverAir[k]);
+            const listed = gone.filter((t) => Object.values(neverAir).some((e) => e.title === t));
+            if (listed.length !== 5 || added.some((e) => e.how !== 'deleted' || gone.indexOf(e.title) === -1)) {
+                throw new Check(`of the 5 deleted (${gone.join(', ')}), ${listed.length} are on the never-air list; added: ${added.map((e) => e.title).join(', ')}`);
+            }
+            const back = airings(after, 21).filter((a) => gone.some((t) => a.split('|')[1].endsWith(` ${t}`)));
+            if (back.length > 0) {
+                throw new Check(`${back.length} deleted episodes air in the next 3 weeks, e.g. ${back[0]}`);
+            }
+            if (keptCount(after) > keptCount(before)) {
+                throw new Check(`kept rows went from ${keptCount(before)} to ${keptCount(after)}`);
+            }
+            return `${n} episodes of ${opts.show} added; 5 deleted, each gone from the list at once with nothing asked (${gone.join('; ')})`
+                + `${said ? `, said "${said}"` : ', nothing said'}; the Time Slots dialog said ${notes.length === 0 ? 'nothing about kept rows' : `"${notes[0]}"`}; `
+                + `Create Lineup and Update Channel saved ${after.programs.length} entries, none of the 5 in the next 3 weeks; all 5 on the never-air list (${added.length} added, ${5 - added.length} already there, left as they were); kept rows ${keptCount(before)} -> ${keptCount(after)}`;
         },
         'swap-drag-put-back': async () => {
             await openEditor();
@@ -481,6 +588,8 @@ function makeRunner(opts, page) {
                 await clickText('button[ng-click="toggleTools()"]', /Tools/, 'Tools');
             }
             await clickText('button[title="Time Slots..."]', /Time Slots\.\.\./, 'Time Slots...');
+            await find('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
+            const notes = await dialogNotes();
             await clickText('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
             // Done when the Time Slots dialog has gone (while it generates, its buttons hide).
             const closed = await page.waitForFunction(() => ![...document.querySelectorAll('.modal-title')]
@@ -502,7 +611,7 @@ function makeRunner(opts, page) {
             if (!kept) {
                 throw new Check(`the swap (${swappedIn}, at ${swap.row.start}) isn't kept after Create Lineup and Update Channel`);
             }
-            return `swapped first: "${swap.text}"; Create Lineup ran${said ? `, "${said}"` : ''}; saved ${after.programs.length} entries; `
+            return `swapped first: "${swap.text}"; the dialog said ${notes.length ? `"${notes[0]}"` : 'nothing about kept rows'}; Create Lineup ran${said ? `, "${said}"` : ''}; saved ${after.programs.length} entries; `
                 + `the swap still kept at ${new Date(parseInt(kept, 10)).toLocaleString()}; ${keptAfter.length} kept rows in the next 3 weeks, every earlier one where it was`;
         },
         'filler': async () => {

@@ -121,13 +121,11 @@ module.exports = async function () {
         suite.check('...and the slot\'s for an airing of no show',
             pins.swapShow({ airing: { title: 'A Movie', type: 'movie', duration: 90 * MIN }, slotShow: 'tv.Family Guy', getShowData }) === 'tv.Family Guy');
 
-        suite.check('Escape closes the delete prompt, or the undo prompt on top of it, and nothing else',
-            pins.escapeAction({ key: 'Escape', deletePrompt: {}, undoPrompt: null }) === 'delete'
-                && pins.escapeAction({ key: 'Escape', deletePrompt: null, undoPrompt: {} }) === 'undo'
-                && pins.escapeAction({ key: 'Escape', deletePrompt: {}, undoPrompt: {} }) === 'undo'
-                && pins.escapeAction({ key: 'Esc', deletePrompt: {}, undoPrompt: null }) === 'delete'
-                && pins.escapeAction({ key: 'Enter', deletePrompt: {}, undoPrompt: null }) === null
-                && pins.escapeAction({ key: 'Escape', deletePrompt: null, undoPrompt: null }) === null);
+        suite.check('Escape closes the asking prompt, and nothing else',
+            pins.escapeAction({ key: 'Escape', undoPrompt: {} }) === 'undo'
+                && pins.escapeAction({ key: 'Esc', undoPrompt: {} }) === 'undo'
+                && pins.escapeAction({ key: 'Enter', undoPrompt: {} }) === null
+                && pins.escapeAction({ key: 'Escape', undoPrompt: null }) === null);
     }
 
     suite.log('-- the dialogs can always be left --');
@@ -137,10 +135,9 @@ module.exports = async function () {
             const from = template.indexOf(marker);
             return from === -1 ? '' : template.slice(from, template.indexOf('\n    </div>\n', from));
         };
-        const deleteModal = modalOf('<div ng-if="deletePrompt" class="modal"');
         const undoModal = modalOf('<div ng-if="undoPrompt" class="modal"');
-        suite.check('the delete prompt scrolls, so its buttons are always reachable',
-            /class="modal"[^>]*overflow-y:\s*auto/.test(deleteModal) && /modal-body[^>]*max-height/.test(deleteModal), deleteModal.slice(0, 200));
+        // Ron, Oct 30: Delete asks nothing; the row goes at once.
+        suite.check('there is no delete prompt', template.indexOf('deletePrompt') === -1, '');
         // Since kept rows (src/kept-rows.js) it asks with one sentence: Put back, a long drag, a whole-list tool.
         suite.check('the prompt that asks first scrolls, and says its one sentence',
             /class="modal"[^>]*overflow-y:\s*auto/.test(undoModal) && /modal-body[^>]*max-height/.test(undoModal)

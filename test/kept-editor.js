@@ -47,6 +47,41 @@ function libraryAdd(src, { timeSlots, insertPoint, programs, selected }) {
     return { programs: scope.channel.programs, keptInserts: calls, said: scope.lastChange || '', scrolled };
 }
 
+// A row's Delete (`scope.removeItem`) on a stand-in page with the real kept-rows and catalog
+// code: what it leaves in the list, what it asks, and what it queues for the Catalog page.
+async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, index, firstOpenUnanswered, neverAir }) {
+    const getShowData = require('../web/services/get-show-data')();
+    const scope = {
+        hasTimeSlots: () => timeSlots, hasNoTimeSlots: () => ! timeSlots, hasNoRandomSlots: () => ! randomSlots,
+        channel: { programs: programs.slice(), startTime: new Date(startTime).toISOString(), scheduleBackup: timeSlots ? { slots: [] } : undefined },
+        error: {},
+    };
+    const queued = [];
+    let asked = 0;
+    const page = {
+        keptRows: require('../src/kept-rows'),
+        pinTools: require('../src/pins'),
+        showCatalog: require('../src/show-catalog'),
+        slotRounds: require('../src/shuffle-rounds'),
+        commonProgramTools: require('../web/services/common-program-tools')(getShowData),
+        getShowData: getShowData,
+        lineupMs: () => ({ programs: scope.channel.programs, startTime: new Date(scope.channel.startTime).getTime() }),
+        askFirstOpen: () => { asked++; return !! firstOpenUnanswered; },
+        queueCatalogOps: (ops) => ops.forEach( (op) => queued.push(op) ),
+        updateChannelDuration: () => {},
+        showError: (text) => { scope.error.programs = text; },
+        $timeout: () => {},
+        catalogFor: async () => ({ shows: {}, neverAir: Object.assign({}, neverAir || {}) }),
+    };
+    // eslint-disable-next-line no-new-func
+    const make = new Function('scope', ...Object.keys(page),
+        `let applyEdit = ${liftArrow(src, 'applyEdit')}; return ${liftArrow(src, 'removeItem', 'scope.')};`);
+    const removeItem = make(scope, ...Object.values(page));
+    await removeItem(index);
+    return { programs: scope.channel.programs, prompt: scope.deletePrompt || scope.undoPrompt || null, queued, asked,
+        said: scope.lastChange || '', error: scope.error.programs || '' };
+}
+
 module.exports = async function () {
     const suite = new Suite('kept-editor');
     const src = fs.readFileSync(path.join(__dirname, '../web/directives/channel-config.js'), 'utf8');
@@ -114,6 +149,58 @@ module.exports = async function () {
         let plain = libraryAdd(src, { timeSlots: false, insertPoint: 'start', programs: lineup, selected: houseOfMouse });
         suite.check('a channel without Time Slots: "at the beginning" puts them first, as always',
             (plain.programs[0].title === 'House of Mouse 1') && (plain.programs.length === lineup.length + 3) && (plain.keptInserts.length === 0));
+    }
+
+    suite.log('-- Delete takes an episode out at once --');
+    {
+        // Ron, Oct 30: on channel 3, after adding House of Mouse, deleting the episodes he
+        // didn't want asked which delete he meant and left kept Flex, with a ripple. Delete
+        // takes the row out of the list at once, as before kept rows: no prompt, nothing
+        // kept, nothing moved along; Create Lineup leaves the episode out (never air), and the
+        // Catalog page brings it back.
+        const now = Date.now();
+        const ep = (show, n, extra) => Object.assign({ type: 'episode', showTitle: show, title: `${show} ${n}`, season: 1, episode: n,
+            duration: 22 * 60000, serverKey: 'srv', key: `/e/${show}/${n}`, ratingKey: `${show}${n}` }, extra || {});
+        const brk = (m) => ({ isOffline: true, duration: m * 60000 });
+        const programs = [
+            ep('Recess', 1, { slotPosition: 'next|' }), brk(8),
+            ep('Kim Possible', 4, { slotPosition: 'next|' }), brk(8),
+            ep('Recess', 2, { slotPosition: 'next|' }), brk(8),
+            brk(3 * 24 * 60),
+            ep('House of Mouse', 1), ep('House of Mouse', 2),
+        ];
+        const startTime = now - 5 * 60000;
+        const titles = (got) => got.programs.filter( (p) => ! p.isOffline ).map( (p) => p.title ).join(', ');
+        const never = (got) => got.queued.map( (op) => (op.neverAir || []).map( (n) => `${n.entry.title} ${n.entry.how}/${n.entry.reason}` ).join() ).join();
+
+        const inLineup = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: 2 });
+        suite.check('Time Slots, an episode in the lineup: gone from the list at once, with no prompt',
+            (inLineup.prompt === null) && (inLineup.programs.length === programs.length - 1) && ! titles(inLineup).includes('Kim Possible 4'),
+            `${titles(inLineup)}; prompt ${JSON.stringify(inLineup.prompt && (inLineup.prompt.label || inLineup.prompt.title))}`);
+        suite.check('...nothing kept, nothing moved along, nothing said',
+            inLineup.programs.every( (p) => typeof(p.kept) === 'undefined' ) && (titles(inLineup) === 'Recess 1, Recess 2, House of Mouse 1, House of Mouse 2')
+                && (inLineup.said === ''), `${titles(inLineup)}; said "${inLineup.said}"`);
+        suite.check('...and Create Lineup leaves it out: never air, for the Catalog page to bring back',
+            never(inLineup) === 'Kim Possible 4 deleted/never', never(inLineup));
+
+        const atEnd = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: programs.length - 1, firstOpenUnanswered: true });
+        suite.check('Time Slots, an episode added at the end: gone at once, even with the first-open list still to answer',
+            (atEnd.prompt === null) && (titles(atEnd) === 'Recess 1, Kim Possible 4, Recess 2, House of Mouse 1')
+                && (never(atEnd) === 'House of Mouse 2 deleted/never'),
+            `${titles(atEnd)}; ${never(atEnd)}; asked ${atEnd.asked}`);
+
+        const plain = await deleteOnPage(src, { timeSlots: false, programs, startTime, index: 2 });
+        suite.check('a channel without slots: gone at once, as before; no never-air, since there is no Create Lineup',
+            (plain.prompt === null) && (plain.programs.length === programs.length - 1) && (plain.queued.length === 0),
+            `${titles(plain)}; ${never(plain)}`);
+
+        // Channel 3's Halloween with Hades is on the never-air list as a Halloween episode:
+        // deleting the copy added from the library leaves that entry as it is.
+        const keyOf = require('../src/shuffle-rounds').fileKey;
+        const holiday = { [keyOf(programs[programs.length - 1])]: { showId: 'tv.House of Mouse', title: 'House of Mouse 2', how: 'review', reason: 'holiday', holiday: 'Halloween' } };
+        const listed = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: programs.length - 1, neverAir: holiday });
+        suite.check('an episode already on the never-air list (a holiday): gone from the list, its entry left as it is',
+            (titles(listed) === 'Recess 1, Kim Possible 4, Recess 2, House of Mouse 1') && (listed.queued.length === 0), never(listed));
     }
     return suite;
 };

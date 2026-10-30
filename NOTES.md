@@ -18,6 +18,10 @@ below says what we do and why. **Syndicast innovates.**
   against the real `.dizquetv-dev` while the other one is live. Start a
   worktree preview by hand instead, on a spare port, with `-d` pointing at a
   copy of `.dizquetv-dev`.
+- **Keep it simple.** No walls of text: at most one short line per change. Show a
+  change in the list itself rather than describing it, and never add a message Ron
+  didn't ask for. Ron added this Oct 30, 2026, after the kept-rows editor answered
+  everyday edits with prompts, kept marks and lines of "runs longer: will push".
 - **Workflows that must keep working.** Every session that changes the editor -
   the channel editor, Swap and Insert, the library dialog, Time Slots, the filler
   editor, their templates, `style.css`, or what the page bundles from `src/`
@@ -35,14 +39,17 @@ below says what we do and why. **Syndicast innovates.**
   5. Swap, drag, and Put back.
   6. Time Slots and Create Lineup.
   7. Filler list editing.
+  8. Adding a show at the end of the list, deleting five of its episodes (each
+     gone from the list at once), then Create Lineup (added by Ron Oct 30).
 
   `node scripts/editor-workflows.js --url http://localhost:<port> --channel 3`
-  does all seven against a running preview, from a fresh page each, clicking
+  does all eight against a running preview, from a fresh page each, clicking
   each control with the real mouse at its middle after checking nothing covers
   it there (a covered button fails, naming what covers it). It saves a channel
   and a filler list, so it refuses port 18000. `--only` runs some of them
   (`first-open-not-now`, `first-open-keep`, `open-cancel`, `open-update`,
-  `library-add`, `delete`, `swap-drag-put-back`, `create-lineup`, `filler`); the
+  `library-add`, `delete`, `add-delete-create`, `swap-drag-put-back`, `create-lineup`,
+  `filler`); the
   first-open pair answers only a channel whose list still asks, so run it on a
   fresh copy. `npm test` holds what runs without a server: `test/editor-footer.js`
   (the footer buttons, in a real browser) and `test/kept-editor.js` (the
@@ -7066,6 +7073,51 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### Thousands of rows kept in time, and Delete that asked
+
+Ron, Oct 30, 2026, channel 3: after adding House of Mouse and deleting the episodes he
+didn't want, the Time Slots dialog said "Create Lineup keeps 16617 rows kept in time" over a
+wall of "next episode runs longer: Create Lineup will push..." lines, and every Delete asked
+which delete he meant and left kept Flex. Fixed on `simple-delete`, not merged.
+
+- **Delete, the simple way.** An episode's Delete takes the row out of the list at once: no
+  prompt, nothing kept, no episode moved along (`keptRows.deleteRow`; a Flex row's delete
+  already worked this way). On a Time Slots channel the gap closes only up to the next kept
+  row, which stays where it sits. On a channel with a slot schedule the episode goes on the
+  channel's never-air list, so Create Lineup leaves it out, and the Catalog page restores it;
+  one already there (Ron's holiday episodes) keeps its entry. A kept row's Delete is still
+  Put back. The delete prompt (Swap instead / this airing only / Holiday / Never air) is gone.
+- **The Time Slots dialog** says at most one line, only when your own swaps, inserts or
+  dragged rows will be kept ("Your 1 swap stays where it is."; `keptRows.sayKept`). The
+  kept-rows count, the "runs longer: will push" lines (`longerAhead`) and the "now in X's
+  slot; it stays" lines (`scheduleNotes`) are gone.
+- **Where 16,617 came from.** Channel 3's file has no kept row saved (last saved Oct 29 05:17
+  UTC), so those marks lived only in Ron's unsaved editor, and they can't be read back. On a
+  copy, none of the library's add at the end, Delete (each of its old choices), the first
+  open (with or without House of Mouse added) or Create Lineup marks more than one row, and
+  an insert's run late at most a few hundred; only two edits in the code mark thousands: the
+  first open's "Keep them", and a drag across many days (which asks "This shifts N airings
+  over D days. Move it?" first). Measured, 16,617 is a drag from the end of the list to about
+  Dec 9.
+- **The same thing, saved, on channel 1.** Ron's "Keep them" at 2:26am Oct 30 saved 19,073
+  rows kept in time: A Very Venture Halloween, pinned to Fri 3:30am and dragged to 12:00am,
+  had aired, and Create Lineup's carry had rotated it past the lineup's end Flex, to Sep 17,
+  2027. Its pinned time was still ahead, so the first open read it as a pin still to air,
+  moved a year from its time, and kept every airing in between. A pin past the lineup's end
+  has aired now (`firstOpen`; a test failed first, keeping 1,292 rows).
+- **Clearing them.** `node scripts/clear-wrong-kept.js --url http://localhost:18000 --channel
+  1` says what it would clear; `--apply` saves a copy of the channel first, refuses if the
+  channel changed meanwhile, and saves through the channel API (`keptRows.clearWrong`). It
+  takes off marks on rows that have aired or sit past the lineup's end, removals' kept Flex,
+  and rows kept in time by an edit with no swap, insert or dragged row still ahead; nothing
+  moves. On a copy taken Oct 30 at 3:02am Central: channel 1, 19,074 of 19,076 marked rows
+  cleared, 40,000 entries otherwise identical, Superman (Fri 4:00pm) and Batman (4:30pm)
+  still kept swaps; channels 2 and 3, nothing to clear. Close the channel's editor first.
+- **Guarded by** `test/kept-rows.js` (the first open past the end, Delete of an episode,
+  `sayKept`, `clearWrong`), `test/kept-editor.js` (the page's Delete, lifted: no prompt, never
+  air, a holiday entry left alone) and the workflow script's `delete` and `add-delete-create`.
+  Suite 2636 before, 2647 after (the dialog-note checks went with the notes).
 
 ### Cancel and Update Channel covered after the first-open list
 

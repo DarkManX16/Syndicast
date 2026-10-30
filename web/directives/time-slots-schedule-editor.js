@@ -900,20 +900,6 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             
             //`lineup` returns the channel's programs and startTime as the
             //editor has them, read again when Create Lineup runs.
-            // The rows kept in the list, and a note for each swap or removal whose slot the schedule,
-            // as it is edited here, now gives to another show: it stays where it is (Ron, Oct 29).
-            let keptAhead = [];
-            // A row kept in time whose next episode (as Create Lineup would place it now) runs longer
-            // than the item in its row today: every kept row still ahead the overrun reaches, named -
-            // Create Lineup pushes it later with no room to wait for it (Ron, Oct 29; "Set aside").
-            let longerDurationOf = (key) => {
-                let m = ensureModel();
-                let row = (m === null) ? undefined : m.rows.get(key);
-                return ( (typeof(row) !== 'undefined') && (row.program !== null) ) ? row.program.duration : null;
-            };
-            scope.pinNoteList = () => keptRows.scheduleNotes({ rows: keptAhead, schedule: scope.schedule,
-                opened: scope.openedSchedule || undefined, nameOf: (id) => nameOf(id) })
-                .concat( keptRows.longerAhead({ rows: keptAhead, durationOf: longerDurationOf, nameOf: (id) => nameOf(id) }) );
             //`keepCatalogs`: reading only the shows the last read didn't get.
             let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs) => {
                 scope.limit = limit;
@@ -985,13 +971,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if ( (typeof(catalogState) === 'object') && (catalogState !== null) && ! catalogState.unreadable ) {
                     readMissing();
                 }
-                //The rows Create Lineup will keep, read once as the dialog opens, for the notes.
-                keptAhead = [];
+                //One short line, only when your own swaps, inserts or dragged rows will be kept (Ron, Oct 30).
                 scope.keptPins = '';
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
-                    keptAhead = keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() });
-                    scope.keptPins = keptRows.sayKeptAhead(keptAhead);
+                    scope.keptPins = keptRows.sayKept(keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() }));
                 }
             }
 

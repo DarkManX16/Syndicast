@@ -301,12 +301,12 @@ function removeAiring(programs, program) {
     return true;
 }
 
-// Which prompt Escape closes: the undo/confirm prompt sits on top of the delete prompt.
-function escapeAction({ key, deletePrompt, undoPrompt }) {
+// Whether Escape closes the asking prompt: 'undo', or null.
+function escapeAction({ key, undoPrompt }) {
     if ( (key !== 'Escape') && (key !== 'Esc') ) {
         return null;
     }
-    return undoPrompt ? 'undo' : (deletePrompt ? 'delete' : null);
+    return undoPrompt ? 'undo' : null;
 }
 
 // "Hey Arnold! S03E23 Best Man / Cool Party"; a custom-show item by its place
