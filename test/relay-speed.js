@@ -1,20 +1,14 @@
 /*
- * Making a swap's re-lays fast, and keeping the page responsive while they run.
- * Ron, Oct 24: a swap took about 25 seconds and froze the page. Measured on a
- * copy of channel 2: every redraw of the page asked each of the Time Slots
- * schedule's 335 slots whether it can leave seasons out, and each answer
- * scanned all 14,347 catalog items (2.4 s a redraw); every re-lay read all 160
- * shows from Plex again (13 s); and each sent the server 20 MB and got 26 MB
- * back, three times for a pick that runs too long. See NOTES.md, "Swaps,
- * inserts and Flex that keeps time".
+ * What's left, after the re-lay worker, of making the Time Slots dialog and
+ * its swaps fast: each show's seasons worked out once per pool, not once per
+ * slot per redraw; the hidden dialog drawing and working out nothing while
+ * it isn't shown; catalogs kept between re-lays; and the generator's own
+ * throttle running with no `setImmediate`, as a browser Web Worker has none.
  */
 const { MIN, HOUR, DAY, Suite } = require('./support');
 const getShowData = require('../web/services/get-show-data')();
 const poolSeasons = require('../src/pool-seasons');
 const catalogKeep = require('../src/catalog-keep');
-const relayWorker = require('../src/relay-worker');
-const timeSlotsService = require('../src/services/time-slots-service');
-const pins = require('../src/pins');
 
 const SEC = 1000;
 const THU = new Date('2026-10-08T00:00:00').getTime();
@@ -26,31 +20,10 @@ function episode(show, season, n, extra) {
         season, episode: n, duration: 22 * MIN, serverKey: 'srv', key: `/e/${show}/${season}/${n}`,
     }, extra || {});
 }
-function schedule() {
-    return {
-        period: DAY, lateness: 24 * HOUR, maxDays: 60, flexPreference: 'distribute', pad: 5 * MIN,
-        slots: [
-            { time: 19 * HOUR, showId: 'tv.A', order: 'next' },
-            { time: 19 * HOUR + 30 * MIN, showId: 'tv.B', order: 'next' },
-            { time: 20 * HOUR, showId: 'tv.C', order: 'next' },
-            { time: 20 * HOUR + 30 * MIN, showId: 'flex.', order: 'next' },
-        ],
-    };
-}
 function pool() {
     const out = [];
     ['A', 'B', 'C'].forEach((show) => { for (let n = 1; n <= 30; n++) { out.push(episode(show, 1 + (n % 3), n)); } });
     return out;
-}
-// The clock frozen, as test/pins-generator.js does.
-async function frozen(now, fn) {
-    const RealDate = Date;
-    class FrozenDate extends RealDate {
-        constructor(...a) { if (a.length === 0) super(now); else super(...a); }
-        static now() { return now; }
-    }
-    global.Date = FrozenDate;
-    try { return await fn(); } finally { global.Date = RealDate; }
 }
 
 module.exports = async function () {
@@ -106,15 +79,6 @@ module.exports = async function () {
             /ng-model="\$parent\.slotFilter"/.test(tpl) && ! /ng-model="slotFilter"/.test(tpl));
     }
 
-    suite.log('-- undo plans once --');
-    {
-        // Undo itself no longer re-lays: Put back is an edit to the list (src/kept-rows.js).
-        const editor = require('fs').readFileSync(require.resolve('../web/directives/time-slots-schedule-editor.js'), 'utf8');
-        const relayFn = editor.slice(editor.indexOf('let relay = async'), editor.indexOf('scope.linker('));
-        suite.check('...and relay makes several pin sets from one plan and one worker session',
-            (relayFn.match(/await plan\(/g) || []).length === 1 && /pinSets/.test(relayFn) && (relayFn.match(/relayWorker\.open\(/g) || []).length === 1);
-    }
-
     suite.log('-- catalogs kept between re-lays --');
     {
         const keep = catalogKeep.keeper({ maxAge: 30 * MIN });
@@ -157,59 +121,6 @@ module.exports = async function () {
         new Function('module', 'process', 'setImmediate', src)(mod, { browser: true, versions: {} }, (fn) => { shimUsed++; setTimeout(fn, 4); });
         await mod.exports();
         suite.check('...nor waits on the bundle\'s own setImmediate, outside Node', shimUsed === 0, `${shimUsed} waits`);
-    }
-
-    suite.log('-- the re-lay worker --');
-    {
-        // What the editor plans once per dialog: the pool, the schedule with its places, history, the carry.
-        const now = thu(12);
-        const inputs = { pool: pool(), schedule: schedule(), history: [], carry: null };
-        const generate = (pinList) => frozen(now, () => timeSlotsService(JSON.parse(JSON.stringify(inputs.pool)),
-            JSON.parse(JSON.stringify(inputs.schedule)), [], pinList, null));
-        const direct = await generate([]);
-        const current = { programs: direct.programs, startTime: Date.parse(direct.startTime) };
-        const handle = relayWorker.handler({ generate: (args) => frozen(now, () => timeSlotsService(args.pool, args.schedule, args.history, args.pins, args.carry)), getShowData });
-        await handle({ type: 'open', session: 's', inputs, current });
-        const base = await handle({ type: 'relay', session: 's', key: 'base', pins: [] });
-        const result = await handle({ type: 'result', session: 's', key: 'base' });
-        suite.check('a relay in the worker makes the same lineup as the generator called directly',
-            JSON.stringify(result.programs) === JSON.stringify(direct.programs) && result.startTime === direct.startTime && base.programs === undefined,
-            `${result.programs.length} vs ${direct.programs.length}`);
-        const special = pins.makePin({ program: episode('Specials', 0, 1, { title: 'Special', duration: 24 * MIN + 6 * SEC }),
-            at: thu(19, 30), kind: 'swap', then: 'take', slotShow: 'tv.B', now });
-        const mine = await handle({ type: 'relay', session: 's', key: 'take', pins: pins.withPin([], special) });
-        suite.check('...answers with whether the pin was placed, never the whole lineup', mine.placed === true && ! ('programs' in mine));
-        const twice = await handle({ type: 'relay', session: 's', key: 'take', pins: pins.withPin([], special) });
-        suite.check('...and a pick asked for again is not re-laid again', twice.cached === true && twice.placed === true);
-        const b = await handle({ type: 'baseline', session: 's', key: 'base', now, at: thu(19, 30) });
-        const o = await handle({ type: 'option', session: 's', key: 'take', base: 'base', now, at: thu(19, 30), item: special, kind: 'swap' });
-        suite.check('...and says what the swap does, worked out off the page',
-            /Special runs 24:06/.test(o.fitText) && /It fits: 5:54 of Flex after it/.test(o.fitText) && /airs Fri Oct 9, 7:30pm/.test(o.effects)
-                && Array.isArray(o.alerts) && o.alerts.length === 0 && b.alerts.length === 0 && b.heldUntil === null,
-            JSON.stringify({ fit: o.fitText, effects: o.effects, alerts: o.alerts }));
-        // Handed over in slices, so the page never stops for the whole copy at once.
-        await handle({ type: 'open', session: 'sliced', inputs: Object.assign({}, inputs, { pool: [] }), current: { programs: [], startTime: current.startTime } });
-        for (let i = 0; i < inputs.pool.length; i += 25) {
-            await handle({ type: 'add', session: 'sliced', part: 'pool', items: inputs.pool.slice(i, i + 25) });
-        }
-        for (let i = 0; i < current.programs.length; i += 100) {
-            await handle({ type: 'add', session: 'sliced', part: 'current', items: current.programs.slice(i, i + 100) });
-        }
-        await handle({ type: 'relay', session: 'sliced', key: 'take', pins: pins.withPin([], special) });
-        const sliced = await handle({ type: 'result', session: 'sliced', key: 'take' });
-        const whole = await handle({ type: 'result', session: 's', key: 'take' });
-        const so = await handle({ type: 'relay', session: 'sliced', key: 'base', pins: [] })
-            .then(() => handle({ type: 'option', session: 'sliced', key: 'take', base: 'base', now, at: thu(19, 30), item: special, kind: 'swap' }));
-        suite.check('...and a session handed over in slices makes and says the same',
-            JSON.stringify(sliced.programs) === JSON.stringify(whole.programs) && so.effects === o.effects && so.fitText === o.fitText,
-            `${sliced.programs.length} vs ${whole.programs.length}`);
-        suite.check('relayWorker.slices cuts a list into slices of at most n, in order',
-            JSON.stringify(relayWorker.slices([1, 2, 3, 4, 5], 2)) === '[[1,2],[3,4],[5]]' && relayWorker.slices([], 3).length === 0);
-
-        await handle({ type: 'close', session: 's' });
-        let gone = null;
-        try { await handle({ type: 'result', session: 's', key: 'base' }); } catch (err) { gone = err; }
-        suite.check('...and a closed session is gone', gone !== null && /session/.test(gone.message));
     }
 
     return suite;

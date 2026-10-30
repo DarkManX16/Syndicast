@@ -40,7 +40,6 @@ app.service('commonProgramTools', require('./services/common-program-tools'))
 app.service('catalogReader', require('./services/show-catalog'))
 app.service('seasonConstraints', require('./services/season-constraints'))
 app.service('namesReview', require('./services/names-review'))
-app.service('relayWorker', require('./services/relay-worker'))
 // Started at load, on every page, so the drag before a lockup is on record too.
 app.factory('dragRecorder', () => require('./services/drag-recorder')())
 app.run(['dragRecorder', () => {}])

@@ -8155,14 +8155,19 @@ conventions) found eight things.
   - A row kept in time airs its show's next episode at Create Lineup; when that episode is
     longer than the row's room (after a schedule or range change), the kept rows after it
     wait for it, silently. Saying so in the Time Slots dialog is a follow-up.
-  - The old re-lay path is unreachable from the editor but not removed: the re-lay worker
-    (`src/relay-worker.js`, `web/services/relay-worker.js`, `web/app.js`'s worker branch),
-    the Time Slots editor's `plan`/`relay`, the generator's clock-time pin rules (still used
-    by `progress-check --pin` and `test/pins-generator.js`), and in `src/pins.js` `dropSpot`,
-    `relayEffects`, `slotWarnings`, `sayFit`, `sayDropped`, `pinsAhead`, `oneAtATime` and the
-    rest of the re-lay sentences. Removing them means rewriting about 400 lines of
-    `test/pins.js` and parts of `test/relay-speed.js`; left for a cleanup of its own after
-    the merge rather than done in a hurry before it.
+  - ~~The old re-lay path is unreachable from the editor but not removed...~~ **Removed, Oct
+    29, 2026** (`remove-swap-relay`, cut from `blocks` at 38b6753, not merged or pushed): the
+    re-lay worker (`src/relay-worker.js`, `web/services/relay-worker.js`, `web/app.js`'s
+    worker branch), the Time Slots editor's `plan`/`relay` and its `relayWorker` injection, and
+    from `src/pins.js` `dropSpot`, `relayEffects`, `slotWarnings`, `sayWarnings`, `sayMoved`,
+    `outOfPlace`, `pinsMoved`, `sayFit`, `fitAt`, `sayEffects`, `sayDropped`, `droppedLines`,
+    `droppedBehind`, `sayFirstSwap`, `sayUndo`, `sayKept`, `sayRemoval`, `pinNotes`,
+    `stillWanted`, `removalPin`, `pinsAhead`, `withPin`, `placedIn`, `oneAtATime`, `deleteMode`
+    and the now-unused `clock`, `possessive`, `fileOf` and `range` helpers behind them - about
+    400 lines of `test/pins.js` and most of `test/relay-speed.js` went with them. No behaviour
+    change: `npm test` (2603/2603) and `npm run build` both ran clean after. The generator's
+    clock-time pin rules (`time-slots-service.js`) are untouched, since `progress-check --pin`
+    and `test/pins-generator.js` still read them.
   - Special days' plan reads "kept row" for "pin" once `special-days-design` is merged; it
     isn't yet.
 - **Every proof re-run on the final code**, on a fresh copy taken Thu Oct 29 at 8:31pm

@@ -413,7 +413,7 @@ module.exports = function ($http, $q) {
         * Channel Tool Services
         */
         //`history` is what the lineup on air aired before now, for Repeat slots;
-        //`pins` the swaps and inserts to keep (src/pins.js pinsAhead); `carry` the
+        //`pins` the generator's own clock-time pins to keep; `carry` the
         //program on air, kept where it is (src/pins.js carryAt).
         calculateTimeSlots: async( programs, schedule, history, pins, carry) => {
             let d = await $http( {

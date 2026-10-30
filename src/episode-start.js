@@ -34,7 +34,8 @@ const MONTH_NAMES = [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
  * of any of its slots. A slot follows the wall clock, so across a change of
  * the clocks the instant moves with it. Null for a position with no slots.
  *
- * `pins` (src/pins.js pinsAhead's shape): an occurrence a pin takes - it
+ * `pins` ({ at, then, program }, the generator's own clock-time pins): an
+ * occurrence a pin takes - it
  * starts as the pin does, or inside it - does not air the position's show, so
  * the next one counts; except that a run-late pin ending inside the occurrence
  * lets the show start the moment the pin ends. (A slot of two half-length

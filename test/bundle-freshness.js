@@ -106,9 +106,8 @@ module.exports = async function run() {
                 stamp && stamp.commit === 'abc1234' && stamp.modified === true && !isNaN(Date.parse(stamp.built)), m ? m[1] : (built || '').slice(0, 80));
         }
         {
-            // The re-lay worker (src/relay-worker.js, started from bundle.js) runs this same
-            // first line in a Worker scope, which has `self` but no `window` - see NOTES.md,
-            // "A pin's choice through every re-lay, and Swap made fast".
+            // The stamp line only ever touches `self`, never `window`, so it still runs
+            // in a scope with no `window` global.
             const firstLine = (built || '').split('\n')[0] + '\n';
             const vm = require('vm');
             const sandbox = { self: {} };
@@ -118,9 +117,9 @@ module.exports = async function run() {
             } catch (err) {
                 threw = err;
             }
-            suite.check('the stamp line runs with no `window` global, as in the re-lay worker',
+            suite.check('the stamp line runs with no `window` global',
                 threw === null, threw ? threw.message : firstLine);
-            suite.check('the stamp still lands where the drag log and the worker both read it',
+            suite.check('the stamp still lands where the drag log reads it',
                 threw === null && sandbox.self.__syndicastBundle && sandbox.self.__syndicastBundle.commit === 'abc1234');
         }
 

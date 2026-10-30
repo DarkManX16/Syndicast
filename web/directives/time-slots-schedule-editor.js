@@ -10,7 +10,7 @@ const buildCheck = require('../../src/build-check');
 const poolSeasons = require('../../src/pool-seasons');
 const catalogKeep = require('../../src/catalog-keep');
 
-module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader, relayWorker ) {
+module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
     const WEEK = 7 * DAY;
     // Thursday-first: a weekly slot's time is ms into the epoch week. See
@@ -900,14 +900,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             
             //`lineup` returns the channel's programs and startTime as the
             //editor has them, read again when Create Lineup runs.
-            //Everything the dialog needs, without showing it - shared by
-            //startDialog and relay.
             // The rows kept in the list, and a note for each swap or removal whose slot the schedule,
             // as it is edited here, now gives to another show: it stays where it is (Ron, Oct 29).
             let keptAhead = [];
             scope.pinNoteList = () => keptRows.scheduleNotes({ rows: keptAhead, schedule: scope.schedule,
                 opened: scope.openedSchedule || undefined, nameOf: (id) => nameOf(id) });
-            //`keepCatalogs`: a re-lay's, reading only the shows the last read didn't get.
+            //`keepCatalogs`: reading only the shows the last read didn't get.
             let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs) => {
                 scope.limit = limit;
                 scope.programs = programs;
@@ -996,71 +994,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
             }
 
-            /*
-             * A swap, insert or undo re-lays the lineup through Regenerate's
-             * path, keeping `pins` (src/pins.js pinsAhead's shape) - the dialog
-             * is never shown and onDone is not called: the result is handed
-             * back, for the Programming tab to compare and apply.
-             */
-            /*
-             * The part of a re-lay that is the same whatever its pins, worked out
-             * once: the generator's inputs, planned as of `now` - for the re-lay
-             * worker (src/relay-worker.js) - and what a result is handed back with.
-             * Catalogs come from the last read while the channel editor is open.
-             * `onReading(count)` is told when shows must be read from Plex.
-             */
-            let plan = async ({ programs, limit, backup, lineup, catalogState, now, onReading: reported }) => {
-                // It re-uses the dialog's state: never while the dialog is open.
-                if (scope.visible) {
-                    throw new Error('The Time Slots dialog is open');
-                }
-                await buildCheck.guard({ fetchVersion: () => dizquetv.getCodeBuild(), run: async () => null });
-                onReading = (typeof(reported) === 'function') ? reported : null;
-                try {
-                    prepare(programs, limit, backup, true, null, lineup, catalogState, true);
-                    scope.visible = false;
-                    let { run, carry, history } = await planLineup(now);
-                    let inputs = { pool: run.pool, schedule: JSON.parse(JSON.stringify(scope.schedule)), history, carry };
-                    // Its own copy: the dialog's schedule object is used again by the next opening.
-                    return Object.assign({ inputs }, afterRun(JSON.parse(JSON.stringify(scope.schedule)), run));
-                } finally {
-                    onReading = null;
-                }
-            };
-
-            /*
-             * A swap, insert or undo re-lays the lineup through Regenerate's
-             * path, keeping `pins` (src/pins.js pinsAhead's shape) - the dialog
-             * is never shown and onDone is not called: the result is handed
-             * back, for the Programming tab to compare and apply. The generator
-             * runs in the re-lay worker, off the page's main thread. Given
-             * `pinSets` instead of `pins`, it makes one lineup for each from the
-             * one plan - undo compares the lineup with a pin and without it.
-             */
-            let relaySession = 0;
-            let relay = async (args) => {
-                let planned = await plan(args);
-                let session = `relay-${++relaySession}`;
-                await relayWorker.open(session, planned.inputs, { programs: [], startTime: 0 });
-                try {
-                    let sets = Array.isArray(args.pinSets) ? args.pinSets : [ args.pins ];
-                    let results = [];
-                    for (let i = 0; i < sets.length; i++) {
-                        await relayWorker.call({ type: 'relay', session, key: `r${i}`, pins: sets[i] });
-                        let res = await relayWorker.call({ type: 'result', session, key: `r${i}` });
-                        results.push(Object.assign(res, { schedule: JSON.parse(JSON.stringify(planned.schedule)), catalogOps: planned.catalogOps }));
-                    }
-                    return Array.isArray(args.pinSets) ? results : results[0];
-                } finally {
-                    relayWorker.call({ type: 'close', session });
-                }
-            };
-
-
             scope.linker( {
                 startDialog: startDialog,
-                relay: relay,
-                plan: plan,
             } );
 
             scope.finished = async (cancel, fromInstant) => {
