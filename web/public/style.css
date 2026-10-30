@@ -285,6 +285,9 @@ div.programming-panes {
   padding-bottom: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  /* minmax(0, ...): a grid track would otherwise widen to the list's longest
+     unwrapped line (a break's filler tags), thousands of pixels. */
+  grid-template-columns: minmax(0, 1fr);
 }
 div.programming-panes > div.row {
   min-height: 0;

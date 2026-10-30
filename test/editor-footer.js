@@ -128,6 +128,9 @@ angular.module('editorFooter', ['vs-repeat'])
     for (var i = 0; i < 500; i++) {
       $scope.channel.programs.push({ title: 'Program ' + i, duration: 1800000, $index: i });
     }
+    // A break's filler tag, as long as channel 3's: one line that doesn't wrap.
+    var tag = new Array(40).join('Jetix NEXT Promos · The Legend of Tarzan / ');
+    $scope.rowFlexTag = function (x) { return (x.$index % 2 === 1) ? tag : ''; };
     $scope.hasPrograms = function () { return true; };
     $scope.hasTimeSlots = function () { return true; };
     $scope.programmingHeight = function () { return '30rem'; };
@@ -169,6 +172,7 @@ async function measure(page) {
         out.spill = Math.round(list.getBoundingClientRect().bottom - pane.getBoundingClientRect().bottom);
         out.listHeight = Math.round(list.clientHeight);
         out.paneHeight = Math.round(pane.getBoundingClientRect().height);
+        out.listWider = Math.round(list.getBoundingClientRect().width - pane.getBoundingClientRect().width);
         return out;
     });
 }
@@ -207,6 +211,7 @@ module.exports = async function run() {
                     `${b.covered} of ${b.height}px rows covered by ${b.by}`);
             });
             suite.check(`the list ends inside its pane, ${state.name}`, m.spill <= 0, `${m.spill}px past`);
+            suite.check(`the list is no wider than its pane, long filler tags and all, ${state.name}`, m.listWider <= 0, `${m.listWider}px wider`);
             suite.check(`the list still shows most of the pane, ${state.name}`, m.listHeight >= m.paneHeight - 200, `${m.listHeight}px`);
         }
 
