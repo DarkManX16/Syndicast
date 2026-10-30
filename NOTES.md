@@ -8103,3 +8103,27 @@ Proved on the preview (port 18220, a full copy of `.dizquetv-dev` taken 6:09pm C
   `dropSpot`, `relayEffects` and the other re-lay sayings, and their tests) are no longer
   called by the editor but not yet removed; the drag harness has no channel-page case (the
   drop maps straight onto `move`, proved in the preview).
+
+**Step 5, the checkpoint, live on a copy, Oct 29, 2026** (no code). The preview (port 18220)
+on a copy of `.dizquetv-dev` with Ron's step 4 night rebuilt on channel 1 - the first open
+answered, Family Guy at Fri 1:00am swapped for Halloween on Spooner Street (S09E04, from
+the Plex catalog snapshot) - its server run with its clock shifted (a `-r` preload) and the
+page through a proxy that shifts `bundle.js`'s clock the same way; both scratch scripts,
+never in the repo.
+
+- **Tuned in through `/video`, the server's clock at each moment:** 11:55pm Thu, the break
+  before midnight ("boundary break ending 12:00:00 AM: CN Up Next [Adult Swim] -> Flex ->
+  [Adult Swim] Intro"); 12:00:02am A Very Venture Halloween; 12:30 How Hermes Requisitioned
+  His Groove Back; 1:00 Halloween on Spooner Street; 1:30 Tapping a Hero and 1:45 Shoe
+  (Robot Chicken's halves); 4:00 Babysitter (Harvey Birdman).
+- **1:10am, mid-night:** the editor opened on Halloween on Spooner Street, on air since
+  1:00; Create Lineup (catalogs from Plex) kept it there, and the rest of the night and all
+  1,331 rows of three weeks as they were; Update Channel saved it; tuned in again, the
+  stream picked it up 10:24 in.
+- **The guide** (`/api/xmltv.xml`) made at 11:55pm lists the night from 12:00 to 4:30am
+  exactly as the list has it, 15 rows to the second; made at 1:10am, from the program on air.
+- **The swapped-out episode** at its next airing: Sun Nov 1, 11:00pm (Central Standard
+  Time, after the clocks fell back), There's Something About Paulie.
+- Afterwards the preview was put back on the normal clock with a fresh copy of the channels.
+  Ron decides whether `list-lineup` merges into `blocks`; 18000 picks up the server code only
+  when he restarts it.
