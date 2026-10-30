@@ -2655,10 +2655,11 @@ on shows.
       a swap or insert is pinned to its date and time, and Create Lineup keeps
       it until it airs; whatever it pushes out airs at its show's next slot.
       See "Swaps, inserts and Flex that keeps time" under Known issues, and
-      [docs/swaps-plan.md](docs/swaps-plan.md).* *Redesigned Oct 29, 2026,
-      not built: hand edits are kept where they sit in the list, a swap
-      changes only its row and the Flex after it, and nothing re-lays over
-      them - "What you see is what airs" under Known issues.*
+      [docs/swaps-plan.md](docs/swaps-plan.md).* *Redesigned and built Oct 29,
+      2026: hand edits are kept where they sit in the list, a swap changes
+      only its row and the Flex after it, the episode it replaces moves
+      along, and nothing re-lays over them - "What you see is what airs"
+      under Known issues.*
 - [x] Program rows show the episode title, with a slot-fit gauge
 
       A slot-fit gauge built around how Ron schedules, in place of a plain
@@ -3348,11 +3349,12 @@ be built:
       under Known issues, and [docs/swaps-plan.md](docs/swaps-plan.md), whose
       first four steps let a Halloween episode be placed on channel 3 well
       before Oct 31.
-- [ ] What you see is what airs: hand edits kept in the list - swaps in
+- [x] What you see is what airs: hand edits kept in the list - swaps in
       place, drags that stay, nothing rebuilt over a hand edit (Opus 5.5
       designs and builds the core, Sonnet 5.5 the editor). **Designed Oct 29,
-      2026** with Ron's decisions; six build steps, each proved on copies of
-      the real data, in [docs/list-lineup-plan.md](docs/list-lineup-plan.md).
+      2026** with Ron's decisions; **built Oct 29** in six steps, each proved
+      on copies of the real data, in [docs/list-lineup-plan.md](docs/list-lineup-plan.md);
+      Ron tried the editor himself on the preview, a real drag included.
       Ahead of Special days, whose plan then reads "kept row" for "pin". See
       "What you see is what airs" under Known issues.
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
@@ -8127,3 +8129,46 @@ never in the repo.
 - Afterwards the preview was put back on the normal clock with a fresh copy of the channels.
   Ron decides whether `list-lineup` merges into `blocks`; 18000 picks up the server code only
   when he restarts it.
+
+**Step 6, final review and the record, Oct 29, 2026.** Suite 2682 at the start, 2687 at the
+end. A fresh review of the whole branch against `blocks` (eight angles: the diff line by
+line, removed behaviour, callers, reuse, simplification, efficiency, altitude,
+conventions) found eight things.
+
+- **Fixed, each with a test that failed first:**
+  - Put back of a drag whose old time had passed put the row back in the past, in front of
+    the airing on air, shifting everything after it; it is refused now ("... can't go back
+    to Fri Oct 30, 12:00am: that time has passed.").
+  - Rows an episode moving along only ran late (`late` marks) showed a kept row's clock mark
+    with an empty tooltip, and counted as hand edits in the whole-list tools' question;
+    `keptRows.isKept` now decides both.
+  - The first-open list was read again (240 ms on a 40,000-entry list) before every edit on
+    a channel that never needed it; now once (`test/kept-editor.js`, lifted from the page).
+  - The library's add found the row it had just inserted by title and length;
+    `keptRows.insertMany` follows the edit's id.
+  - `slotPool` carried its own copy of the kinds kept as they are; it uses
+    `slotProgress.keptAsItIs`.
+- **Set aside, for Ron:**
+  - Delete on a plain Flex row on a Time Slots channel still takes the Flex out, moving
+    every later row - kept ones too - earlier, with no sentence. What deleting Flex should
+    mean (refuse, or close the gap only to the next kept row) is Ron's call.
+  - A row kept in time airs its show's next episode at Create Lineup; when that episode is
+    longer than the row's room (after a schedule or range change), the kept rows after it
+    wait for it, silently. Saying so in the Time Slots dialog is a follow-up.
+  - The old re-lay path is unreachable from the editor but not removed: the re-lay worker
+    (`src/relay-worker.js`, `web/services/relay-worker.js`, `web/app.js`'s worker branch),
+    the Time Slots editor's `plan`/`relay`, the generator's clock-time pin rules (still used
+    by `progress-check --pin` and `test/pins-generator.js`), and in `src/pins.js` `dropSpot`,
+    `relayEffects`, `slotWarnings`, `sayFit`, `sayDropped`, `pinsAhead`, `oneAtATime` and the
+    rest of the re-lay sentences. Removing them means rewriting about 400 lines of
+    `test/pins.js` and parts of `test/relay-speed.js`; left for a cleanup of its own after
+    the merge rather than done in a hurry before it.
+  - Special days' plan reads "kept row" for "pin" once `special-days-design` is merged; it
+    isn't yet.
+- **Every proof re-run on the final code**, on a fresh copy taken Thu Oct 29 at 8:31pm
+  Central (identical to the live files at 8:33pm), with the catalog snapshot of 5:23pm:
+  additive on channels 1-3 at 8:35pm, Fri 1:10am and Thu Nov 5 8:00pm, 0 entries differ
+  from `blocks` in all nine; Ron's Friday on channel 1 through its four steps, the night
+  and all 1,331 rows of three weeks as the list has them after each, 138 of 138 positions,
+  regenerated 0 of 39,999 different; swaps, a removal and each Put back on channels 1-3,
+  every list given back JSON for JSON, every position continuing (138, 164, 162).

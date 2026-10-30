@@ -85,6 +85,8 @@ function keptKind(program) {
     return 'shifted';
 }
 const keepsItem = (program) => ITEM.indexOf(keptKind(program)) !== -1;
+// Kept by hand in any way - or pinned from before kept rows; not a row a ripple only ran late.
+const isKept = (program) => (keptKind(program) !== null) || ( !! program && !! program.pin );
 
 // Flex that belongs to the row before it: not a redirect, not kept Flex (a
 // removal), not a pin.
@@ -657,6 +659,27 @@ function insertAfter({ lineup, index, item, now }) {
     return { programs: head.concat(late.entries), text: `${text}. ${sayLate(overrun, late)}`, edit: id };
 }
 
+/*
+ * The library's add: `items` one after another in the break after the airing
+ * at `index`, each an insert after the one before. The list, and each one's
+ * sentence; or why the first can't go in.
+ */
+function insertMany({ lineup, index, items, now }) {
+    let programs = lineup.programs;
+    let at = index;
+    let texts = [];
+    for (let k = 0; k < items.length; k++) {
+        let got = insertAfter({ lineup: { programs, startTime: lineup.startTime }, index: at, item: items[k], now: now + k });
+        if (! Array.isArray(got.programs)) {
+            return (k === 0) ? { refused: got.refused } : { programs, texts };
+        }
+        programs = got.programs;
+        texts.push(got.text);
+        at = programs.findIndex( (p) => editsOf(p).some( (e) => (e.id === got.edit) && (e.kind === 'insert') ) );
+    }
+    return { programs, texts };
+}
+
 // "Remove this airing only": kept Flex of the airing's length; every row where
 // it was, and its episode at its position's next airing.
 function removeOnly({ lineup, index, now, schedule }) {
@@ -1030,6 +1053,10 @@ function putBack({ lineup, index, now, schedule, catalog }) {
         return { programs: undoInsert(lineup, index, edit), text: `Takes out ${title(program)}; the rows after it are back where they were.` };
     }
     if (edit.kind === 'moved') {
+        // Back to a time that has passed would put it in front of the airing on air.
+        if (edit.from <= now) {
+            return { refused: `${title(program)} can't go back to ${pins.dayClock(edit.from)}: that time has passed.` };
+        }
         let out = undoMove(lineup, index, edit);
         if (out === null) {
             return { refused: `${title(program)} can't go back to ${pins.dayClock(edit.from)}: the list no longer reaches it.` };
@@ -1306,12 +1333,14 @@ function sayKeptAhead(rows) {
 module.exports = {
     keptKind: keptKind,
     keepsItem: keepsItem,
+    isKept: isKept,
     positionOf: positionOf,
     rowsOf: rowsOf,
     firstOpen: firstOpen,
     applyFirstOpen: applyFirstOpen,
     swap: swap,
     insertAfter: insertAfter,
+    insertMany: insertMany,
     removeOnly: removeOnly,
     leaveOut: leaveOut,
     rowNote: rowNote,

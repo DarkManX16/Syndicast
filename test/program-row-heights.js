@@ -108,7 +108,7 @@ function evalCondition(expr, x) {
         // wherever it can be, as on a Time Slots channel's row.
         case 'x.pin': return !!x.pin;
         // Hand edits kept in the list (src/kept-rows.js): the mark on a kept row.
-        case 'x.pin || x.kept': return !!(x.pin || x.kept);
+        case 'rowKept(x)': return !!(x.pin || x.kept);
         case 'canSwap(x)': return !x.isOffline;
         default:
             throw new Error(`program-row-heights.js doesn't know how to evaluate ng-if="${expr}" - update evalCondition`);

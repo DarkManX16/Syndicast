@@ -357,6 +357,14 @@ module.exports = async function () {
             rem.text);
         suite.check('...and says so', rem.text === 'Leaves 22:30 of Flex at 12:30am in place of Family Guy 1; Family Guy 1 airs Fri Nov 6, 12:30am.', rem.text);
 
+        // The library's add: several items, one after another, after the row.
+        const two = [ Object.assign({}, clip, { title: 'First clip', duration: 2 * MIN }), Object.assign({}, clip, { title: 'Second clip', duration: 2 * MIN }) ];
+        const many = kept.insertMany({ lineup: base, index: i, items: two, now: NOW });
+        const mn = night({ programs: many.programs, startTime: base.startTime }, fri(0), fri(0, 31));
+        suite.check('insertMany: the items in order after the row, each kept, one sentence each',
+            JSON.stringify(mn) === JSON.stringify([ '00:00:00 Futurama 1', '00:22:30 First clip', '00:24:30 Second clip', '00:30:00 Family Guy 1' ])
+                && many.texts.length === 2, JSON.stringify(mn));
+
         // Channel 2, Oct 29 proof: a long insert just before a removal's Flex.
         const r2 = { programs: rem.programs, startTime: base.startTime };
         const longer = Object.assign({}, clip, { duration: 22 * MIN });
@@ -442,6 +450,14 @@ module.exports = async function () {
         suite.check('...and so is dragging the airing on air',
             /on air/.test(kept.move({ lineup: base, from: onAir, to, now: NOW }).refused || ''), '');
 
+        // Dragged later from a time that has since aired: Put back can't put it in the past.
+        const laterDrag = kept.move({ lineup: base, from: indexAt(base, fri(0)), to: indexAt(base, fri(3)), now: NOW });
+        const ld = { programs: laterDrag.programs, startTime: base.startTime };
+        const fut = ld.programs.findIndex( (p) => p.title === 'Futurama 1' );
+        const past = kept.putBack({ lineup: ld, index: fut, now: fri(1, 10) });
+        suite.check('Put back of a drag whose old time has passed is refused, in a sentence: nothing goes in front of the airing on air',
+            ! past.programs && /has passed/.test(past.refused || ''), past.refused);
+
         const untouched = kept.putBack({ lineup: base, index: indexAt(base, fri(1)), now: NOW });
         suite.check('Put back on an airing nobody edited says so',
             ! untouched.programs && untouched.refused === 'Nothing to put back: Robot Chicken 1 is as Create Lineup made it.', untouched.refused);
@@ -490,6 +506,10 @@ module.exports = async function () {
         const early = kept.swap({ lineup: st, index: i, item: journal, now: NOW - 8 * DAY, schedule: ss });
         suite.check('...but not a night more than a week away, which Create Lineup lays out again (Ron, Oct 29)',
             early.text === 'The Journal replaces Hey Arnold! 1 at 6:00pm; Hey Arnold! 1 airs Fri Oct 30, 6:00pm.', early.text);
+
+        suite.check('isKept: a row only run late by a ripple is not kept; one kept in time, kept as it is, or pinned is',
+            ! kept.isKept(sunDoug) && kept.isKept(r.programs[i]) && ! kept.isKept(st.programs[i])
+                && kept.isKept({ kept: { edits: [ { id: 'x', kind: 'shifted' } ] } }) && kept.isKept({ pin: { at: 0 } }), '');
 
         const back = kept.putBack({ lineup: l, index: i, now: NOW, schedule: ss });
         suite.check('back undoes forward exactly: Put back on the swap gives the list as it was, JSON for JSON',

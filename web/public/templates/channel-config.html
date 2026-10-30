@@ -195,7 +195,7 @@
                                 style="height: {{ programRowHeight }}px"
                             >
                                 <span class="psr-start" ng-class="{'font-weight-bold': goTo.row === x.$index}">{{ rowStartTime(x) }}</span>
-                                <span ng-if="x.pin || x.kept" title="{{ rowKeptTitle(x) }}" style="margin-right: 4px;"><i class="fas {{ rowKeptIcon(x) }} text-info"></i></span>
+                                <span ng-if="rowKept(x)" title="{{ rowKeptTitle(x) }}" style="margin-right: 4px;"><i class="fas {{ rowKeptIcon(x) }} text-info"></i></span>
                                 <span class="psr-square" ng-style="programSquareStyle(x)"></span>
                                 <span class="psr-show" ng-if="!x.isOffline">{{ rowShow(x) }}</span>
                                 <span class="psr-tag" ng-if="rowTag(x)">{{ rowTag(x) }}</span>

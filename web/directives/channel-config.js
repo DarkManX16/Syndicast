@@ -2865,7 +2865,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let lineup = lineupMs();
                 let found = keptRows.firstOpen({ programs: lineup.programs, startTime: lineup.startTime, now: Date.now(),
                     schedule: scope.channel.scheduleBackup, getShowData: getShowData });
-                return found.needed ? found : null;
+                if (! found.needed) {
+                    // Nothing to answer, and edits made here never add a pin: not read again.
+                    firstOpenAnswered = true;
+                    return null;
+                }
+                return found;
             };
             // True when the first open must be answered first: it shows, and what was asked waits.
             let askFirstOpen = () => {
@@ -2921,32 +2926,23 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 $timeout();
             };
-            // The library's add: inserted after the first row in view that takes it, one after another.
+            // The library's add: one after another after the first row in view that takes them.
             let insertFromLibrary = (selected) => {
                 if (askFirstOpen()) {
                     return;
                 }
-                let text = [];
-                let after = null;
-                selected.forEach( (item) => {
-                    let lineup = lineupMs();
-                    let from = (after === null) ? Math.max(0, scope.currentStartIndex || 0) : lineup.programs.indexOf(after);
-                    for (let i = from; i < lineup.programs.length; i++) {
-                        if (lineup.programs[i].isOffline) {
-                            continue;
-                        }
-                        let got = keptRows.insertAfter({ lineup, index: i, item: item, now: Date.now() });
-                        if (Array.isArray(got.programs)) {
-                            scope.channel.programs = got.programs;
-                            after = got.programs.find( (p) => (p.kept && (p.title === item.title) && (p.duration === item.duration)
-                                && lineup.programs.indexOf(p) === -1) ) || null;
-                            text.push(got.text);
-                            break;
-                        }
+                let lineup = lineupMs();
+                for (let i = Math.max(0, scope.currentStartIndex || 0); i < lineup.programs.length; i++) {
+                    if (lineup.programs[i].isOffline) {
+                        continue;
                     }
-                } );
-                updateChannelDuration();
-                scope.lastChange = text.join(' ');
+                    let got = keptRows.insertMany({ lineup, index: i, items: selected, now: Date.now() });
+                    if (Array.isArray(got.programs)) {
+                        applyEdit({ programs: got.programs, text: got.texts.join(' ') });
+                        return;
+                    }
+                }
+                showError('There is no break ahead in view to put it in.');
             };
 
             // What a kept row's mark says, and which: a pin for a row kept as it is, a clock for one kept in time.
@@ -2954,6 +2950,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 ? `Pinned for ${pinTools.dayClock(x.pin.at)}` + (x.pin.was ? `, in place of ${x.pin.was}` : '') + ': from before kept rows, kept where it sits once you answer the list'
                 : keptRows.rowNote(x);
             scope.rowKeptIcon = (x) => ( (x && x.pin) || keptRows.keepsItem(x) ) ? 'fa-thumbtack' : 'fa-clock';
+            // Kept by hand: not a row a ripple only ran late, whose mark is only for Put back.
+            scope.rowKept = (x) => keptRows.isKept(x);
             scope.rowDeleteTitle = (x) => (scope.hasTimeSlots() && x && keptRows.keepsItem(x)) ? 'Put back...' : 'Delete...';
             // The edits still to air that keep a row as it is, worked out again only when the lineup changes.
             let pinListOf = { version: -1, list: [] };
@@ -3047,7 +3045,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
                 scope[name] = (...args) => {
-                    let marked = scope.hasTimeSlots() ? scope.channel.programs.filter( (p) => p.kept || p.pin ).length : 0;
+                    let marked = scope.hasTimeSlots() ? scope.channel.programs.filter( (p) => keptRows.isKept(p) ).length : 0;
                     if (rebuilding || (marked === 0)) {
                         return tool(...args);
                     }
