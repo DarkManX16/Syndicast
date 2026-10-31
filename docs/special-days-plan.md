@@ -12,6 +12,10 @@
 
 **Models:** steps 1-4 and 7 are the scheduling core, stored progress and the Blocks resolver: Opus 5.5 end to end (Model guide, "Work that stays on Opus 5 end to end"). Steps 5, 6 and 8 are editor work: Sonnet 5.5 · High. Step 9 is Opus 5.5.
 
+**Brought up to date Oct 30, 2026**, on `blocks` at feea764: hand edits are kept rows (`program.kept`, `src/kept-rows.js`), not pins, and reach the generator through `keptRows.keptAhead` in the list `pins` used; Delete takes an episode out at once (`keptRows.deleteRow`); the first open keeps old pins silently (`ensureHandEditsKept`); and the Rules' "Keep it simple" and "Workflows that must keep working" apply to every step below.
+
+**Order and stops.** Steps run in order, 1 to 9, with **step 8 (holiday rows) right after the New Year's checkpoint (step 7), so Ron's Christmas Eve 2026 marathon is ready before Dec 24**. After each step's proof the work **stops**: the proof goes to Ron, and the next step starts only on his OK.
+
 ## Global Constraints
 
 - Never stop, restart or signal the server on port 18000, or any process this work didn't start. Server-code changes reach 18000 only when Ron restarts it; a merge into `blocks` updates its editor bundle on the next request.
@@ -24,6 +28,9 @@
 - Commit messages: `Special days: <what changed>`, ending with the session's `Co-Authored-By` line. Each step is its own commit; Ron says when the branch merges.
 - Live checks: a preview server started by hand from the worktree (`node index.js -p 18210 -d C:/Projects/dizquetv-worktrees/special-days-data --unlock`, Bash background), restarted after any server-code change; after any `npm run build`, reload the tab and confirm the served bundle holds the change - a hash-only navigate keeps the old bundle.
 - Clock-shifted checks (step 7) use the preload and bundle proxy recorded for the swap-pin-choices check: scratchpad scripts, never in the repo.
+- **The workflow checklist** (NOTES.md, Rules, "Workflows that must keep working") runs, whole, before a step merges whenever the step changes the editor, its templates, `style.css`, or anything the page bundles from `src/` - `slot-progress.js`, `episode-start.js`, `show-orderers.js` (through `createPositions`), `day-parts.js`, `kept-rows.js`, `pins.js` and the new `special-days.js` among them, so in practice every step but 7 and 9: `node scripts/editor-workflows.js --url http://localhost:18210 --channel 3` on a preview of a fresh copy, then a look at the page itself. The step's report says what each workflow did. Never `preview_start` from the worktree.
+- **Keep it simple.** Anything shown to Ron is at most one short line per change, and a change shows in the list itself rather than being described. No message he didn't ask for.
+- **Kept rows, not pins.** Read "kept row" wherever an older note says "pin"; the editor's refusals go through `keptRows.whyNot`, its one-liners follow `keptRows.sayKept`.
 
 ## Review Focus
 
@@ -33,6 +40,8 @@
 - **`resolveContext` identity** - the day must return the block object itself, or `assemble`'s `from === to` treats every break inside the day as a boundary and plays Toonami's sign-on 47 times. Test in Task 4.
 - **The fall-back night inside a day** (Nov 7, 2027) and the spring gap (Mar 14, 2027). Test in Task 1.
 - **A row's picked program from the Plex library** that is in no pool - the row carries it; it must survive a re-lay, a save and a reload. Test in Tasks 2 and 5.
+- **A kept row inside a day's window** (a swap made before the day was added) - it stays where it sits and the day goes round it; `keptRows.clearWrong` and the silent first open must never take a special day's airings for hand edits (they carry `specialDay`, no `kept`). Test in Tasks 2 and 5.
+- **The ripple into a day** - a swap elsewhere moving a show's later airings along reaches an Advance day's rows of that show, never a Keep-apart day's or a This item row. Test in Task 3.
 
 ---
 
@@ -70,7 +79,8 @@
   - Channel 1's New Year's day built by `fillFromBlock` from the real Toonami block: the 16 rows in the measured order.
   - The window over the saved lineup: 62 airings of 50 shows displaced, Waynehead first and The Smurfs (5:45am) last, as measured on Oct 28.
   - `slotAt` over every airing of channels 1-3 for 300 days, with no special day: identical to `blocks`.
-- [ ] **Step 6:** Commit `Special days: the rules, and slotAt knows a special day`.
+  - The workflow checklist on a preview of a fresh copy (`slot-progress.js` is bundled), all workflows passing.
+- [ ] **Step 6:** Commit `Special days: the rules, and slotAt knows a special day`. **Stop** and report.
 
 ## Step 2 - The generator lays out a special day
 
@@ -87,7 +97,7 @@
   - **The end:** a program running past it - the regular schedule runs late from its end exactly as after a `late` pin, until one starts on time.
   - **Positions:** Advance rows use the regular position for their show, mode and seasons; Keep-apart rows a position keyed `taggedKey(key, dayId)`; a This item row places `row.item.program` (a copy, no `slotPosition`, never moving a position); a holiday row is left to step 8 (a `problems` entry until then).
   - Every airing inside the day carries `specialDay: dayId`; Keep-apart labels carry the tag.
-  - Pins inside a day are placed by rule 1 as now; in Back to back the next row starts at `nextHalfHour` after the pin.
+  - Kept rows inside a day (from `keptRows.keptAhead`, in the list `pins` used) stay where they sit, as the generator places any kept row; in Back to back the next row starts at `nextHalfHour` after one. A Set times row is placed at its instant through the same one-off-slot path a row kept in time uses.
 - `progress-check --special <day.json>` (repeatable), `--special-from-block "<block name>"`, and `--timetable <dayId>` printing every airing of the day with start, end and Flex after, then the regular schedule's first hour after it and when it is back on time.
 
 - [ ] **Step 1: Write the failing tests** (fixtures as `test/pins-generator.js` builds them: a weekly schedule of half-hour Play Next slots, 22:00 and 11:00 episodes, custom shows of movies of 47:00 and 95:00, pad 5 minutes):
@@ -104,7 +114,8 @@
   - `This item: the picked movie airs, carries no label, and the custom show's rotation is where it was`.
   - `every airing inside the day carries specialDay; none outside does`.
   - `a Repeat whose source occurrence falls inside the day airs a Rerun of its show`.
-  - `a pin inside a Back to back day: placed at its time, the next row at the next half hour after it`.
+  - `a kept swap inside a Back to back day: stays where it sits, the next row at the next half hour after it`.
+  - `a day's airings carry no kept mark, and keptRows.clearWrong and firstOpen leave them alone`.
   - `the fall-back night inside a day: each Set times row airs once`.
 - [ ] **Step 2:** run the file - Expected: failures.
 - [ ] **Step 3:** Implement.
@@ -116,7 +127,8 @@
   - **The same day, Set times** (the 16 rows filled three times): every row at its time; the movies sliding over, and how late the rows after them run.
   - **Every other date:** over 300 days, every airing outside the window in the same slot with the same show and the same time; episode differences only for the 50 displaced shows and the marathon's shows, counted by show.
   - **Twice in a row:** each result regenerated from itself, before the day (now, Dec 31 noon): identical airing for airing to the end.
-- [ ] **Step 6:** Commit `Special days: the generator lays out a special day`.
+  - The workflow checklist on a preview of a fresh copy (`show-orderers.js` is bundled), all passing.
+- [ ] **Step 6:** Commit `Special days: the generator lays out a special day`. **Stop** and report.
 
 ## Step 3 - Stored progress and episode starts on a special day
 
@@ -136,7 +148,8 @@
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** `npm test` - Expected: all pass.
 - [ ] **Step 5: Proof on the copy:** the New Year's day from step 2, both modes, regenerated with `--at` at now, Dec 31 noon, Jan 1 6:00am, Jan 1 3:10pm (during, X-Men on air - the carry) and Jan 2 noon (after): every regular position continues exactly from its last airing, every tagged position from its last tagged airing, and the day itself is the same from run to run until it begins. Advance with a jump of X-Men to S1E1: the day airs S1E1-3, Mon Jan 4 airs S1E4. A day whose rows are changed between runs: only the changed rows' positions move.
-- [ ] **Step 6:** Commit `Special days: stored progress and episode starts`.
+  - The workflow checklist on a preview of a fresh copy, all passing.
+- [ ] **Step 6:** Commit `Special days: stored progress and episode starts`. **Stop** and report.
 
 ## Step 4 - The block for the day
 
@@ -155,41 +168,42 @@
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** `npm test` - Expected: all pass.
 - [ ] **Step 5: Proof on the copy**, the New Year's lineup from step 3: `transitions-plan-day.js --at 2027-01-01` walks every break from Thu Dec 31 6:00pm to Sat Jan 2 noon with the real lists: the break before the first row plays Toonami's 3 + 2 entering steps; every break inside is Toonami's, with its mix; no step from Cartoon Cartoon Fridays, Toonami Midnight Run or the day-parts plays inside; the break after the day plays Toonami's 2 leaving steps then CN City (Day)'s entering ones. Minute by minute from Sun Dec 27 to Sat Jan 9, `resolveContext` equals `blocks`' answer everywhere outside the window. The guide, built by `getChannelPrograms` and the real XMLTV writer on the copy for Jan 1: the marathon's programs at the lineup's times, and `blocks`' guide everywhere else.
-- [ ] **Step 6:** Commit `Special days: the block for the day`.
+  - The workflow checklist on a preview of a fresh copy (`day-parts.js` is bundled), all passing.
+- [ ] **Step 6:** Commit `Special days: the block for the day`. **Stop** and report.
 
 ## Step 5 - The Time Slots dialog's Special days
 
 ### Task 5: List, editor, rows, This item, Fill from a block, Create Lineup
 
 **Files:**
-- Modify: `web/directives/time-slots-schedule-editor.js`, `web/public/templates/time-slots-schedule-editor.html`, `web/directives/airing-swap.js` (its picker, reused for This item), `web/directives/channel-config.js` (Programming tab: Swap, Insert after and Remove this airing only refused inside a day, through `pins.whyNot`), `src/pins.js` (`whyNot` names the day), `web/public/css` as needed
-- Test: `test/pins.js` (`whyNot`), `test/episode-start.js` (rows' Next lines)
+- Modify: `web/directives/time-slots-schedule-editor.js`, `web/public/templates/time-slots-schedule-editor.html`, `web/directives/airing-swap.js` (its picker, reused for This item), `web/directives/channel-config.js` (Programming tab: Swap, Insert after, Delete and a drag into, out of or inside a day refused), `src/kept-rows.js` (`whyNot` names the day; `sayKept` for kept rows inside a window), `web/public/css` as needed, `scripts/editor-workflows.js` (a `special-day` workflow: add a day, Fill from a block, a This item movie, Preview this day, Create Lineup, Update Channel, and a Delete inside the day refused)
+- Test: `test/kept-rows.js` (`whyNot`, `sayKept`), `test/kept-editor.js` (Delete refused inside a day), `test/episode-start.js` (rows' Next lines)
 
-**What Ron sees:** a **Special days** section above the slots: each day with its dates, block, mode and layout, **Edit**, **Copy to another date**, **Delete**, and aired days greyed. The day's editor: name, start and end (date and time), Block for the day, Advance or Keep apart, Set times or Back to back, the rows (show, order, seasons, time for Set times, **Next: … · when** with **change**, as Episode start's rows), **Add row**, **This item…** (the Swap picker: a custom show's list, a show's catalog, one item from the Plex library), **Fill from a block…**, and the `problems` in plain words. Pins ahead inside a day's window are named ("Thu Dec 31 … stays at its time"). Create Lineup and Update Channel save it with the schedule; Cancel drops it.
+**What Ron sees** (Keep it simple: nothing else): a **Special days** section above the slots, one line per day - "New Year's Toonami Marathon · Fri Jan 1, 6:00am – Sat 6:00am · Toonami" - with **Edit**, **Copy** and **Delete**; an aired day greyed. The day's editor: name, start and end, Block for the day, Advance or Keep apart, Set times or Back to back, the rows (show, order, seasons, a time for Set times, and Episode start's **Next: … · when** with **change**), **Add row**, **This item…** (the Swap picker: a custom show's list, a show's catalog, one item from the Plex library), **Fill from a block…** and **Preview this day**. A problem is one short line at its field and blocks Create Lineup. Kept rows inside the window get one line, as `sayKept` says it ("Your 1 swap on Jan 1 stays where it is."), and only when there are some. Inside a day, the list's Swap, Insert after, Delete and drag answer one line: "Change this in Time Slots, New Year's Toonami Marathon." Create Lineup and Update Channel save the day with the schedule; Cancel drops it.
 
-- [ ] **Step 1: Write the failing tests** for the pure parts: `whyNot` inside a day ("This airs in New Year's Toonami Marathon. Change it in Time Slots, Special days."); Next lines for a Keep-apart row ("Next: S1E1 · Fri Jan 1, 6:00am") and an Advance jump ("Jumps to S1E1 on Fri Jan 1; your strip carries on from wherever the day leaves it").
+- [ ] **Step 1: Write the failing tests** for the pure parts: `whyNot` inside a day ("Change this in Time Slots, New Year's Toonami Marathon.") for Swap, Insert after, Delete and a drag; Next lines for a Keep-apart row ("Next: S1E1 · Fri Jan 1, 6:00am") and an Advance jump ("Jumps to S1E1 on Fri Jan 1; your strip carries on from wherever the day leaves it").
 - [ ] **Step 2:** run them - Expected: failures.
 - [ ] **Step 3:** Implement; `npm run build`.
 - [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the preview** (port 18210, `special-days-data`): build step 2's New Year's day through the dialog - Fill from Toonami, two This item movies, Back to back, Advance - Create Lineup, Update Channel. The saved `channels/1.json` on the copy equals `progress-check`'s output for the same day at the same moment, program for program (the carry aside). A movie picked from the Plex library survives Update Channel, a reload and a second Create Lineup. Cancel leaves the file untouched. Swap on a marathon airing gives the refusal. Screenshots of the list and the editor for Ron.
-- [ ] **Step 6:** Commit `Special days: the Time Slots dialog`.
+- [ ] **Step 5: Proof on the preview** (port 18210, `special-days-data`): build step 2's New Year's day through the dialog - Fill from Toonami, two This item movies, Back to back, Advance - Create Lineup, Update Channel. The saved `channels/1.json` on the copy equals `progress-check`'s output for the same day at the same moment, program for program (the carry aside). A movie picked from the Plex library survives Update Channel, a reload and a second Create Lineup. Cancel leaves the file untouched. Swap on a marathon airing gives the refusal. The workflow checklist, all nine plus `special-day`, on a fresh copy; then a look at the dialog: no line Ron didn't ask for. Screenshots of the list and the editor for Ron.
+- [ ] **Step 6:** Commit `Special days: the Time Slots dialog`. **Stop** and report.
 
 ## Step 6 - Seeing it beforehand
 
 ### Task 6: Preview this day, the Schedule tab's week chooser, the transitions Preview's date
 
 **Files:**
-- Modify: `web/directives/time-slots-schedule-editor.js` and its template (Preview this day), `src/special-days.js` (`timetable({ programs, startTime, day, schedule })`, pure: rows in order with start, end, Flex after, what won't air, the list starting again, the run-late tail and when it is back on time, displaced and moved-along counts), `web/directives/channel-config.js` and `channel-config.html` (Schedule tab week chooser; a day's band and chips from the lineup's `specialDay` airings; hatched when not in the lineup), `web/directives/transitions-editor.js` and its template (a "from" date)
+- Modify: `web/directives/time-slots-schedule-editor.js` and its template (Preview this day), `src/special-days.js` (`timetable({ programs, startTime, day, schedule })`, pure: one entry per show or movie with its start, end and title, the rows that won't air, where the list starts again, and the one run-over line or none), `web/directives/channel-config.js` and `channel-config.html` (Schedule tab week chooser; a day's band and chips from the lineup's `specialDay` airings; hatched when not in the lineup), `web/directives/transitions-editor.js` and its template (a "from" date)
 - Test: `test/special-days.js` (`timetable`), `test/blocks-schedule-view.js` (a week holding a day)
 
-**Interfaces:** Preview this day re-lays through the relay worker exactly as a Swap's choices do, then reads `timetable` from the result and the breaks from `transitionsEditor.previewBreaks` over the window, so what it shows is what Create Lineup saves.
+**Interfaces:** Preview this day lays the day out through the relay worker with the real generator, then reads `timetable` from the result, so what it shows is what Create Lineup saves. **What Ron sees:** a timetable and nothing else - one line per show or movie, start time and title; a row that won't air greyed; a thin rule where the list starts again; under it at most one line, only when the last item runs over ("Runs 14:09 over; back on time at 6:30am"). No Flex lines, no break steps (the transitions Preview has those), no counts.
 
-- [ ] **Step 1: Write the failing tests:** `timetable` on step 2's fixture lineups (each row's times to the second; "won't air" rows; "starts again from the top at 2:47am"; "the regular schedule runs 14:09 late, back on time at 6:30am"); `weeklySegments` for the week of Dec 27 with the day: Toonami from Fri 6:00am to Sat 6:00am, `blocks`' answer elsewhere.
+- [ ] **Step 1: Write the failing tests:** `timetable` on step 2's fixture lineups (each show's and movie's start to the second; "won't air" rows; where the list starts again; the run-over line, and none when the day ends on time); `weeklySegments` for the week of Dec 27 with the day: Toonami from Fri 6:00am to Sat 6:00am, `blocks`' answer elsewhere.
 - [ ] **Step 2:** run them - Expected: failures.
 - [ ] **Step 3:** Implement; `npm run build`.
 - [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the preview:** Preview this day for the New Year's day lists every show and movie at the times the saved lineup on the copy holds, airing for airing, to the second, and each break's steps match step 4's walk. The Schedule tab's week of Dec 27 shows the Toonami band over Fri 6am to Sat 6am with the marathon's chips at their lineup times; the week of Jan 3 shows the regular week. The transitions Preview from Jan 1 walks the day. Screenshots for Ron.
-- [ ] **Step 6:** Commit `Special days: Preview this day, the Schedule tab and the transitions Preview`.
+- [ ] **Step 5: Proof on the preview:** Preview this day for the New Year's day lists every show and movie at the times the saved lineup on the copy holds, airing for airing, to the second, with no line beyond the timetable and the run-over line. The Schedule tab's week of Dec 27 shows the Toonami band over Fri 6am to Sat 6am with the marathon's chips at their lineup times; the week of Jan 3 shows the regular week. The transitions Preview from Jan 1 walks the day. The workflow checklist on a fresh copy, all passing. Screenshots for Ron.
+- [ ] **Step 6:** Commit `Special days: Preview this day, the Schedule tab and the transitions Preview`. **Stop** and report.
 
 ## Step 7 - The New Year's checkpoint, live on a copy
 
@@ -204,13 +218,13 @@ No code in the repo. On `special-days-data`, with the day made in step 5:
 - [ ] Create Lineup during the day (shifted to Jan 1 noon): the program on air stays, the rest of the day is unchanged.
 - [ ] Shifted to Jan 2 noon, Create Lineup: the day is listed Aired and ignored; nothing else changes.
 - [ ] The guide (XMLTV from the preview) for Jan 1.
-- [ ] Report to Ron with what aired at each moment. **Then Ron decides** whether to merge into `blocks`, restart 18000 himself, and build the real day on his channel - well before Jan 1.
+- [ ] **Stop** and report to Ron with what aired at each moment. **Then Ron decides** whether to merge into `blocks`, restart 18000 himself, and build the real day on his channel - well before Jan 1. Step 8 follows at once.
 
 ## Step 8 - Holiday rows, for Christmas and Halloween
 
 ### Task 8: A day's holiday, and rows of a show's set-aside episodes
 
-Can come before Christmas 2026 if Ron wants a Christmas marathon this year; otherwise any time before Halloween 2027.
+Right after step 7, for Ron's Christmas Eve 2026 marathon: built, proved and merged well before Thu Dec 24, 2026. Ask Ron which channel and hours the marathon is before its proof, and prove on that channel's copy as well.
 
 **Files:**
 - Modify: `src/special-days.js` (`holidayCandidates({ catalogState, showId, holiday })`), `src/services/time-slots-service.js` (a `holidayOnly` row: its own tagged position whatever the mode, in order or shuffled; the show's next regular episode once they have all aired that day), `src/slot-progress.js`, the dialog (Holiday for the day, and "only its <holiday> episodes" on a row)
@@ -218,8 +232,8 @@ Can come before Christmas 2026 if Ron wants a Christmas marathon this year; othe
 
 - [ ] **Step 1: Write the failing tests:** candidates are exactly the episodes left out as that holiday, less never-air; a holiday row never moves a regular position, in an Advance day too; when they run out the row plays the show's next regular episode.
 - [ ] **Step 2-4:** fail, implement, `npm test`.
-- [ ] **Step 5: Proof on the copy:** a Christmas Eve day on channel 2 (164 Christmas episodes set aside), Hey Arnold!'s row airs "Arnold's Christmas" and its other set-aside Christmas episodes and nothing from its rotation until they're done; the regular Hey Arnold! positions continue exactly after the day; channel 3 likewise with its 48.
-- [ ] **Step 6:** Commit `Special days: holiday rows`.
+- [ ] **Step 5: Proof on the copy:** a Christmas Eve day on channel 2 (164 Christmas episodes set aside), Hey Arnold!'s row airs "Arnold's Christmas" and its other set-aside Christmas episodes and nothing from its rotation until they're done; the regular Hey Arnold! positions continue exactly after the day; channel 3 likewise with its 48. Ron's own Christmas Eve day, on his channel's copy, through the dialog, with Preview this day, and a clock-shifted look at its first hour and its end. The workflow checklist on a fresh copy, all passing.
+- [ ] **Step 6:** Commit `Special days: holiday rows`. **Stop** and report; once Ron merges it and restarts 18000, he builds the real Christmas Eve day.
 
 ## Step 9 - Final
 

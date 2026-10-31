@@ -6051,7 +6051,10 @@ his decisions below; **not built**. Build plan in
 question 4, one-off airings, which waited "until a one-off marathon is actually
 wanted": this is it. Measured on a copy of `.dizquetv-dev`'s channels taken Wed
 Oct 28 at 7:27pm Central; channel 1's saved lineup was made Oct 26 and is
-labelled (stored progress), 40,000 programs.
+labelled (stored progress), 40,000 programs. **Brought up to date Oct 30**, before
+merging, for kept rows ("What you see is what airs" above, which replaced pins),
+the simple Delete, the silent first open and the Keep it simple rule (decisions 8-10
+below).
 
 #### What it is
 
@@ -6114,6 +6117,15 @@ And, with the approval:
    at its end time, catching up the way a swap does if the last item runs over.
 7. **"Preview this day" shows exactly when each show and movie will air.**
 
+And Oct 30, before the merge:
+
+8. **Keep it simple.** Preview this day and the Time Slots dialog show only what he
+   needs, with no walls of text.
+9. **Every editor step passes the workflow checklist** (Rules, "Workflows that must
+   keep working") before it merges; each step stops after its proof for him to see.
+10. **A Christmas Eve marathon this year.** The holiday rows (build step 8) come
+    right after the New Year's checkpoint (step 7), ready before Dec 24, 2026.
+
 #### The design
 
 **A special day** has a name, a start and an end (a date and a clock time
@@ -6162,7 +6174,7 @@ says so. A row whose start would be at or after the day's end doesn't air.
 as with a swap - and the day's first row starts the moment it ends (Set times)
 or at the next :00 or :30 (Back to back). At the end, when the last item runs
 past the end time, the regular schedule runs late and catches up exactly as
-after a swap set to run late (pin rule 3, `late`): programs one after another
+after a swap that runs late (the generator's run-late rule): programs one after another
 from the moment it ends, the breaks after them shortened, until one starts on
 time. On channel 1, whose slots are half-hour and whose lateness is a full day,
 nothing turns to Flex.
@@ -6184,7 +6196,7 @@ nothing turns to Flex.
 
 **Shows the day displaces carry on where they left off**, in both modes: a
 position moves only when one of its episodes airs, which is already how a swap
-pushes an episode to its show's next slot (pin rule 4). I Am Weasel's three
+pushes an episode to its show's next airing. I Am Weasel's three
 Friday 5pm episodes, S4E5-7, wait: Mon Jan 4 2:30pm airs S4E5 instead of S4E8.
 The same for the other 49 shows.
 
@@ -6217,14 +6229,19 @@ day carries on from what has aired. Once the day has ended it is listed as
 **Aired**, greyed, with **Copy to another date** - for next year's - and Create
 Lineup ignores it.
 
-**Swaps inside a special day** are not offered: the Programming tab's Swap,
-Insert after and Remove this airing only say "This airs in New Year's Toonami
-Marathon. Change it in Time Slots, Special days." In a Back to back day a pin
-would fix one time while every later row moves with what airs before it, and
-the day is already a plan made by hand. Pins already ahead inside a window when
-a special day is added over them are named by the dialog, and are placed at
-their times as now (pin rule 1); in a Back to back day the next row starts at
-the next :00 or :30 after the pin.
+**Hand edits inside a special day** are refused: Swap, Insert after, Delete and a
+drag into, out of or inside the day (`keptRows.whyNot`), each with one line:
+"Change this in Time Slots, New Year's Toonami Marathon." The day is already a
+plan made by hand, and in a Back to back day an edit in the list would shift
+every row after it off its :00 or :30 until the next Create Lineup. A row kept
+before the day covered its time (a swap, an insert, a dragged row) stays where it
+sits, and the day is laid out around it, as the generator places any kept row; in
+a Back to back day the next row starts at the next :00 or :30 after it. The
+dialog says so in one line, as `keptRows.sayKept` does ("Your 1 swap on Jan 1
+stays where it is."). A kept-rows ripple - an episode a swap pushed out moving
+along its show's later airings - reaches an Advance day's rows of that show, which
+are the regular position, and never a Keep-apart day's (tagged) or a This item
+row (no position). The silent first open never touches a special day.
 
 **Repeat slots.** A regular Repeat whose source occurrence falls inside a special
 day finds no airing of its source and airs a Rerun of its show - the existing
@@ -6247,16 +6264,16 @@ in real time.
 
 **Seeing it beforehand.**
 - **Preview this day**, on the special day: the day laid out by the real
-  generator, as a re-lay is, so it is exactly what Create Lineup will save: every
-  show and movie with its start and end to the second, the Flex after it, the
-  steps each break plays, rows that won't air, the list starting again, and how
-  late the regular schedule runs after the day and when it is back on time. It
-  also counts what the day displaces and what moves along ("50 shows give way;
-  X-Men: Evolution carries on at S2E6 Mon Jan 4").
+  generator, so it is exactly what Create Lineup will save. It is a timetable and
+  nothing else: one line per show or movie, its start time and title ("6:47am
+  Cartoon Theatre: The Iron Giant"). A row that won't air is greyed in the list;
+  the list starting again from the top is a thin rule between rows. At most one
+  line under it, only when the last item runs over ("Runs 14:09 over; back on
+  time at 6:30am"). Breaks and their steps stay in the transitions Preview.
 - **The Schedule tab** gets a week chooser. A week holding a special day draws
   the day's block as the band and the day's airings as chips, at their times
   in the lineup, so a Back to back day reads as it will air; a day not yet in
-  the lineup is drawn hatched, "Not in the lineup yet - run Create Lineup".
+  the lineup is drawn hatched, with no text.
 - **The transitions Preview** gets a "from" date, to walk the week of Jan 1.
 - **The guide** is built from the lineup and `resolveContext`, so it shows the
   marathon at its times as soon as Jan 1 is within the guide's range, with the
@@ -6293,8 +6310,18 @@ program.slotPosition = 'next||@sd_mvq2k1ab_x7c9';   // Keep apart: the day's own
 A pure module, `src/special-days.js`, holds the rules: a day's instants, which
 day covers a moment, validation, the back to back rounding, Fill from a block,
 the tag on keys and labels. The generator, `slotProgress.slotAt` (which
-`placeOf`, Episode start and `src/pins.js` already ask what slot owns a moment),
-`resolveContext` and the editor all reach it, so they can't disagree.
+`placeOf`, Episode start, `src/pins.js` and `src/kept-rows.js` already ask what
+slot owns a moment), `resolveContext` and the editor all reach it, so they can't
+disagree. Kept rows reach the generator as they do now (`keptRows.keptAhead`, in
+the same list the pins used); a Set times row is placed at its instant the way a
+row kept in time already is, as a one-off slot of its position.
+
+**The Time Slots dialog** stays as it is for regular slots. Its Special days part
+is one line per day ("New Year's Toonami Marathon · Fri Jan 1, 6:00am – Sat 6:00am
+· Toonami") with Edit, Copy and Delete; an aired day is greyed. The day's editor
+has its fields, its rows - each with the Next line Episode start already shows -
+and Preview this day. A problem shows as one short line at the field it concerns,
+and blocks Create Lineup until fixed.
 
 #### What this doesn't change
 
@@ -6303,9 +6330,10 @@ the tag on keys and labels. The generator, `slotProgress.slotAt` (which
 - Playback, filler, cards and the lineup cursor: a special day's airings are
   ordinary programs and its Flex is Flex. The lineup still loops: an un-renewed
   lineup that loops brings the marathon's airings round again at the same point
-  of the cycle, as it does pins, without the block - regenerating before the
+  of the cycle, as it does any airing, without the block - regenerating before the
   loop (channel 1: Aug 3, 2027) avoids it, as it avoids the reruns.
-- Random Slots: not offered, like pins; none of Ron's channels uses it.
+- Kept rows, Delete, the library's add and Put back outside special days.
+- Random Slots: not offered, like kept rows; none of Ron's channels uses it.
 - Day-parts and blocks as configured, and their weekly airings.
 
 #### Chosen in the design, beyond Ron's decisions
@@ -6314,7 +6342,8 @@ Said here so they can be changed before they are built:
 - A Back to back day whose rows run out **starts again from the top**, rather
   than handing the rest of the day back to the regular schedule (which would air
   regular shows under the day's block) or filling it with Flex.
-- **No swaps inside a special day**; edit its rows instead.
+- **No hand edits in the list inside a special day**, Delete included; edit its
+  rows instead.
 - **A picked item never moves a position**, in either mode.
 - Special days **don't overlap**, and last **at most a week**.
 - **Fill from a block** copies the block's slots once, in the order they air
