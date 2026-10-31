@@ -772,15 +772,24 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     }
     while ( (t < hardLimit) && (p.length < LIMIT) ) {
         await throttle();
-        // An airing of a special day still on past its end: the regular schedule runs
-        // late from where it ends, as after a run-late pin (rule 3).
+        // An airing of a special day still on past its end: the regular schedule
+        // starts at the day's own next mark after it - the half hour or the quarter
+        // hour, whichever the day rounds to - never right where the overrun ends, so
+        // the break between holds the day's own leaving and entering steps (its
+        // sign-off, then the regular context's sign-on). From there it runs late and
+        // catches up, as after a run-late pin (rule 3) - unless the mark happens to
+        // land on a regular slot boundary, where nothing needs to catch up and the
+        // slot the overrun ran into is simply skipped, like any slot with no time left.
         if ( (lastSpecial !== null) && (t === lastSpecial.end) && ! lastSpecial.handled ) {
             lastSpecial.handled = true;
             let d = laidDays.find( (x) => x.day.id === lastSpecial.day );
             if ( (typeof(d) !== 'undefined') && (t > d.to + SLACK) ) {
-                lastPin = { start: lastSpecial.start, end: t, then: 'late', kind: undefined, ownEnd: t };
+                let mark = specialDays.nextMark(t, d.step);
+                pushFlex(mark - t);
+                lastPin = { start: lastSpecial.start, end: mark, then: 'late', kind: undefined, ownEnd: mark };
                 runningLate = false;
             }
+            continue;
         }
         //ensure t is padded - except while running late after a pin (rule 3)
         let m = t % schedule.pad;

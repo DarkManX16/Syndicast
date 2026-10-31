@@ -6555,10 +6555,23 @@ filler lists refreshed from the live ones at 8:21am. Suite 2754 at the start, 27
   inside are Toonami's (12 between episodes, 22 between shows: Toonami bumpers, show intros),
   with Toonami's mix - none at 3:00pm, 5:00pm or 1:00am, where Toonami's own airing, Cartoon
   Cartoon Fridays and the Midnight Run would begin; CN City (Day) from 6:23am Saturday.
-- **Found: no sign-off when the day's last item runs over.** The last row, Super Friends at
-  5:15am, runs to 6:01:05, and the regular schedule picks up at 6:01:05 with no Flex between
-  (the run-late rule), so there is no break and Toonami's leaving steps have nowhere to play.
-  Only when the last item runs past the end; for Ron to decide how (below).
+- **Found: no sign-off when the day's last item runs over, and fixed the same day.** The last
+  row, Super Friends at 5:15am, runs to 6:01:05, and the regular schedule picked up right there
+  with no Flex between (the run-late rule), so there was no break and Toonami's leaving steps
+  had nowhere to play. **Ron's decision:** the regular schedule starts at the day's own next
+  mark after the overrun - the half or quarter hour it rounds to - so the break between holds
+  the leaving and entering steps; from there it runs late and catches up as before, unless the
+  mark lands on a regular slot boundary, where the slot it ran into is simply skipped (nothing
+  to catch up on). `test/special-days-generator.js` gained two checks, failing first: the
+  existing 44:09 overrun case (half-hour day: the mark lands exactly on the next slot's own
+  start, 6:30, so that slot is skipped rather than run late) and the same overrun on a
+  quarter-hour day (the mark, 6:15, isn't on the slot grid, so the slot it lands in runs 15:00
+  late and is back on time three slots later). Re-proved on the real New Year's day: the break
+  is now 13:54.3 (6:01:05 to 6:15:00, the quarter-hour mark) and plays "Toonami - Sign-Off" then
+  "CN City Opening" then a Baby Looney Tunes bumper, out of real lists - the break the design
+  always called for. Baby Looney Tunes now starts 14:55 late at 6:15am instead of on time at
+  6:01:05, and the regular schedule is back on time by 7:00am rather than 6:30am: the break
+  necessarily costs some of the catch-up time, which is the trade the sign-off needs.
 - **The guide**, Thu 4:00pm to Sat 8:00am: 64 entries for 64 airings, each at its lineup time
   under its title, the films too; identical with the days taken off the channel - no break in
   either day reaches the 30 minutes that gives a Flex its own entry (and with it a guide name),

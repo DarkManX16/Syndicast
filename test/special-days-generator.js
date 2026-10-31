@@ -201,10 +201,35 @@ module.exports = async function () {
         }
         rows.push(Object.assign(item(OVER), { at: DAY + 5 * HOUR + 30 * MIN }));
         const res = await generate(pool(), withDays(daily(), [ day({ layout: 'times', slots: rows }) ]), NOW);
-        const after = shows(res).filter( (a) => a.start >= SAT6 );
-        suite.check('the last row runs 14:09 past the end: the 6:00 show starts 6:14:09, the next right after it, 7:00 on time',
-            after[0].start === sat(6, 14, 9) && after[1].start === sat(6, 36, 9) && after[2].start === sat(7), after.slice(0, 3).map(line).join(' / '));
-        suite.check('...nothing turns to Flex: the 6:00 and 6:30 shows both air', after[0].program.showTitle === 'A' && after[1].program.showTitle === 'B', '');
+        const after = withStarts(res).filter( (a) => a.start >= SAT6 - MIN );
+        const brk = after.find( (a) => a.program.isOffline );
+        const programs = after.filter( (a) => ! a.program.isOffline );
+        suite.check('the last row runs 14:09 past the end: a break holds it to the next half hour (the day\'s own mark) - 6:14:09 to 6:30 - which lands exactly on B\'s slot, so A\'s 6:00 slot is skipped rather than run late',
+            brk && (brk.start === sat(6, 14, 9)) && (brk.program.duration === 15 * MIN + 51 * SEC)
+                && (programs[0].start === sat(6, 30)) && (programs[0].program.showTitle === 'B'),
+            after.slice(0, 2).map( (a) => a.program.isOffline ? `${clock(a.start)} Flex ${a.program.duration / 1000}s` : line(a) ).join(' / '));
+    }
+    {
+        // Same overrun, the day set to the quarter hour: 6:15 isn't on the half-hour
+        // slot grid, so the break is short (just long enough for a sign-off and a
+        // sign-on) and the slot it lands in - A, from 6:00 - runs late and catches
+        // up, exactly as after a swap set to run late.
+        const OVER = movie('Runs Over', 44 * MIN + 9 * SEC, 6);
+        const rows = [];
+        for (let k = 0; k < 47; k++) {
+            rows.push({ showId: 'tv.X', order: 'next', at: 6 * HOUR + k * 30 * MIN });
+        }
+        rows.push(Object.assign(item(OVER), { at: DAY + 5 * HOUR + 30 * MIN }));
+        const res = await generate(pool(), withDays(daily(), [ day({ layout: 'times', slots: rows, rounding: 'quarter' }) ]), NOW);
+        const after = withStarts(res).filter( (a) => a.start >= SAT6 - MIN );
+        const brk = after.find( (a) => a.program.isOffline );
+        const programs = after.filter( (a) => ! a.program.isOffline );
+        suite.check('...on the quarter hour: the break is only to 6:15 (51s); A then runs 15:00 late, back on time by 7:00',
+            brk && (brk.start === sat(6, 14, 9)) && (brk.program.duration === 51 * SEC)
+                && (programs[0].start === sat(6, 15)) && (programs[0].program.showTitle === 'A')
+                && (programs[1].start === sat(6, 37)) && (programs[1].program.showTitle === 'B')
+                && (programs[2].start === sat(7)) && (programs[2].program.showTitle === 'C'),
+            after.slice(0, 5).map( (a) => a.program.isOffline ? `${clock(a.start)} Flex ${a.program.duration / 1000}s` : line(a) ).join(' / '));
     }
     {
         // L, 44:00, in the 5:30 slot: still on at 6:00.
