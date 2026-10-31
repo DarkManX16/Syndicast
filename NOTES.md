@@ -45,7 +45,9 @@ below says what we do and why. **Syndicast innovates.**
   `node scripts/editor-workflows.js --url http://localhost:<port> --channel 3`
   does all eight against a running preview, from a fresh page each, clicking
   each control with the real mouse at its middle after checking nothing covers
-  it there (a covered button fails, naming what covers it). It saves a channel
+  it there (a covered button fails, naming what covers it). It waits for each
+  save to land rather than a fixed delay, and when the first screen of the list
+  is all kept edits it scrolls on until it finds a plain row. It saves a channel
   and a filler list, so it refuses port 18000. `--only` runs some of them
   (`first-open-silent`, `open-cancel`, `open-update`, `library-add`, `delete`,
   `add-delete-create`, `swap-drag-put-back`, `create-lineup`, `filler`);

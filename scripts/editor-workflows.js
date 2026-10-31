@@ -86,6 +86,19 @@ function makeRunner(opts, page) {
         }
         return r.json();
     };
+    // A save, waited for until it has landed: the page's requests settle, then the server's
+    // answer at `path` passes `landed` - never a fixed delay. The last answer either way,
+    // for the caller's own check to say what went wrong.
+    const waitForSave = async (path, landed, timeout = 60000) => {
+        await page.waitForNetworkIdle({ idleTime: 500, timeout }).catch(() => {});
+        const until = Date.now() + timeout;
+        let last = await api(path);
+        while (!landed(last) && Date.now() < until) {
+            await sleep(300);
+            last = await api(path);
+        }
+        return last;
+    };
 
     // The first visible element matching selector whose text matches, waited for.
     const find = async (selector, text, what, timeout = 30000) => {
@@ -193,6 +206,10 @@ function makeRunner(opts, page) {
         if (await editorShowing()) {
             throw new Check(`the editor stayed open after ${name}`);
         }
+        if (name === 'Update Channel') {
+            // the channel's save, sent as the editor closes, finished
+            await page.waitForNetworkIdle({ idleTime: 500, timeout: 120000 }).catch(() => {});
+        }
     };
 
     // Each row of the list from now on for `days`: its instant, what it is, and its mark.
@@ -249,18 +266,41 @@ function makeRunner(opts, page) {
         top: r.getBoundingClientRect().top,
     })));
     const rowHandle = async (k) => (await page.$$('#channelConfigProgramList .psr-row'))[k];
-    // A plain episode row a little way into the list, clear of the airing on air.
-    const plainRow = async (skip) => {
-        const rows = (await rowsInView()).filter((r) => r.canSwap && !r.kept && !r.flex);
-        if (rows.length <= skip) {
-            throw new Check('no plain episode row in view to use');
+    // A plain episode row a little way into the list, clear of the airing on air, with
+    // `after` more plain rows below it in view. When the screen is all kept edits, the list
+    // scrolls on a screen at a time until there is one.
+    const plainRow = async (skip, after = 0) => {
+        for (let screen = 0; screen < 80; screen++) {
+            const box = await page.evaluate(() => {
+                const r = document.getElementById('channelConfigProgramList').getBoundingClientRect();
+                return { top: r.top, bottom: r.bottom };
+            });
+            const rows = (await rowsInView()).filter((r) => r.canSwap && !r.kept && !r.flex && r.top >= box.top && r.top <= box.bottom - 40);
+            if (rows.length > skip + after) {
+                return rows[skip];
+            }
+            const first = (await rowsInView())[0];
+            const moved = await page.evaluate(() => {
+                const el = document.getElementById('channelConfigProgramList');
+                const was = el.scrollTop;
+                el.scrollTop = was + Math.floor(el.clientHeight * 0.8);
+                return el.scrollTop !== was;
+            });
+            if (!moved) {
+                break;
+            }
+            // vs-repeat draws the rows for the new place
+            await page.waitForFunction((start) => {
+                const r = document.querySelector('#channelConfigProgramList .psr-row .psr-start');
+                return r !== null && r.textContent !== start;
+            }, { timeout: 10000, polling: 100 }, first ? first.start : '').catch(() => {});
         }
-        return rows[skip];
+        throw new Check('no plain episode row in the list to use');
     };
 
     // Swap a plain episode a little way in for the first episode of its show that fits.
-    const swapOne = async () => {
-        const row = await plainRow(2);
+    const swapOne = async (after = 0) => {
+        const row = await plainRow(2, after);
         await click(await (await rowHandle(row.k)).$('button[title="Swap..."]'), `${row.show} at ${row.start}'s Swap`);
         const fits = await page.waitForFunction(() => [...document.querySelectorAll('.modal .list-group button.list-group-item')]
             .find((b) => b.getClientRects().length > 0 && /fits/.test(b.textContent) && !b.querySelector('.text-success.ng-hide')) || null,
@@ -486,7 +526,7 @@ function makeRunner(opts, page) {
             if (closed === null) {
                 throw new Check('Create Lineup didn\'t finish in 5 minutes');
             }
-            await sleep(2000);
+            await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 }).catch(() => {});
             await closeWith('Update Channel');
             const after = await api(`/api/channel/${opts.channel}`);
             const neverAir = (await api(`/api/channel/${opts.channel}/catalog`)).neverAir || {};
@@ -513,7 +553,8 @@ function makeRunner(opts, page) {
         'swap-drag-put-back': async () => {
             await openEditor();
             const said = [];
-            const { row, text } = await swapOne();
+            // with plain rows after it to drag
+            const { row, text } = await swapOne(4);
             said.push(text);
             // Drag: a plain row dropped a few rows further on.
             // Both rows inside the list's visible part (vs-repeat also draws rows past it).
@@ -585,7 +626,7 @@ function makeRunner(opts, page) {
             if (closed === null) {
                 throw new Check('Create Lineup didn\'t finish in 5 minutes');
             }
-            await sleep(2000);
+            await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 }).catch(() => {});
             const said = await lastChange();
             await closeWith('Update Channel');
             const after = await api(`/api/channel/${opts.channel}`);
@@ -637,8 +678,7 @@ function makeRunner(opts, page) {
             await click(trash, 'the first clip\'s delete');
             await sleep(500);
             await clickText('.modal-footer button', 'Done', 'the filler list\'s Done');
-            await sleep(1500);
-            const after = await api(`/api/filler/${target.id}`);
+            const after = await waitForSave(`/api/filler/${target.id}`, (f) => f.content.length === before.content.length - 1);
             const key = (c) => c.key || c.title;
             if (after.content.length !== before.content.length - 1) {
                 throw new Check(`${before.content.length} clips, ${after.content.length} after deleting one`);
