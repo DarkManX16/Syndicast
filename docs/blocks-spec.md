@@ -1465,7 +1465,7 @@ movies in a custom show), with a between-shows step keyed on `next`:
 3. **Per-list cooldown persistence.** Fixed in stage 1. Per-list last-played now lives in the same store as per-clip times (`<data>/play-cache/<channel>/`), under a key that cannot collide with a program key, so it is loaded at boot like everything else there. No new DAO and no migration.
 
    Fixing it exposed a defect underneath. Which list a clip is credited to was assigned twice, and the second assignment overwrote the first, so a clip chosen by the longest-idle branch was credited to whichever list happened to win the weighted draw — measured at 9 percent of picks. That was invisible while list cooldowns were forgotten on restart. Persisting them would have made it permanent, so it was fixed in the same pass.
-4. **One-off airings.** Deferred. Adding a single-date option to an airing is small and non-breaking later, and leaving it out keeps the stage 2 editor simpler. Revisit when a one-off marathon is actually wanted.
+4. **One-off airings.** Settled Oct 29, 2026, when a one-off marathon was wanted (channel 1, Fri Jan 1, 2027): not a single-date option on an airing, but a **special day** on the Time Slots schedule - dated rows of its own for its hours, and optionally a block that covers the whole day, checked first by `resolveContext`. A block never gains a dated airing, so none is left behind. See "Special days" in NOTES.md, under Known issues.
 
 ## Notes
 
