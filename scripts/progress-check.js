@@ -37,6 +37,13 @@
  *       [--around "<local time>"]  the three hours either side, saved and regenerated, Flex after each
  *       [--changed <days>]        airings whose start or episode differ over that many days, by show
  *       [--restart-on-air]        as before Oct 12, 2026: the program on air starts again, and counts as not aired
+ *       [--special <day.json>]    a special day (src/special-days.js) added to the schedule, repeatable;
+ *                                 the lineup is also made without them, from the same pool and kept rows
+ *       [--timetable]             with --special: each day's airings, start, end and the Flex after,
+ *                                 the rows that won't air, and how the regular schedule picks up after
+ *       [--outside <days>]        with --special: every airing outside the days against the lineup made
+ *                                 without them - slot, show, start and episode, by show
+ *       [--follow <regex>]        with --outside: where matching shows stand either side of the days
  *       [--start <show|mode|seasons=episode>]  Episode start, repeatable: the position of <show> in <mode>
  *                                 (next, shuffle, rerun) leaving out <seasons> (comma-separated, may be
  *                                 empty) plays <episode> next - S01E34, or #12 for the 12th item of a
@@ -59,6 +66,8 @@ const showCatalog = require('../src/show-catalog');
 const rounds = require('../src/shuffle-rounds');
 const pinTools = require('../src/pins');
 const keptRows = require('../src/kept-rows');
+const specialDays = require('../src/special-days');
+const specialReport = require('./lib/special-days-report');
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -91,6 +100,10 @@ function parseArgs(argv) {
         else if (a === '--restart-on-air') args.restartOnAir = true;
         else if (a === '--first-open') args.firstOpen = true;
         else if (a === '--save-edited') args.saveEdited = next();
+        else if (a === '--special') (args.special = args.special || []).push(next());
+        else if (a === '--timetable') args.timetable = true;
+        else if (a === '--outside') args.outside = Number(next());
+        else if (a === '--follow') args.follow = new RegExp(next());
         else if ( [ '--swap', '--remove', '--move', '--put-back' ].indexOf(a) !== -1 ) (args.edits = args.edits || []).push({ what: a.slice(2), spec: next() });
         else throw new Error('Unknown argument ' + a);
     }
@@ -334,6 +347,17 @@ async function main() {
     } );
     if (total0 <= 0) pins = [];
     if (carry && (carry.program.pin || keptRows.keptKind(carry.program))) pins = pins.filter( (x) => x.program !== carry.program );
+    // Special days: the same run without them first, for --outside.
+    let specials = (args.special || []).map( (f) => JSON.parse(fs.readFileSync(f, 'utf8')) );
+    let base = null;
+    let regular = JSON.parse(JSON.stringify(schedule));
+    if (specials.length > 0) {
+        let copy = (x) => (typeof(x) === 'undefined') ? undefined : JSON.parse(JSON.stringify(x));
+        base = await generate(copy(pool), regular, at, copy(history), pins.length ? copy(pins) : undefined, copy(carry || undefined));
+        schedule.specialDays = (Array.isArray(schedule.specialDays) ? schedule.specialDays : []).concat(specials);
+        let problems = specialDays.problems(schedule, channel.blocks);
+        console.log(`special days: ${specials.map( (d) => d.name ).join(', ')}; problems: ${problems.length ? problems.map( (p) => p.text ).join(' / ') : 'none'}`);
+    }
     let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
     seasonConstraints.clearStartSeasons(schedule);
@@ -438,6 +462,23 @@ async function main() {
         }
         console.log(`CHANGED over ${args.changed} days: ${b.length} saved airings, ${a.length} regenerated; ${b.length - same} saved airings moved or changed:`
             + ` ${JSON.stringify(byShow)}`);
+    }
+
+    if (specials.length > 0) {
+        let customNames = {};
+        pool.forEach( (p) => { if (p.customShowId) customNames['custom.' + p.customShowId] = p.customShowName; } );
+        let showOf = (p) => { let id = getShowData(p).showId || p.title; return customNames[id] || id.replace(/^tv\./, ''); };
+        let nameOf = (p) => (p.type === 'movie' && ! p.customShowId) ? p.title : (p.customShowName ? `${p.customShowName}: ${p.title}` : `${p.showTitle} ${p.title}`);
+        let baseStart = Date.parse(base.startTime);
+        let baseTotal = base.programs.reduce( (a, p) => a + p.duration, 0 );
+        while (baseStart > at) baseStart -= baseTotal;
+        if (args.timetable) {
+            specials.forEach( (day) => specialReport.timetable({ day, programs: res.programs, startTime: newStart, regular, nameOf, print: (l) => console.log(l) }) );
+        }
+        if (args.outside) {
+            specialReport.outside({ days: specials, base: { programs: base.programs, startTime: baseStart }, withDays: { programs: res.programs, startTime: newStart },
+                regular, from: at, to: at + args.outside * DAY, showOf, follow: args.follow, print: (l) => console.log(l) });
+        }
     }
 
     if (args.save) {

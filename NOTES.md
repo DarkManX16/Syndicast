@@ -6391,7 +6391,66 @@ the start, 2700 at the end.
   then on the `blocks` build too (TypeError reading 'k'): when the dragged row came
   before the swap, the swap shifted with the playlist and Put back's lookup by start
   time missed it. The workflow drags a row after the swap now; it passed twice on
-  `blocks` and in the full run.
+  `blocks` and in the full run. Cherry-picked onto `blocks` as fb62a15 and pushed Oct 31,
+  since every session runs the script; the rest of Special days merges at step 7.
+
+**Step 2, the generator lays out a special day, Oct 31, 2026** (`special-days`). Proof on
+the step 1 copy (channels, custom shows and aliases still identical to the live files at
+2:20am Oct 31; two filler lists changed, which the generator never reads) with a fresh
+read-only catalog snapshot of channel 1 (138 shows, 11,792 items), regenerated as of
+2:20am. Suite 2700 at the start, 2730 at the end.
+
+- **What shipped.** `time-slots-service.js` lays out each special day not yet ended and
+  with nothing that stops it: a regular slot stops at a day's start (and the 5-minute pad
+  never steps over one); Set times rows are slots at their instants, filled by the
+  generator's own slot code; Back to back rows go in order (`backStep`), each at the next
+  :00 or :30 after the one before ends, playing its first item and any more that finish by
+  that half hour, padded and sharing the Flex as a regular slot (the sharing lifted into
+  `layPads`, unchanged); the list starts again when it runs out, and a row whose start is at
+  or after the end doesn't air. An airing still on past a day's end runs the regular
+  schedule late from its end through the run-late pin path, until a program starts on time.
+  This item rows place their program (no label, no kept mark, never moving a position);
+  every airing in a day carries `specialDay` and `specialRow` (a re-make during a Back to
+  back day carries on with the row after the program on air's). `show-orderers.js`: a
+  Keep-apart row (`apart`) plays a position keyed and labelled with the day's tag, from its
+  range's first episode with no record; a tagged record never counts as the show's Play
+  Next for a Rerun. A regular Repeat never re-airs a day's airing (its Rerun fallback).
+  Kept rows inside a day stay where they sit; Back to back's next row at the next half hour
+  after one. `test/special-days-generator.js`, 30 checks, all failing before the change but
+  the "no special days" one. `progress-check --special <day.json> --timetable --outside
+  <days> --follow <regex>` (report in `scripts/lib/special-days-report.js`) makes the lineup
+  with and without the days from the same pool, kept rows and carry.
+- **Ron's two days on channel 1, Advance, Back to back.** New Year's Eve Batman, Thu Dec 31
+  5:00pm to Fri 6:00am: Batman/New Batman Adventures, The Batman, Batman Beyond round and
+  round, 26 rows each on the :00 or :30, the longest Flex 9:43, then Ronin Warriors on time
+  at 6:00am. New Year's Toonami, Fri 6:00am to Sat 6:00am, the 16 Toonami shows, Bah
+  Humduck! (46:12), the 16 again, Osmosis Jones (1:35:24), the 16 again: Bah Humduck!
+  2:00-2:46pm, next row 3:00pm; Osmosis Jones 11:00pm-12:35am, next row 1:00am; rows 45-50
+  don't air (the day is full by 5:30am); every row on the :00 or :30, the longest Flex 24:36
+  (after Osmosis Jones); Baby Looney Tunes on time at 6:00am Saturday.
+- **Outside the two days, 300 days, 14,268 slot occurrences** against the same run without
+  them: every one keeps its show except three Tuesday noons (below). Episodes moved along in
+  the 60 shows the days displaced (7,239 occurrences kept apart, 6,732 advancing), and, in
+  Advance, the 9 marathon shows that weren't displaced (306) - none in Keep apart. I Am
+  Weasel: Mon Jan 4 2:30pm S4E5 instead of S4E8 (its three Jan 1 episodes waited). Advance:
+  Sailor Moon S1E29 Mon Jan 4 (the day aired S1E26-28), Ronin Warriors S1E17, The Batman
+  S2E10, Batman Beyond S2E12. Keep apart: Sailor Moon S1E26, X-Men: Evolution S2E2, each day
+  playing its shows from S1E1.
+- **The one knock-on, measured.** Toonheads is displaced the night of Jan 1-2, so its
+  double-length S8E8 (47:06) airs a week later than it would have. Where it lands it runs
+  into 13 Ghosts and The New Scooby-Doo Movies, and Looney Tunes' strip of 7-minute shorts at
+  noon fits one fewer - so Looney Tunes (133 occurrences), Metalocalypse (3, the same after an
+  Adult Swim show) and the three Tuesday noons left empty or filled change. The same happens
+  without special days whenever a displaced or swapped show's next episode is a different
+  length; it isn't something a day does to a show it doesn't touch.
+- **The workflow checklist** (`show-orderers.js` is bundled) on a preview of a fresh copy:
+  all nine pass on channel 1; delete, swap-drag-put-back and create-lineup pass on channel 3;
+  on channel 2, swap-drag-put-back found no plain row after its swap to drag (four of Ron's
+  kept swaps sit in the first screen) - delete and create-lineup pass there.
+- **Left for step 3:** `placeOf` doesn't read the tag yet, so a Keep-apart airing would be
+  read as its regular position's place by the planner - nothing can make a day in the
+  editor until step 5. Starts on a day's rows, and a re-make during a day with no program
+  carried, come with step 3.
 
 ### Chapter and segment detector, and stage 6 midrolls
 

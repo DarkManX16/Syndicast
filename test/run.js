@@ -60,6 +60,7 @@ const suites = [
     './pins',
     './kept-rows',
     './special-days',
+    './special-days-generator',
     './build-check',
     './multi-part',
     './shuffle-rounds',

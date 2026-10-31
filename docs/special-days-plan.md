@@ -100,7 +100,7 @@
   - Kept rows inside a day (from `keptRows.keptAhead`, in the list `pins` used) stay where they sit, as the generator places any kept row; in Back to back the next row starts at `nextHalfHour` after one. A Set times row is placed at its instant through the same one-off-slot path a row kept in time uses.
 - `progress-check --special <day.json>` (repeatable), `--special-from-block "<block name>"`, and `--timetable <dayId>` printing every airing of the day with start, end and Flex after, then the regular schedule's first hour after it and when it is back on time.
 
-- [ ] **Step 1: Write the failing tests** (fixtures as `test/pins-generator.js` builds them: a weekly schedule of half-hour Play Next slots, 22:00 and 11:00 episodes, custom shows of movies of 47:00 and 95:00, pad 5 minutes):
+- [x] **Step 1: Write the failing tests** (fixtures as `test/pins-generator.js` builds them: a weekly schedule of half-hour Play Next slots, 22:00 and 11:00 episodes, custom shows of movies of 47:00 and 95:00, pad 5 minutes):
   - `no special days: the same lineup` - absent, `[]` and only aired days, deep-equal.
   - `Set times: the day's rows replace the regular slots for its hours, and nothing outside moves`.
   - `Back to back: 47:00 at 6:00, next row 7:00; 95:00 at 7:00, next row 9:00; no Flex longer than 30:00`.
@@ -117,10 +117,10 @@
   - `a kept swap inside a Back to back day: stays where it sits, the next row at the next half hour after it`.
   - `a day's airings carry no kept mark, and keptRows.clearWrong and firstOpen leave them alone`.
   - `the fall-back night inside a day: each Set times row airs once`.
-- [ ] **Step 2:** run the file - Expected: failures.
-- [ ] **Step 3:** Implement.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the copy**, a fresh catalog snapshot beside it, regenerated at the time of the run:
+- [x] **Step 2:** run the file - Expected: failures.
+- [x] **Step 3:** Implement.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5: Proof on the copy**, a fresh catalog snapshot beside it, regenerated at the time of the run:
   - **Additive:** channels 1-3 with no special day, at now, Sat Dec 19 noon and Thu Dec 31 noon, against the `blocks` checkout's `progress-check --save`: 0 programs differ.
   - **New Year's, Back to back, Advance**: the 16 Toonami rows, plus two Cartoon Theatre Movies rows picked as This item - the 46-minute and a 95-minute-or-longer film - placed after the second pass's Monday and Wednesday shows. The timetable: every row on a :00 or :30, no Flex stretch of 30 minutes or more, where the day's last item ends and when the regular schedule is back on time. X-Men: Evolution and Sailor Moon's episodes in the day and their next regular airings after it (expected for three full passes: S2E3-5, then S2E6 Mon Jan 4; S1E26-28, then S1E29 - fewer passes with the movies in, and the proof says how many). I Am Weasel S4E5 Mon Jan 4 2:30pm.
   - **The same day, Keep apart:** X-Men S2E3 and Sailor Moon S1E26 on Mon Jan 4; each marathon show starting at its range's first episode.
@@ -128,7 +128,7 @@
   - **Every other date:** over 300 days, every airing outside the window in the same slot with the same show and the same time; episode differences only for the 50 displaced shows and the marathon's shows, counted by show.
   - **Twice in a row:** each result regenerated from itself, before the day (now, Dec 31 noon): identical airing for airing to the end.
   - The workflow checklist on a preview of a fresh copy (`show-orderers.js` is bundled), all passing.
-- [ ] **Step 6:** Commit `Special days: the generator lays out a special day`. **Stop** and report.
+- [x] **Step 6:** Commit `Special days: the generator lays out a special day`. **Stop** and report.
 
 ## Step 3 - Stored progress and episode starts on a special day
 
