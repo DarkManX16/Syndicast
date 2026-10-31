@@ -10,6 +10,16 @@
  *       (--day <day.json> | --fill-from-block "<block name>" --from <YYYY-MM-DDTHH:MM> --to <YYYY-MM-DDTHH:MM>)
  *       [--layout back|times]                  default back; times fills the day with fillTimes
  *   node scripts/special-days-check.js --data <dataDir> --slot-at <other checkout> [--days 300]
+ *   node scripts/special-days-check.js --data <dataDir> --file <channel.json> --breaks --from <ISO> --to <ISO>
+ *       every break from `from` to `to` in that saved lineup: its situation, the contexts either
+ *       side, the mix that fills it, and the clips its steps play (src/transitions.js buildPlan,
+ *       the real filler lists from <dataDir>/filler, every clip equally idle)
+ *   node scripts/special-days-check.js --data <dataDir> --file <channel.json> --guide --from <ISO> --to <ISO>
+ *       [--plain]      the guide (TVGuideService#getChannelPrograms, which the XMLTV file, the web
+ *                      guide and the API guide all read) against the lineup; --plain also builds it
+ *                      with the special days taken off the channel and counts what differs
+ *       [--context-from <ISO> --context-to <ISO>]  resolveContext every minute, with and without the
+ *                      special days, outside their windows
  *
  * Reads only the files it is given; writes nothing.
  *
@@ -38,6 +48,12 @@ function parseArgs(argv) {
         else if (a === '--layout') args.layout = next();
         else if (a === '--slot-at') args.slotAt = next();
         else if (a === '--days') args.days = Number(next());
+        else if (a === '--file') args.file = next();
+        else if (a === '--breaks') args.breaks = true;
+        else if (a === '--guide') args.guide = true;
+        else if (a === '--plain') args.plain = true;
+        else if (a === '--context-from') args.contextFrom = Date.parse(next());
+        else if (a === '--context-to') args.contextTo = Date.parse(next());
         else throw new Error('unknown argument ' + a);
     }
     if (! args.data) {
@@ -173,8 +189,102 @@ function slotAtReport(args) {
     }
 }
 
+const clock = (t) => new Date(t).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const ctxName = (c) => (c == null) ? '(channel Flex)' : c.name;
+const without = (channel) => Object.assign( {}, channel, { scheduleBackup: Object.assign( {}, channel.scheduleBackup, { specialDays: [] } ) } );
+
+function breaksReport(args) {
+    const transitions = require('../src/transitions');
+    const dayParts = require('../src/day-parts');
+    let channel = JSON.parse(fs.readFileSync(args.file, 'utf8'));
+    let lists = {};
+    let getList = (id) => {
+        if (! (id in lists)) {
+            let p = path.join(args.data, 'filler', `${id}.json`);
+            // the list's clips, with the id each was picked from
+            lists[id] = fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p, 'utf8')).content || null) : null;
+        }
+        return lists[id];
+    };
+    let env = { getList, lastPlayed: () => 0, featuresShows: () => false, card: () => null, log: () => {} };
+    let from = Date.parse(args.from);
+    let to = Date.parse(args.to);
+    let byContext = {};
+    let found = transitions.breaksBetween(channel, from, to);
+    console.log(`BREAKS from ${clock(from)} to ${clock(to)}: ${found.length}`);
+    for (const brk of found) {
+        let plan = transitions.buildPlan(channel, brk, env);
+        let mix = dayParts.resolveBreakContext(channel, brk.startTime, (brk.next != null) ? brk.next.startTime : null);
+        let key = `${plan.situation} ${ctxName(plan.from)} -> ${ctxName(plan.to)}`;
+        byContext[key] = (byContext[key] || 0) + 1;
+        let steps = (side) => plan[side].map( (x) => (x.clip && x.clip.title) || x.title || '?' ).join(' | ');
+        let p = (brk.prev != null) ? (brk.prev.program.showTitle || brk.prev.program.title) : '-';
+        let n = (brk.next != null) ? (brk.next.program.showTitle || brk.next.program.title) : '-';
+        console.log(`  ${clock(brk.startTime)}  ${p} -> ${n}`);
+        console.log(`      ${plan.situation}: ${ctxName(plan.from)} -> ${ctxName(plan.to)}; mix ${ctxName(mix)}`
+            + `${plan.out.length ? '; out: ' + steps('out') : ''}${plan.in.length ? '; in: ' + steps('in') : ''}`);
+    }
+    console.log('  by situation and context:');
+    Object.keys(byContext).forEach( (k) => console.log(`    ${byContext[k]}  ${k}`) );
+}
+
+async function guideReport(args) {
+    const TVGuideService = require('../src/services/tv-guide-service');
+    const dayParts = require('../src/day-parts');
+    let channel = JSON.parse(fs.readFileSync(args.file, 'utf8'));
+    let from = Date.parse(args.from);
+    let to = Date.parse(args.to);
+    // Prepared as the service prepares a channel, as test/blocks-guide.js does it.
+    let guideFor = async (ch) => {
+        let g = new TVGuideService(null, null, null, null, null);
+        g._throttle = async () => {};
+        g.channelsByNumber = { [ch.number]: ch };
+        g.accumulateTable = { [ch.number]: await g.makeAccumulated(ch) };
+        return await g.getChannelPrograms(from, to, ch);
+    };
+    // Guide entries ({ start, stop, title }): a program's is its show's title (a movie's its
+    // own), a long Flex's the context's guide name.
+    let guide = (await guideFor(channel)).programs.map( (x) => ({ start: Date.parse(x.start), title: x.title }) );
+    let lineup = airingsOf(channel, from - 6 * HOUR, to).filter( (a) => ! a.program.isOffline && (a.start + a.program.duration > from) );
+    let titleOf = (p) => p.showTitle || p.title;
+    let missing = lineup.filter( (a) => ! guide.some( (x) => (Math.abs(x.start - Math.max(a.start, from)) <= 2000) && (x.title === titleOf(a.program)) ) );
+    let flex = guide.filter( (x) => ! lineup.some( (a) => (Math.abs(x.start - Math.max(a.start, from)) <= 2000) && (x.title === titleOf(a.program)) ) );
+    console.log(`GUIDE from ${clock(from)} to ${clock(to)}: ${guide.length} entries for ${lineup.length} airings; `
+        + `${missing.length === 0 ? 'every airing at its lineup time, under its title' : missing.length + ' airings not in the guide, e.g. ' + clock(missing[0].start) + ' ' + titleOf(missing[0].program)}`);
+    console.log(`  entries of a long Flex: ${flex.length}${flex.length ? ' - ' + flex.map( (x) => clock(x.start) + ' "' + x.title + '"' ).join('; ') : ''}`);
+    if (args.plain) {
+        let plainGuide = (await guideFor(without(channel))).programs.map( (x) => `${x.start}|${x.title}` );
+        let differ = guide.map( (x) => `${new Date(x.start).toISOString()}|${x.title}` ).filter( (k, i) => k !== plainGuide[i] );
+        console.log(`  with the special days taken off the channel: ${differ.length} entries differ${differ.length ? ': ' + differ.slice(0, 6).join(' / ') : ''}`);
+    }
+    if (! isNaN(args.contextFrom)) {
+        let plain = without(channel);
+        let windows = (channel.scheduleBackup.specialDays || []).map( (d) => sd.windowOf(d) ).filter( (w) => w !== null );
+        let outside = 0;
+        let differ = 0;
+        let insideNames = {};
+        for (let t = args.contextFrom; t < args.contextTo; t += MIN) {
+            let a = dayParts.resolveContext(channel, t);
+            if (windows.some( (w) => (t >= w.from) && (t < w.to) )) {
+                insideNames[ctxName(a)] = (insideNames[ctxName(a)] || 0) + 1;
+                continue;
+            }
+            outside++;
+            let b = dayParts.resolveContext(plain, t);
+            if ( ((a && a.id) || null) !== ((b && b.id) || null) ) {
+                differ++;
+            }
+        }
+        console.log(`CONTEXT every minute from ${clock(args.contextFrom)} to ${clock(args.contextTo)}: ${outside} minutes outside the days, ${differ} resolve differently; inside: ${JSON.stringify(insideNames)}`);
+    }
+}
+
 let args = parseArgs(process.argv.slice(2));
-if (args.slotAt) {
+if (args.breaks) {
+    breaksReport(args);
+} else if (args.guide) {
+    guideReport(args).catch( (e) => { console.error(e); process.exitCode = 1; } );
+} else if (args.slotAt) {
     slotAtReport(args);
 } else {
     if (! args.channel || (! args.day && ! args.block)) {

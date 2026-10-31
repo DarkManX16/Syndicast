@@ -166,13 +166,13 @@
 - `resolveContext(channel, instant)`: inside a special day naming a block that exists, that block object; otherwise as now. Reads `channel.scheduleBackup.specialDays`; a channel with none takes exactly today's path.
 - `hasOverlay` is true for a channel whose only overlay is a special day's block.
 
-- [ ] **Step 1: Write the failing tests:** `inside the day, Toonami - the same object as channel.blocks[0]`; `a regular Toonami airing inside the day is the same context: no boundary at 3:00pm`; `the break before the day's first row: boundary, entering Toonami`; `breaks inside: betweenShows or betweenEpisodes in Toonami, never a boundary`; `the break after the last item, which started inside: boundary, leaving Toonami, entering CN City (Day)`; `a day with no block: the overlay as it was`; `a day naming a deleted block: as it was`; `an aired day changes nothing`; `guide names: a long Flex inside the day takes the block's guide name`.
-- [ ] **Step 2:** run them - Expected: failures.
-- [ ] **Step 3:** Implement.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the copy**, the New Year's lineup from step 3: `transitions-plan-day.js --at 2027-01-01` walks every break from Thu Dec 31 6:00pm to Sat Jan 2 noon with the real lists: the break before the first row plays Toonami's 3 + 2 entering steps; every break inside is Toonami's, with its mix; no step from Cartoon Cartoon Fridays, Toonami Midnight Run or the day-parts plays inside; the break after the day plays Toonami's 2 leaving steps then CN City (Day)'s entering ones. Minute by minute from Sun Dec 27 to Sat Jan 9, `resolveContext` equals `blocks`' answer everywhere outside the window. The guide, built by `getChannelPrograms` and the real XMLTV writer on the copy for Jan 1: the marathon's programs at the lineup's times, and `blocks`' guide everywhere else.
+- [x] **Step 1: Write the failing tests:** `inside the day, Toonami - the same object as channel.blocks[0]`; `a regular Toonami airing inside the day is the same context: no boundary at 3:00pm`; `the break before the day's first row: boundary, entering Toonami`; `breaks inside: betweenShows or betweenEpisodes in Toonami, never a boundary`; `the break after the last item, which started inside: boundary, leaving Toonami, entering CN City (Day)`; `a day with no block: the overlay as it was`; `a day naming a deleted block: as it was`; `an aired day changes nothing`; `guide names: a long Flex inside the day takes the block's guide name`.
+- [x] **Step 2:** run them - Expected: failures.
+- [x] **Step 3:** Implement.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5: Proof on the copy**, the New Year's lineup from step 3: `transitions-plan-day.js --at 2027-01-01` walks every break from Thu Dec 31 6:00pm to Sat Jan 2 noon with the real lists: the break before the first row plays Toonami's 3 + 2 entering steps; every break inside is Toonami's, with its mix; no step from Cartoon Cartoon Fridays, Toonami Midnight Run or the day-parts plays inside; the break after the day plays Toonami's 2 leaving steps then CN City (Day)'s entering ones. Minute by minute from Sun Dec 27 to Sat Jan 9, `resolveContext` equals `blocks`' answer everywhere outside the window. The guide, built by `getChannelPrograms` and the real XMLTV writer on the copy for Jan 1: the marathon's programs at the lineup's times, and `blocks`' guide everywhere else.
   - The workflow checklist on a preview of a fresh copy (`day-parts.js` is bundled), all passing.
-- [ ] **Step 6:** Commit `Special days: the block for the day`. **Stop** and report.
+- [x] **Step 6:** Commit `Special days: the block for the day`. **Stop** and report.
 
 ## Step 5 - The Time Slots dialog's Special days
 

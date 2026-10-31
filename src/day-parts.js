@@ -17,6 +17,8 @@
  * running server.
  */
 
+const specialDays = require('./special-days');
+
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
 const WEEK = 7 * DAY;
@@ -358,8 +360,29 @@ function blockContextAt(channel, instant) {
  * are checked first unconditionally, per the spec's definition of context; a
  * day-part chain has no notion of "paused while a block airs", so a block
  * simply outranks whatever the day-part chain would otherwise say.
+ *
+ * A special day naming a block outranks both: the whole day is that block -
+ * the block object itself, so its own airings inside the day are the same
+ * context and no boundary falls there. Nothing is written to the block, so
+ * every other moment resolves exactly as before. See NOTES.md, "Special days".
  */
+function specialBlockAt(channel, instant) {
+    if (! hasBlocks(channel) || (channel.scheduleBackup == null) || ! Array.isArray(channel.scheduleBackup.specialDays)
+         || (channel.scheduleBackup.specialDays.length === 0) ) {
+        return null;
+    }
+    let day = specialDays.dayAt(channel.scheduleBackup, instant);
+    if ( (day === null) || (typeof(day.blockId) !== 'string') ) {
+        return null;
+    }
+    return channel.blocks.find( (b) => (b != null) && (b.id === day.blockId) ) || null;
+}
+
 function resolveContext(channel, instant) {
+    let special = specialBlockAt(channel, instant);
+    if (special !== null) {
+        return special;
+    }
     let block = blockContextAt(channel, instant);
     if (block !== null) {
         return block;

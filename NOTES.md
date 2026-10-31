@@ -6537,6 +6537,39 @@ channel 1 catalog snapshot, and Plex's two movie libraries read once (GET only),
   an earlier row's episodes again would be a new row kind (a Repeat of a row of the day) for
   Ron to decide.
 
+**Step 4, the block for the day, Oct 31, 2026** (`special-days`). Proof on run 1 of step 3 (the
+Full Cycle and Batman days laid out as of 4:17am Oct 31 on the step 1 copy), with the copy's
+filler lists refreshed from the live ones at 8:21am. Suite 2754 at the start, 2767 at the end.
+
+- **What shipped.** `resolveContext` asks `specialBlockAt` first: a moment inside a special day
+  naming a block that exists is that block - the block object itself, so its own airings inside
+  the day are the same context. A day with no block, or a block that's gone, and an on-demand
+  channel, resolve as before. `hasOverlay` needs nothing: the block is one of the channel's.
+  `test/special-days-block.js`, 13 checks, 10 failing first (the other 3 are "as before").
+  `scripts/special-days-check.js` gains `--breaks` (every break with its situation, contexts,
+  mix and the clips `buildPlan` picks from the real lists) and `--guide` (`getChannelPrograms`
+  against the lineup, `--plain` without the days, `--context-from/-to` every minute).
+- **The breaks, 5:00am Jan 1 to 7:30am Jan 2, 40 of them, Ron's real steps:** the break before
+  the first row (5:50am) is the one boundary, Adult Swim into Toonami - out: Adult Swim's
+  "First Aid" sign-off, CN Next Toonami, a Toonami NEXT promo; in: the Powerhouse intro; 34
+  inside are Toonami's (12 between episodes, 22 between shows: Toonami bumpers, show intros),
+  with Toonami's mix - none at 3:00pm, 5:00pm or 1:00am, where Toonami's own airing, Cartoon
+  Cartoon Fridays and the Midnight Run would begin; CN City (Day) from 6:23am Saturday.
+- **Found: no sign-off when the day's last item runs over.** The last row, Super Friends at
+  5:15am, runs to 6:01:05, and the regular schedule picks up at 6:01:05 with no Flex between
+  (the run-late rule), so there is no break and Toonami's leaving steps have nowhere to play.
+  Only when the last item runs past the end; for Ron to decide how (below).
+- **The guide**, Thu 4:00pm to Sat 8:00am: 64 entries for 64 airings, each at its lineup time
+  under its title, the films too; identical with the days taken off the channel - no break in
+  either day reaches the 30 minutes that gives a Flex its own entry (and with it a guide name),
+  which `test/special-days-block.js` covers. **Context every minute** Sun Dec 27 to Sun Jan 10:
+  17,940 minutes outside the days, 0 different; inside, New Year's Toonami 1,440 minutes, New
+  Year's Eve (no block) Primetime, Powerhouse Era and Adult Swim as on any Thursday night.
+- **The workflow checklist** (`day-parts.js` is bundled), fresh copy taken 8:24am, port 18210,
+  with the script made sturdier first (1a77b18 on `blocks`: saves waited for, the list scrolled
+  past kept edits): all nine pass on channel 1 - delete used Cowboy Bebop at 3:30am Nov 1, past
+  27 kept edits.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's
