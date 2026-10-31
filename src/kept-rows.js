@@ -26,6 +26,7 @@
 const slotProgress = require('./slot-progress');
 const rounds = require('./shuffle-rounds');
 const pins = require('./pins');
+const specialDays = require('./special-days');
 const SLACK = require('./constants').SLACK;
 const showDataOf = require('../web/services/get-show-data')();
 
@@ -159,8 +160,27 @@ function rowsOf({ programs, startTime }) {
 }
 const blockOf = (row) => row.program.duration + row.flex;
 
-function whyNot({ row, now, what }) {
-    return pins.whyNot({ airing: Object.assign({}, row.program, { start: row.start }), now: now, what: what });
+/*
+ * The one reason every edit refuses first: the instant is inside a special
+ * day (src/special-days.js). The day is a plan made by hand - its own rows,
+ * and any earlier edit whose time now falls inside it, are changed from the
+ * Time Slots dialog's Special days editor instead, never from the list.
+ * `schedule` is optional; without one, or without any special days on it,
+ * this is always null.
+ */
+function specialDayMessage(schedule, at) {
+    let day = specialDays.dayAt(schedule, at);
+    return (day !== null) ? `Change this in Time Slots, ${day.name}.` : null;
+}
+
+/*
+ * Why a row can't have `what` done to it now - as pins.whyNot, with
+ * specialDayMessage checked first. Swap, Insert after, Delete and a drag
+ * into, out of or inside a special day are all refused this way.
+ */
+function whyNot({ row, now, what, schedule }) {
+    return specialDayMessage(schedule, row.start)
+        || pins.whyNot({ airing: Object.assign({}, row.program, { start: row.start }), now: now, what: what });
 }
 
 /*
@@ -542,7 +562,7 @@ function swap({ lineup, index, item, choice, now, schedule }) {
     if ( (typeof(row) === 'undefined') || row.program.isOffline ) {
         return { refused: 'Pick a program to swap.' };
     }
-    let why = whyNot({ row, now, what: 'swap' });
+    let why = whyNot({ row, now, what: 'swap', schedule });
     if (why !== null) {
         return { refused: why };
     }
@@ -625,14 +645,14 @@ function swap({ lineup, index, item, choice, now, schedule }) {
  * after it, or, when it is longer than the break, the rows after run late
  * until a break absorbs it.
  */
-function insertAfter({ lineup, index, item, now }) {
+function insertAfter({ lineup, index, item, now, schedule }) {
     let rows = rowsOf(lineup);
     let k = rows.findIndex( (r) => r.index === index );
     let row = rows[k];
     if ( (typeof(row) === 'undefined') || row.program.isOffline ) {
         return { refused: 'Pick a program to insert after.' };
     }
-    let why = whyNot({ row, now, what: 'insert' });
+    let why = whyNot({ row, now, what: 'insert', schedule });
     if (why !== null) {
         return { refused: why };
     }
@@ -693,7 +713,7 @@ function insertMany({ lineup, index, items, now }) {
  * one line; an episode's says nothing - the list shows it gone. A kept row's
  * Delete is Put back, and the airing on air stays.
  */
-function deleteRow({ lineup, index, now }) {
+function deleteRow({ lineup, index, now, schedule }) {
     let programs = lineup.programs;
     let p = programs[index];
     if (typeof(p) === 'undefined') {
@@ -703,6 +723,10 @@ function deleteRow({ lineup, index, now }) {
         return { refused: `${title(p)} is kept where you put it: Put back takes it out.` };
     }
     let at = startsOf(lineup)[index];
+    let dayWhy = specialDayMessage(schedule, at);
+    if (dayWhy !== null) {
+        return { refused: dayWhy };
+    }
     if (! p.isOffline) {
         let why = pins.whyNot({ airing: Object.assign({}, p, { start: at }), now: now, what: 'remove' });
         if (why !== null) {
@@ -741,7 +765,7 @@ function removeOnly({ lineup, index, now, schedule }) {
     if ( (typeof(row) === 'undefined') || row.program.isOffline ) {
         return { refused: 'Pick a program to remove.' };
     }
-    let why = whyNot({ row, now, what: 'remove' });
+    let why = whyNot({ row, now, what: 'remove', schedule });
     if (why !== null) {
         return { refused: why };
     }
@@ -778,7 +802,7 @@ function leaveOut({ lineup, index, now, schedule, catalog }) {
     if (keepsItem(row.program)) {
         return { refused: `${title(row.program)} is kept where you put it: Put back first.` };
     }
-    let why = whyNot({ row, now, what: 'remove' });
+    let why = whyNot({ row, now, what: 'remove', schedule });
     if (why !== null) {
         return { refused: why };
     }
@@ -832,7 +856,7 @@ function rowNote(program) {
  * earlier, earlier when it moves later - and are back on time where it came
  * from. A drag across more than a day asks first, unless `sure`.
  */
-function move({ lineup, from, to, now, sure }) {
+function move({ lineup, from, to, now, sure, schedule }) {
     let rows = rowsOf(lineup);
     let kf = rows.findIndex( (r) => r.index === from );
     let rf = rows[kf];
@@ -848,7 +872,9 @@ function move({ lineup, from, to, now, sure }) {
     if (typeof(rt) === 'undefined') {
         return { refused: 'Drop it in front of an airing.' };
     }
-    let why = whyNot({ row: rf, now, what: 'move' });
+    // Into, out of or inside a special day: both ends are checked, since
+    // either one landing in a day's window is a change to the day's own plan.
+    let why = whyNot({ row: rf, now, what: 'move', schedule }) || specialDayMessage(schedule, rt.start);
     if (why !== null) {
         return { refused: why };
     }
@@ -1098,7 +1124,7 @@ function putBack({ lineup, index, now, schedule, catalog }) {
         return { refused: `${title(program)} only moved with the rows around it.` + (by ? ` Put back ${title(by)} to move it back.` : '') };
     }
     let row = rowsOf(lineup).find( (r) => r.index === index );
-    let why = whyNot({ row, now, what: 'undo' });
+    let why = whyNot({ row, now, what: 'undo', schedule });
     if (why !== null) {
         return { refused: why };
     }
@@ -1418,6 +1444,7 @@ module.exports = {
     isPlainFlex: isBreak,
     positionOf: positionOf,
     rowsOf: rowsOf,
+    whyNot: whyNot,
     firstOpen: firstOpen,
     applyFirstOpen: applyFirstOpen,
     swap: swap,

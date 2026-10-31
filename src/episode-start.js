@@ -281,6 +281,84 @@ function whenLabel(entry) {
     return DAY_NAMES[d.getDay()] + ' ' + MONTH_NAMES[d.getMonth()] + ' ' + d.getDate() + ', ' + clock;
 }
 
+function dateOnlyLabel(at) {
+    let d = new Date(at);
+    return DAY_NAMES[d.getDay()] + ' ' + MONTH_NAMES[d.getMonth()] + ' ' + d.getDate();
+}
+
+/*
+ * A special day's rows (src/special-days.js), each with its own "Next" line
+ * for the day's editor - asked of the same orderers describe() uses, over the
+ * same pool, so a special day's row and a regular slot of the same position
+ * never disagree:
+ *
+ *   - This item: the picked program's label.
+ *   - Keep apart: the day's own position (tagged, never the show's regular
+ *     one) - its stored place once the day has run, else its start (if set)
+ *     or its range's first episode - and when: the day's own start, until it
+ *     has aired once.
+ *   - Advance, with a start: the pick takes effect only once the day begins,
+ *     so this names it as a jump rather than a place - "Jumps to S1E1 on Fri
+ *     Jan 1; your strip carries on from wherever the day leaves it."
+ *   - Advance, no start: the regular position's own next episode, exactly as
+ *     a regular slot of it would read.
+ *
+ * `day` is read as the editor has it, which may not be on `schedule` yet.
+ * Pure; one line per row, '' where there is nothing to say (a bad row, or a
+ * show with nothing in the pool).
+ */
+function dayRowLines({ day, schedule, pool, getShowData }) {
+    let shows = [];
+    let byId = new Map();
+    pool.forEach( (p) => {
+        let data = orderersShowData(p);
+        if (! data.hasShow) {
+            return;
+        }
+        let show = byId.get(data.showId);
+        if (typeof(show) === 'undefined') {
+            show = Object.assign( {}, data, { id: data.showId, description: data.showDisplayName, founder: p, programs: [], seen: new Set() } );
+            byId.set(data.showId, show);
+            shows.push(show);
+        }
+        let id = rounds.fileKey(p);
+        if (! show.seen.has(id)) {
+            show.seen.add(id);
+            show.programs.push(p);
+        }
+    } );
+    let positions = orderers.createPositions({ shows: shows, schedule: schedule });
+    let rows = Array.isArray(day.slots) ? day.slots : [];
+    let w = specialDays.windowOf(day);
+    let startLabel = (w === null) ? '' : whenLabel({ at: w.from, now: false });
+    let apart = (day.positions === 'apart') ? day.id : undefined;
+    return rows.map( (row) => {
+        if ( (row === null) || (typeof(row) !== 'object') ) {
+            return '';
+        }
+        if ( (typeof(row.item) === 'object') && (row.item !== null) && (typeof(row.item.program) === 'object') && (row.item.program !== null) ) {
+            return pinTools.label(row.item.program);
+        }
+        if ( (typeof(row.showId) !== 'string') || ! byId.has(row.showId) ) {
+            return '';
+        }
+        if ( (day.positions !== 'apart') && (typeof(row.start) === 'object') && (row.start !== null) ) {
+            let constraint = slotProgress.constraintOf(row, schedule);
+            let candidates = slotProgress.candidatesFor(pool, row.showId, constraint, getShowData);
+            let picked = slotProgress.resolveRef(row.start, candidates, getShowData);
+            let program = candidates[picked];
+            return (typeof(program) === 'undefined') ? ''
+                : `Jumps to ${episodeLabel(program)}${ (w === null) ? '' : ' on ' + dateOnlyLabel(w.from) }; your strip carries on from wherever the day leaves it.`;
+        }
+        let slot = Object.assign( {}, row, { apart: apart } );
+        if (! positions.plays(slot.order)) {
+            return '';
+        }
+        let current = positions.forSlot(slot).current();
+        return (current === null) ? '' : `Next: ${episodeLabel(current)} · ${startLabel}`;
+    } );
+}
+
 /*
  * Two ranges of one show whose Play Next sits at the same episode air the same
  * episodes days apart. Each says so, naming the other: key -> text. Shuffles
@@ -405,4 +483,5 @@ module.exports = {
     episodeLabel: episodeLabel,
     rangeLabel: rangeLabel,
     whenLabel: whenLabel,
+    dayRowLines: dayRowLines,
 };

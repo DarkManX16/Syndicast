@@ -206,7 +206,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 scope.options = [];
                 scope.breaks = [];
                 if (isInsert) {
-                    let got = keptRows.insertAfter({ lineup, index, item: p, now });
+                    let got = keptRows.insertAfter({ lineup, index, item: p, now, schedule });
                     scope.options.push(option('Insert', got));
                     if (got.programs && (p.duration > row.flex + constants.SLACK)) {
                         scope.breaks = pins.breaksThatFit({ programs: channel.programs, startTime: startTime(), near: row.start + row.program.duration,

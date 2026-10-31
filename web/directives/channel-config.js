@@ -406,7 +406,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             $timeout();
                             return;
                         }
-                        let move = (sure) => keptRows.move({ lineup: lineupMs(), from: from, to: before, now: Date.now(), sure: sure });
+                        let move = (sure) => keptRows.move({ lineup: lineupMs(), from: from, to: before, now: Date.now(), sure: sure, schedule: scope.channel.scheduleBackup });
                         let got = move(false);
                         if (typeof(got.ask) === 'string') {
                             scope.undoPrompt = { title: 'Move ' + commonProgramTools.getProgramDisplayTitle(item) + '?', text: got.ask, go: 'Move it',
@@ -1465,7 +1465,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
                 if (scope.hasTimeSlots()) {
-                    if (! applyEdit(keptRows.deleteRow({ lineup: lineupMs(), index: x, now: Date.now() }))) {
+                    if (! applyEdit(keptRows.deleteRow({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup }))) {
                         return;
                     }
                 } else {
@@ -2859,7 +2859,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.swapRequest = null;
             let openPlacing = (index, mode) => {
                 ensureHandEditsKept();
-                let why = pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
+                let program = scope.channel.programs[index];
+                let why = keptRows.whyNot({ row: { program: program, start: program.start }, now: Date.now(), what: mode, schedule: scope.channel.scheduleBackup });
                 if (why !== null) {
                     showError(why);
                     return;

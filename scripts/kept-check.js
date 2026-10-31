@@ -216,11 +216,11 @@ function main() {
         if (e.what === 'swap') {
             r = kept.swap({ lineup, index, item: itemFor(lineup, index, parts[1]), choice: parts[2], now, schedule });
         } else if (e.what === 'insert') {
-            r = kept.insertAfter({ lineup, index, item: itemFor(lineup, index, parts[1]), now });
+            r = kept.insertAfter({ lineup, index, item: itemFor(lineup, index, parts[1]), now, schedule });
         } else if (e.what === 'remove') {
             r = kept.removeOnly({ lineup, index, now, schedule });
         } else if (e.what === 'move') {
-            r = kept.move({ lineup, from: index, to: rowAt(lineup, parts[1]), now, sure: true });
+            r = kept.move({ lineup, from: index, to: rowAt(lineup, parts[1]), now, sure: true, schedule });
         } else {
             r = kept.putBack({ lineup, index, now, schedule, catalog: pool });
         }

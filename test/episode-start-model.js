@@ -176,6 +176,42 @@ module.exports = async function () {
             picked.get(NO2).program.title === `${JB} S3E4` && picked.get(ALL).program.title === `${JB} S1E8`);
     }
 
+    suite.log('-- a special day\'s rows --');
+    {
+        const sched = Object.assign( {}, schedule(), { progress: plan({}) } );
+        const day = (extra) => Object.assign({
+            id: 'sd_t', name: "New Year's Toonami Marathon", from: { date: '2027-01-01', time: 6 * HOUR }, to: { date: '2027-01-02', time: 6 * HOUR },
+            blockId: null, positions: 'advance', layout: 'back', slots: [],
+        }, extra || {});
+        const ITEM = Object.assign(episode(JB, 1, 1), { title: 'A Johnny Bravo Christmas' });
+
+        const lines = episodeStart.dayRowLines({ day: day({ slots: [
+            { showId: 'tv.' + JB, order: 'next' },                       // Advance, no start: the regular position's own next
+            { showId: 'tv.' + JB, order: 'next', seasons: { excludeSeasons: [2] }, start: ref(D(`${JB} S3E4`)) },  // Advance, a start
+            { showId: 'custom.movies', item: { program: ITEM } },        // This item
+        ] }), schedule: sched, pool, getShowData });
+        suite.check('Advance, no start: the same next episode as the regular position (S01E08)',
+            lines[0] === `Next: S01E08 ${JB} S1E8 · Fri Jan 1, 6:00am`, lines[0]);
+        suite.check('...an Advance jump names the pick (S03E04), not the position\'s place, and never the regular row\'s own episode',
+            lines[1] === `Jumps to S03E04 ${JB} S3E4 on Fri Jan 1; your strip carries on from wherever the day leaves it.`, lines[1]);
+        suite.check('...a This item row is the picked program\'s own label', lines[2] === `${JB} S01E01 A Johnny Bravo Christmas`, lines[2]);
+
+        const specialDays = require('../src/special-days');
+        const apartKey = specialDays.taggedKey(ALL, 'sd_t');
+        const apart = day({ positions: 'apart', slots: [ { showId: 'tv.' + JB, order: 'next' } ] });
+        const freshLines = episodeStart.dayRowLines({ day: apart, schedule: sched, pool, getShowData });
+        suite.check('Keep apart, no record yet: the range\'s first episode, and the day\'s own start',
+            freshLines[0] === `Next: S01E01 ${JB} S1E1 · Fri Jan 1, 6:00am`, freshLines[0]);
+
+        const withRecord = Object.assign( {}, sched, { progress: Object.assign( {}, sched.progress,
+            { positions: Object.assign( {}, sched.progress.positions, { [apartKey]: { next: ref(D(`${JB} S2E5`)), wrapped: false } } ) } ) } );
+        const recordLines = episodeStart.dayRowLines({ day: apart, schedule: withRecord, pool, getShowData });
+        suite.check('Keep apart, a stored place: that episode, never the regular position\'s',
+            recordLines[0] === `Next: S02E05 ${JB} S2E5 · Fri Jan 1, 6:00am`, recordLines[0]);
+        suite.check('...and the regular ALL position is untouched by the tagged record',
+            episodeStart.describe({ schedule: withRecord, progress: withRecord.progress, pool, now: NOW }).get(ALL).program.title === `${JB} S1E8`, '');
+    }
+
     suite.log('-- the picker --');
     {
         const sched = schedule();

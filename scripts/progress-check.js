@@ -209,7 +209,7 @@ async function main() {
         } else if (e.what === 'remove') {
             r = keptRows.removeOnly({ lineup, index, now: at + n + 1, schedule: channel.scheduleBackup });
         } else if (e.what === 'move') {
-            r = keptRows.move({ lineup, from: index, to: rowAtLocal(lineup, parts[1]), now: at + n + 1, sure: true });
+            r = keptRows.move({ lineup, from: index, to: rowAtLocal(lineup, parts[1]), now: at + n + 1, sure: true, schedule: channel.scheduleBackup });
         } else {
             r = keptRows.putBack({ lineup, index, now: at + n + 1, schedule: channel.scheduleBackup, catalog: channel.programs });
         }

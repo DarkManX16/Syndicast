@@ -818,6 +818,42 @@ module.exports = async function () {
             kept.isPlainFlex(after.programs[sunday]) && kept.clearWrong({ programs: c.programs, startTime: base.startTime, now: NOW }).cleared === 0, '');
     }
 
+    suite.log('-- special days: Swap, Insert after, Delete and a drag inside a day are refused --');
+    {
+        // Fri Oct 30, 12:00am to 2:00am: Futurama and Family Guy's slots, the day
+        // named "New Year's Toonami Marathon" for the message (NOTES.md, "Special
+        // days": "Change this in Time Slots, <day>.").
+        const day = { id: 'sd_ny', name: "New Year's Toonami Marathon", from: { date: '2026-10-30', time: 0 }, to: { date: '2026-10-30', time: 2 * HOUR },
+            blockId: null, positions: 'advance', layout: 'back', slots: [ { showId: 'tv.Futurama', order: 'next' } ] };
+        const sched = Object.assign( {}, schedule(), { specialDays: [ day ] } );
+        const l = lineup();
+        const futuramaAt = indexAt(l, fri(0));
+        const familyGuyAt = indexAt(l, fri(0, 30));
+        const harveyAt = indexAt(l, fri(4)); // outside the day's window
+        const rowAt = (i) => ( { program: l.programs[i], start: fri(0) + (i - futuramaAt) * (22 * MIN + 30 * SEC + 7 * MIN + 30 * SEC) } );
+        const msg = "Change this in Time Slots, New Year's Toonami Marathon.";
+
+        suite.check('whyNot: a row inside the day\'s window is refused, by name, for swap, insert, remove and move',
+            [ 'swap', 'insert', 'remove', 'move' ].every( (what) => kept.whyNot({ row: rowAt(futuramaAt), now: NOW, what: what, schedule: sched }) === msg ), '');
+        suite.check('...a row outside the window answers as without a schedule at all',
+            kept.whyNot({ row: rowAt(harveyAt), now: NOW, what: 'swap', schedule: sched }) === kept.whyNot({ row: rowAt(harveyAt), now: NOW, what: 'swap' }), '');
+
+        const item = episode('Family Guy', 99, 22 * MIN);
+        suite.check('swap: refused inside the day',
+            kept.swap({ lineup: l, index: futuramaAt, item, now: NOW, schedule: sched }).refused === msg, '');
+        suite.check('insertAfter: refused inside the day',
+            kept.insertAfter({ lineup: l, index: futuramaAt, item, now: NOW, schedule: sched }).refused === msg, '');
+        suite.check('deleteRow: refused inside the day, for an episode and for a plain Flex row',
+            (kept.deleteRow({ lineup: l, index: futuramaAt, now: NOW, schedule: sched }).refused === msg)
+                && (kept.deleteRow({ lineup: l, index: futuramaAt + 1, now: NOW, schedule: sched }).refused === msg), '');
+        suite.check('move: refused dragging a row out of the day, into it, or between two rows already inside it',
+            (kept.move({ lineup: l, from: familyGuyAt, to: harveyAt, now: NOW, sure: true, schedule: sched }).refused === msg)
+                && (kept.move({ lineup: l, from: harveyAt, to: familyGuyAt, now: NOW, sure: true, schedule: sched }).refused === msg)
+                && (kept.move({ lineup: l, from: futuramaAt, to: futuramaAt + 8, now: NOW, sure: true, schedule: sched }).refused === msg), '');
+        suite.check('...the same edits are not refused without the day on the schedule',
+            typeof(kept.swap({ lineup: l, index: futuramaAt, item, now: NOW, schedule: schedule() }).refused) === 'undefined', '');
+    }
+
     suite.check('nothing above changed the list it was given', JSON.stringify(base.programs) === JSON.stringify(lineup().programs)
         && JSON.stringify(st.programs) === JSON.stringify(strip().programs), '');
     return suite;
