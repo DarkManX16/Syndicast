@@ -16,6 +16,7 @@
 
 const rounds = require('./shuffle-rounds');
 const multiPart = require('./multi-part');
+const specialDays = require('./special-days');
 
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
@@ -164,9 +165,15 @@ function resolveRef(refValue, sortedCandidates, getShowData) {
  * localMsIntoPeriod and findSlot in time-slots-service.js, which
  * test/dst-fall-back.js lifts to check this agrees with through a
  * daylight-saving change. Built once per schedule, since reading a lineup
- * asks it for every airing.
+ * asks it for every airing. Inside a special day the day's own row answers
+ * instead (src/special-days.js wrapFinder); a schedule with none gets the
+ * regular finder itself.
  */
 function slotFinder(schedule) {
+    return specialDays.wrapFinder(schedule, regularFinder(schedule));
+}
+
+function regularFinder(schedule) {
     let period = (typeof(schedule.period) === 'number') ? schedule.period : DAY;
     let s = (Array.isArray(schedule.slots) ? schedule.slots : [])
         .filter( (slot) => typeof(slot.time) === 'number' )

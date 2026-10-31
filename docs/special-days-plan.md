@@ -64,7 +64,7 @@
 - `fillFromBlock({ block, schedule }) -> rows` - the slots inside the block's airings, once, in the order they air through the calendar week (for Toonami: Mon, Tue, Wed, Fri), each with its show, order and seasons; Set times rows get times repeating at their own lengths to fill the day (`fillTimes(day, rows)`).
 - `slotProgress.slotAt(schedule, instant)` - inside a Set times day, the day's row covering the instant, marked `special: dayId`; inside a Back to back day, `{ special: dayId, row: null }` (only the lineup knows its rows' times); outside, as now.
 
-- [ ] **Step 1: Write the failing tests** in `test/special-days.js`, the machine's zone (America/Chicago), clocks frozen:
+- [x] **Step 1: Write the failing tests** in `test/special-days.js`, the machine's zone (America/Chicago), clocks frozen:
   - `New Year's window: Fri Jan 1, 2027 12:00Z to Sat Jan 2 12:00Z`.
   - `dayAt: the window's first ms is the day's, its end is not`; `an aired day still answers by instant`; `two days never both answer` (an overlapping pair is a `problems` entry, and `dayAt` takes the first declared, like blocks).
   - `nextHalfHour`: 6:47:00 to 7:00:00; 8:35:00 to 9:00:00; 7:00:05 stays 7:00:05; 7:00:10.5 goes to 7:30:00; on Nov 7, 2027, 1:47am CDT goes to 1:00am CST (07:00Z), the next :00 in real time, since the clock falls back at 2:00 CDT; on Mar 14, 2027, 1:47am CST goes to 3:00am CDT.
@@ -72,15 +72,15 @@
   - `problems`: each case above, by its text.
   - `fillFromBlock` against a fixture copy of channel 1's Toonami block and its slots: 16 rows, Ronin Warriors first, Batman/New Batman Adventures last.
   - `slotAt`: Jan 1 3:10pm in a Set times fixture day is its row; outside the day, the regular slot, deep-equal to `blocks`' answer.
-- [ ] **Step 2:** run `test/special-days.js` - Expected: failures.
-- [ ] **Step 3:** Implement.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the copy** (`scripts/special-days-check.js`, new, read-only: `--data <copy> --channel 1 --day <day.json>` prints the window, the displaced airings and `problems`):
+- [x] **Step 2:** run `test/special-days.js` - Expected: failures.
+- [x] **Step 3:** Implement.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5: Proof on the copy** (`scripts/special-days-check.js`, new, read-only: `--data <copy> --channel 1 --day <day.json>` prints the window, the displaced airings and `problems`):
   - Channel 1's New Year's day built by `fillFromBlock` from the real Toonami block: the 16 rows in the measured order.
   - The window over the saved lineup: 62 airings of 50 shows displaced, Waynehead first and The Smurfs (5:45am) last, as measured on Oct 28.
   - `slotAt` over every airing of channels 1-3 for 300 days, with no special day: identical to `blocks`.
   - The workflow checklist on a preview of a fresh copy (`slot-progress.js` is bundled), all workflows passing.
-- [ ] **Step 6:** Commit `Special days: the rules, and slotAt knows a special day`. **Stop** and report.
+- [x] **Step 6:** Commit `Special days: the rules, and slotAt knows a special day`. **Stop** and report.
 
 ## Step 2 - The generator lays out a special day
 

@@ -6357,6 +6357,42 @@ Said here so they can be changed before they are built:
   round them, and Set times fills the day by repeating them at their own
   lengths.
 
+#### Build record
+
+**Step 1, the rules, pure, Oct 30, 2026** (`special-days`, from `blocks` at 8ed98ce).
+Proof on copies of `.dizquetv-dev` taken Fri Oct 30 at 9:51pm Central (channels,
+custom shows, filler, aliases) and 10:11pm (the preview's data folder). Suite 2658 at
+the start, 2700 at the end.
+
+- **What shipped.** `src/special-days.js`: a day's window (`windowOf`, local dates and
+  clock times at their own offsets), `dayAt`, `ahead`, `aired`, `rowTimes`,
+  `nextHalfHour`, `problems` (each a few words, keyed by field), `fillFromBlock` and
+  `fillTimes`, the Keep-apart tag (`taggedKey`, `taggedLabel`, `tagOf`), and
+  `wrapFinder`, which `slotProgress.slotFinder` now goes through: inside a Set times
+  day the day's row (marked `special`), inside a Back to back day `{ special, row:
+  null }`, otherwise the regular slot - and a schedule with no special day gets the
+  regular finder itself. `warnAboutSpecialDays` in `channel-db.js` warns at save and
+  rewrites nothing. `test/special-days.js`, 42 checks; the three on `slotAt` failed
+  before `slotFinder` changed. `scripts/special-days-check.js` drives them on a copy.
+  Nothing lays a day out yet.
+- **On the copy.** Channel 1, Fill from Toonami, Fri Jan 1 6:00am to Sat 6:00am: the
+  16 rows Ronin Warriors to Batman/New Batman Adventures, Mon, Tue, Wed, Fri; window
+  12:00Z to 12:00Z; no problems; the saved lineup's 62 airings of 50 shows displaced,
+  Waynehead at 6:00am first, The Smurfs at 5:45am last, Baby Looney Tunes at 6:00am
+  Saturday next, as measured Oct 28. Set times: 48 rows, the last Batman at 5:30am.
+  `slotAt` over every entry of 300 days against `blocks`' slot-progress: 37,672,
+  29,172 and 30,970 entries on channels 1-3, none different.
+- **The workflow checklist**, on a preview of a fresh copy (port 18210): all nine pass
+  on channel 1. On channels 2 and 3, delete, swap-drag-put-back and create-lineup
+  find "no plain episode row in view": every airing near 10pm Friday is a kept
+  Halloween swap, and the `blocks` build on its own fresh copy says the same.
+  first-open-silent passed on channel 3 (9 rows in view kept, nothing said).
+- **Found along the way, fixed in its own commit:** swap-drag-put-back failed now and
+  then on the `blocks` build too (TypeError reading 'k'): when the dragged row came
+  before the swap, the swap shifted with the playlist and Put back's lookup by start
+  time missed it. The workflow drags a row after the swap now; it passed twice on
+  `blocks` and in the full run.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

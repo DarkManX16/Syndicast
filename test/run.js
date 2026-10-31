@@ -59,6 +59,7 @@ const suites = [
     './editor-footer',
     './pins',
     './kept-rows',
+    './special-days',
     './build-check',
     './multi-part',
     './shuffle-rounds',
