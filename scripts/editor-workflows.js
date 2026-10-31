@@ -522,7 +522,11 @@ function makeRunner(opts, page) {
                 return { top: r.top, bottom: r.bottom };
             });
             const shown = (await rowsInView()).filter((r) => r.top >= box.top && r.top <= box.bottom - 40);
-            const from = shown.find((r, i) => i >= 1 && i <= shown.length - 4 && r.canSwap && !r.kept);
+            // A row after the swap: dragged from before it, the swap would sit between
+            // the two places and shift with the playlist, and Put back below finds the
+            // swap by where it sits.
+            const swapAt = shown.findIndex((r) => r.start === row.start);
+            const from = shown.find((r, i) => i >= 1 && i > swapAt && i <= shown.length - 4 && r.canSwap && !r.kept);
             if (!from) {
                 throw new Check('no plain row in view to drag');
             }
