@@ -16,6 +16,7 @@ const slotProgress = require('./slot-progress');
 const rounds = require('./shuffle-rounds');
 const constants = require('./constants');
 const pinTools = require('./pins');
+const specialDays = require('./special-days');
 const orderers = require('./services/show-orderers');
 const orderersShowData = require('./services/get-show-data')();
 
@@ -76,7 +77,16 @@ function firstAiring({ slots, schedule, now, pins }) {
     let ahead = (Array.isArray(pins) ? pins : []).filter( (x) => x && (typeof(x.at) === 'number') && x.program && (x.program.duration > 0) );
     let from = now;
     let at = nextStart(from);
-    for (let n = 0; (n < 400) && (ahead.length > 0); n++) {
+    for (let n = 0; n < 400; n++) {
+        // A special day replaces the regular slots for its hours: its next start is after it.
+        if (specialDays.dayAt(schedule, at) !== null) {
+            from = at + 1000;
+            at = nextStart(from);
+            continue;
+        }
+        if (ahead.length === 0) {
+            break;
+        }
         // Is this occurrence taken by a pin?
         let verdict = null;
         for (let i = 0; i < ahead.length; i++) {

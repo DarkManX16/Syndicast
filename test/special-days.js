@@ -160,6 +160,18 @@ module.exports = async () => {
         (filled.length === 48) && (filled[0].at === 6 * HOUR) && (filled[47].at === DAY + 5 * HOUR + 30 * MIN)
             && (filled[16].showId === 'tv.Ronin Warriors') && filled.every( (r) => typeof(r.length) === 'undefined' )
             && one(newYears({ layout: 'times', slots: filled })).length === 0, `${filled.length}`);
+    const film = { showId: 'movie.', item: { program: { type: 'movie', title: 'Film', duration: 90 * MIN, key: '/m/f', serverKey: 'srv' } }, length: 2 * HOUR };
+    let withFilm = sd.fillTimes(newYears({ layout: 'times' }), [ film ].concat(rows));
+    suite.check('fillTimes: a picked item is in the first round only - it airs once a day',
+        withFilm.filter( (r) => r.item ).length === 1 && withFilm[1].at === 8 * HOUR && withFilm[withFilm.length - 1].showId !== 'movie.', `${withFilm.length} rows`);
+
+    // Where Back to back rows start
+    suite.check('the quarter hour: 12:35am goes to 12:45am, 12:30am stays; the half hour takes 12:35am to 1:00am',
+        sd.nextMark(local(2027, 1, 2, 0, 35), 15 * MIN) === local(2027, 1, 2, 0, 45) && sd.nextMark(local(2027, 1, 2, 0, 30), 15 * MIN) === local(2027, 1, 2, 0, 30)
+            && sd.nextMark(local(2027, 1, 2, 0, 35), sd.stepOf(newYears())) === local(2027, 1, 2, 1), '');
+    suite.check('...a day says which: half by default, quarter when chosen, anything else a problem',
+        sd.stepOf(newYears()) === 30 * MIN && sd.stepOf(newYears({ rounding: 'quarter' })) === 15 * MIN
+            && JSON.stringify(one(newYears({ rounding: 'tenth' }))) === '["Rows start on the half hour or the quarter hour."]', '');
 
     // The tag
     let key = slotProgress.positionKey('tv.X-Men: Evolution', 'next', undefined);

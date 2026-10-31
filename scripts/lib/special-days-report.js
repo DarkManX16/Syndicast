@@ -84,16 +84,18 @@ function timetable({ day, programs, startTime, regular, nameOf, print }) {
                 longestFlex = Math.max(longestFlex, x.flex);
             }
             let d = new Date(x.start);
-            if ( (day.layout !== 'times') && ( (d.getMinutes() % 30 !== 0) || (d.getSeconds() !== 0) ) && (x.start !== w.from) ) {
+            let stepMin = sd.stepOf(day) / MIN;
+            if ( (day.layout !== 'times') && ( (d.getMinutes() % stepMin !== 0) || (d.getSeconds() > 10) ) && (x.start !== w.from) ) {
                 let prev = list[list.indexOf(x) - 1];
                 if (! (prev && prev.program.specialDay === day.id && prev.program.specialRow === x.program.specialRow)) {
                     offGrid++;
                 }
             }
         }
+        let other = (typeof(x.program.specialDay) === 'string') && ! ours;
         let late = '';
         let prevOcc = (k) => (k > 0) ? occurrence(regular, list[k - 1].start).start : null;
-        if (! ours && (x.start >= w.to) && (occurrence(regular, x.start).start !== prevOcc(list.indexOf(x))) ) {
+        if (! ours && ! other && (x.start >= w.to) && (occurrence(regular, x.start).start !== prevOcc(list.indexOf(x))) ) {
             let o = occurrence(regular, x.start);
             late = (o.late > SAME) ? `   (${mmss(o.late)} late)` : '';
             if ( (o.late <= SAME) && (backOnTime === null) ) {
@@ -103,7 +105,7 @@ function timetable({ day, programs, startTime, regular, nameOf, print }) {
                 latest = latest || x;
             }
         }
-        let mark = ours ? `[row ${String(x.program.specialRow + 1).padStart(2)}] ` : (x.start < w.from ? '[before]  ' : '[after]   ');
+        let mark = ours ? `[row ${String(x.program.specialRow + 1).padStart(2)}] ` : (other ? '[next day]' : (x.start < w.from ? '[before]  ' : '[after]   '));
         print(`    ${mark}${time(x.start).padStart(11)}-${time(x.start + x.program.duration).padStart(11)}  ${nameOf(x.program)} ${episode(x.program)}  ${mmss(x.program.duration)}  +${mmss(x.flex)} Flex${late}`);
     } );
     let rows = Array.isArray(day.slots) ? day.slots.length : 0;
@@ -114,8 +116,10 @@ function timetable({ day, programs, startTime, regular, nameOf, print }) {
         }
     }
     print(`  rows aired: ${rows - never.length} of ${rows}${never.length ? `; rows that won't air: ${never.join(', ')}` : ''}`);
-    print(`  longest Flex inside the day: ${mmss(longestFlex)}; rows starting off the :00 or :30: ${offGrid}`);
-    if (latest !== null) {
+    print(`  longest Flex inside the day: ${mmss(longestFlex)}; rows starting off the ${sd.stepOf(day) === 15 * MIN ? 'quarter hour' : ':00 or :30'}: ${offGrid}`);
+    if ( (latest === null) && (backOnTime === null) && list.some( (x) => (x.start >= w.to) && (typeof(x.program.specialDay) === 'string') && (x.program.specialDay !== day.id) ) ) {
+        print('  another special day follows straight on');
+    } else if (latest !== null) {
         print(`  after the day the regular schedule runs late from ${time(latest.start)}, back on time at ${backOnTime ? time(backOnTime) : '(not within two hours)'}`);
     } else {
         print(`  after the day the regular schedule is on time: ${backOnTime ? time(backOnTime) : '-'}`);

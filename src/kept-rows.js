@@ -227,7 +227,8 @@ function positionOf(content) {
     if ( (parsed === null) || (parsed.mode === 'repeat') || ! show.hasShow ) {
         return null;
     }
-    return slotProgress.positionKey(show.showId, parsed.mode, { excludeSeasons: parsed.excluded });
+    // A Keep-apart special day's airing is its day's own position, never the show's.
+    return slotProgress.labelKey(show.showId, parsed);
 }
 
 // What a row airs, without the marks that belong to the row.
@@ -976,7 +977,7 @@ function undoReplace({ lineup, row, edit, now, schedule, catalog }) {
         }
         let parsed = slotProgress.parseLabel(h.pos);
         if ( (parsed !== null) && (parsed.mode !== 'repeat') && (typeof(h.show) === 'string') ) {
-            return slotProgress.positionKey(h.show, parsed.mode, { excludeSeasons: parsed.excluded });
+            return slotProgress.labelKey(h.show, parsed);
         }
         for (let i = at + 1; i < end; i++) {
             let p = p0[i];

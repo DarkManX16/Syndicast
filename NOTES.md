@@ -6132,6 +6132,26 @@ And Oct 30, before the merge:
 10. **A Christmas Eve marathon this year.** The holiday rows (build step 8) come
     right after the New Year's checkpoint (step 7), ready before Dec 24, 2026.
 
+And Oct 31, starting step 3:
+
+11. **A picked item airs once a day.** A This item row (one movie or episode) airs
+    once, even when the row list starts again from the top; only show and
+    custom-show rows go round again.
+12. **Where Back to back rows start is a per-day choice:** the next :00 or :30 (the
+    default), or the next quarter hour, so a movie ending at 12:35 doesn't leave 25
+    minutes of commercials.
+13. **The real Toonami "Full Cycle" is the reference throughout**: Cartoon Network,
+    Sat Apr 8, 2000 6:00am to Sun Apr 9 6:00am (cnas.fandom.com, "April 8, 2000" and
+    "April 9, 2000"). It ran Superman, Super Friends and ThunderCats in the morning;
+    the same Dragon Ball Z, Gundam Wing (two) and Ronin Warriors hour at 10:00am, 6:00pm
+    and 1:00am, the same episodes each time; ThunderCats, Sailor Moon and The
+    Powerpuff Girls in the afternoon; and five films - Batman & Mr. Freeze: SubZero
+    1:30pm, DBZ: Dead Zone 5:00pm, DBZ: The Tree of Might 8:00pm, Batman: Mask of the
+    Phantasm 9:30pm, DBZ: The World's Strongest 11:30pm - each starting on the hour or
+    half hour, with the commercials inside the film's own time. All five are in Ron's
+    Plex ("Y. Toonami Movies" and "Y.Cartoon Theatre"), with more Batman, DBZ, Gundam
+    and Sailor Moon films.
+
 #### The design
 
 **A special day** has a name, a start and an end (a date and a clock time
@@ -6172,9 +6192,12 @@ same rule a regular slot fills by: two 11-minute halves share a half hour, a
 6:47 and the next row is at 7:00, and a 95-minute movie at 7:00 ends at 8:35
 and the next row is at 9:00. No Flex stretch is ever longer than 30 minutes.
 When the rows run out before the day ends, the list **starts again from the
-top** (each row's show playing its next episode, and a This item row its item
-again), which is how a full Toonami cycle fills 24 hours from 16 rows; Preview
-says so. A row whose start would be at or after the day's end doesn't air.
+top**: each show row plays its show's next episode, and a This item row is passed
+over - a picked item airs once a day (decision 11) - which is how a full Toonami
+cycle fills 24 hours from 16 rows; Preview says so. A row whose start would be at
+or after the day's end doesn't air. **Rows start on the half hour by default, or on
+the quarter hour** (decision 12): after a movie ending at 12:35 the next row starts at
+12:45, not 1:00.
 
 **The edges.** At the start, a program still on finishes first - nothing is cut,
 as with a swap - and the day's first row starts the moment it ends (Set times)
@@ -6297,6 +6320,7 @@ schedule.specialDays = [{
   blockId: 'bl_muhiaegd_erj2f5',                    // or null
   positions: 'advance',                             // 'advance' | 'apart'
   layout: 'back',                                   // 'back' | 'times'
+  rounding: 'half',                                 // Back to back rows start on 'half' (default) | 'quarter'
   holiday: null,                                    // or 'Christmas', ...
   slots: [
     { showId: 'tv.Ronin Warriors', order: 'next' },              // 'times': also `at`, ms after from.date's midnight
@@ -6447,10 +6471,71 @@ read-only catalog snapshot of channel 1 (138 shows, 11,792 items), regenerated a
   all nine pass on channel 1; delete, swap-drag-put-back and create-lineup pass on channel 3;
   on channel 2, swap-drag-put-back found no plain row after its swap to drag (four of Ron's
   kept swaps sit in the first screen) - delete and create-lineup pass there.
-- **Left for step 3:** `placeOf` doesn't read the tag yet, so a Keep-apart airing would be
-  read as its regular position's place by the planner - nothing can make a day in the
-  editor until step 5. Starts on a day's rows, and a re-make during a day with no program
-  carried, come with step 3.
+- **Left for step 3:** starts on a day's rows, and a re-make during a day with no program
+  carried. (Corrected in step 3: a tagged label didn't parse at all before it, so
+  `placeOf` passed Keep-apart airings over rather than misreading them.)
+
+**Step 3, stored progress and starts - and decisions 11 and 12, Oct 31, 2026**
+(`special-days`). Proof on the step 1 copy (channels, custom shows and aliases identical
+to the live files; channel 1 has changed on 18000 since, see the checklist below), the
+channel 1 catalog snapshot, and Plex's two movie libraries read once (GET only), as of
+4:17am Oct 31. Suite 2730 at the start, 2754 at the end.
+
+- **What shipped.** `parseLabel` reads a Keep-apart label's day (`tag`, present only when
+  there is one), and `labelKey` gives its tagged position - `placeOf`, and kept-rows'
+  ripple (`positionOf`), read it, so a tagged airing is its day's place and never the
+  show's. `planProgress` plans special days (`specialDaysPlan`): a Keep-apart day's
+  positions from the row's start, or its range's first episode, until the day begins (never
+  what an earlier run laid out, so changing a start takes), from its own airings once it
+  has; an Advance day's rows of shows with no regular slot by the regular rules, its range's
+  first episode at worst; tagged records dropped once their day has ended; and, for a day
+  under way, `progress.specialDays[id] = { nextRow, airedItems }`. The generator starts a
+  day's rows there, and from the program on air when one is carried. An Advance row's start
+  is a jump as the day begins (`seek`, Play Next only - a Shuffle's place is a round); a day
+  begun before the lineup is made has jumped already. A This item row airs once a day in
+  Back to back (`itemsAired`) and once in Set times' fill (`fillTimes`); `rounding:
+  'quarter'` starts Back to back rows on the quarter hour (`nextMark`, `stepOf`, a
+  `problems` line for anything else). Episode start's Next for a regular row steps over a
+  special day. `test/special-days-progress.js`, 21 checks, failing first; 3 more in
+  `test/special-days.js`; step 2's "starts again" check now expects the movies once.
+- **The days, on the Full Cycle (decision 13).** New Year's: the Apr 8, 2000 running order
+  in Ron's shows - Superman: The Animated Series, Super Friends, ThunderCats, the DBZ /
+  Gundam / Gundam / Ronin Warriors hour three times, Sailor Moon, The Powerpuff Girls - and
+  the real five films from Plex, Back to back on the quarter hour, Advance, block Toonami:
+  SubZero 3:00-4:06pm (next row 4:15), Dead Zone 6:15-6:56pm (7:00), Tree of Might
+  9:00-10:00pm (10:15), Mask of the Phantasm 10:15-11:31pm (11:45), The World's Strongest
+  11:45pm-12:44am, Powerpuff at 12:45am; the longest Flex 14:47; rows 38-39 don't fit;
+  the last row runs 1:05 past 6:00am and the regular schedule is back on time at 6:30am.
+  New Year's Eve: Batman/New Batman Adventures, The Batman, Batman Beyond with Mystery of the
+  Batwoman (6:30pm), Return of the Joker (9:30pm) and The Batman vs. Dracula (12:30am) - when
+  the list starts again at 2:00am only the show rows come round - and New Year's starts at
+  6:00am straight after. Ron's Super Friends are 45-minute double episodes: with SLACK, one
+  ending 7:45:06 counts as on the quarter hour and the next starts at once.
+- **Re-made, each against the run before it:** Dec 31 noon - both days, 57 airings,
+  identical; Jan 1 3:05pm (SubZero on air) and 9:30pm (Tree of Might on air) - the rest of
+  the day identical; 4:10pm, nothing on air - the planner says row 17 next and SubZero aired,
+  the rest identical. An Advance start jumping Ronin Warriors to S1E1: the day airs S1E1-3
+  and Mon Jan 4 S1E4; re-made Dec 31 and Jan 1 7pm, Jan 1-5 identical. Keep apart with
+  Dragon Ball Z started at S1E1: the day airs S1E1-3, the regular DBZ waits at S2E35 (the
+  episode the day displaced) Mon Jan 4, no marathon show moves outside the day; re-made Dec
+  31 and Jan 1 9:30pm, identical; at Jan 2 noon the day's 8 tagged records are gone and the
+  next 10 days are identical.
+- **Outside the days, 300 days,** as in step 2: every slot occurrence keeps its show but the
+  three Tuesday noons; the shows the days displace move along, and, Advancing, the shows
+  they air; plus knock-ons where a moved-along episode is another length - Toonheads' S8E8
+  into Looney Tunes (as in step 2), and now Super Friends' alternating 22- and 45-minute
+  episodes into The Tex Avery Show after its Sunday 8am slot (and G.I. Joe ('83)). Ron's
+  Dragon Ball Z jumps S2E35 to S2E43 with or without a day: Plex has no S2E36-42.
+- **The workflow checklist**, fresh copy taken 4:19am (port 18210): channel 1 - open,
+  update, library-add, add-delete-create and first-open-silent pass (first-open kept 8 rows:
+  Ron's channel 1 on 18000 now has 17 edits still to air); delete, swap-drag-put-back and
+  create-lineup find no plain row in view, since every row there is one of them; filler
+  failed twice on its 1.5 s read-back - both deletes had landed (550, 549, 548) - and passed
+  on the third run. Channel 3: delete, swap-drag-put-back and create-lineup pass.
+- **Seen in the reference, not built:** the Full Cycle aired the same episodes in each of its
+  three DBZ / Gundam / Ronin hours. Rows here play each show's next episode every pass; airing
+  an earlier row's episodes again would be a new row kind (a Repeat of a row of the day) for
+  Ron to decide.
 
 ### Chapter and segment detector, and stage 6 midrolls
 

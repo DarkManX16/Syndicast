@@ -10,6 +10,7 @@
  *     blockId,                              // or null
  *     positions: 'advance' | 'apart',
  *     layout: 'back' | 'times',
+ *     rounding: 'half' | 'quarter',        // Back to back: where rows start; 'half' when absent
  *     slots: [ { showId, order, seasons, at, start, item } ],
  *   }]
  *
@@ -26,6 +27,7 @@ const SLACK = require('./constants').SLACK;
 
 const MINUTE = 60 * 1000;
 const HALF_HOUR = 30 * MINUTE;
+const QUARTER_HOUR = 15 * MINUTE;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const WEEK = 7 * DAY;
@@ -139,18 +141,28 @@ function rowTimes(day) {
 }
 
 /*
- * The first local :00 or :30 at or after t, in real time; a moment up to
- * SLACK past one counts as on it. Across a clock change the next one in real
- * time: 1:47am CDT on the fall-back night goes to 1:00am CST.
+ * The first local mark - a :00 or :30, or with `step` a quarter hour - at or
+ * after t, in real time; a moment up to SLACK past one counts as on it. Across a
+ * clock change the next one in real time: 1:47am CDT on the fall-back night goes
+ * to 1:00am CST.
  */
-function nextHalfHour(t) {
+function nextMark(t, step) {
     let offset = (new Date(t)).getTimezoneOffset() * MINUTE;
     let local = t - offset;
-    let into = ( (local % HALF_HOUR) + HALF_HOUR ) % HALF_HOUR;
+    let into = ( (local % step) + step ) % step;
     if (into <= SLACK) {
         return t;
     }
-    return t + (HALF_HOUR - into);
+    return t + (step - into);
+}
+
+function nextHalfHour(t) {
+    return nextMark(t, HALF_HOUR);
+}
+
+/* Where a Back to back day's rows start: the next half hour, or quarter hour. */
+function stepOf(day) {
+    return ( (day != null) && (day.rounding === 'quarter') ) ? QUARTER_HOUR : HALF_HOUR;
 }
 
 /* The tag a Keep-apart day puts on its positions' keys and its airings' labels. */
@@ -230,6 +242,9 @@ function problems(schedule, blocks) {
             if ( (o !== null) && (o.from < w.to) && (w.from < o.to) ) {
                 say(day, 'when', `Overlaps ${days[j].name || 'another special day'}.`);
             }
+        }
+        if ( (typeof(day.rounding) !== 'undefined') && (day.rounding !== 'half') && (day.rounding !== 'quarter') ) {
+            say(day, 'rounding', 'Rows start on the half hour or the quarter hour.');
         }
         if ( (day.blockId != null) && ! (Array.isArray(blocks) && blocks.some( (b) => (b != null) && (b.id === day.blockId) )) ) {
             say(day, 'block', 'Its block is gone.');
@@ -324,7 +339,8 @@ function fillFromBlock({ block, schedule }) {
 
 /*
  * Set times: the rows repeated at their own lengths from the day's start to
- * its end, each given `at`. Rows without a length take half an hour.
+ * its end, each given `at`. Rows without a length take half an hour. A picked
+ * item is in the first round only: it airs once a day.
  */
 function fillTimes(day, rows) {
     let w = windowOf(day);
@@ -334,8 +350,12 @@ function fillTimes(day, rows) {
     let out = [];
     let at = day.from.time;
     let span = w.to - w.from;
+    let shows = rows.filter( (r) => (typeof(r.item) !== 'object') || (r.item === null) );
     for (let k = 0; at - day.from.time < span; k++) {
-        let row = rows[k % rows.length];
+        if ( (k >= rows.length) && (shows.length === 0) ) {
+            break;
+        }
+        let row = (k < rows.length) ? rows[k] : shows[ (k - rows.length) % shows.length ];
         let copy = JSON.parse(JSON.stringify(row));
         delete copy.length;
         copy.at = at;
@@ -394,6 +414,8 @@ module.exports = {
     usable: usable,
     rowTimes: rowTimes,
     nextHalfHour: nextHalfHour,
+    nextMark: nextMark,
+    stepOf: stepOf,
     tag: tag,
     taggedKey: taggedKey,
     taggedLabel: taggedLabel,

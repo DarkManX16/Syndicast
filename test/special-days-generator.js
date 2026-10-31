@@ -160,8 +160,9 @@ module.exports = async function () {
         suite.check('...no Flex inside the day is 30 minutes or longer', longestFlex(backRes, FRI6, SAT6) < 30 * MIN,
             `${longestFlex(backRes, FRI6, SAT6) / MIN} min`);
         suite.check('...every row starts on a :00 or :30', d.every( (a) => (new Date(a.start).getMinutes() % 30 === 0) && (new Date(a.start).getSeconds() === 0) ), '');
-        suite.check('...the rows run out and start again: the short movie at 9:30, X\'s next episode after the long one',
-            d[3].start === fri(9, 30) && d[3].program.title === 'The Short One' && d[5].program.title === 'X S1E2', d.slice(3, 6).map(line).join(' / '));
+        suite.check('...the rows run out and start again, the picked movies once a day: X\'s next episode at 9:30, then on',
+            d[3].start === fri(9, 30) && d[3].program.title === 'X S1E2' && d[4].program.title === 'X S1E3'
+                && d.filter( (a) => a.program.type === 'movie' ).length === 2, d.slice(3, 6).map(line).join(' / '));
         suite.check('...every airing inside the day carries the day; none outside does',
             d.every( (a) => a.program.specialDay === 'sd_test' ) && outside(backRes, FRI6, SAT6).every( (a) => typeof(a.program.specialDay) === 'undefined' ), '');
         suite.check('...a picked item carries no label and no mark of a hand edit',

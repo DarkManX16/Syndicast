@@ -561,7 +561,15 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             timed = specialDays.rowTimes(day).filter( (x) => ! x.gap && (x.at >= w.from) && (x.at < w.to) )
                 .map( (x) => ({ at: x.at, slot: slotOf[rows.indexOf(x.row)] }) );
         }
-        return { day: day, from: w.from, to: w.to, slotOf: slotOf, timed: timed, k: 0 };
+        // Where a day under way is, from the planner (slot-progress specialDaysPlan):
+        // the next Back to back row, and the picked items already aired.
+        let at = ( (typeof(schedule.progress) === 'object') && (schedule.progress !== null)
+                   && (typeof(schedule.progress.specialDays) === 'object') && (schedule.progress.specialDays !== null) )
+            ? schedule.progress.specialDays[day.id] : undefined;
+        let k = ( (typeof(at) === 'object') && (at !== null) && Number.isInteger(at.nextRow) ) ? at.nextRow : 0;
+        let itemsAired = new Set( ( (typeof(at) === 'object') && (at !== null) && Array.isArray(at.airedItems) ) ? at.airedItems : [] );
+        return { day: day, from: w.from, to: w.to, slotOf: slotOf, timed: timed, k: k, itemsAired: itemsAired,
+            step: specialDays.stepOf(day), jumped: (w.from <= ts) };
     } );
     let dayAt = (x) => laidDays.find( (d) => (d.from <= x) && (x < d.to) ) || null;
     let nextDayFrom = (x) => laidDays.reduce( (m, d) => ( (d.from > x) && (d.from < m) ) ? d.from : m, Infinity );
@@ -583,6 +591,33 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         return { slot: d.timed[cur].slot, dayTime: null, remaining: end - t, late: Math.max(0, t - d.timed[cur].at), special: true };
     };
 
+    let isItem = (row) => (typeof(row.item) === 'object') && (row.item !== null);
+
+    /*
+     * An Advance day's row with a start (decision 3): its position jumps there as
+     * the day begins, and carries on from wherever the day leaves it. A day already
+     * begun when the lineup is made jumped then; its places say where it is now.
+     * Play Next only: a Shuffle's place is a round, not an episode to jump to.
+     */
+    let jump = (d) => {
+        d.jumped = true;
+        if (d.day.positions === 'apart') {
+            return;
+        }
+        let seen = new Set();
+        d.slotOf.forEach( (row) => {
+            if ( isItem(row) || (row.order !== 'next') || (typeof(row.start) !== 'object') || (row.start === null)
+                 || (typeof(showsById[row.showId]) === 'undefined') ) {
+                return;
+            }
+            let key = slotProgress.positionKey(row.showId, row.order, slotProgress.constraintOf(row, schedule));
+            if (! seen.has(key)) {
+                seen.add(key);
+                positions.forSlot(row).seek(row.start);
+            }
+        } );
+    };
+
     /*
      * One step of a Back to back day: Flex to the next row's start, or the next
      * row with something to air - its first item, then any more of its own that
@@ -591,7 +626,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
      * it waits for after it instead.
      */
     let backStep = (d) => {
-        let start = (t <= d.from + SLACK) ? t : specialDays.nextHalfHour(t);
+        let start = (t <= d.from + SLACK) ? t : specialDays.nextMark(t, d.step);
         let pinAt = (nextPin < pins.length) ? pins[nextPin].at : Infinity;
         if (start >= d.to - SLACK) {
             pushFlex(Math.min(d.to, pinAt) - t);
@@ -611,7 +646,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         let first = null;
         for (let tries = 0; (tries < n) && (first === null); tries++) {
             row = d.slotOf[d.k % n];
-            first = specialItem(row);
+            // A picked item airs once a day, though the list starts again.
+            first = ( isItem(row) && d.itemsAired.has(row.specialRow) ) ? null : specialItem(row);
             if (first === null) {
                 d.k++;
             }
@@ -626,11 +662,14 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         }
         d.k++;
         advanceSpecial(row);
+        if (isItem(row)) {
+            d.itemsAired.add(row.specialRow);
+        }
         if (t + first.duration > d.to + SLACK) {
             pushProgram(first);
             return;
         }
-        let end = Math.min(specialDays.nextHalfHour(t + first.duration), d.to, pinAt);
+        let end = Math.min(specialDays.nextMark(t + first.duration, d.step), d.to, pinAt);
         let remaining = end - t;
         let pads = [ makePadded(first) ];
         let total = pads[0].totalDuration;
@@ -726,6 +765,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         let d = laidDays.find( (x) => x.day.id === carry.program.specialDay );
         if (typeof(d) !== 'undefined') {
             d.k = carry.program.specialRow + 1;
+            if ( isItem(d.slotOf[carry.program.specialRow] || {}) ) {
+                d.itemsAired.add(carry.program.specialRow);
+            }
         }
     }
     while ( (t < hardLimit) && (p.length < LIMIT) ) {
@@ -762,6 +804,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         }
 
         let inDay = dayAt(t);
+        if ( (inDay !== null) && ! inDay.jumped ) {
+            jump(inDay);
+        }
         if ( (inDay !== null) && (inDay.timed === null) ) {
             backStep(inDay);
             continue;

@@ -125,6 +125,12 @@ function playNext(show, constraint, record, tagDay) {
                 wrapped = true;
             }
         },
+        // A jump to an episode (an Advance special day's start): from here on, in order.
+        seek: (pick) => {
+            if (candidates.length > 0) {
+                position = slotProgress.resolveRef(pick, candidates, getShowData);
+            }
+        },
     };
 }
 

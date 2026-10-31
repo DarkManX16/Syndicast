@@ -14,6 +14,8 @@
 
 **Brought up to date Oct 30, 2026**, on `blocks` at feea764: hand edits are kept rows (`program.kept`, `src/kept-rows.js`), not pins, and reach the generator through `keptRows.keptAhead` in the list `pins` used; Delete takes an episode out at once (`keptRows.deleteRow`); the first open keeps old pins silently (`ensureHandEditsKept`); and the Rules' "Keep it simple" and "Workflows that must keep working" apply to every step below.
 
+**Added Oct 31, 2026, before step 7** (NOTES.md decisions 11-13): a This item row airs once a day even when the list starts again; a per-day choice of where Back to back rows start, the half hour (default) or the quarter hour; and the real Toonami Full Cycle (Apr 8-9, 2000) as the reference day for every proof from step 3 on. The generator and planner parts of the first two are built in step 3; the quarter-hour choice appears in step 5's dialog. Ron merges Special days whole at step 7's checkpoint, with one restart of 18000; only the workflow-script fix went to `blocks` early (fb62a15).
+
 **Order and stops.** Steps run in order, 1 to 9, with **step 8 (holiday rows) right after the New Year's checkpoint (step 7), so Ron's Christmas Eve 2026 marathon is ready before Dec 24**. After each step's proof the work **stops**: the proof goes to Ron, and the next step starts only on his OK.
 
 ## Global Constraints
@@ -132,7 +134,7 @@
 
 ## Step 3 - Stored progress and episode starts on a special day
 
-### Task 3: `planProgress`, `placeOf` and the starts
+### Task 3: `planProgress`, `placeOf` and the starts - and a picked item once a day, rows on the quarter hour
 
 **Files:**
 - Modify: `src/slot-progress.js` (`positionKey`/`parseLabel`/`placeOf`/`planProgress`/`startRecord`), `src/episode-start.js` (`plan`, `describe`, `firstAiring`: rows of a special day; regular rows' "Next … when" skipping a day's window), `web/directives/time-slots-schedule-editor.js` (only to pass the day's starts to `planProgress`; no UI yet), `scripts/progress-check.js` (`--start` on a day's row)
@@ -143,13 +145,14 @@
 - `planProgress` plans tagged positions too: rule 2 (first airing on air or ahead) reads tagged airings; before the day begins, a row's saved `start` is the place (Keep apart) or a jump at the day's start (Advance, `seekAt`); otherwise the range's first episode (decision 2). Records are saved under tagged keys and dropped once the day has ended.
 - A row's `start` is saved on the row and kept until the day begins; Episode start's one-time `starts` for regular rows are unchanged.
 
-- [ ] **Step 1: Write the failing tests:** `a tagged airing is never a regular place, labelled or not`; `Keep apart, before the day: the place is the row's start, else the first episode`; `Keep apart, during the day: the place is the first tagged airing ahead`; `Advance: a row's start is a jump at the day's start, and the regular slot after the day carries on from the day`; `an Advance jump spent during the day isn't applied again`; `tagged records go once the day has ended`; `regular rows' Next skips a slot the day replaces` (I Am Weasel: "Next: S4E5 · Mon Jan 4, 2:30pm" when asked on Jan 1 at 4pm).
-- [ ] **Step 2:** run them - Expected: failures.
-- [ ] **Step 3:** Implement.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the copy:** the New Year's day from step 2, both modes, regenerated with `--at` at now, Dec 31 noon, Jan 1 6:00am, Jan 1 3:10pm (during, X-Men on air - the carry) and Jan 2 noon (after): every regular position continues exactly from its last airing, every tagged position from its last tagged airing, and the day itself is the same from run to run until it begins. Advance with a jump of X-Men to S1E1: the day airs S1E1-3, Mon Jan 4 airs S1E4. A day whose rows are changed between runs: only the changed rows' positions move.
+- [x] **Step 1: Write the failing tests:** `a tagged airing is never a regular place, labelled or not`; `Keep apart, before the day: the place is the row's start, else the first episode`; `Keep apart, during the day: the place is the first tagged airing ahead`; `Advance: a row's start is a jump at the day's start, and the regular slot after the day carries on from the day`; `an Advance jump spent during the day isn't applied again`; `tagged records go once the day has ended`; `regular rows' Next skips a slot the day replaces` (I Am Weasel: "Next: S4E5 · Mon Jan 4, 2:30pm" when asked on Jan 1 at 4pm).
+- [x] **Step 2:** run them - Expected: failures.
+- [x] **Step 3:** Implement.
+- [x] **Step 4:** `npm test` - Expected: all pass.
+- [x] **Step 5: Proof on the copy:** the New Year's day from step 2, both modes, regenerated with `--at` at now, Dec 31 noon, Jan 1 6:00am, Jan 1 3:10pm (during, X-Men on air - the carry) and Jan 2 noon (after): every regular position continues exactly from its last airing, every tagged position from its last tagged airing, and the day itself is the same from run to run until it begins. Advance with a jump of X-Men to S1E1: the day airs S1E1-3, Mon Jan 4 airs S1E4. A day whose rows are changed between runs: only the changed rows' positions move.
   - The workflow checklist on a preview of a fresh copy, all passing.
-- [ ] **Step 6:** Commit `Special days: stored progress and episode starts`. **Stop** and report.
+- [x] **Also (decisions 11 and 12):** a This item row airs once a day in Back to back (the generator's `itemsAired`, from the planner's `airedItems` mid-day) and only in Set times' first round (`fillTimes`); `day.rounding: 'quarter'` starts Back to back rows on the quarter hour (`nextMark`, `stepOf`). Proof on the Full Cycle day with its five real films.
+- [x] **Step 6:** Commit `Special days: stored progress and episode starts`. **Stop** and report.
 
 ## Step 4 - The block for the day
 
@@ -179,7 +182,7 @@
 - Modify: `web/directives/time-slots-schedule-editor.js`, `web/public/templates/time-slots-schedule-editor.html`, `web/directives/airing-swap.js` (its picker, reused for This item), `web/directives/channel-config.js` (Programming tab: Swap, Insert after, Delete and a drag into, out of or inside a day refused), `src/kept-rows.js` (`whyNot` names the day; `sayKept` for kept rows inside a window), `web/public/css` as needed, `scripts/editor-workflows.js` (a `special-day` workflow: add a day, Fill from a block, a This item movie, Preview this day, Create Lineup, Update Channel, and a Delete inside the day refused)
 - Test: `test/kept-rows.js` (`whyNot`, `sayKept`), `test/kept-editor.js` (Delete refused inside a day), `test/episode-start.js` (rows' Next lines)
 
-**What Ron sees** (Keep it simple: nothing else): a **Special days** section above the slots, one line per day - "New Year's Toonami Marathon · Fri Jan 1, 6:00am – Sat 6:00am · Toonami" - with **Edit**, **Copy** and **Delete**; an aired day greyed. The day's editor: name, start and end, Block for the day, Advance or Keep apart, Set times or Back to back, the rows (show, order, seasons, a time for Set times, and Episode start's **Next: … · when** with **change**), **Add row**, **This item…** (the Swap picker: a custom show's list, a show's catalog, one item from the Plex library), **Fill from a block…** and **Preview this day**. A problem is one short line at its field and blocks Create Lineup. Kept rows inside the window get one line, as `sayKept` says it ("Your 1 swap on Jan 1 stays where it is."), and only when there are some. Inside a day, the list's Swap, Insert after, Delete and drag answer one line: "Change this in Time Slots, New Year's Toonami Marathon." Create Lineup and Update Channel save the day with the schedule; Cancel drops it.
+**What Ron sees** (Keep it simple: nothing else): a **Special days** section above the slots, one line per day - "New Year's Toonami Marathon · Fri Jan 1, 6:00am – Sat 6:00am · Toonami" - with **Edit**, **Copy** and **Delete**; an aired day greyed. The day's editor: name, start and end, Block for the day, Advance or Keep apart, Set times or Back to back (with "Rows start on the half hour / quarter hour"), the rows (show, order, seasons, a time for Set times, and Episode start's **Next: … · when** with **change**), **Add row**, **This item…** (the Swap picker: a custom show's list, a show's catalog, one item from the Plex library), **Fill from a block…** and **Preview this day**. A problem is one short line at its field and blocks Create Lineup. Kept rows inside the window get one line, as `sayKept` says it ("Your 1 swap on Jan 1 stays where it is."), and only when there are some. Inside a day, the list's Swap, Insert after, Delete and drag answer one line: "Change this in Time Slots, New Year's Toonami Marathon." Create Lineup and Update Channel save the day with the schedule; Cancel drops it.
 
 - [ ] **Step 1: Write the failing tests** for the pure parts: `whyNot` inside a day ("Change this in Time Slots, New Year's Toonami Marathon.") for Swap, Insert after, Delete and a drag; Next lines for a Keep-apart row ("Next: S1E1 · Fri Jan 1, 6:00am") and an Advance jump ("Jumps to S1E1 on Fri Jan 1; your strip carries on from wherever the day leaves it").
 - [ ] **Step 2:** run them - Expected: failures.
