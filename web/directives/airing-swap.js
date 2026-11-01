@@ -8,8 +8,15 @@
  * re-laid. See NOTES.md, Known issues, "What you see is what airs: hand edits
  * kept in the list".
  *
+ * `request.mode === 'pick'` (the Special days editor's This item row, NOTES.md
+ * "Special days") reuses the same picker - a custom show's list, a show's
+ * catalog, one item from the Plex library - with no row to fit into and no
+ * swap/insert to apply: `onDone(program | null)`, the item itself. `request`
+ * then needs no `index`, and `channel` only enough to list shows and custom
+ * shows (programs, and scheduleBackup for its slots' shows).
+ *
  * `request`: { channel, index, mode, catalogState } from the channel page;
- * `onDone({ programs, text } | null)`.
+ * `onDone({ programs, text } | null)`, or `onDone(program | null)` for a pick.
  */
 const pins = require('../../src/pins');
 const keptRows = require('../../src/kept-rows');
@@ -35,16 +42,23 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let schedule = channel.scheduleBackup;
             let startTime = () => new Date(channel.startTime).getTime();
             let lineupNow = () => ({ programs: channel.programs, startTime: startTime() });
+            let isPick = (req.mode === 'pick');
             let isInsert = (req.mode === 'insert');
-            scope.verb = isInsert ? 'Insert after' : 'Swap';
-            // The row clicked - or, for an insert moved to another break, the row before it.
+            scope.isPick = isPick;
+            scope.verb = isPick ? 'Pick' : (isInsert ? 'Insert after' : 'Swap');
+            // The row clicked - or, for an insert moved to another break, the row before
+            // it. A pick has no row: it is choosing an item, not fitting one in.
             let index = req.index;
             let rowOf = (i) => keptRows.rowsOf(lineupNow()).find( (r) => r.index === i );
-            let row = rowOf(index);
-            let airing = row.program;
-            let around = pins.slotAround({ schedule, at: row.start });
-            scope.showId = pins.swapShow({ airing, slotShow: around ? around.showId : undefined, getShowData });
+            let row = isPick ? null : rowOf(index);
+            let airing = isPick ? null : row.program;
+            let around = isPick ? null : pins.slotAround({ schedule, at: row.start });
+            scope.showId = isPick ? '' : pins.swapShow({ airing, slotShow: around ? around.showId : undefined, getShowData });
             let retitle = () => {
+                if (isPick) {
+                    scope.title = req.title || '';
+                    return;
+                }
                 scope.title = isInsert
                     ? `${pins.dayClock(row.start + row.program.duration)}, in the break after ${pins.label(row.program)}` + ( (row.flex > 0) ? ` (${pins.length(row.flex)} of Flex)` : '' )
                     : `${pins.dayClock(row.start)} - ${pins.label(airing)}, ${pins.length(airing.duration)}` + ( (row.flex > 0) ? `, then ${pins.length(row.flex)} of Flex` : '' );
@@ -52,7 +66,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             retitle();
             scope.state = 'pick';
             scope.filter = { text: '' };
-            scope.source = 'show';
+            scope.source = isPick ? 'custom' : 'show';
             scope.items = [];
             scope.loading = false;
             scope.error = null;
@@ -71,8 +85,12 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             scope.customShows = [];
             let customFromLineup = false;
 
-            // Whether an item fits: a swap's room is the row and the Flex after it, an insert's the Flex.
+            // Whether an item fits: a swap's room is the row and the Flex after it, an
+            // insert's the Flex. A pick has no row to fit - it always "fits".
             let describe = (p) => {
+                if (isPick) {
+                    return { program: p, label: pins.label(p), length: pins.length(p.duration), holiday: showCatalog.holidayOf(p.title), fits: true, over: '' };
+                }
                 let room = isInsert ? row.flex : row.program.duration + row.flex;
                 let overrun = p.duration - room;
                 return {
@@ -197,6 +215,10 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 } catch (err) {
                     scope.error = err.message;
                     $timeout();
+                    return;
+                }
+                if (isPick) {
+                    scope.onDone(p);
                     return;
                 }
                 scope.chosen = r;

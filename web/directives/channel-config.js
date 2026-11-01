@@ -2340,7 +2340,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
-                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir, state
+                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir, state, scope.channel.blocks
                 );
                 $timeout();
             };
@@ -2677,7 +2677,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 ensureHandEditsKept();
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
-                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state );
+                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state, scope.channel.blocks );
                 $timeout();
             }
             scope.onRandomSlotsButtonClick = async () => {
@@ -2710,7 +2710,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
                     progs, scope.maxSize, scope.channel.scheduleBackup,
-                    true, null, lineupOnAir, state
+                    true, null, lineupOnAir, state, scope.channel.blocks
                 );
                 $timeout();
             }

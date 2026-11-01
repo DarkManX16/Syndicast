@@ -6583,6 +6583,55 @@ filler lists refreshed from the live ones at 8:21am. Suite 2754 at the start, 27
   past kept edits): all nine pass on channel 1 - delete used Cowboy Bebop at 3:30am Nov 1, past
   27 kept edits.
 
+**Step 5, the Time Slots dialog, Oct 31-Nov 1, 2026** (`special-days`). `npm test` 2780/2780;
+the workflow checklist, all nine plus a new `special-day`, 10/10 on a fresh copy, port 18210.
+
+- **What shipped.** A **Special days** section above the regular slots in the Time Slots dialog:
+  one line per day with Edit/Copy/Delete, an inline editor (name, Block for the day, start/end
+  date and time, Advance/Keep apart, Back to back/Set times with its rounding), its rows (show +
+  order + seasons, or a picked item, each with Episode start's own "Next: … · when" line, reusing
+  `src/episode-start.js`'s `dayRowLines` - the same `orderers.createPositions` the generator
+  itself runs, so the dialog can never disagree with what airs), **+ Add row**, **This item…**
+  (extends `web/directives/airing-swap.js` with a `mode: 'pick'` rather than duplicating its
+  ~250 lines of show/custom-show/library picking) and **Fill from a block…**. A problem is one
+  line at its field and blocks Create Lineup (`specialDays.problems`). `src/kept-rows.js` gained
+  `specialDayMessage`/`whyNot` (now exported - it wasn't before) so Swap, Insert after, Delete and
+  a drag into, out of or inside a day all answer "Change this in Time Slots, {day name}." before
+  `pins.whyNot`'s own checks; threaded through `channel-config.js`'s `openPlacing`/`deleteRow`/
+  `move` and the 3 `startDialog` call sites (which now also pass the channel's blocks).
+- **Two UI bugs, found interactively, fixed:** a native `<input type="date">` wants a `Date`
+  object bound via `ng-model`, never a `'YYYY-MM-DD'` string (`channel-config.js`'s `goTo` already
+  says so) - `dateStringOf`/`dateObjectOf` and six wrapper scope functions convert at the edges.
+  The block select showed only an empty option: `dayBlockOptions()` was called from the template
+  but never defined.
+- **Proof, real clicks only, port 18210 (`special-days-data`):** added a day, Toonami for its
+  block, **Fill from a block…** (16 rows, matching the block's own slots); **This item…** →
+  **From the library…** → "Dragon Ball" → Dragon Ball Z: Bojack Unbound, added as row 17; Create
+  Lineup (39,738 → 40,000 slots) and Update Channel. The saved `channels/1.json`: 1 special day,
+  17 slots, 47 airings tagged with it, Bojack Unbound at row 16 (0-based) - exactly the picked
+  item, in its own row, once. Cancel (Time Slots, then the channel editor) left the file
+  byte-identical to before (`diff`). A real `type` into the Name field, and into the regular
+  Filter slots field with no special day open at all, both logged an AngularJS
+  `[$rootScope:infdig] 10 $digest() iterations reached` warning in the console - traced (watcher
+  value snapshots across repeated raw `$digest()` calls, then confirmed via real typing) to a
+  single watcher, unrelated to Special days, that keeps changing every digest regardless of what
+  triggers it or whether a special day exists at all: **pre-existing**, not introduced here, not
+  chased further. It doesn't corrupt data (`scope.dayRowLine`'s 16 returned strings, and the saved
+  file above, both checked directly) and self-corrects once the heavy editor card closes; two real
+  inefficiencies of my own that fed it are fixed anyway - `dayProblems` recomputed every day's
+  problems from scratch up to 3 times per digest (now cached on the days+blocks), `dayBlockOptions`
+  and `dayOffsetOptions` built a fresh array of fresh objects on every call (now cached). At 6:00am
+  on the day (Ronin Warriors), Swap gave "Change this in Time Slots, New special day." - confirmed
+  both by the list showing no Swap/Insert icons on the day's rows and directly: `startSwap` sets
+  `scope.error.programs` to exactly that text.
+- **`scripts/editor-workflows.js`** gained a `special-day` workflow (cherry-picked to `blocks`
+  with the rest of the script's changes): add a day 40 days out (clear of the other workflows'
+  own near-term windows), a row of its own shows, Create Lineup, Update Channel; Delete on one of
+  its airings refused; then deletes the day and regenerates, so it leaves the channel clean for
+  whatever runs after it.
+- **Left for Step 6 ("Preview this day", NOTES.md plan): the dialog has no preview of the day's
+  own timetable yet** - by design, that's Step 6's task, not a gap here.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

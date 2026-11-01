@@ -55,6 +55,155 @@
                         <button class='btn btn-sm btn-link' style="padding: 0 0 0 6px;"
                             ng-click="clearScope()">show all slots</button>
                     </div>
+
+                    <!--
+                        Special days (src/special-days.js): a date's own Time Slots, and
+                        optionally a block for the day. One line per day, with its editor
+                        inline when Edit is open. See NOTES.md, "Special days".
+                    -->
+                    <div style="margin-bottom: 10px;">
+                        <h6 style="margin-bottom: 4px;">Special days</h6>
+                        <div ng-repeat="day in schedule.specialDays track by day.id">
+                            <div>
+                                <span ng-class="{'text-muted': dayAired(day)}">{{dayLabel(day)}}</span>
+                                <span class="badge badge-secondary" ng-show="dayAired(day)">Aired</span>
+                                <button type="button" class="btn btn-sm btn-link py-0" ng-click="editSpecialDay(day)">{{editingDay === day ? 'Close' : 'Edit'}}</button>
+                                <button type="button" class="btn btn-sm btn-link py-0" ng-click="copySpecialDay(day)">Copy</button>
+                                <button type="button" class="btn btn-sm btn-link text-danger py-0" ng-click="deleteSpecialDay(day)">Delete</button>
+                            </div>
+                            <div class="small text-muted" ng-show="dayKeptNote(day)" style="margin-bottom: 4px;">{{dayKeptNote(day)}}</div>
+
+                            <div class="card" style="margin: 2px 0 10px 0;" ng-if="editingDay === day">
+                                <div class="card-body py-2 px-3">
+                                    <div class="form-row">
+                                        <div class="form-group col-md-7">
+                                            <label class="small">Name</label>
+                                            <input type="text" class="form-control form-control-sm" ng-model="day.name"></input>
+                                        </div>
+                                        <div class="form-group col-md-5">
+                                            <label class="small">Block for the day</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="day.blockId"
+                                                ng-options="b.id as b.name for b in dayBlockOptions()"></select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group col-md-3">
+                                            <label class="small">Start date</label>
+                                            <input type="date" class="form-control form-control-sm" ng-model="fromDateModel"
+                                                ng-init="fromDateModel = dayFromDateModel(day)" ng-change="setDayFromDate(day, fromDateModel)"></input>
+                                        </div>
+                                        <div class="form-group col-md-2">
+                                            <label class="small">Hour</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="fromHourModel"
+                                                ng-init="fromHourModel = dayFromHour(day)" ng-change="setDayFromHour(day, fromHourModel)"
+                                                ng-options="o.id as o.description for o in dayHourOptions"></select>
+                                        </div>
+                                        <div class="form-group col-md-2">
+                                            <label class="small">Minute</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="fromMinuteModel"
+                                                ng-init="fromMinuteModel = dayFromMinute(day)" ng-change="setDayFromMinute(day, fromMinuteModel)"
+                                                ng-options="o.id as o.description for o in dayMinuteOptions"></select>
+                                        </div>
+                                        <div class="form-group col-md-3">
+                                            <label class="small">End date</label>
+                                            <input type="date" class="form-control form-control-sm" ng-model="toDateModel"
+                                                ng-init="toDateModel = dayToDateModel(day)" ng-change="setDayToDate(day, toDateModel)"></input>
+                                        </div>
+                                        <div class="form-group col-md-1">
+                                            <label class="small">Hour</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="toHourModel"
+                                                ng-init="toHourModel = dayToHour(day)" ng-change="setDayToHour(day, toHourModel)"
+                                                ng-options="o.id as o.description for o in dayHourOptions"></select>
+                                        </div>
+                                        <div class="form-group col-md-1">
+                                            <label class="small">Min</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="toMinuteModel"
+                                                ng-init="toMinuteModel = dayToMinute(day)" ng-change="setDayToMinute(day, toMinuteModel)"
+                                                ng-options="o.id as o.description for o in dayMinuteOptions"></select>
+                                        </div>
+                                    </div>
+                                    <div class="small text-danger" ng-show="dayProblemFor(day, 'when')">{{dayProblemFor(day, 'when')}}</div>
+                                    <div class="small text-danger" ng-show="dayProblemFor(day, 'block')">{{dayProblemFor(day, 'block')}}</div>
+
+                                    <div class="form-row">
+                                        <div class="form-group col-md-6">
+                                            <label class="small">My shows</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="day.positions"
+                                                ng-options="o.id as o.description for o in dayPositionOptions"></select>
+                                        </div>
+                                        <div class="form-group col-md-6">
+                                            <label class="small">Layout</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="day.layout"
+                                                ng-options="o.id as o.description for o in dayLayoutOptions"></select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row" ng-show="day.layout === 'back'">
+                                        <div class="form-group col-md-6">
+                                            <select class="custom-select custom-select-sm form-control" ng-model="day.rounding"
+                                                ng-options="o.id as o.description for o in dayRoundingOptions"></select>
+                                        </div>
+                                    </div>
+
+                                    <h6 style="margin-top: 8px;">Rows</h6>
+                                    <div class="small text-danger" ng-show="dayProblemFor(day, 'rows')">{{dayProblemFor(day, 'rows')}}</div>
+                                    <div ng-repeat="row in day.slots track by $index" style="border-bottom: 1px solid #eee; padding: 5px 0;">
+                                        <div ng-if="row.item">
+                                            <b class="small">{{dayRowLine(day, $index)}}</b>
+                                            <button type="button" class="btn btn-sm btn-link py-0" ng-click="pickItemFor(day, row)">Change...</button>
+                                            <button type="button" class="btn btn-sm btn-link py-0" ng-show="$index > 0" ng-click="moveDayRowUp(day, row)" title="Move up">&uarr;</button>
+                                            <button type="button" class="btn btn-sm btn-link py-0" ng-show="$index < day.slots.length - 1" ng-click="moveDayRowDown(day, row)" title="Move down">&darr;</button>
+                                            <button type="button" class="btn btn-sm btn-link text-danger py-0" ng-click="deleteDayRow(day, row)">Remove</button>
+                                        </div>
+                                        <div ng-if="!row.item">
+                                            <div class="form-row">
+                                                <div class="form-group col-md-4" style="margin-bottom: 4px;">
+                                                    <select class="custom-select custom-select-sm form-control" ng-model="row.showId"
+                                                        ng-options="s.id as s.description for s in showOptions"></select>
+                                                </div>
+                                                <div class="form-group col-md-3" style="margin-bottom: 4px;">
+                                                    <select class="custom-select custom-select-sm form-control" ng-model="row.order"
+                                                        ng-options="o.id as o.description for o in dayOrderOptionsFor(row)"></select>
+                                                </div>
+                                                <div class="form-group col-md-3" style="margin-bottom: 4px;">
+                                                    <input type="text" class="form-control form-control-sm" placeholder="Exclude seasons"
+                                                        ng-model="seasonsText" ng-init="seasonsText = dayRowSeasonsText(row)"
+                                                        ng-change="setDayRowSeasonsText(row, seasonsText)"></input>
+                                                </div>
+                                                <div class="form-group col-md-2" style="margin-bottom: 4px; text-align: right;">
+                                                    <button type="button" class="btn btn-sm btn-link py-0" ng-show="$index > 0" ng-click="moveDayRowUp(day, row)" title="Move up">&uarr;</button>
+                                                    <button type="button" class="btn btn-sm btn-link py-0" ng-show="$index < day.slots.length - 1" ng-click="moveDayRowDown(day, row)" title="Move down">&darr;</button>
+                                                    <button type="button" class="btn btn-sm btn-link text-danger py-0" ng-click="deleteDayRow(day, row)">Remove</button>
+                                                </div>
+                                            </div>
+                                            <div class="form-row" ng-show="day.layout === 'times'">
+                                                <div class="form-group col-md-3" ng-show="dayOffsetOptions(day).length > 1" style="margin-bottom: 4px;">
+                                                    <select class="custom-select custom-select-sm form-control" ng-model="rowOffsetModel"
+                                                        ng-init="rowOffsetModel = dayRowOffset(row)" ng-change="setDayRowOffset(row, rowOffsetModel)"
+                                                        ng-options="o.id as o.description for o in dayOffsetOptions(day)"></select>
+                                                </div>
+                                                <div class="form-group col-md-2" style="margin-bottom: 4px;">
+                                                    <select class="custom-select custom-select-sm form-control" ng-model="rowHourModel"
+                                                        ng-init="rowHourModel = dayRowHour(row)" ng-change="setDayRowHour(row, rowHourModel)"
+                                                        ng-options="o.id as o.description for o in dayHourOptions"></select>
+                                                </div>
+                                                <div class="form-group col-md-2" style="margin-bottom: 4px;">
+                                                    <select class="custom-select custom-select-sm form-control" ng-model="rowMinuteModel"
+                                                        ng-init="rowMinuteModel = dayRowMinute(row)" ng-change="setDayRowMinute(row, rowMinuteModel)"
+                                                        ng-options="o.id as o.description for o in dayMinuteOptions"></select>
+                                                </div>
+                                            </div>
+                                            <div class="small text-muted">{{dayRowLine(day, $index)}}</div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" ng-click="addDayRow(day)">+ Add row</button>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" ng-click="pickItemFor(day, null)">This item...</button>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" ng-show="day.blockId" ng-click="fillDayFromBlock(day)">Fill from a block...</button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-warning" ng-click="addSpecialDay()">+ Add special day</button>
+                    </div>
+
                     <div class="form-row" ng-show="schedule.slots.length > 0" style="margin-bottom: 6px;">
                         <div class='form-group col-md-5' style="margin-bottom: 4px;">
                             <input type="text" class="form-control form-control-sm" id="slotFilter"
@@ -386,5 +535,6 @@
 
     <time-slots-time-editor slot="_editedTime" on-done="finishedTimeEdit"></time-slots-time-editor>
     <time-slots-time-editor slot="_addedTime" on-done="finishedAddingTime"></time-slots-time-editor>
+    <airing-swap ng-if="dayPicker" request="dayPicker.request" on-done="itemPicked"></airing-swap>
 
 </div>

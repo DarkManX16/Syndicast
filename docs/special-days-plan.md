@@ -184,12 +184,12 @@
 
 **What Ron sees** (Keep it simple: nothing else): a **Special days** section above the slots, one line per day - "New Year's Toonami Marathon · Fri Jan 1, 6:00am – Sat 6:00am · Toonami" - with **Edit**, **Copy** and **Delete**; an aired day greyed. The day's editor: name, start and end, Block for the day, Advance or Keep apart, Set times or Back to back (with "Rows start on the half hour / quarter hour"), the rows (show, order, seasons, a time for Set times, and Episode start's **Next: … · when** with **change**), **Add row**, **This item…** (the Swap picker: a custom show's list, a show's catalog, one item from the Plex library), **Fill from a block…** and **Preview this day**. A problem is one short line at its field and blocks Create Lineup. Kept rows inside the window get one line, as `sayKept` says it ("Your 1 swap on Jan 1 stays where it is."), and only when there are some. Inside a day, the list's Swap, Insert after, Delete and drag answer one line: "Change this in Time Slots, New Year's Toonami Marathon." Create Lineup and Update Channel save the day with the schedule; Cancel drops it.
 
-- [ ] **Step 1: Write the failing tests** for the pure parts: `whyNot` inside a day ("Change this in Time Slots, New Year's Toonami Marathon.") for Swap, Insert after, Delete and a drag; Next lines for a Keep-apart row ("Next: S1E1 · Fri Jan 1, 6:00am") and an Advance jump ("Jumps to S1E1 on Fri Jan 1; your strip carries on from wherever the day leaves it").
-- [ ] **Step 2:** run them - Expected: failures.
-- [ ] **Step 3:** Implement; `npm run build`.
-- [ ] **Step 4:** `npm test` - Expected: all pass.
-- [ ] **Step 5: Proof on the preview** (port 18210, `special-days-data`): build step 2's New Year's day through the dialog - Fill from Toonami, two This item movies, Back to back, Advance - Create Lineup, Update Channel. The saved `channels/1.json` on the copy equals `progress-check`'s output for the same day at the same moment, program for program (the carry aside). A movie picked from the Plex library survives Update Channel, a reload and a second Create Lineup. Cancel leaves the file untouched. Swap on a marathon airing gives the refusal. The workflow checklist, all nine plus `special-day`, on a fresh copy; then a look at the dialog: no line Ron didn't ask for. Screenshots of the list and the editor for Ron.
-- [ ] **Step 6:** Commit `Special days: the Time Slots dialog`. **Stop** and report.
+- [x] **Step 1: Write the failing tests** for the pure parts: `whyNot` inside a day ("Change this in Time Slots, New Year's Toonami Marathon.") for Swap, Insert after, Delete and a drag; Next lines for a Keep-apart row ("Next: S1E1 · Fri Jan 1, 6:00am") and an Advance jump ("Jumps to S1E1 on Fri Jan 1; your strip carries on from wherever the day leaves it"). `test/kept-rows.js` ("special days: Swap, Insert after, Delete and a drag inside a day are refused", 7 checks) and `test/episode-start-model.js` ("a special day's rows") in place of the plan's named `test/kept-editor.js`.
+- [x] **Step 2:** run them - Expected: failures.
+- [x] **Step 3:** Implement; `npm run build`.
+- [x] **Step 4:** `npm test` - Expected: all pass. 2780/2780.
+- [x] **Step 5: Proof on the preview** - see NOTES.md, "Special days", Step 5's build record.
+- [x] **Step 6:** Commit `Special days: the Time Slots dialog`. **Stop** and report.
 
 ## Step 6 - Seeing it beforehand
 
