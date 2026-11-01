@@ -29,6 +29,9 @@
  *   create-lineup        Time Slots... (at most one short line about kept rows), Create
  *                        Lineup; kept rows stay; saved
  *   filler               a filler list: drag a clip, delete one, Done; saved
+ *   special-day          a date's own Time Slots: add a day, a row of its own shows,
+ *                        Create Lineup, Update Channel; Delete on one of its airings
+ *                        refused; the day deleted and regenerated clean after
  *
  * first-open-silent passes over a channel whose list has nothing from before kept
  * rows to answer for; every workflow's openEditor() fails loudly if the old
@@ -687,6 +690,136 @@ function makeRunner(opts, page) {
                 throw new Check('the drag didn\'t move the first clip');
             }
             return `${target.name}: the first clip dragged down, one deleted, Done saved ${after.content.length} of ${before.content.length}`;
+        },
+        'special-day': async () => {
+            // Special days (NOTES.md, "Special days"): a day of its own in Time Slots,
+            // a block for the day, This item, Create Lineup, Update Channel - and Delete
+            // refused on one of its airings. Far enough out (40 days) to stay clear of
+            // the other workflows' near-term kept-row checks; cleaned up after itself.
+            const openTimeSlots = async () => {
+                const timeSlotsShowing = await page.evaluate(() => [...document.querySelectorAll('button[title="Time Slots..."]')].some((b) => b.getClientRects().length > 0));
+                if (!timeSlotsShowing) {
+                    await clickText('button[ng-click="toggleTools()"]', /Tools/, 'Tools');
+                }
+                await clickText('button[title="Time Slots..."]', /Time Slots\.\.\./, 'Time Slots...');
+                await find('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
+            };
+            const runCreateLineup = async () => {
+                await clickText('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
+                const closed = await page.waitForFunction(() => ![...document.querySelectorAll('.modal-title')]
+                    .some((t) => t.textContent.trim() === 'Time Slots' && t.getClientRects().length > 0), { timeout: 300000, polling: 1000 }).catch(() => null);
+                if (closed === null) {
+                    throw new Check('Create Lineup didn\'t finish in 5 minutes');
+                }
+                await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 }).catch(() => {});
+            };
+
+            await openEditor();
+            await openTimeSlots();
+            await clickText('button', '+ Add special day', 'Add special day');
+            const nameField = await find('input[ng-model="day.name"]', null, 'the special day\'s Name field');
+            await nameField.click();
+            await page.keyboard.down('Control');
+            await page.keyboard.press('A');
+            await page.keyboard.up('Control');
+            await page.keyboard.press('Backspace');
+            await nameField.type('Workflow test day');
+            const named = await page.waitForFunction(() => [...document.querySelectorAll('input[ng-model="day.name"]')]
+                .some((x) => x.value === 'Workflow test day'), { timeout: 10000, polling: 100 }).catch(() => null);
+            if (named === null) {
+                throw new Check('the special day\'s Name field didn\'t take "Workflow test day"');
+            }
+            // Pushed 40 days out, in the directive's own scope - away from the near-term
+            // windows the other workflows check, well within usable()'s one-week limit.
+            const dayId = await page.evaluate(() => {
+                const el = [...document.querySelectorAll('input[ng-model="day.name"]')].find((x) => x.value === 'Workflow test day');
+                const scope = angular.element(el).scope();
+                const DAY = 24 * 60 * 60 * 1000;
+                const d = new Date(Date.now() + 40 * DAY);
+                const toStr = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+                scope.day.from.date = toStr(d);
+                scope.day.to.date = toStr(new Date(d.getTime() + DAY));
+                scope.$apply();
+                return scope.day.id;
+            });
+            if (!dayId) {
+                throw new Check('the special day\'s own scope wasn\'t found to set its dates');
+            }
+            await clickText('button', '+ Add row', 'Add row');
+            const showName = await page.evaluate(() => {
+                const el = [...document.querySelectorAll('select[ng-model="row.showId"]')][0];
+                const opt = [...el.options].find((o) => o.value && !/^string:flex\.?$/.test(o.value));
+                if (!opt) return null;
+                el.value = opt.value;
+                angular.element(el).triggerHandler('change');
+                return opt.textContent.trim();
+            });
+            if (!showName) {
+                throw new Check('no show to put in the special day\'s row');
+            }
+            await sleep(300);
+            await runCreateLineup();
+            await closeWith('Update Channel');
+
+            const laid = await api(`/api/channel/${opts.channel}`);
+            const day = (laid.scheduleBackup.specialDays || []).find((d) => d.id === dayId);
+            if (!day) {
+                throw new Check('the special day wasn\'t saved');
+            }
+            const tagged = laid.programs.filter((p) => p.specialDay === dayId);
+            if (tagged.length === 0) {
+                throw new Check('Create Lineup laid nothing for the special day');
+            }
+
+            // Delete refused on one of its airings: jump the list to the day's own start.
+            await openEditor();
+            const refusal = await page.evaluate((fromAt) => {
+                const el = document.getElementById('channelConfigProgramList');
+                const scope = angular.element(el).scope();
+                scope.goTo.date = new Date(fromAt);
+                scope.goTo.time = new Date(fromAt);
+                scope.goToAiring();
+                scope.$apply();
+                return true;
+            }, new Date(day.from.date + 'T00:00:00').getTime() + day.from.time);
+            if (!refusal) {
+                throw new Check('couldn\'t jump the list to the special day\'s start');
+            }
+            await sleep(800);
+            const row = (await rowsInView()).find((r) => !r.flex);
+            if (!row) {
+                throw new Check('no airing in view at the special day\'s start');
+            }
+            await click(await (await rowHandle(row.k)).$('button[title="Delete..."]'), `${row.show} at ${row.start}'s Delete`);
+            await sleep(500);
+            const said = await page.evaluate(() => [...document.querySelectorAll('.text-danger.small')]
+                .map((e) => e.textContent.trim()).find((t) => /Change this in Time Slots/.test(t)) || null);
+            if (!said) {
+                throw new Check(`Delete on ${row.show} at ${row.start} (inside the special day) wasn't refused`);
+            }
+            const stillThere = (await rowsInView()).some((r) => r.start === row.start && r.show === row.show);
+            if (!stillThere) {
+                throw new Check(`${row.show} at ${row.start} was removed despite the refusal`);
+            }
+            await closeWith('Cancel');
+
+            // Clean up: delete the day itself and regenerate, so later runs start clean.
+            await openEditor();
+            await openTimeSlots();
+            await page.evaluate((id) => {
+                const el = [...document.querySelectorAll('[ng-repeat="day in schedule.specialDays track by day.id"]')]
+                    .find((x) => angular.element(x).scope().day.id === id);
+                angular.element(el).scope().deleteSpecialDay(angular.element(el).scope().day);
+                angular.element(el).scope().$apply();
+            }, dayId);
+            await runCreateLineup();
+            await closeWith('Update Channel');
+            const cleaned = await api(`/api/channel/${opts.channel}`);
+            if ((cleaned.scheduleBackup.specialDays || []).some((d) => d.id === dayId)) {
+                throw new Check('the special day was still there after cleanup');
+            }
+            return `"Workflow test day" (${showName}) added 40 days out, Create Lineup laid ${tagged.length} airings, saved; `
+                + `Delete on ${row.show} at ${row.start} refused ("${said}"); deleted and regenerated clean`;
         },
     };
     return workflows;
