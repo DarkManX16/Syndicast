@@ -31,7 +31,9 @@
  *   filler               a filler list: drag a clip, delete one, Done; saved
  *   special-day          a date's own Time Slots: add a day, a row of its own shows,
  *                        Create Lineup, Update Channel; Delete on one of its airings
- *                        refused; the day deleted and regenerated clean after
+ *                        refused; the day deleted and regenerated clean after. SKIPs
+ *                        itself, saying why, on a bundle with no Special days section -
+ *                        safe to run on blocks before Special days lands there
  *
  * first-open-silent passes over a channel whose list has nothing from before kept
  * rows to answer for; every workflow's openEditor() fails loudly if the old
@@ -80,6 +82,8 @@ const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
 
 class Check extends Error {}
+// A workflow that doesn't apply to this bundle - not a failure, named why.
+class Skip extends Error {}
 
 function makeRunner(opts, page) {
     const api = async (path) => {
@@ -716,6 +720,29 @@ function makeRunner(opts, page) {
 
             await openEditor();
             await openTimeSlots();
+            const hasSpecialDays = await page.evaluate(() => [...document.querySelectorAll('.modal-body button')]
+                .some((b) => b.textContent.trim() === '+ Add special day'));
+            if (!hasSpecialDays) {
+                // footerButton/closeWith aren't scoped to one modal, and the channel
+                // editor's own Cancel sits in the DOM too (stacked underneath): find the
+                // Time Slots dialog's own Cancel specifically.
+                const cancelHandle = await page.evaluateHandle(() => {
+                    const modal = [...document.querySelectorAll('.modal')].find((m) => {
+                        const t = m.querySelector('.modal-title');
+                        return t && t.textContent.trim() === 'Time Slots' && m.getClientRects().length > 0;
+                    });
+                    return modal ? [...modal.querySelectorAll('.modal-footer button')].find((b) => b.textContent.trim() === 'Cancel') || null : null;
+                });
+                const cancelEl = cancelHandle.asElement();
+                if (cancelEl === null) {
+                    throw new Check('the Time Slots dialog\'s own Cancel wasn\'t found to back out of it');
+                }
+                await click(cancelEl, 'the Time Slots dialog\'s Cancel');
+                await page.waitForFunction(() => ![...document.querySelectorAll('.modal-title')]
+                    .some((t) => t.textContent.trim() === 'Time Slots' && t.getClientRects().length > 0), { timeout: 10000, polling: 200 }).catch(() => {});
+                await closeWith('Cancel');
+                throw new Skip('this bundle\'s Time Slots dialog has no Special days section (no "+ Add special day" button) - special-day skipped');
+            }
             await clickText('button', '+ Add special day', 'Add special day');
             const nameField = await find('input[ng-model="day.name"]', null, 'the special day\'s Name field');
             await nameField.click();
@@ -850,6 +877,7 @@ function makeRunner(opts, page) {
     const workflows = makeRunner(opts, page);
     const names = Object.keys(workflows).filter((n) => opts.only === null || opts.only.indexOf(n) !== -1);
     let failed = 0;
+    let skipped = 0;
     console.log(`Editor workflows on ${opts.url}, channel ${opts.channel}, ${new Date().toLocaleString()}`);
     for (const name of names) {
         const t0 = Date.now();
@@ -858,16 +886,22 @@ function makeRunner(opts, page) {
             const said = await workflows[name]();
             console.log(`  PASS  ${name}  (${Math.round((Date.now() - t0) / 1000)}s)  ${said}`);
         } catch (e) {
-            failed++;
-            console.log(`  FAIL  ${name}  ${e instanceof Check ? e.message : e.stack}`);
-            const shot = require('path').join(require('os').tmpdir(), `editor-workflows-${name}.png`);
-            await page.screenshot({ path: shot }).then(() => console.log(`        screenshot: ${shot}`)).catch(() => {});
+            if (e instanceof Skip) {
+                skipped++;
+                console.log(`  SKIP  ${name}  ${e.message}`);
+            } else {
+                failed++;
+                console.log(`  FAIL  ${name}  ${e instanceof Check ? e.message : e.stack}`);
+                const shot = require('path').join(require('os').tmpdir(), `editor-workflows-${name}.png`);
+                await page.screenshot({ path: shot }).then(() => console.log(`        screenshot: ${shot}`)).catch(() => {});
+            }
         }
         if (errors.length > 0) {
             console.log(`        page errors: ${errors.slice(0, 3).join(' | ')}`);
         }
     }
     await browser.close();
-    console.log(`${names.length - failed}/${names.length} workflows passed.`);
+    const ran = names.length - skipped;
+    console.log(`${ran - failed}/${ran} workflows passed${skipped ? `, ${skipped} skipped` : ''}.`);
     process.exitCode = failed === 0 ? 0 : 1;
 })();
