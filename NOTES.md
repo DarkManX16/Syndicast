@@ -6674,6 +6674,55 @@ a marathon-specific one with the regular list as its fallback.
   real New Year's day, saved with no warning, a Ronin Warriors break playing the Full Cycle clip
   and another show's break the regular one, checked live on the clock-shifted preview.
 
+**Fill long breaks with, Nov 5, 2026** (`special-days`, folded into step 6). Found building the
+real New Year's day on 18214: Dragon Ball Z: The Tree of Might (1:00:53) from 7:30am left a
+29-minute bare Flex to the next row's own 9:00 mark. Ron's fix, one setting on a special day:
+**Fill long breaks with** - a show, custom show or filler list, off by default. A Back to back
+break over 10 minutes plays as many items of that source as fit, then a shorter plain break, so
+the next row still starts exactly on its mark.
+
+- **What shipped.** `time-slots-service.js`'s `backStep`, right where a row's own leftover gap
+  to the next mark is worked out: under 10 minutes, nothing changes; over, `fillItemsFor` pulls
+  items from `day.fillBreaksWith` - a showId (the same `getNextForSlot`/`advanceSlot` a row
+  itself uses, so the position is remembered between runs the normal way) or `"filler:<listId>"`
+  (round robin within the one run only - filler is disposable, nothing to remember) - until
+  nothing more fits, then a plain break closes out whatever is left. Every fill item carries
+  `specialDay`/`specialRow: 'fill'`, the same as a row's own items, so it reads like any other
+  airing of the day. The generator is a pure function and cannot read a filler list itself, so it
+  takes one more, optional argument, `fillerPools` - `{ [listId]: [item, ...] } `, read ahead by
+  whoever calls it: `api.js`'s `/api/channel-tools/time-slots` reads any named lists from
+  `fillerDB` before calling the generator; `progress-check.js` gained `fillerPoolsFor`, reading
+  `<data>/filler/<id>.json` the same way for `--special`'s own proof. The dialog: one dropdown
+  next to Rounding, "Fill long breaks with" - Off, then `showOptions` (already built for the
+  regular Program picker - a show's or custom show's own id), then the channel's filler lists
+  (`scope.fillerOptions`, threaded through the 3 `startDialog` call sites the same way `blocks`
+  was for step 5), memoized the same way `dayBlockOptions` is.
+- **A real bug on the way: `layPads`'s own `flexPreference` would have scattered the long part of
+  the break across the fill items** (`schedule.flexPreference !== 'end'` is the common case) -
+  not what "then a normal break" means. Avoided rather than fixed: the row's own item(s) are laid
+  with `layPads(pads, 0)` (only their usual small per-item pad), then fill items are pushed
+  directly (`pushProgram`, no pad between them), then one `pushFlex` for whatever is left - never
+  going through `layPads`'s own distribution for the long part at all.
+- **Proof, the real Full Cycle day, half-hour rounding (Ron's own words), I Am Weasel (6-7 minute
+  episodes) as the fill source:** Dragon Ball Z: The Tree of Might (60:53) from 10:00pm - a
+  4.1-minute pad, three I Am Weasel shorts (19:48), a 5.3-minute break, Batman: Mask of the
+  Phantasm right on 11:30pm. Every movie's gap across the whole day filled the same way (SubZero,
+  Dead Zone, and so on); a couple of gaps were left alone where I Am Weasel's own rotation landed
+  on an episode too long to fit, same as a row's own extra items already behave - not a bug, the
+  same first-fit rule throughout. Every single row in the whole day, filled gap or not, lands
+  exactly on its own :00 or :30 mark - checked airing by airing, no exceptions. A filler list
+  (Toonami Bumpers) fills the same way when named instead. The day's own sign-off at its end
+  (Step 4) is unaffected - still the real break, still the real clips. Proven again through the
+  real UI on an isolated preview (port 18215): the dropdown lists shows and filler lists
+  correctly; Create Lineup and Update Channel save it both ways; the saved lineup's fill items
+  carry `specialDay` and `specialRow: 'fill'`, same as the script-based proof. `npm test`
+  2790/2790; the workflow checklist, all ten, on a fresh copy.
+- **Left alone, on purpose:** no best-fit search when the fill source's current item does not fit
+  a gap (it simply stops there, as a row's own extra items already do); Set times days (explicit
+  times already, no "mark" gap to fill); no `problems()` check for a `fillBreaksWith` that names a
+  show or list that is gone (it is simply not used that run, the same graceful way a missing
+  block's mix already degrades).
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

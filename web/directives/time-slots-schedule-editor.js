@@ -845,6 +845,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     from: { date: todayPlus(7), time: 6 * HOUR },
                     to: { date: todayPlus(8), time: 6 * HOUR },
                     blockId: null, positions: 'advance', layout: 'back', rounding: 'half',
+                    fillBreaksWith: null,
                     slots: [],
                 };
                 scope.schedule.specialDays.push(day);
@@ -899,6 +900,22 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             scope.dayLabel = (day) => {
                 let bn = scope.dayBlockName(day);
                 return day.name + ' · ' + scope.dayWindowLabel(day) + (bn ? ' · ' + bn : '');
+            };
+            // "Fill long breaks with" (NOTES.md, "Special days"): one dropdown, a
+            // show or custom show (its own showId, exactly as a row names one) or
+            // a filler list ("filler:<id>"). Off by default. Rebuilt only when the
+            // shows or filler lists change, same reason as dayBlockOptions.
+            let fillOptionsCache = null;
+            scope.dayFillOptions = () => {
+                if ( (fillOptionsCache === null) || (fillOptionsCache.shows !== scope.showOptions) || (fillOptionsCache.fillers !== scope.channelFillerLists) ) {
+                    fillOptionsCache = {
+                        shows: scope.showOptions, fillers: scope.channelFillerLists,
+                        list: [ { id: null, name: 'Off' } ]
+                            .concat( (scope.showOptions || []).filter( (s) => s.id !== 'flex.' ).map( (s) => ({ id: s.id, name: s.description }) ) )
+                            .concat( (scope.channelFillerLists || []).map( (f) => ({ id: 'filler:' + f.id, name: f.name + ' (filler list)' }) ) ),
+                    };
+                }
+                return fillOptionsCache.list;
             };
             // One short line per problem, at the field it concerns - never a wall of
             // text. Create Lineup is blocked while any day has one (scope.finished).
@@ -1196,9 +1213,12 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //`keepCatalogs`: reading only the shows the last read didn't get.
             //`blocks`: the channel's blocks (full objects, read-only here), for
             //Special days' "Block for the day" and "Fill from a block".
-            let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs, blocks) => {
+            //`fillerOptions`: the channel's filler lists ({id, name}, read-only
+            //here), for "Fill long breaks with".
+            let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs, blocks, fillerOptions) => {
                 scope.limit = limit;
                 scope.programs = programs;
+                scope.channelFillerLists = Array.isArray(fillerOptions) ? fillerOptions : [];
                 scope.channelBlocks = Array.isArray(blocks) ? blocks : [];
                 catalogs = keepCatalogs ? keptCatalogs.catalogs(Date.now()) : {};
                 reading = null;
@@ -1278,8 +1298,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 rebuildDayKeptNotes(keptAheadNow);
             }
 
-            let startDialog = (programs, limit, backup, instant, slotScope, lineup, catalogState, blocks) => {
-                prepare(programs, limit, backup, instant, slotScope, lineup, catalogState, undefined, blocks);
+            let startDialog = (programs, limit, backup, instant, slotScope, lineup, catalogState, blocks, fillerOptions) => {
+                prepare(programs, limit, backup, instant, slotScope, lineup, catalogState, undefined, blocks, fillerOptions);
                 scope.visible = true;
                 if (instant) {
                     scope.finished(false, true);

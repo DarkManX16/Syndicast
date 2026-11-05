@@ -88,8 +88,13 @@ function addProgramToShow(show, program) {
  * one whose break is on air - { start, program }: it stays where it is, and
  * the lineup is made from its end, as after a run-late pin (src/pins.js
  * carryAt; the planner counts it as aired).
+ *
+ * `fillerPools`, optional, is every filler list a special day's "Fill long
+ * breaks with" might name, read ahead of time - { [listId]: [item, ...] } -
+ * since this is a pure function and cannot read one itself. See
+ * special-days.js's `fillBreaksWith` and this file's `fillItemsFor`.
  */
-module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
+module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPools ) => {
     if (! Array.isArray(programs) ) {
         return { userError: 'Expected a programs array' };
     }
@@ -619,6 +624,65 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     };
 
     /*
+     * "Fill long breaks with" (special-days.js's `day.fillBreaksWith`): when a
+     * Back to back row ends with more than FILL_THRESHOLD left before the next
+     * row's own mark, that gap plays as many items of this source as fit
+     * first, a normal (shorter) Flex still closing it out exactly on the mark.
+     * Off (null/undefined) leaves every gap as it always was, one Flex.
+     *
+     * A show or custom show (its showId, exactly as a row names one) reuses
+     * getNextForSlot/advanceSlot - the same position a row would use, round
+     * robin, remembered between runs the same way. "filler:<listId>" reads
+     * `fillerPools[listId]` - plain items this function cannot read itself -
+     * round robin too, but only within this one run: filler is disposable,
+     * nothing to remember.
+     */
+    const FILL_THRESHOLD = 10 * MINUTE;
+    let fillCounters = new Map();
+    let fillItemsFor = (d, roomLeft) => {
+        let source = d.day.fillBreaksWith;
+        if ( (typeof(source) !== 'string') || (source === '') ) {
+            return [];
+        }
+        let out = [];
+        let room = roomLeft;
+        let tag = { special: d.day.id, specialRow: 'fill' };
+        if (source.startsWith('filler:')) {
+            let listId = source.slice('filler:'.length);
+            let pool = ( (typeof(fillerPools) === 'object') && (fillerPools !== null) && Array.isArray(fillerPools[listId]) )
+                ? fillerPools[listId] : [];
+            if (pool.length === 0) {
+                return out;
+            }
+            let i = fillCounters.get(listId) || 0;
+            for (let tries = 0; (tries < pool.length) && (room >= constants.SLACK); tries++) {
+                let clip = pool[i % pool.length];
+                i++;
+                if ( (clip.duration > 0) && (clip.duration <= room) ) {
+                    out.push(specialCopy(clip, tag));
+                    room -= clip.duration;
+                }
+            }
+            fillCounters.set(listId, i);
+            return out;
+        }
+        if (typeof(showsById[source]) === 'undefined') {
+            return out;
+        }
+        let slot = { time: -1, showId: source, order: 'next' };
+        for (let tries = 0; (tries < 1000) && (room >= constants.SLACK); tries++) {
+            let next = getNextForSlot(slot, room);
+            if ( (next === null) || (typeof(next) === 'undefined') || next.isOffline || ! (next.duration > 0) || (next.duration > room) ) {
+                break;
+            }
+            out.push(specialCopy(next, tag));
+            advanceSlot(slot);
+            room -= next.duration;
+        }
+        return out;
+    };
+
+    /*
      * One step of a Back to back day: Flex to the next row's start, or the next
      * row with something to air - its first item, then any more of its own that
      * finish by the next :00 or :30, padded and sharing the Flex as a regular
@@ -683,7 +747,22 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             advanceSpecial(row);
             total += padded.totalDuration;
         }
-        layPads(pads, Math.max(0, remaining - total));
+        let leftover = Math.max(0, remaining - total);
+        if (leftover <= FILL_THRESHOLD) {
+            layPads(pads, leftover);
+            return;
+        }
+        // Long enough to fill: the row's own item(s) with only their usual
+        // small pad (schedule.flexPreference never spreads the long part of
+        // this break across them), then fill items back to back, then one
+        // plain break for whatever is still left - the next row still starts
+        // right on its mark either way.
+        layPads(pads, 0);
+        fillItemsFor(d, leftover).forEach( (item) => {
+            pushProgram(item);
+            leftover -= item.duration;
+        } );
+        pushFlex(Math.max(0, leftover));
     };
 
     // A take pin, pushed later than its own time, ending in a slot that began after it

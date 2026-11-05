@@ -142,6 +142,11 @@
                                             <select class="custom-select custom-select-sm form-control" ng-model="day.rounding"
                                                 ng-options="o.id as o.description for o in dayRoundingOptions"></select>
                                         </div>
+                                        <div class="form-group col-md-6">
+                                            <label class="small">Fill long breaks with</label>
+                                            <select class="custom-select custom-select-sm form-control" ng-model="day.fillBreaksWith"
+                                                ng-options="o.id as o.name for o in dayFillOptions()"></select>
+                                        </div>
                                     </div>
 
                                     <h6 style="margin-top: 8px;">Rows</h6>

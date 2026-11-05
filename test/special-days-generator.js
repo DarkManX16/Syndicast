@@ -69,7 +69,7 @@ function day(extra) {
 }
 const item = (program) => ({ showId: program.customShowId ? 'custom.' + program.customShowId : 'tv.' + program.showTitle, item: { program } });
 
-async function generate(programs, schedule, now, pins) {
+async function generate(programs, schedule, now, pins, fillerPools) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(now); else super(...a); }
@@ -78,8 +78,12 @@ async function generate(programs, schedule, now, pins) {
     global.Date = FrozenDate;
     try {
         const args = [ JSON.parse(JSON.stringify(programs)), JSON.parse(JSON.stringify(schedule)), undefined ];
-        if (typeof pins !== 'undefined') {
-            args.push(JSON.parse(JSON.stringify(pins)));
+        if ( (typeof pins !== 'undefined') || (typeof fillerPools !== 'undefined') ) {
+            args.push(typeof pins !== 'undefined' ? JSON.parse(JSON.stringify(pins)) : undefined);
+        }
+        if (typeof fillerPools !== 'undefined') {
+            args.push(undefined);   // carry
+            args.push(JSON.parse(JSON.stringify(fillerPools)));
         }
         return await timeSlotsService(...args);
     } finally {
@@ -190,6 +194,65 @@ module.exports = async function () {
         const d = inside(res, FRI6, sat(0));
         suite.check('Back to back: an item ending 5 s past the half hour - the next row starts at once',
             d[1].start === fri(6, 30, 5) && d[1].program.showTitle === 'X', d.slice(0, 2).map(line).join(' / '));
+    }
+
+    suite.log('-- Fill long breaks with (day.fillBreaksWith) --');
+    {
+        // The Back to back fixture above, unchanged: LONG_MOVIE (95:00) from 7:00 ends
+        // 8:35, 25:00 short of X's own 9:00 row - over the 10-minute threshold, so Z's
+        // shorts (7:00 each) fill it first: 3 fit (21:00), a 4:00 break closes the rest.
+        const rows = [ item(SHORT_MOVIE), item(LONG_MOVIE), { showId: 'tv.X', order: 'next' } ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows, fillBreaksWith: 'tv.Z' }) ]), NOW);
+        const d = withStarts(res).filter( (a) => (a.start >= fri(7)) && (a.start <= fri(9)) );
+        const zs = d.filter( (a) => a.program.showTitle === 'Z' );
+        const x = d.find( (a) => a.program.title === 'X S1E1' );
+        const brk = x ? d[d.indexOf(x) - 1] : undefined;
+        suite.check('a long break after the movie fills with Z\'s shorts first',
+            (zs.length === 3) && (zs[0].start === fri(8, 35)) && zs.every( (a) => a.program.duration === 7 * MIN )
+                && zs.every( (a) => a.program.specialDay === 'sd_test' ),
+            d.slice(0, 4).map(line).join(' / '));
+        suite.check('...then a break of what is left, not the whole 25 minutes',
+            brk && brk.program.isOffline && (brk.program.duration === 4 * MIN), brk ? `${brk.program.duration / MIN} min` : 'none');
+        suite.check('...and X\'s own row still starts right on its 9:00 mark',
+            x && (x.start === fri(9)), x ? clock(x.start) : 'not found');
+    }
+    {
+        // Off by default: the same fixture with no fillBreaksWith is the existing Back
+        // to back proof above - one plain 25:00 Flex, nothing of Z's in it.
+        const rows = [ item(SHORT_MOVIE), item(LONG_MOVIE), { showId: 'tv.X', order: 'next' } ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);
+        const d = withStarts(res).filter( (a) => (a.start >= fri(7)) && (a.start <= fri(9)) );
+        suite.check('off by default: nothing fills the break',
+            ! d.some( (a) => a.program.showTitle === 'Z' ) && (longestFlex(res, fri(7), fri(9)) === 25 * MIN), d.map(line).join(' / '));
+    }
+    {
+        // Under the threshold: 22:00 from 6:00 ends 6:22, 8:00 short of 6:30 - a long
+        // break's source is never used on a break this short.
+        const SHORT_GAP = movie('Just Under Ten', 22 * MIN, 7);
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: [ item(SHORT_GAP), { showId: 'tv.X', order: 'next' } ], fillBreaksWith: 'tv.Z' }) ]), NOW);
+        const d = inside(res, FRI6, fri(6, 30));
+        suite.check('a break of 10 minutes or less is not "long": the fill source is left alone',
+            ! d.some( (a) => a.program.showTitle === 'Z' ), d.map(line).join(' / '));
+    }
+    {
+        // A filler list: fillerPools passed in, as the server reads its own filler
+        // store (src/api.js) or progress-check.js reads <data>/filler. Two 10:00 clips
+        // fit the 25:00 gap, a 5:00 break closing out the rest.
+        const clip = (title, duration) => ({ title, duration, isOffline: false, type: 'movie', key: '/c/' + title, serverKey: 'srv' });
+        const pools = { fc_test: [ clip('Bumper One', 10 * MIN), clip('Bumper Two', 10 * MIN) ] };
+        const rows = [ item(SHORT_MOVIE), item(LONG_MOVIE), { showId: 'tv.X', order: 'next' } ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows, fillBreaksWith: 'filler:fc_test' }) ]), NOW, undefined, pools);
+        const d = withStarts(res).filter( (a) => (a.start >= fri(7)) && (a.start <= fri(9)) );
+        const bumpers = d.filter( (a) => /^Bumper/.test(a.program.title) );
+        const x = d.find( (a) => a.program.title === 'X S1E1' );
+        const brk = x ? d[d.indexOf(x) - 1] : undefined;
+        suite.check('a filler list\'s own clips fill a long break the same way',
+            (bumpers.length === 2) && (bumpers[0].program.title === 'Bumper One') && (bumpers[1].program.title === 'Bumper Two')
+                && bumpers.every( (a) => a.program.specialDay === 'sd_test' ),
+            bumpers.map( (a) => a.program.title ).join(','));
+        suite.check('...then a break of what is left, and the next row still right on its mark',
+            brk && brk.program.isOffline && (brk.program.duration === 5 * MIN) && x && (x.start === fri(9)),
+            `${brk ? brk.program.duration / MIN : '?'} min, X at ${x ? clock(x.start) : '?'}`);
     }
 
     suite.log('-- the edges --');

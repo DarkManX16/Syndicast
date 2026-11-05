@@ -141,7 +141,7 @@ function rotate(programs, startTime, at) {
 }
 
 // test/dst-fall-back.js's generate: the real generator with `new Date()` frozen.
-async function generate(programs, schedule, at, history, pins, carry) {
+async function generate(programs, schedule, at, history, pins, carry, fillerPools) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(at); else super(...a); }
@@ -149,10 +149,32 @@ async function generate(programs, schedule, at, history, pins, carry) {
     }
     global.Date = FrozenDate;
     try {
-        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history, pins, carry);
+        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history, pins, carry, fillerPools);
     } finally {
         global.Date = RealDate;
     }
+}
+
+// Every filler list a special day's "Fill long breaks with" names (--special,
+// src/special-days.js's fillBreaksWith), read from <data>/filler - the same
+// read the server itself does from its filler store at Create Lineup.
+function fillerPoolsFor(specials, dataDir) {
+    let pools = {};
+    (specials || []).forEach( (day) => {
+        let f = day && day.fillBreaksWith;
+        if ( (typeof(f) === 'string') && f.startsWith('filler:') ) {
+            let id = f.slice('filler:'.length);
+            if (typeof(pools[id]) === 'undefined') {
+                let p = path.join(dataDir, 'filler', id + '.json');
+                try {
+                    pools[id] = JSON.parse(fs.readFileSync(p, 'utf8')).content || [];
+                } catch (e) {
+                    pools[id] = [];
+                }
+            }
+        }
+    } );
+    return pools;
 }
 
 // The row (a program, or a removal's kept Flex) starting at a local time, within 2 s, in the first pass of the list.
@@ -351,14 +373,16 @@ async function main() {
     let specials = (args.special || []).map( (f) => JSON.parse(fs.readFileSync(f, 'utf8')) );
     let base = null;
     let regular = JSON.parse(JSON.stringify(schedule));
+    let fillerPools = {};
     if (specials.length > 0) {
+        fillerPools = fillerPoolsFor(specials, args.data || path.dirname(path.dirname(file)));
         let copy = (x) => (typeof(x) === 'undefined') ? undefined : JSON.parse(JSON.stringify(x));
         base = await generate(copy(pool), regular, at, copy(history), pins.length ? copy(pins) : undefined, copy(carry || undefined));
         schedule.specialDays = (Array.isArray(schedule.specialDays) ? schedule.specialDays : []).concat(specials);
         let problems = specialDays.problems(schedule, channel.blocks);
         console.log(`special days: ${specials.map( (d) => d.name ).join(', ')}; problems: ${problems.length ? problems.map( (p) => p.text ).join(' / ') : 'none'}`);
     }
-    let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined);
+    let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined, fillerPools);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
     seasonConstraints.clearStartSeasons(schedule);
 

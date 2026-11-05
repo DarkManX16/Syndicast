@@ -193,7 +193,22 @@
 
 ## Step 6 - Seeing it beforehand
 
-### Task 6: Preview this day, the Schedule tab's week chooser, the transitions Preview's date
+### Task 6a: Fill long breaks with (built ahead, at Ron's request, Nov 5, 2026)
+
+Found building the real New Year's day on 18214: a Back to back row ending off the mark (a movie, say) left a long bare Flex before the next row's own mark. Ron's fix, one setting: **"Fill long breaks with"** on a special day - a show, custom show or filler list, off by default. A break over 10 minutes plays as many items of that source as fit, then a shorter plain break, so the next row still starts right on its mark.
+
+**Files:**
+- Modify: `src/services/time-slots-service.js` (`fillItemsFor`, `FILL_THRESHOLD`; a 6th, optional `fillerPools` parameter - `{ [listId]: [item, ...] }` - since the generator is a pure function and cannot read a filler list itself), `web/directives/time-slots-schedule-editor.js` and its template (one dropdown, `day.fillBreaksWith`: null off, a showId, or `"filler:<listId>"`; `scope.dayFillOptions()`, `scope.channelFillerLists`), `web/directives/channel-config.js` (the 3 `startDialog` call sites pass `scope.fillerOptions`), `src/api.js` (`/api/channel-tools/time-slots` resolves any named filler lists via `fillerDB.getFiller` before calling the generator), `scripts/progress-check.js` (`fillerPoolsFor`, reads `<data>/filler/<id>.json` for `--special`'s own proof)
+- Test: `test/special-days-generator.js` ("Fill long breaks with")
+
+- [x] **Step 1: Write the failing tests:** a long break after a movie fills with a show's shorts first, then a shorter break, the next row still on its mark; off by default; a break of 10 minutes or less is left alone; a filler list's clips fill the same way.
+- [x] **Step 2:** run them - Expected: failures (confirmed by reverting the generator change and re-running).
+- [x] **Step 3:** Implement; `npm run build`.
+- [x] **Step 4:** `npm test` - 2790/2790.
+- [x] **Step 5: Proof on the copy, the real Full Cycle day, half-hour rounding (Ron's own words):** Dragon Ball Z: The Tree of Might (60:53) from 10:00pm, a 4.1-minute pad, three I Am Weasel shorts (19:48), a 5.3-minute break, Batman: Mask of the Phantasm right on 11:30pm. Every row across the whole day lands on its own :00 or :30 mark, no exceptions. A filler list (Toonami Bumpers) fills the same way. Proven again through the real UI on an isolated preview: the dropdown lists shows and filler lists, Create Lineup and Update Channel save it, the saved lineup's fill items carry `specialDay`/`specialRow: 'fill'`. The day's own sign-off at its end is unaffected. The workflow checklist, all ten, on a fresh copy.
+- [x] **Step 6:** Commit `Special days: fill long breaks with a show, custom show or filler list`. **Stop** and report.
+
+### Task 6b: Preview this day, the Schedule tab's week chooser, the transitions Preview's date
 
 **Files:**
 - Modify: `web/directives/time-slots-schedule-editor.js` and its template (Preview this day), `src/special-days.js` (`timetable({ programs, startTime, day, schedule })`, pure: one entry per show or movie with its start, end and title, the rows that won't air, where the list starts again, and the one run-over line or none), `web/directives/channel-config.js` and `channel-config.html` (Schedule tab week chooser; a day's band and chips from the lineup's `specialDay` airings; hatched when not in the lineup), `web/directives/transitions-editor.js` and its template (a "from" date)

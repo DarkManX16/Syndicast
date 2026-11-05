@@ -1239,7 +1239,22 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     //tool services
     router.post('/api/channel-tools/time-slots', async (req, res) => {
       try {
-        let toolRes = await timeSlotsService(req.body.programs, req.body.schedule, req.body.history, req.body.pins, req.body.carry);
+        // Every filler list a special day's "Fill long breaks with" names
+        // (src/special-days.js's fillBreaksWith), read ahead for the
+        // generator, which cannot read one itself (a pure function).
+        let fillerPools = {};
+        let fillerIds = new Set();
+        ((req.body.schedule && req.body.schedule.specialDays) || []).forEach( (day) => {
+          let f = day && day.fillBreaksWith;
+          if ( (typeof(f) === 'string') && f.startsWith('filler:') ) {
+            fillerIds.add(f.slice('filler:'.length));
+          }
+        } );
+        for (const id of fillerIds) {
+          let filler = await fillerDB.getFiller(id);
+          fillerPools[id] = (filler && Array.isArray(filler.content)) ? filler.content : [];
+        }
+        let toolRes = await timeSlotsService(req.body.programs, req.body.schedule, req.body.history, req.body.pins, req.body.carry, fillerPools);
         if ( typeof(toolRes.userError) !=='undefined') {
           console.error("time slots error: " + toolRes.userError);
           return res.status(400).send(toolRes.userError);
