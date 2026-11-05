@@ -631,9 +631,13 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
      * Off (null/undefined) leaves every gap as it always was, one Flex.
      *
      * A show or custom show (its showId, exactly as a row names one) reuses
-     * getNextForSlot/advanceSlot - the same position a row would use, round
-     * robin, remembered between runs the same way. "filler:<listId>" reads
-     * `fillerPools[listId]` - plain items this function cannot read itself -
+     * getNextForSlot/advanceSlot, but never the show's own regular position -
+     * filling a break must never move where its regular slot picks up next
+     * (Ron, Nov 5). Tagged "fill:<dayId>" (specialDays.taggedKey, the same
+     * mechanism a Keep-apart row's own position already uses to stay off the
+     * regular one), it gets its own position, round robin, remembered between
+     * runs the normal way, just never shared with anything else. "filler:<listId>"
+     * reads `fillerPools[listId]` - plain items this function cannot read itself -
      * round robin too, but only within this one run: filler is disposable,
      * nothing to remember.
      */
@@ -669,7 +673,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         if (typeof(showsById[source]) === 'undefined') {
             return out;
         }
-        let slot = { time: -1, showId: source, order: 'next' };
+        let slot = { time: -1, showId: source, order: 'next', apart: 'fill:' + d.day.id };
         for (let tries = 0; (tries < 1000) && (room >= constants.SLACK); tries++) {
             let next = getNextForSlot(slot, room);
             if ( (next === null) || (typeof(next) === 'undefined') || next.isOffline || ! (next.duration > 0) || (next.duration > room) ) {

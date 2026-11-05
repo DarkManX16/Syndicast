@@ -254,6 +254,25 @@ module.exports = async function () {
             brk && brk.program.isOffline && (brk.program.duration === 5 * MIN) && x && (x.start === fri(9)),
             `${brk ? brk.program.duration / MIN : '?'} min, X at ${x ? clock(x.start) : '?'}`);
     }
+    {
+        // Ron, Nov 5: filling a break must never move the regular channel's own
+        // position for that show. A is one of daily()'s own regular slots, never
+        // named by the day's rows, so the day itself already displaces A's 12
+        // regular occurrences for its 24 hours either way (NOTES.md, "the shows
+        // it displaces carry on") - comparing against a day with no fill at all
+        // (same displacement) isolates just the fill, not the day's own effect.
+        const rows = [ item(SHORT_MOVIE), item(LONG_MOVIE), { showId: 'tv.X', order: 'next' } ];
+        const filled = await generate(pool(), withDays(daily(), [ day({ slots: rows, fillBreaksWith: 'tv.A' }) ]), NOW);
+        const unfilled = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);
+        const d = withStarts(filled).filter( (a) => (a.start >= fri(7)) && (a.start <= fri(9)) );
+        const as = d.filter( (a) => a.program.showTitle === 'A' );
+        const filledA = titlesOf(filled, 'A', SAT6);
+        const unfilledA = titlesOf(unfilled, 'A', SAT6);
+        suite.check('filling a break with A does use A\'s shorts',
+            as.length > 0, as.map( (a) => a.program.title ).join(','));
+        suite.check('...but A\'s own regular rotation after the day is exactly as it would be with no fill at all',
+            JSON.stringify(filledA) === JSON.stringify(unfilledA), `${filledA.slice(0, 3)} vs ${unfilledA.slice(0, 3)}`);
+    }
 
     suite.log('-- the edges --');
     {

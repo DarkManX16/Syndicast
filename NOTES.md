@@ -6722,6 +6722,19 @@ the next row still starts exactly on its mark.
   times already, no "mark" gap to fill); no `problems()` check for a `fillBreaksWith` that names a
   show or list that is gone (it is simply not used that run, the same graceful way a missing
   block's mix already degrades).
+- **Found and fixed, same day: filling moved the show's own regular place.** A show or custom
+  show named by `fillBreaksWith` reused `getNextForSlot`/`advanceSlot` with a plain
+  `{ showId, order: 'next' }` slot - the exact position key a regular channel slot for that show
+  would use (`show-orderers.js`'s `forSlot` keys only by showId, order and season constraint
+  unless tagged). I Am Weasel is one of channel 1's own regular slots; filling with it was quietly
+  advancing its real rotation. Fixed the same way a Keep-apart row already stays off the regular
+  position: the fill slot is tagged `"fill:" + day.id` (`specialDays.taggedKey`), its own position,
+  remembered between runs the normal way, never shared with anything else. `test/special-days-generator.js`
+  gained a check (failing first, confirmed by reverting the tag and re-running): A, one of the
+  fixture's own regular slots, used to fill a break, comes out with its regular rotation identical
+  to a run with no fill at all. Re-proved on the real data: I Am Weasel's regular airings after
+  the Full Cycle day are byte-identical whether the day's breaks are filled with it or not.
+  `npm test` 2792/2792.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
