@@ -6632,6 +6632,48 @@ the workflow checklist, all nine plus a new `special-day`, 10/10 on a fresh copy
 - **Left for Step 6 ("Preview this day", NOTES.md plan): the dialog has no preview of the day's
   own timetable yet** - by design, that's Step 6's task, not a gap here.
 
+**A block with no weekly airings, named by a special day, Nov 5, 2026** (`special-days`, before
+step 6). Ron's plan for marathon-specific bumpers: a block that exists only for its transitions
+(its own show intros and NEXT promos), never on the weekly schedule - a special day names it, its
+transitions are copied from the block it stands in for, and one step's filler list is swapped for
+a marathon-specific one with the regular list as its fallback.
+
+- **Already there, nothing to build.** `transitions-editor.js`'s `copySituations` (the "Copy
+  transitions to..." button) and `transitions.js`'s own resolve logic already carry a
+  `fallbackListId` per step: the real Toonami block's own `betweenShows.in` show-intro step
+  already falls back from "Toonami Show Intros" to "Toonami Bumpers" when no clip names the show.
+  `resolve`'s `attempts` order - the step's own list's specific tier, the fallback's specific
+  tier, the step's own list's general tier, *then* the fallback's general tier - means a list
+  with one show's clip and nothing else wins for that show and loses for every other, which is
+  exactly "first choice, with the other list as fallback."
+- **Found and fixed: a block with no airings warned on every save**, `channel-db.js`'s
+  `warnAboutBlocks`, "has no airings, so it never airs" - true in general, a false alarm for a
+  block a special day names on purpose. Fixed: the complaint is skipped for a block any special
+  day's `blockId` names. `test/special-days.js` gained three checks (failing first): a no-airings
+  block warns on its own; not when a special day names it; a block with real airings is
+  unaffected either way. The Time Slots dialog's own `problems()` never checked airings, so it
+  needed no change; the Blocks tab shows no warning of its own either (only this server log line
+  existed).
+- **Proof, a copy of the real Toonami block and the Full Cycle day:** "Toonami: Full Cycle" (no
+  airings), its transitions copied from Toonami via `copySituations`, its show-intro step's list
+  swapped for a test Full Cycle list (one clip, "Ronin Warriors Intro 2 (Full Cycle)") with the
+  real "Toonami Show Intros" as its fallback, named as the Full Cycle day's block. Regenerated:
+  "special days: ... problems: none". Every break across the day: `mix Toonami: Full Cycle`, the
+  block correctly resolved for the whole day despite having no airings of its own. All three
+  Ronin Warriors show-intro breaks play "Ronin Warriors Intro 2 (Full Cycle)"; DBZ, G Gundam and
+  Superman's breaks play their regular Toonami Show Intros clips ("DBZ Intro [Moltar]", "G Gundam
+  Intro", "Superman Intro"); the boundary at the day's end still leaves Toonami and enters CN
+  City (Day) as before. Also proved through the real UI, on an isolated copy (port 18213, since
+  18211 is Ron's): "+ Add block" starts with no airings and no warning shown anywhere in the
+  card; "Copy transitions to..." lists it and copies into it cleanly ("Copied 10 steps to 1
+  card"); the special day's "Block for the day" dropdown lists it, picks it, and shows no
+  problem. The server log warned once, right after the block was added with nothing naming it
+  yet (expected - a truly orphaned block still should warn); after the special day named it,
+  Create Lineup and Update Channel, no further warning. `npm test` 2783/2783.
+- **Added to step 7's live checklist** (docs/special-days-plan.md): naming this block for Ron's
+  real New Year's day, saved with no warning, a Ronin Warriors break playing the Full Cycle clip
+  and another show's break the regular one, checked live on the clock-shifted preview.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

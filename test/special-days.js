@@ -235,5 +235,29 @@ module.exports = async () => {
         warnings(sch).length === 0 && warnings(ch.schedule).length === 0 && warnings(undefined).length === 0, '');
     suite.check('saving: specialDays that isn\'t a list is warned about once',
         JSON.stringify(warnings(Object.assign( {}, ch.schedule, { specialDays: 'x' } ))) === '["Channel 1: scheduleBackup.specialDays was saved as string rather than an array. It will be ignored."]', '');
+
+    // A block that exists only for a special day (Ron, Nov 5): its own bumpers, no
+    // weekly airings of its own - not a mistake to warn about.
+    const blocksAirless = (airings) => ch.blocks.concat([ { id: 'bl_fullcycle', name: 'Toonami: Full Cycle', airings: airings } ]);
+    const airingsWarnings = (blocks, scheduleBackup) => {
+        const lines = [];
+        const real = console.error;
+        console.error = (...args) => lines.push(args.join(' '));
+        try {
+            db.validateChannelJson(1, { number: 1, blocks: blocks, scheduleBackup: scheduleBackup });
+        } finally {
+            console.error = real;
+        }
+        return lines.filter( (l) => /no airings|never airs/i.test(l) );
+    };
+    suite.check('saving: a block with no airings is warned about, on its own',
+        JSON.stringify(airingsWarnings(blocksAirless([]), sch)) === '["Channel 1: block 3 (\\"Toonami: Full Cycle\\") has no airings, so it never airs."]',
+        JSON.stringify(airingsWarnings(blocksAirless([]), sch)));
+    suite.check('saving: ...but not when a special day names it as its own block',
+        airingsWarnings(blocksAirless([]), Object.assign( {}, sch, { specialDays: [ newYears({ blockId: 'bl_fullcycle' }) ] } )).length === 0,
+        JSON.stringify(airingsWarnings(blocksAirless([]), Object.assign( {}, sch, { specialDays: [ newYears({ blockId: 'bl_fullcycle' }) ] } ))));
+    suite.check('saving: ...and a block another special day names, with its own airings, is unaffected',
+        airingsWarnings(blocksAirless([ { days: [ 0 ], start: 0, end: HOUR } ]), Object.assign( {}, sch, { specialDays: [ newYears({ blockId: 'bl_fullcycle' }) ] } )).length === 0,
+        '');
     return suite;
 };

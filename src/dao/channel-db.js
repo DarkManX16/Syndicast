@@ -231,6 +231,12 @@ function warnAboutBlocks(json) {
         return;
     }
     const badTime = (t) => (typeof(t) !== 'number') || isNaN(t) || (t < 0) || (t >= DAY_MS);
+    // A block a special day names as its own (src/special-days.js) exists only
+    // for that day - never on the weekly schedule - so having no airings is how
+    // it is meant to be, not a mistake to warn about.
+    const specialDaysBlocks = new Set(
+        ( (json.scheduleBackup && Array.isArray(json.scheduleBackup.specialDays)) ? json.scheduleBackup.specialDays : [] )
+            .filter( (d) => (d != null) && (d.blockId != null) ).map( (d) => d.blockId ) );
     // Every valid airing's occupied span this week, in week-position terms,
     // carried alongside the block it belongs to - collected first so overlap
     // can be checked pairwise afterwards, across every block at once rather
@@ -251,7 +257,9 @@ function warnAboutBlocks(json) {
         }
         warnAboutCommercialsFrom(label, block, complain);
         if (! Array.isArray(block.airings) || (block.airings.length === 0) ) {
-            complain(`${label} has no airings, so it never airs.`);
+            if (! specialDaysBlocks.has(block.id)) {
+                complain(`${label} has no airings, so it never airs.`);
+            }
             continue;
         }
         for (let j = 0; j < block.airings.length; j++) {

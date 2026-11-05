@@ -220,6 +220,7 @@ No code in the repo. On `special-days-data`, with the day made in step 5:
 - [ ] Shifted to Sat Jan 2 5:40am: the day's last item, Toonami's sign-off, CN City (Day), and the regular schedule back on time when the timetable said.
 - [ ] Create Lineup during the day (shifted to Jan 1 noon): the program on air stays, the rest of the day is unchanged.
 - [ ] Shifted to Jan 2 noon, Create Lineup: the day is listed Aired and ignored; nothing else changes.
+- [ ] A block of its own for the marathon's bumpers (NOTES.md, "Special days", the block-with-no-airings check, Nov 5): "Toonami: Full Cycle" (no weekly airings), its transitions copied from Toonami, Ronin Warriors' show-intro step's list set to a Full Cycle filler list with the regular Toonami Show Intros as its fallback. Named as the day's block, saved, no warning in the server log or the dialog. Tuned in at a Ronin Warriors break: the Full Cycle clip plays; at another show's break: the regular Toonami one does.
 - [ ] The guide (XMLTV from the preview) for Jan 1.
 - [ ] **Stop** and report to Ron with what aired at each moment. **Then Ron decides** whether to merge into `blocks`, restart 18000 himself, and build the real day on his channel - well before Jan 1. Step 8 follows at once.
 
