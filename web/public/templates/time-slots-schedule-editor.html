@@ -203,6 +203,25 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary" ng-click="addDayRow(day)">+ Add row</button>
                                     <button type="button" class="btn btn-sm btn-outline-primary" ng-click="pickItemFor(day, null)">This item...</button>
                                     <button type="button" class="btn btn-sm btn-outline-primary" ng-show="day.blockId" ng-click="fillDayFromBlock(day)">Fill from a block...</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" ng-show="day.slots.length > 0" ng-click="previewDay(day)">Preview this day...</button>
+
+                                    <div class="card" style="margin-top: 8px;" ng-if="dayPreview && (dayPreview.day === day)">
+                                        <div class="card-body py-2 px-3">
+                                            <div class="small text-muted" ng-show="dayPreview.loading">Reading the day's timetable...</div>
+                                            <div class="small text-danger" ng-show="dayPreview.error">{{dayPreview.error}}</div>
+                                            <div ng-show="dayPreview.tt">
+                                                <div ng-repeat="row in dayPreview.tt.rows track by $index">
+                                                    <hr style="margin: 6px 0;" ng-if="dayPreview.tt.restarts.indexOf(row.at) !== -1">
+                                                    <div class="small">{{dayPreviewLine(row.at)}} &middot; {{row.title}}</div>
+                                                </div>
+                                                <div class="small text-muted" ng-repeat="title in dayPreview.tt.never track by $index">{{title}} - won't get a turn</div>
+                                                <div class="small text-danger" ng-show="dayPreview.tt.overrun">
+                                                    Runs {{dayPreviewLength(dayPreview.tt.overrun.overMs)}} over; back on time at {{dayPreviewLine(dayPreview.tt.overrun.backOnTimeAt)}}
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-link" ng-click="closeDayPreview()">Close</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -259,5 +259,65 @@ module.exports = async () => {
     suite.check('saving: ...and a block another special day names, with its own airings, is unaffected',
         airingsWarnings(blocksAirless([ { days: [ 0 ], start: 0, end: HOUR } ]), Object.assign( {}, sch, { specialDays: [ newYears({ blockId: 'bl_fullcycle' }) ] } )).length === 0,
         '');
+
+    // timetable (step 6, "Preview this day"): read from a generated lineup, so
+    // it can never disagree with what Create Lineup saves - never worked out
+    // separately. A - B - A again (Back to back's rows starting over), the
+    // second A running past the day's own 7:15 end, B's second turn in that
+    // final lap never came.
+    suite.log('timetable');
+    {
+        const episode = (show, n, title, duration, specialRow) => ({
+            type: 'episode', showTitle: show, title: title, season: 1, episode: n, duration: duration,
+            specialDay: 'sd_tt', specialRow: specialRow,
+        });
+        const ttDay = Object.assign({}, newYears({
+            id: 'sd_tt', from: { date: '2027-01-01', time: 6 * HOUR }, to: { date: '2027-01-01', time: 7 * HOUR + 15 * MIN },
+            slots: [ { showId: 'tv.A', order: 'next' }, { showId: 'tv.B', order: 'next' } ],
+        }));
+        const programs = [
+            { title: 'Before', duration: 5 * MIN, isOffline: false },
+            episode('A', 1, 'A1', 20 * MIN, 0),
+            { duration: 10 * MIN, isOffline: true },
+            episode('B', 1, 'B1', 20 * MIN, 1),
+            { duration: 10 * MIN, isOffline: true },
+            episode('A', 2, 'A2', 20 * MIN, 0),
+            { title: 'After', duration: 20 * MIN, isOffline: false },
+        ];
+        const startTime = local(2027, 1, 1, 5, 55);
+        const tt = sd.timetable({ programs, startTime, day: ttDay, schedule: {} });
+        suite.check('one row per airing of the day, in order, Flex and what is before the window left out',
+            JSON.stringify(tt.rows.map( (r) => r.title )) === '["A S01E01 A1","B S01E01 B1","A S01E02 A2"]', JSON.stringify(tt.rows));
+        suite.check('...each at its real start',
+            (tt.rows[0].at === local(2027, 1, 1, 6, 0)) && (tt.rows[1].at === local(2027, 1, 1, 6, 30)) && (tt.rows[2].at === local(2027, 1, 1, 7, 0)), JSON.stringify(tt.rows.map( (r) => iso(r.at) )));
+        suite.check('a thin rule where the rows start again: A\'s second airing, the list back at the top',
+            JSON.stringify(tt.restarts) === JSON.stringify([ local(2027, 1, 1, 7, 0) ]), JSON.stringify(tt.restarts));
+        suite.check('B\'s row in that last, unfinished lap never got a turn',
+            JSON.stringify(tt.never) === '["B"]', JSON.stringify(tt.never));
+        suite.check('the last item ran 5:00 past the day\'s own end; back on time at the next half hour',
+            tt.overrun && (tt.overrun.overMs === 5 * MIN) && (tt.overrun.backOnTimeAt === local(2027, 1, 1, 7, 30)),
+            JSON.stringify(tt.overrun));
+    }
+    {
+        // No overrun, no restart, nothing left out: a day that ends exactly on
+        // time after one clean lap says so by saying nothing extra.
+        const episode = (show, n, title, duration, specialRow) => ({
+            type: 'episode', showTitle: show, title: title, season: 1, episode: n, duration: duration,
+            specialDay: 'sd_tt', specialRow: specialRow,
+        });
+        const ttDay = Object.assign({}, newYears({
+            id: 'sd_tt', from: { date: '2027-01-01', time: 6 * HOUR }, to: { date: '2027-01-01', time: 6 * HOUR + 40 * MIN },
+            slots: [ { showId: 'tv.A', order: 'next' }, { showId: 'tv.B', order: 'next' } ],
+        }));
+        const programs = [
+            episode('A', 1, 'A1', 20 * MIN, 0),
+            episode('B', 1, 'B1', 20 * MIN, 1),
+        ];
+        const tt = sd.timetable({ programs, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} });
+        suite.check('a day that ends exactly on time: no restart, nothing left out, no overrun line',
+            (tt.restarts.length === 0) && (tt.never.length === 0) && (tt.overrun === null), JSON.stringify(tt));
+    }
+    suite.check('timetable on a day with no proper window answers empty, not throws',
+        JSON.stringify(sd.timetable({ programs: [], startTime: 0, day: {}, schedule: {} })) === '{"rows":[],"restarts":[],"never":[],"overrun":null}', '');
     return suite;
 };

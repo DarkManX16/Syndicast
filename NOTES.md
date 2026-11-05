@@ -6736,6 +6736,69 @@ the next row still starts exactly on its mark.
   the Full Cycle day are byte-identical whether the day's breaks are filled with it or not.
   `npm test` 2792/2792.
 
+**Preview this day, the Schedule tab, the transitions Preview's date, Nov 5, 2026** (`special-days`,
+step 6). Ron's keep-it-simple rule: Preview this day is a plain timetable, one line per show or
+movie with its start time, nothing more unless asked.
+
+- **`src/special-days.js` gained `timetable({ programs, startTime, day, schedule })`**, pure: walks
+  `programs` from `startTime` across the day's own window (`windowOf`), keeping only rows tagged
+  with this day's id, each as `{ at, title }` (`pins.label`). Reports where the list restarts (a
+  `specialRow` lower than the row before it - the day wrapped and is replaying from its own top),
+  which of the day's own rows never aired (past the last `specialRow` seen, reading the slot's own
+  picked item or showId), and at most one overrun line (`overMs`, `backOnTimeAt` via `nextMark`) -
+  `null` when the day ends on time. Requires `./pins` lazily, same reason as `wrapFinder`
+  (`pins.js` reaches back here through `slot-progress.js`).
+- **`time-slots-schedule-editor.js`/its template**: "Preview this day..." button opens an inline
+  panel - `scope.previewDay(day)` lays the day out through the relay worker with the real generator,
+  then reads `timetable` off the result, so what shows is exactly what Create Lineup would save.
+  One line per row (`dayPreviewLine`), a thin rule where `restarts` lands, the `never` rows greyed
+  under it, the one `overrun` line in red when present (`dayPreviewLength` formats `overMs` - a
+  nonexistent `| dayLength` filter was the first draft; a scope function replaced it). `reset()`
+  clears `scope.dayPreview`.
+- **`channel-config.js`/`channel-config.html`, the Schedule tab**: a week chooser (`scheduleWeekAt`,
+  `scheduleWeekShift`, `scheduleWeekLabel`, `scheduleWeekIsThisWeek`) feeds `weeklySegments` a
+  chosen week instead of always "now" - the block-for-the-day resolution itself
+  (`resolveContext`/`specialBlockAt`) was already special-day-aware from an earlier step, untouched
+  here. Each day's band gets real chips from the SAVED lineup's own `specialDay`-tagged airings
+  (`bandDay`, a bounded lazy walk of `channel.programs`), `hatched` (a diagonal-stripe class in
+  `style.css`) when none are found yet - "not in the saved lineup yet" in the band's own label, not
+  a separate line.
+- **Found and fixed: regular weekly slots and the day's own chips rendered at once, overlapping.**
+  Both used the identical `.sched-cal-slot` class for the same covered hours - Ron would have seen
+  the regular Friday lineup (Waynehead, Detention) duplicated under the special day's own content
+  (Superman, I Am Weasel). `rebuildScheduleCalendar` now tracks each day's `specialRanges` while
+  building bands and filters `daySlots` against them before returning the day.
+- **`transitions-editor.js`/its template**: a "From" date next to "Preview on this week's lineup" -
+  `runPreview` uses it (`scope.previewOptions.from.getTime()`) instead of always `Date.now()`, and
+  the header now says which date it walked from (`pinTools.dayClock`).
+- **Found and fixed: the date field never reached `runPreview` at all.** The preview panel sits
+  behind `ng-if="open"` (template line 87), which gives it its own child scope; `ng-model` on a
+  bare `previewFrom` wrote a new property onto *that* child scope instead of the one `runPreview`'s
+  closure actually reads, so picking a date did nothing - the walk silently stayed on "now" no
+  matter what the field showed. The "use suggested clip names" checkbox (pre-existing, not part of
+  this step) had the identical bug under the identical `ng-if`, confirmed the same way. Found by
+  watching `scope.previewFrom` directly (a `$watch` log showed it never changed once set,
+  disproving a race) and comparing the date-input's own scope `$id` against the button's - same
+  `$id`, so the shadowing was on an *ancestor* scope, not a sibling. Fixed with the standard dot
+  rule: both moved into one `scope.previewOptions = { from, useNames }` object, template and
+  `runPreview` updated to match.
+- **Proof, real clicks, port 18218 (Full Cycle day, half-hour rows, fill long breaks, the real
+  Full Cycle block - all as Ron built them on 18217):** Preview this day for the New Year's day
+  shows one line per show/movie at its real start time, nothing else, greyed never-aired rows and a
+  thin restart rule where the schedule confirms a restart is real. The Schedule tab's week chooser
+  walks forward/back correctly ("This week" appears/disappears right); the week of 12/27-1/2/2027
+  shows the real Full Cycle chips (Superman, Super Friends, ThunderCats, Dragon Ball Z, G
+  Gundam/Gundam Wing/Gundam SEED+Destiny, Ronin Warriors...) under a "Toonami: Full Cycle" band with
+  none of the regular Friday/Saturday lineup showing through (`slotsAfter6am: []`, checked directly
+  off `scope.scheduleCalendarDays`); a week with no saved lineup yet shows the band hatched,
+  labelled "(not in the saved lineup yet)", chips empty. The transitions Preview's "Toonami" block,
+  From set to Jan 1 2027 via real keystrokes into the native date input: header reads "from Fri Jan
+  1, 6:46am for 7 days" and the walk starts there - confirmed broken (always "Thu Nov 5") before the
+  scope fix, confirmed fixed after a rebuild and reload. `npm test` 2799/2799; the workflow
+  checklist, all ten including `special-day`, on a fresh copy (port 18219).
+- **Left for step 7**, same as the live checklist already calls for: nothing new here beyond what's
+  already listed there.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's

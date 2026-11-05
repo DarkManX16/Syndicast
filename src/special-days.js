@@ -405,6 +405,79 @@ function wrapFinder(schedule, regular) {
     };
 }
 
+/*
+ * "Preview this day" (NOTES.md, "Special days"): the day's own timetable,
+ * read from a generated lineup - programs/startTime, exactly as Create
+ * Lineup would save them - rather than worked out separately, so it can
+ * never disagree with what airs. One row per airing of the day (its start
+ * and pins.label - a show or custom show's episode, or a movie), where Back
+ * to back's rows start again from the top, the rows of the day's last,
+ * unfinished lap that never got a turn, and the one line when the last item
+ * ran past the day's own end. No Flex, no break steps - just the timetable.
+ */
+function timetable({ programs, startTime, day, schedule }) {
+    // Required here, not at the top: pins.js reaches back to this module
+    // through slot-progress.js, and a top-level require would hand pins.js
+    // (and everything loaded while this module is still mid-load) an
+    // incomplete, partly-undefined copy of these exports.
+    const pins = require('./pins');
+    let w = windowOf(day);
+    if (w === null) {
+        return { rows: [], restarts: [], never: [], overrun: null };
+    }
+    let t = startTime;
+    let rows = [];
+    let overrunEnd = null;
+    for (let i = 0; (i < programs.length) && (t < w.to + DAY); i++) {
+        let p = programs[i];
+        let start = t;
+        let end = start + p.duration;
+        t = end;
+        if (end <= w.from) {
+            continue;
+        }
+        if (start >= w.to) {
+            break;
+        }
+        if (! p.isOffline && (p.specialDay === day.id)) {
+            rows.push({ at: start, title: pins.label(p), specialRow: p.specialRow });
+            if (end > w.to) {
+                overrunEnd = end;
+            }
+        }
+    }
+    let restarts = [];
+    for (let i = 1; i < rows.length; i++) {
+        if ( (typeof(rows[i].specialRow) === 'number') && (typeof(rows[i - 1].specialRow) === 'number') && (rows[i].specialRow < rows[i - 1].specialRow) ) {
+            restarts.push(rows[i].at);
+        }
+    }
+    let n = Array.isArray(day.slots) ? day.slots.length : 0;
+    let lastRow = -1;
+    for (let i = rows.length - 1; (i >= 0) && (lastRow === -1); i--) {
+        if (typeof(rows[i].specialRow) === 'number') {
+            lastRow = rows[i].specialRow;
+        }
+    }
+    let never = [];
+    for (let i = lastRow + 1; i < n; i++) {
+        let row = day.slots[i];
+        let picked = (row != null) && (typeof(row.item) === 'object') && (row.item !== null) && (typeof(row.item.program) === 'object') && (row.item.program !== null);
+        if (picked) {
+            never.push(pins.label(row.item.program));
+        } else if ( (row != null) && (typeof(row.showId) === 'string') ) {
+            never.push(row.showId.replace(/^(tv|custom)\./, ''));
+        }
+    }
+    let overrun = (overrunEnd === null) ? null : { overMs: overrunEnd - w.to, backOnTimeAt: nextMark(overrunEnd, stepOf(day)) };
+    return {
+        rows: rows.map( (r) => ({ at: r.at, title: r.title }) ),
+        restarts: restarts,
+        never: never,
+        overrun: overrun,
+    };
+}
+
 module.exports = {
     localInstant: localInstant,
     windowOf: windowOf,
@@ -424,4 +497,5 @@ module.exports = {
     fillFromBlock: fillFromBlock,
     fillTimes: fillTimes,
     wrapFinder: wrapFinder,
+    timetable: timetable,
 };

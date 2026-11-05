@@ -19,6 +19,7 @@
  */
 const editor = require('../../src/transitions-editor');
 const transitions = require('../../src/transitions');
+const pinTools = require('../../src/pins');
 
 module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
     return {
@@ -44,10 +45,21 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
             scope.which = editor.WHICH;
             scope.cardWhich = editor.CARD_WHICH;
             scope.weekDays = editor.DAY_NAMES.map( (name, id) => ({ id: id, name: name }) );
-            // Off by default: the preview shows what will air, from the names saved on the lists.
-            // Ticked, it overlays the matcher's suggestions in memory (nothing is saved).
-            scope.usePreviewNames = false;
+            // Bundled in one object, not bare scope properties: the preview panel
+            // (template line 87) sits behind ng-if="open", which gives it its own
+            // child scope, and ng-model on a bare primitive there would shadow
+            // these instead of writing through to what runPreview reads.
             scope.preview = { busy: false, error: '', sections: null, header: '', stale: false };
+            scope.previewOptions = {
+                // Off by default: the preview shows what will air, from the names saved on the lists.
+                // Ticked, it overlays the matcher's suggestions in memory (nothing is saved).
+                useNames: false,
+                // Where the preview starts walking (special days, NOTES.md): today by
+                // default, same as before this existed. A Date object, not a string -
+                // the native date input needs one (channel-config.js's goTo already
+                // says so).
+                from: new Date(),
+            };
 
             const words = (scope.kind === 'block') ? 'block' : 'day-part';
             scope.situations = [
@@ -400,7 +412,7 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                         scope.preview.error = 'This channel has no lineup yet, so there is nothing to walk.';
                         return;
                     }
-                    const useNames = (scope.usePreviewNames === true);
+                    const useNames = (scope.previewOptions.useNames === true);
                     const got = await fetchLists(transitions.stepListIds(channel), useNames);
                     const env = {
                         getList: (id) => got.lists[id] || null,
@@ -413,7 +425,8 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                             return all;
                         }, {} ) ),
                     };
-                    const from = Date.now();
+                    const chosen = (scope.previewOptions.from instanceof Date) && ! isNaN(scope.previewOptions.from.getTime());
+                    const from = chosen ? scope.previewOptions.from.getTime() : Date.now();
                     const view = editor.previewBreaks(channel, scope.context, from, from + WEEK, env);
                     let hints = {};
                     if (! useNames) {
@@ -452,7 +465,7 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                     }
                     const missing = Object.keys(got.lists).filter( (id) => got.lists[id] === null );
                     scope.preview.sections = sections;
-                    scope.preview.header = 'Walking the lineup as it is in this editor, from now for 7 days. '
+                    scope.preview.header = `Walking the lineup as it is in this editor, from ${pinTools.dayClock(from)} for 7 days. `
                         + (useNames ? 'Clips are named the way “Match shows” would suggest (nothing is saved). '
                             : 'Using the clip names saved on the lists, which is what will air. A clip that is only suggested does not count: where that is why a step found nothing, it says so. ')
                         + 'Where several clips fit a step, all of them are listed under it: on air they take turns, the longest idle first.'

@@ -972,6 +972,13 @@
                         </p>
                     </div>
 
+                    <div class="text-center" style="margin-bottom: 6px;" ng-show="hasScheduleToShow() && channelHasOverlay()">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="scheduleWeekShift(-1)">&larr; Week</button>
+                        <span class="small" style="margin: 0 8px;">{{scheduleWeekLabel()}}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="scheduleWeekShift(1)">Week &rarr;</button>
+                        <button type="button" class="btn btn-sm btn-link" ng-show="!scheduleWeekIsThisWeek()" ng-click="scheduleWeekShift(0)">This week</button>
+                    </div>
+
                     <div class="sched-cal" ng-show="hasScheduleToShow()">
                         <div class="sched-cal-header">
                             <div class="sched-cal-gutter"></div>
@@ -984,7 +991,7 @@
                                 <div class="sched-cal-hour-label" ng-repeat="h in scheduleHourLabels">{{h}}</div>
                             </div>
                             <div class="sched-cal-day" ng-repeat="day in scheduleCalendarDays">
-                                <div class="sched-cal-band {{band.colorClass}}"
+                                <div class="sched-cal-band {{band.colorClass}}" ng-class="{'sched-cal-band-hatched': band.hatched}"
                                      ng-repeat="band in day.bands"
                                      ng-style="{top: band.topPct + '%', height: band.heightPct + '%'}"
                                      ng-click="onCalendarBandClick(band)"
@@ -994,6 +1001,10 @@
                                      ng-style="{top: slot.topPct + '%', height: slot.heightPct + '%'}"
                                      ng-click="onCalendarSlotClick(slot)"
                                      title="{{slot.title}}">{{slot.label}}</div>
+                                <div class="sched-cal-slot"
+                                     ng-repeat="chip in day.chips"
+                                     ng-style="{top: chip.topPct + '%', height: chip.heightPct + '%'}"
+                                     title="{{chip.title}}">{{chip.label}}</div>
                             </div>
                         </div>
                     </div>

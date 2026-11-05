@@ -59,6 +59,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 scope.editingDay = null;
                 scope.dayPicker = null;
+                scope.dayPreview = null;
 
             }
             reset();
@@ -1205,9 +1206,41 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 run: () => makeLineup(fromInstant, pinsToKeep, atNow),
             });
 
+            /*
+             * Preview this day (NOTES.md, "Special days"): the same generator
+             * Create Lineup itself runs (doIt - nothing of its own, so it can
+             * never disagree), read down to this one day's own timetable
+             * (special-days.js's timetable) and shown - never saved, the
+             * dialog stays open and scope.schedule untouched beyond what
+             * doIt itself already does for a real Create Lineup.
+             */
+            scope.dayPreview = null;
+            scope.previewDay = async (day) => {
+                scope.dayPreview = { day: day, loading: true, error: null, tt: null };
+                $timeout();
+                let dayProblems = specialDays.problems(scope.schedule, scope.channelBlocks).filter( (p) => p.dayId === day.id );
+                if (dayProblems.length > 0) {
+                    scope.dayPreview = { day: day, loading: false, error: dayProblems.map( (p) => p.text ).join(' '), tt: null };
+                    $timeout();
+                    return;
+                }
+                try {
+                    let res = await doIt(false);
+                    let tt = specialDays.timetable({ programs: res.programs, startTime: Date.parse(res.startTime), day: day, schedule: scope.schedule });
+                    scope.dayPreview = { day: day, loading: false, error: null, tt: tt };
+                } catch (err) {
+                    console.error('Preview this day failed', err);
+                    scope.dayPreview = { day: day, loading: false, error: 'There was an error generating the preview', tt: null };
+                }
+                $timeout();
+            };
+            scope.closeDayPreview = () => { scope.dayPreview = null; };
+            scope.dayPreviewLine = (at) => pinTools.dayClock(at);
+            scope.dayPreviewLength = (ms) => pinTools.length(ms);
 
 
-            
+
+
             //`lineup` returns the channel's programs and startTime as the
             //editor has them, read again when Create Lineup runs.
             //`keepCatalogs`: reading only the shows the last read didn't get.
