@@ -24,6 +24,7 @@
  */
 
 const SLACK = require('./constants').SLACK;
+const fileKey = require('./shuffle-rounds').fileKey;
 
 const MINUTE = 60 * 1000;
 const HALF_HOUR = 30 * MINUTE;
@@ -177,6 +178,15 @@ function taggedKey(key, dayId) {
 
 function taggedLabel(text, dayId) {
     return text + '|' + tag(dayId);
+}
+
+/*
+ * The day a tag belongs to. A day's Keep-apart rows are tagged with its id; its
+ * "Fill long breaks with" position and its holiday rows' positions are tagged
+ * "fill:" and "holiday:" before it, so each stays its own and none is a regular one's.
+ */
+function dayOfTag(tagText) {
+    return tagText.replace(/^(fill|holiday):/, '');
 }
 
 /* The day a tagged key or label belongs to, or null. */
@@ -479,6 +489,79 @@ function timetable({ programs, startTime, day, schedule }) {
 }
 
 /*
+ * Holidays (step 8; NOTES.md, "Special days"). A day names one - `day.holiday` -
+ * and a row marked `holidayOnly` plays its show's episodes set aside for it
+ * (the channel's catalog state: neverAir entries with reason 'holiday'), each
+ * once, then the show's regular next episode. A name is a holiday of the
+ * catalog's list, or a group of them.
+ */
+const HOLIDAY_GROUPS = { 'Christmas season': [ 'Christmas', 'Hanukkah', 'Kwanzaa' ] };
+
+// A holiday row has no "rerun" of its set-aside episodes: it shuffles them.
+function holidayOrder(order) {
+    return (order === 'rerun') ? 'shuffle' : order;
+}
+
+function holidayNames(holiday) {
+    if ( (typeof(holiday) !== 'string') || (holiday === '') ) {
+        return [];
+    }
+    return Object.prototype.hasOwnProperty.call(HOLIDAY_GROUPS, holiday) ? HOLIDAY_GROUPS[holiday].slice() : [ holiday ];
+}
+
+/*
+ * The programs of `items` (a show's whole catalog) set aside for `holiday`, each
+ * once, in the catalog's order. `state` is the catalog state { neverAir }.
+ */
+function holidayCandidates({ state, items, holiday }) {
+    let names = holidayNames(holiday);
+    let aside = ( (state != null) && (typeof(state.neverAir) === 'object') && (state.neverAir !== null) ) ? state.neverAir : {};
+    if ( (names.length === 0) || ! Array.isArray(items) ) {
+        return [];
+    }
+    let seen = new Set();
+    return items.filter( (p) => {
+        let key = fileKey(p);
+        let entry = Object.prototype.hasOwnProperty.call(aside, key) ? aside[key] : null;
+        if ( (entry === null) || (entry.reason !== 'holiday') || (names.indexOf(entry.holiday) === -1) || seen.has(key) ) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    } );
+}
+
+/*
+ * What the generator is given: { dayId: { showId: [program, ...] } } - for each
+ * day that names a holiday, the candidates of each show a holiday row names,
+ * read from `catalogs` ({ showId: { items } | { error } }). Days, shows or
+ * holidays with none are left out.
+ */
+function holidayItems({ schedule, state, catalogs }) {
+    let out = {};
+    daysOf(schedule).forEach( (day) => {
+        if ( (day == null) || (typeof(day.id) !== 'string') || (holidayNames(day.holiday).length === 0) || ! Array.isArray(day.slots) ) {
+            return;
+        }
+        day.slots.forEach( (row) => {
+            if ( (row == null) || (row.holidayOnly !== true) || (typeof(row.showId) !== 'string') || ((typeof(row.item) === 'object') && (row.item !== null)) ) {
+                return;
+            }
+            let catalog = (catalogs || {})[row.showId];
+            if ( (catalog == null) || ! Array.isArray(catalog.items) || (out[day.id] && out[day.id][row.showId]) ) {
+                return;
+            }
+            let found = holidayCandidates({ state, items: catalog.items, holiday: day.holiday });
+            if (found.length > 0) {
+                out[day.id] = out[day.id] || {};
+                out[day.id][row.showId] = found;
+            }
+        } );
+    } );
+    return out;
+}
+
+/*
  * The Schedule tab's chips for a day's band, [from, to): each airing ({ at,
  * duration, label }) that overlaps it, clipped to it - one that began before
  * the band (the movie still on at midnight) included.
@@ -504,6 +587,12 @@ module.exports = {
     taggedKey: taggedKey,
     taggedLabel: taggedLabel,
     tagOf: tagOf,
+    dayOfTag: dayOfTag,
+    holidayNames: holidayNames,
+    holidayOrder: holidayOrder,
+    holidayCandidates: holidayCandidates,
+    holidayItems: holidayItems,
+    HOLIDAY_GROUPS: HOLIDAY_GROUPS,
     problems: problems,
     fillFromBlock: fillFromBlock,
     fillTimes: fillTimes,

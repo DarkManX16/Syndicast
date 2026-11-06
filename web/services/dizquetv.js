@@ -414,8 +414,9 @@ module.exports = function ($http, $q) {
         */
         //`history` is what the lineup on air aired before now, for Repeat slots;
         //`pins` the generator's own clock-time pins to keep; `carry` the
-        //program on air, kept where it is (src/pins.js carryAt).
-        calculateTimeSlots: async( programs, schedule, history, pins, carry) => {
+        //program on air, kept where it is (src/pins.js carryAt); `holidayItems`
+        //what a special day's holiday rows play first (src/special-days.js).
+        calculateTimeSlots: async( programs, schedule, history, pins, carry, holidayItems) => {
             let d = await $http( {
                 method: "POST",
                 url : "/api/channel-tools/time-slots",
@@ -425,6 +426,7 @@ module.exports = function ($http, $q) {
                     history: history,
                     pins: pins,
                     carry: carry,
+                    holidayItems: holidayItems,
                 },
                 headers: { 'Content-Type': 'application/json; charset=utf-8' },
             } );

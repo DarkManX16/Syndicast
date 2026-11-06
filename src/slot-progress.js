@@ -917,11 +917,9 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
 function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, places, oldRecords, positions, candidatePool, fromPlace, getShowData }) {
     let live = specialDays.ahead(schedule, now);
     let liveIds = new Set(live.map( (d) => d.id ));
-    // A day's "Fill long breaks with" position is tagged "fill:" + the day's id.
-    let dayOfTag = (tag) => tag.startsWith('fill:') ? tag.slice('fill:'.length) : tag;
     Object.keys(positions).forEach( (key) => {
         let tag = specialDays.tagOf(key);
-        if ( (tag !== null) && ! liveIds.has(dayOfTag(tag)) ) {
+        if ( (tag !== null) && ! liveIds.has(specialDays.dayOfTag(tag)) ) {
             delete positions[key];
         }
     } );
@@ -989,12 +987,36 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                 delete positions[key];
             }
         }
+        // A holiday row's own position, tagged "holiday:" + the day: once the day has
+        // begun, from its airings in the lineup; before, fresh - the first set-aside
+        // episode, never what an earlier run laid out.
+        if (specialDays.holidayNames(day.holiday).length > 0) {
+            let seenHoliday = new Set();
+            rows.forEach( (row) => {
+                if ( (row.holidayOnly !== true) || (typeof(row.showId) !== 'string') || (typeof(row.item) === 'object')
+                     || (MODES.indexOf(row.order) === -1) || (row.order === 'repeat') ) {
+                    return;
+                }
+                let key = specialDays.taggedKey(positionKey(row.showId, specialDays.holidayOrder(row.order), constraintOf(row, schedule)), 'holiday:' + day.id);
+                if (seenHoliday.has(key)) {
+                    return;
+                }
+                seenHoliday.add(key);
+                let record = begun ? (places.has(key) ? fromPlace(key, places.get(key)) : (oldRecords[key] || null)) : null;
+                if (record !== null) {
+                    positions[key] = record;
+                } else {
+                    delete positions[key];
+                }
+            } );
+        }
         if (begun) {
             // Where the day is: what began in it before now (or before the end of the
             // program on air, which is carried and counts as aired).
             let upTo = (typeof(placesFrom) === 'number') ? Math.max(now, placesFrom) : now;
             let lastRow = null;
             let airedItems = [];
+            let holidayAired = {};
             let total = cycleLength(programs);
             if (total > 0) {
                 let into = ( ( (w.from - start) % total ) + total ) % total;
@@ -1011,12 +1033,21 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                         if ( (typeof(rows[p.specialRow]) === 'object') && (typeof(rows[p.specialRow].item) === 'object') ) {
                             airedItems.push(p.specialRow);
                         }
+                        // A set-aside episode of a holiday row: counted on its own position.
+                        let parsed = (typeof(p.slotPosition) === 'string') ? parseLabel(p.slotPosition) : null;
+                        if ( (parsed !== null) && (parsed.tag === 'holiday:' + day.id) ) {
+                            let key = labelKey(getShowData(p).showId, parsed);
+                            holidayAired[key] = (holidayAired[key] || 0) + 1;
+                        }
                     }
                     t += p.duration;
                     i++;
                 }
             }
             info[day.id] = { nextRow: (lastRow === null) ? 0 : lastRow + 1, airedItems: airedItems };
+            if (Object.keys(holidayAired).length > 0) {
+                info[day.id].holidayAired = holidayAired;
+            }
         }
     } );
     return info;

@@ -249,16 +249,16 @@ Right after step 7, for Ron's Christmas Eve 2026 marathon: built, proved and mer
 - Modify: `src/special-days.js` (`holidayCandidates({ catalogState, showId, holiday })`), `src/services/time-slots-service.js` (a `holidayOnly` row: its own tagged position whatever the mode, in order or shuffled; the show's next regular episode once they have all aired that day), `src/slot-progress.js`, the dialog (Holiday for the day, and "only its <holiday> episodes" on a row)
 - Test: `test/special-days.js`, `test/special-days-generator.js`
 
-- [ ] **Step 1: Write the failing tests:** candidates are exactly the episodes left out as that holiday, less never-air; a holiday row never moves a regular position, in an Advance day too; when they run out the row plays the show's next regular episode.
-- [ ] **Step 2-4:** fail, implement, `npm test`.
-- [ ] **Step 5: Proof on the copy:** a Christmas Eve day on channel 2 (164 Christmas episodes set aside), Hey Arnold!'s row airs "Arnold's Christmas" and its other set-aside Christmas episodes and nothing from its rotation until they're done; the regular Hey Arnold! positions continue exactly after the day; channel 3 likewise with its 48. Ron's own Christmas Eve day, on his channel's copy, through the dialog, with Preview this day, and a clock-shifted look at its first hour and its end. The workflow checklist on a fresh copy, all passing.
-- [ ] **Step 6:** Commit `Special days: holiday rows`. **Stop** and report; once Ron merges it and restarts 18000, he builds the real Christmas Eve day.
+- [x] **Step 1: Write the failing tests:** candidates are exactly the episodes left out as that holiday, less never-air (`holidayCandidates`, `holidayItems`); a holiday row plays them first then the regular episodes, in order and shuffled, in an Advance day and a Keep-apart day, never moving a regular position (the regular A moves by 3, where a plain row moves it 6); rows of one show share them; a Create Lineup mid-day, in the Flex between rows and after they've all aired carries on exactly (in order and shuffled); the row's "Next" line.
+- [x] **Step 2-4:** failed (confirmed before the build), implemented (`holidayItems` as the generator's 7th argument; the orderers' `slot.pool`; the planner's `holiday:` position and `holidayAired`), `npm test` 2867/2867.
+- [x] **Step 5: Proof on the copy, through the dialog (Ron's choice, Nov 6: channel 2, Dec 24 midnight to midnight, the Christmas season):** six rows of the shows with the most Christmas episodes set aside; Preview this day, Create Lineup, Update Channel; 39 airings on holiday positions, each set-aside episode once; each show's regular rotation in order across the day, none skipped or repeated; clock-shifted looks at midnight, 12:30am and the end of the day. The workflow checklist, all ten, on a fresh copy. (The plan's Hey Arnold!/channel 3 version was Ron's to choose; he chose channel 2 and its shows.)
+- [x] **Step 6:** Commit `Special days: holiday rows`. **Stop** and report; once Ron merges it and restarts 18000, he builds the real Christmas Eve day.
 
 ## Step 9 - Final
 
 ### Task 9: Final review and the record
 
-- [ ] Every step's proof re-run on the final code and a fresh copy; the additive check on channels 1-3 at three moments.
-- [ ] A code review of the branch against this plan's Review Focus.
-- [ ] NOTES.md: the Special days entry gains its Build record; the Scheduling roadmap line and the 1.0 line ticked with what shipped; anything built differently from the design said in its own subsection, as Swaps' "Built differently" does.
-- [ ] Commit `Special days: the record`; Ron says when it merges.
+- [x] Every step's proof re-run on the final code and a fresh copy: the workflow checklist, all ten, and the additive check on channels 1-3 on the merged result; the New Year's and Christmas Eve proofs were each made on the code they merged with (step 7 after the rebase, step 8 on the step 7 merge) and the Christmas Eve day re-checked in the browser after the review's fixes.
+- [x] A code review of the branch: Nov 5 (the whole branch, 3 fixes) and Nov 6 (holiday rows and the whole, 3 fixes and a trigger); what was set aside is in NOTES.md.
+- [x] NOTES.md: the Special days entry has its Build record, one paragraph per step; the Scheduling roadmap line and the 1.0 line are ticked with what shipped; "Built differently from the design" is its own paragraph.
+- [x] Commit `Special days: the record`; Ron says when it merges - Nov 6, with the review.

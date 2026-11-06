@@ -1627,15 +1627,19 @@ for the full spec, stages and acceptance tests.
       next episode and when it airs; "change" picks another from the show's
       full catalog (Play Next: start at it; Shuffle and Rerun: air it next),
       once. It replaces Start from season in Time Slots.*
-- [ ] Special days: a date's own Time Slots and a block for the day, for
+- [x] Special days: a date's own Time Slots and a block for the day, for
       marathons and movie days - *designed Oct 28-29, 2026 (Opus 5.5) with Ron's
-      decisions, not built. A special day replaces the regular schedule for its
-      hours only, survives regenerations until it has aired, can name a block
+      decisions, **built Oct 31 - Nov 6, 2026 (Sonnet 5)**, merged into `blocks` Nov 5
+      (steps 1-7) and Nov 6 (holiday rows). A special day replaces the regular schedule
+      for its hours only, survives regenerations until it has aired, can name a block
       that covers the whole day, and either advances the regular show positions
       or leaves them where they are; shows it displaces carry on as after a
       Swap. Rows can be a show, a custom show or one picked movie or item, at
-      set times or back to back on the next :00 or :30. See "Special days" under
-      Known issues and [docs/special-days-plan.md](docs/special-days-plan.md).*
+      set times or back to back on the :00 or :30 (or the quarter hour); a day can
+      fill its long breaks with a show or filler list, and name a holiday so a row
+      plays its show's set-aside episodes first. Preview this day, the Schedule
+      tab's week chooser and the transitions Preview's From date came with it. See
+      "Special days" under Known issues and [docs/special-days-plan.md](docs/special-days-plan.md).*
 - [ ] Save time-slot editing progress without generating a lineup
 
       `channel.scheduleBackup` already round-trips the schedule -
@@ -3413,12 +3417,14 @@ be built:
       Ron tried the editor himself on the preview, a real drag included.
       Ahead of Special days, whose plan then reads "kept row" for "pin". See
       "What you see is what airs" under Known issues.
-- [ ] Special days, for marathons and movie days (Opus 5.5 designs, Sonnet 5
+- [x] Special days, for marathons and movie days (Opus 5.5 designs, Sonnet 5
       builds). **Designed Oct 28-29, 2026**, with Ron's decisions; put on the
       must list ahead of midrolls step 2 because it has a date - channel 1's
       all-day Toonami marathon on Fri Jan 1, 2027 - and because it changes the
       Time Slots generator, stored progress and block resolution, which 1.0
-      should ship already proven. See "Special days" under Known issues and
+      should ship already proven. **Built and merged Nov 5-6, 2026**, proved live on a
+      clock-shifted copy and checked additive on all three channels. Ron builds
+      the real days on his channels. See "Special days" under Known issues and
       [docs/special-days-plan.md](docs/special-days-plan.md).
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
@@ -6865,7 +6871,95 @@ Set aside: the Schedule tab's columns are fixed 24-hour days, an hour off in a w
 change (no special day planned near one); `specialDaysPlan` counts a row with `item: null` as a
 picked item (`problems()` already blocks such a day); two Time Slots dialog caches that
 re-serialize on each digest (`dayRowLine`, `problemsOf`), no slowness seen; the fill position's
-`fill:` tag riding on the day tag (one special case in the planner, tested).
+`fill:` tag riding on the day tag (one special case in the planner, tested). (That last one is
+now `specialDays.dayOfTag`, which the holiday rows below use too.)
+
+**Holiday rows, Nov 6, 2026** (`holiday-rows`, step 8, from `blocks` 2440bb4). Ron's Christmas Eve
+2026 marathon: channel 2, Thu Dec 24 midnight to midnight, the Christmas season (Christmas,
+Hanukkah and Kwanzaa together). Keep it simple: one dropdown on the day, one checkbox on a row.
+
+- **What it is.** A special day names a **Holiday for the day** (`day.holiday`: Off, a holiday of
+  the Catalog page's list that has episodes set aside on the channel, or `Christmas season`, the
+  three above - `specialDays.HOLIDAY_GROUPS`). A show row ticked **Only its <holiday> episodes**
+  (`row.holidayOnly`) plays that show's episodes set aside for the holiday - each once, in the row's
+  order (Play Next in order, the shuffle modes shuffled; Rerun counts as Shuffle) - and when they
+  have all aired that day it plays as any row of its show does. Nothing else changes: the set-aside
+  episodes were never in a regular position, and the row plays them from a position of its own, so
+  no regular position moves.
+- **Where the episodes come from.** The set-aside list (`catalog.neverAir`, `reason: 'holiday'`)
+  holds only a title, season and episode, and the generator's pool leaves them out. The dialog
+  reads the shows' own catalogs (`catalogReader`, apart from the regular read - the catalog notes
+  and what Create Lineup records are untouched) and `specialDays.holidayItems({ schedule, state,
+  catalogs })` picks, per day and per show of a holiday row, the programs whose file key is on the
+  list for the holiday. They go to the generator as a seventh argument (`POST
+  /api/channel-tools/time-slots` `holidayItems`, passed through by `api.js` and
+  `dizquetv.calculateTimeSlots`): `{ dayId: { showId: [program, ...] } }`.
+- **The generator** (`time-slots-service.js`): a holiday row gets `slot.holiday`, a slot of the
+  same show tagged `holiday:<dayId>` carrying `pool` - the orderers' `forSlot` builds the position
+  from `slot.pool` instead of the show's programs, keyed `[showId, order, seasons, "@holiday:<day>"]`,
+  so it never meets the regular key or the Keep-apart day's (`@<day>`) or the fill's (`@fill:<day>`).
+  `specialItem`/`advanceSpecial` use it until `holidayTaken` for that key reaches the number of
+  episodes the row's seasons leave, then fall through to the row's regular behaviour. Airings carry
+  `slotPosition: 'next||@holiday:<day>'`.
+- **A Create Lineup during the day** (`slot-progress.js` `specialDaysPlan`): the holiday position
+  is read from its tagged airings in the lineup, as a Keep-apart row's is; the day's plan also
+  says how many holiday episodes have aired by now per position (`holidayAired`), which is what the
+  generator counts from. Records go with the day (`specialDays.dayOfTag`).
+- **The dialog.** `Holiday for the day` (`scope.dayHolidayOptions`, rebuilt only when the catalog
+  state changes) and a checkbox under a show row's selectors, shown once the day has a holiday;
+  the row's "Next" line names its first set-aside episode (`episode-start.js` `dayRowLines`
+  `holidayItems`), through the same orderers.
+- **Proof, through the real dialog, port 18230, a copy of the live data (1:37am Nov 6):** channel 2,
+  a new day "Christmas Eve", Thu Dec 24 12:00am to Fri Dec 25 12:00am (real keystrokes in the date
+  fields), Holiday "Christmas season", six rows of channel 2's shows with the most Christmas episodes
+  set aside, each ticked: King of Queens (8), Family Matters (7), Home Improvement (6), Sabrina (6),
+  Wings (6), Roseanne (6). Preview this day: 48 half-hour lines, each show's set-aside episodes
+  first ("Noel Cowards", "Have Yourself a Very Winslow Christmas", "Yule Better Watch Out", ...),
+  then its regular ones; King of Queens never reaches a regular episode, the others do after their
+  6 or 7. Create Lineup and Update Channel saved 48 airings of the day, 39 of them on holiday
+  positions - exactly the 8+7+6+6+6+6 episodes, each once. **Every one of the six shows' regular
+  airings across Dec 10 to Jan 8 are the next episode of its regular run - none skipped, none
+  repeated - through the day** (a script over the saved lineup). Clock-shifted, tuned in through
+  `/video`: midnight rolls from a regular break into "Noel Cowards" (11:59:57pm); 12:30am is Family
+  Matters' Christmas episode; at midnight Dec 25 the day ends and the regular schedule is back.
+  `npm test` 2867/2867; the workflow checklist, all ten, on a fresh copy; the additive check, blocks' Create Lineup against this branch's on all three channels, identical.
+- **Left alone, on purpose:** Halloween and every other holiday work the same (nothing is specific
+  to Christmas); a holiday row for a Movies row, a custom show's picked item or Flex has nothing
+  set aside to play and isn't offered; a show whose set-aside episodes can't be read from Plex plays
+  its regular episodes (the row's line says nothing - no new message); the day's "Next" lines show
+  where each position is now, not where it will be on Dec 24 (as for every row of a day).
+
+**Step 9, the final review and the record, Nov 6, 2026** (`holiday-rows`, then merged). A fresh
+review of the holiday rows against `blocks` and of Special days as a whole. Fixed, each with a
+failing check first:
+- *`firstAiring` ran out of steps inside a long day*: it stepped one regular slot at a time past a
+  special day, capped at 400, so a 2-day day over a 5-minute schedule returned a time inside the
+  day. It jumps to the day's end now (`windowOf(day).to`).
+- *The holiday rows' shows were read from Plex twice on every open of the dialog*: `readHoliday`
+  ran beside the regular read, which hadn't finished, so every show that is also a regular slot
+  was read again. It waits for the regular read first (`test/special-days-holiday-dialog.js` lifts
+  `readHoliday` and `holidayItemsNow` from the directive).
+- *A channel with no holiday rows still copied its whole catalog state* on every Create Lineup
+  and every row-line rebuild, to work out holiday items there are none of. It returns `{}` first.
+- A holiday row's show select now reads the new show's catalog on change, like the checkbox does.
+
+Set aside: a Rerun row, holiday or not, doesn't come out identical on a mid-day Create Lineup
+(what goes last in its next round is what actually aired - Rerun's own definition; Play Next,
+Shuffle and Ordered are identical); a holiday position inherits a channel-level season exclusion
+(`showConstraints`; none of Ron's channels has one) as well as the row's own; the holiday-row test
+is written out in five files (the planner counts `item: null` as an item, the others don't);
+`slot.pool` is a special case in the shared `forSlot`; and the earlier review's set-asides (the
+Schedule tab's columns across a clock change, two dialog caches that re-serialize per digest).
+
+**Built differently from the design.** Added beyond it, at Ron's request: *Fill long breaks with*
+(Nov 5, with its own `fill:<day>` position) and the Christmas season group of holidays. The holiday
+rows' candidates reach the generator as `holidayItems`, a seventh argument filled by the dialog
+from the shows' catalogs, rather than the generator reading `catalogState` itself (it is a pure
+function and the set-aside list holds only titles). A Keep-apart row, the fill and a holiday row
+each own a tagged position (`@<day>`, `@fill:<day>`, `@holiday:<day>`; `specialDays.dayOfTag`).
+Back to back day rows have no times of their own, so the lineup holds the order (`specialRow`) and
+the planner's `specialDays` plan carries the next row, the picked items aired and the holiday
+episodes aired.
 
 ### Chapter and segment detector, and stage 6 midrolls
 

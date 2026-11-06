@@ -93,8 +93,13 @@ function addProgramToShow(show, program) {
  * breaks with" might name, read ahead of time - { [listId]: [item, ...] } -
  * since this is a pure function and cannot read one itself. See
  * special-days.js's `fillBreaksWith` and this file's `fillItemsFor`.
+ *
+ * `holidayItems`, optional, is what a special day's holiday rows play first -
+ * { [dayId]: { [showId]: [program, ...] } }, the show's episodes set aside for
+ * the day's holiday (special-days.js's holidayItems). They are in no pool:
+ * the catalog's never-air list holds them out of every regular position.
  */
-module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPools ) => {
+module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPools, holidayItems ) => {
     if (! Array.isArray(programs) ) {
         return { userError: 'Expected a programs array' };
     }
@@ -249,8 +254,17 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
      * gives carries the day and the row, `specialRow`, so a re-make during a
      * Back to back day knows which row comes next. A show not in the pool has
      * nothing to give.
+     *
+     * A holiday row (`slot.holiday`, built with the day) first plays the
+     * episodes set aside for the day's holiday - from a position of its own,
+     * tagged "holiday:" + the day, whatever the day's mode, so no regular
+     * position moves - each once; when they have all aired that day it plays
+     * as any row of its show does. `holidayTaken` counts them by position, from
+     * what the lineup on air already aired of them (the planner) and this run.
      */
     let itemState = new Map();
+    let holidayTaken = new Map();
+    let holidayDone = (hs) => (holidayTaken.get(hs.key) || 0) >= hs.total;
     let specialCopy = (program, slot) => {
         let copy = Object.assign( {}, program );
         copy.specialDay = slot.special;
@@ -269,6 +283,12 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             delete copy.pin;
             return copy;
         }
+        if ( (typeof(slot.holiday) === 'object') && ! holidayDone(slot.holiday) ) {
+            let current = positions.forSlot(slot.holiday).current();
+            if ( (current !== null) && (typeof(current) !== 'undefined') ) {
+                return specialCopy(current, slot);
+            }
+        }
         if ( (typeof(showsById[slot.showId]) === 'undefined') || ! positions.plays(slot.order) ) {
             return null;
         }
@@ -278,6 +298,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     function advanceSpecial(slot) {
         if ( (typeof(slot.item) === 'object') && (slot.item !== null) ) {
             itemState.set(slot, occurrenceStart);
+        } else if ( (typeof(slot.holiday) === 'object') && ! holidayDone(slot.holiday) ) {
+            positions.forSlot(slot.holiday).next();
+            holidayTaken.set(slot.holiday.key, (holidayTaken.get(slot.holiday.key) || 0) + 1);
         } else if ( (typeof(showsById[slot.showId]) !== 'undefined') && positions.plays(slot.order) ) {
             positions.forSlot(slot).next();
         }
@@ -567,18 +590,36 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     let laidDays = specialDays.ahead(schedule, ts).filter( (day) => ! stopped[day.id] ).map( (day) => {
         let w = specialDays.windowOf(day);
         let rows = day.slots.filter( (row) => (row !== null) && (typeof(row) === 'object') );
-        let slotOf = rows.map( (row, k) => Object.assign( {}, row, {
-            time: -1, special: day.id, specialRow: k, apart: (day.positions === 'apart') ? day.id : undefined } ) );
+        // Where a day under way is, from the planner (slot-progress specialDaysPlan):
+        // the next Back to back row, the picked items already aired, and how many
+        // of each holiday position's episodes have.
+        let at = ( (typeof(schedule.progress) === 'object') && (schedule.progress !== null)
+                   && (typeof(schedule.progress.specialDays) === 'object') && (schedule.progress.specialDays !== null) )
+            ? schedule.progress.specialDays[day.id] : undefined;
+        let dayHolidays = ( (specialDays.holidayNames(day.holiday).length > 0) && (typeof(holidayItems) === 'object') && (holidayItems !== null)
+                            && (typeof(holidayItems[day.id]) === 'object') && (holidayItems[day.id] !== null) )
+            ? holidayItems[day.id] : {};
+        let slotOf = rows.map( (row, k) => {
+            let slot = Object.assign( {}, row, {
+                time: -1, special: day.id, specialRow: k, apart: (day.positions === 'apart') ? day.id : undefined } );
+            let pool = ( (row.holidayOnly === true) && (typeof(row.showId) === 'string') && Array.isArray(dayHolidays[row.showId]) ) ? dayHolidays[row.showId] : null;
+            if ( (pool !== null) && ! ((typeof(row.item) === 'object') && (row.item !== null)) ) {
+                let hs = { showId: row.showId, order: specialDays.holidayOrder(row.order), seasons: row.seasons, apart: 'holiday:' + day.id, pool: pool };
+                hs.key = specialDays.taggedKey(slotProgress.positionKey(hs.showId, hs.order, slotProgress.constraintOf(hs, schedule)), hs.apart);
+                hs.total = slotProgress.applySeasonExclusions(pool, slotProgress.constraintOf(hs, schedule)).length;
+                if ( (typeof(at) === 'object') && (at !== null) && (typeof(at.holidayAired) === 'object') && (at.holidayAired !== null)
+                     && Number.isInteger(at.holidayAired[hs.key]) ) {
+                    holidayTaken.set(hs.key, at.holidayAired[hs.key]);
+                }
+                slot.holiday = hs;
+            }
+            return slot;
+        } );
         let timed = null;
         if (day.layout === 'times') {
             timed = specialDays.rowTimes(day).filter( (x) => ! x.gap && (x.at >= w.from) && (x.at < w.to) )
                 .map( (x) => ({ at: x.at, slot: slotOf[rows.indexOf(x.row)] }) );
         }
-        // Where a day under way is, from the planner (slot-progress specialDaysPlan):
-        // the next Back to back row, and the picked items already aired.
-        let at = ( (typeof(schedule.progress) === 'object') && (schedule.progress !== null)
-                   && (typeof(schedule.progress.specialDays) === 'object') && (schedule.progress.specialDays !== null) )
-            ? schedule.progress.specialDays[day.id] : undefined;
         let k = ( (typeof(at) === 'object') && (at !== null) && Number.isInteger(at.nextRow) ) ? at.nextRow : 0;
         let itemsAired = new Set( ( (typeof(at) === 'object') && (at !== null) && Array.isArray(at.airedItems) ) ? at.airedItems : [] );
         return { day: day, from: w.from, to: w.to, slotOf: slotOf, timed: timed, k: k, itemsAired: itemsAired,

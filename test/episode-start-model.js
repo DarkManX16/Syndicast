@@ -210,6 +210,15 @@ module.exports = async function () {
             recordLines[0] === `Next: S02E05 ${JB} S2E5 · Fri Jan 1, 6:00am`, recordLines[0]);
         suite.check('...and the regular ALL position is untouched by the tagged record',
             episodeStart.describe({ schedule: withRecord, progress: withRecord.progress, pool, now: NOW }).get(ALL).program.title === `${JB} S1E8`, '');
+
+        // A holiday row (step 8): its first set-aside episode, the same "Next" line.
+        const eve = Object.assign(episode(JB, 0, 1), { title: 'Johnny Bravo Christmas Eve', key: '/x/jb1' });
+        const holiday = day({ holiday: 'Christmas', slots: [ { showId: 'tv.' + JB, order: 'next', holidayOnly: true }, { showId: 'tv.' + JB, order: 'next' } ] });
+        const holidayLines = episodeStart.dayRowLines({ day: holiday, schedule: sched, pool, getShowData, holidayItems: { sd_t: { ['tv.' + JB]: [ eve ] } } });
+        suite.check('a holiday row names its first set-aside episode, and the regular row beside it the regular one',
+            holidayLines[0] === `Next: ${episodeStart.episodeLabel(eve)} · Fri Jan 1, 6:00am` && holidayLines[1] === `Next: S01E08 ${JB} S1E8 · Fri Jan 1, 6:00am`, holidayLines.join(' / '));
+        suite.check('...with nothing set aside, it reads as a regular row',
+            episodeStart.dayRowLines({ day: holiday, schedule: sched, pool, getShowData })[0] === `Next: S01E08 ${JB} S1E8 · Fri Jan 1, 6:00am`, '');
     }
 
     suite.log('-- the picker --');

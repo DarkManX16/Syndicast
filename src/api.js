@@ -1254,7 +1254,7 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
           let filler = await fillerDB.getFiller(id);
           fillerPools[id] = (filler && Array.isArray(filler.content)) ? filler.content : [];
         }
-        let toolRes = await timeSlotsService(req.body.programs, req.body.schedule, req.body.history, req.body.pins, req.body.carry, fillerPools);
+        let toolRes = await timeSlotsService(req.body.programs, req.body.schedule, req.body.history, req.body.pins, req.body.carry, fillerPools, req.body.holidayItems);
         if ( typeof(toolRes.userError) !=='undefined') {
           console.error("time slots error: " + toolRes.userError);
           return res.status(400).send(toolRes.userError);

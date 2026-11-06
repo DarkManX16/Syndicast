@@ -69,7 +69,7 @@ function day(extra) {
 }
 const item = (program) => ({ showId: program.customShowId ? 'custom.' + program.customShowId : 'tv.' + program.showTitle, item: { program } });
 
-async function generate(programs, schedule, now, pins, fillerPools) {
+async function generate(programs, schedule, now, pins, fillerPools, holidayItems) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(now); else super(...a); }
@@ -78,12 +78,15 @@ async function generate(programs, schedule, now, pins, fillerPools) {
     global.Date = FrozenDate;
     try {
         const args = [ JSON.parse(JSON.stringify(programs)), JSON.parse(JSON.stringify(schedule)), undefined ];
-        if ( (typeof pins !== 'undefined') || (typeof fillerPools !== 'undefined') ) {
+        if ( (typeof pins !== 'undefined') || (typeof fillerPools !== 'undefined') || (typeof holidayItems !== 'undefined') ) {
             args.push(typeof pins !== 'undefined' ? JSON.parse(JSON.stringify(pins)) : undefined);
         }
-        if (typeof fillerPools !== 'undefined') {
+        if ( (typeof fillerPools !== 'undefined') || (typeof holidayItems !== 'undefined') ) {
             args.push(undefined);   // carry
-            args.push(JSON.parse(JSON.stringify(fillerPools)));
+            args.push(typeof fillerPools !== 'undefined' ? JSON.parse(JSON.stringify(fillerPools)) : undefined);
+        }
+        if (typeof holidayItems !== 'undefined') {
+            args.push(JSON.parse(JSON.stringify(holidayItems)));
         }
         return await timeSlotsService(...args);
     } finally {
@@ -315,6 +318,54 @@ module.exports = async function () {
             insideAgain.length > 0 && insideAgain.every( (a) => (a.program.specialDay === 'sd_test') && (typeof(a.program.specialRow) === 'number') ), '');
         suite.check('...the same day, airing for airing, as the first run laid it',
             JSON.stringify(inside(first, FRI6, SAT6).map(line)) === JSON.stringify(insideAgain.map(line)), '');
+    }
+
+    suite.log('-- holiday rows --');
+    {
+        // Fri 6:00-9:00, A's half-hour slots displaced: six 22:00 rows of A, the first
+        // three its set-aside Christmas episodes (in no pool), then A's regular ones.
+        const xmas = (n) => Object.assign( episode('A', 0, n), { title: `A Christmas ${n}`, key: `/e/A/xmas/${n}` } );
+        const aside = [ xmas(2), xmas(1), xmas(3) ];
+        const hday = (extra) => day(Object.assign({ holiday: 'Christmas', to: { date: '2026-10-09', time: 9 * HOUR },
+            slots: [ { showId: 'tv.A', order: 'next', holidayOnly: true } ] }, extra || {}));
+        const items = { sd_test: { 'tv.A': aside } };
+        const res = await generate(pool(), withDays(daily(), [ hday() ]), NOW, undefined, undefined, items);
+        const d = inside(res, FRI6, fri(9));
+        const firstRegular = inside(plain, FRI6, SAT6).find( (a) => a.program.showTitle === 'A' ).program.episode;
+        suite.check('a holiday row plays its show\'s set-aside episodes first, in order, then its regular episodes',
+            d.length === 6 && d.slice(0, 3).map( (a) => a.program.title ).join(', ') === 'A Christmas 1, A Christmas 2, A Christmas 3'
+                && d.slice(3).every( (a, k) => a.program.title === `A S1E${firstRegular + k}` ), d.map(line).join(' / '));
+        suite.check('...every airing carries the day, and the holiday ones their own position, not the regular one\'s',
+            d.every( (a) => a.program.specialDay === 'sd_test' ) && d.slice(0, 3).every( (a) => /\|@holiday:sd_test$/.test(a.program.slotPosition) )
+                && d.slice(3).every( (a) => a.program.slotPosition === 'next|' ), d.map( (a) => a.program.slotPosition ).join(' / '));
+        const firstAfter = (r) => shows(r).find( (a) => (a.start >= fri(9)) && (a.program.showTitle === 'A') ).program.title;
+        const after = firstAfter(res);
+        const control = await generate(pool(), withDays(daily(), [ day({ to: { date: '2026-10-09', time: 9 * HOUR }, slots: [ { showId: 'tv.A', order: 'next' } ] }) ]), NOW);
+        const controlAfter = firstAfter(control);
+        suite.check('...and the regular A moves only by what it really aired: 3 regular episodes, where the plain row (6) moves it 6',
+            after === `A S1E${firstRegular + 3}` && controlAfter === `A S1E${firstRegular + 6}`, `${after} / ${controlAfter}`);
+        suite.check('...a holidayOnly row of a day with no holiday, or with nothing set aside, plays regular',
+            inside(await generate(pool(), withDays(daily(), [ hday({ holiday: null }) ]), NOW, undefined, undefined, items), FRI6, fri(9)).every( (a) => /^A S1E/.test(a.program.title) )
+                && inside(await generate(pool(), withDays(daily(), [ hday() ]), NOW, undefined, undefined, {}), FRI6, fri(9)).every( (a) => /^A S1E/.test(a.program.title) ), '');
+
+        // Shuffled: each set-aside episode once, in some order, then regular.
+        const shuf = await generate(pool(), withDays(daily(), [ hday({ slots: [ { showId: 'tv.A', order: 'shuffle', holidayOnly: true } ] }) ]), NOW, undefined, undefined, items);
+        const ds = inside(shuf, FRI6, fri(9));
+        suite.check('a shuffled holiday row plays each set-aside episode once, then regular ones',
+            ds.slice(0, 3).map( (a) => a.program.title ).sort().join(', ') === 'A Christmas 1, A Christmas 2, A Christmas 3'
+                && ds.slice(3).every( (a) => /^A S1E/.test(a.program.title) ), ds.map( (a) => a.program.title ).join(' / '));
+
+        // Keep apart: the regular rows stay on the day's own position, the holiday's on its own.
+        const apart = await generate(pool(), withDays(daily(), [ hday({ positions: 'apart', slots: [ { showId: 'tv.A', order: 'next', holidayOnly: true } ] }) ]), NOW, undefined, undefined, items);
+        const da = inside(apart, FRI6, fri(9));
+        suite.check('on a Keep-apart day too: the holiday episodes, then the day\'s own A from its first episode',
+            da.slice(0, 3).every( (a) => /^A Christmas/.test(a.program.title) ) && da[3].program.title === 'A S1E1' && da[4].program.title === 'A S1E2', da.map( (a) => a.program.title ).join(' / '));
+
+        // Two rows of the same show share the holiday episodes.
+        const two = await generate(pool(), withDays(daily(), [ hday({ slots: [ { showId: 'tv.A', order: 'next', holidayOnly: true }, { showId: 'tv.B', order: 'next' }, { showId: 'tv.A', order: 'next', holidayOnly: true } ] }) ]), NOW, undefined, undefined, items);
+        const dt = inside(two, FRI6, fri(9)).map( (a) => a.program.title );
+        suite.check('rows of one show share its set-aside episodes, each aired once in the day',
+            dt.filter( (t) => /^A Christmas/.test(t) ).sort().join(',') === 'A Christmas 1,A Christmas 2,A Christmas 3', dt.join(' / '));
     }
 
     suite.log('-- the edges --');

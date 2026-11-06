@@ -62,7 +62,7 @@ function day(extra) {
 const startOf = (show, n) => ({ key: `srv|/e/${show}/1/${n}`, order: 1000000 + n });
 
 // Create Lineup as the editor runs it, from the lineup `prev` was (or none).
-async function make(prev, schedule, now) {
+async function make(prev, schedule, now, holidayItems) {
     const sched = JSON.parse(JSON.stringify(schedule));
     let carry;
     if (prev !== null) {
@@ -80,7 +80,8 @@ async function make(prev, schedule, now) {
     }
     global.Date = FrozenDate;
     try {
-        const res = await timeSlotsService(pool(), JSON.parse(JSON.stringify(sched)), undefined, undefined, carry ? JSON.parse(JSON.stringify(carry)) : undefined);
+        const res = await timeSlotsService(pool(), JSON.parse(JSON.stringify(sched)), undefined, undefined, carry ? JSON.parse(JSON.stringify(carry)) : undefined,
+            undefined, holidayItems ? JSON.parse(JSON.stringify(holidayItems)) : undefined);
         return { programs: res.programs, startTime: res.startTime, schedule: sched };
     } finally {
         global.Date = RealDate;
@@ -204,6 +205,42 @@ module.exports = async function () {
         suite.check('...and once the day has ended, the fill\'s record goes too', tagged.length === 0, JSON.stringify(tagged));
     }
 
+    suite.log('-- holiday rows, during the day --');
+    {
+        // Fri 6:00-12:00, one A row on 4 set-aside episodes: the first four airings are
+        // them, the rest A's regular ones. A Create Lineup at any moment carries on exactly.
+        const xmas = (n) => Object.assign( episode('A', 0, n), { title: `A Christmas ${n}`, key: `/e/A/xmas/${n}` } );
+        const items = { sd_t: { 'tv.A': [ xmas(1), xmas(2), xmas(3), xmas(4) ] } };
+        const hd = day({ positions: 'advance', holiday: 'Christmas', to: { date: '2026-10-09', time: 12 * HOUR },
+            slots: [ { showId: 'tv.A', order: 'next', holidayOnly: true } ] });
+        const laid = await make(first, sched(hd), NOW, items);
+        const titlesFrom = (res, from) => titles(inside(res, from, fri(12)));
+        suite.check('the day as laid: four set-aside episodes, then A\'s regular ones',
+            titles(inside(laid, FRI6, fri(8))).join(', ') === 'A Christmas 1, A Christmas 2, A Christmas 3, A Christmas 4'
+                && inside(laid, fri(8), fri(12)).every( (a) => /^A S1E/.test(a.program.title) ), titles(inside(laid, FRI6, fri(9))).join(', '));
+        const during = await make(laid, sched(hd), fri(7, 10), items);
+        suite.check('...a Create Lineup in the middle of the set-aside episodes carries on: the rest of the day is unchanged',
+            sameDay(laid, during, fri(7, 30)), `${titlesFrom(during, fri(7, 30)).slice(0, 4).join(', ')}`);
+        const late = await make(laid, sched(hd), fri(9, 10), items);
+        suite.check('...and after they have all aired, none comes round again: the rest of the day is unchanged',
+            sameDay(laid, late, fri(9, 30)), `${titlesFrom(late, fri(9, 30)).slice(0, 3).join(', ')}`);
+        const inGap = await make(laid, sched(hd), fri(7, 25), items);
+        suite.check('...and in the Flex between two rows, with nothing carried',
+            sameDay(laid, inGap, fri(7, 30)), titlesFrom(inGap, fri(7, 30)).slice(0, 3).join(', '));
+        const hs = day({ positions: 'advance', holiday: 'Christmas', to: { date: '2026-10-09', time: 12 * HOUR },
+            slots: [ { showId: 'tv.A', order: 'shuffle', holidayOnly: true } ] });
+        const shuffled = await make(first, sched(hs), NOW, items);
+        const shuffledDuring = await make(shuffled, sched(hs), fri(7, 10), items);
+        const shuffledLate = await make(shuffled, sched(hs), fri(9, 10), items);
+        suite.check('a shuffled holiday row carries on the same way: the same order, none twice, mid-day and after',
+            sameDay(shuffled, shuffledDuring, fri(7, 30)) && sameDay(shuffled, shuffledLate, fri(9, 30))
+                && titles(inside(shuffled, FRI6, fri(8))).sort().join(',') === 'A Christmas 1,A Christmas 2,A Christmas 3,A Christmas 4',
+            titles(inside(shuffled, FRI6, fri(9))).join(', ') + ' | ' + titles(inside(shuffledDuring, fri(7, 30), fri(9))).join(', '));
+        const ended = await make(late, sched(hd), sat(12), items);
+        const tagged = Object.keys(ended.schedule.progress.positions).filter( (k) => /@holiday:sd_t/.test(k) );
+        suite.check('...and once the day has ended, the holiday position\'s record goes too', tagged.length === 0, JSON.stringify(tagged));
+    }
+
     suite.log('-- the quarter hour --');
     {
         const rows = [ { showId: 'movie.', item: { program: SHORT } }, { showId: 'movie.', item: { program: LONG } }, { showId: 'tv.X', order: 'next' } ];
@@ -223,6 +260,13 @@ module.exports = async function () {
         const at = episodeStart.firstAiring({ slots: s.slots.filter( (x) => x.time === 6 * HOUR ), schedule: s, now: fri(3) });
         suite.check('a regular row\'s next airing skips the slot the day replaces: the 6:00am slot airs next Saturday',
             at.at === sat(6), clock(at.at));
+        // Review, Nov 6: it stepped one slot at a time, so a long day over a dense schedule ran
+        // out of its 400 steps inside the day. 288 slots a day (every 5 minutes), a 2-day day.
+        const dense = Object.assign( daily(), { slots: Array.from( { length: 288 }, (_, k) => ({ time: k * 5 * MIN, showId: 'tv.A', order: 'next' }) ) } );
+        const longDay = Object.assign( {}, dense, { specialDays: [ day({ positions: 'advance', to: { date: '2026-10-11', time: 6 * HOUR } }) ] } );
+        const denseAt = episodeStart.firstAiring({ slots: dense.slots, schedule: longDay, now: fri(7) });
+        suite.check('...over a dense schedule and a 2-day day, the next airing is the first slot after the day, not a moment inside it',
+            denseAt.at === new Date(2026, 9, 11, 6).getTime(), clock(denseAt.at));
     }
     return suite;
 };

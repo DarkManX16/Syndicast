@@ -204,6 +204,8 @@ function createPositions({ shows, schedule }) {
      * A Keep-apart special day's row (`slot.apart`, the day's id) plays from a
      * position of the day's own: its key and labels tagged with the day, and
      * with no record, its range's first episode rather than the founder's.
+     * A holiday row (`slot.pool`, with its own tag) plays from the episodes
+     * set aside for the day's holiday - none of them is in a regular position.
      */
     let forSlot = (slot) => {
         let constraint = slotProgress.constraintOf(slot, schedule);
@@ -214,14 +216,16 @@ function createPositions({ shows, schedule }) {
         }
         if (! positions.has(key) ) {
             let show = byId.get(slot.showId);
-            if (typeof(tagDay) === 'string') {
+            if (Array.isArray(slot.pool)) {
+                show = Object.assign( {}, show || { id: slot.showId }, { programs: slot.pool, founder: undefined } );
+            } else if (typeof(tagDay) === 'string') {
                 show = Object.assign( {}, show, { founder: undefined } );
             }
             let record = records[key];
             if (slot.order === 'next') {
                 positions.set(key, playNext(show, constraint, record, tagDay));
             } else if (slot.order === 'rerun') {
-                positions.set(key, shuffled(show, slot.order, constraint, record, key, rerunEligible(slot.showId), tagDay));
+                positions.set(key, shuffled(show, slot.order, constraint, record, key, Array.isArray(slot.pool) ? undefined : rerunEligible(slot.showId), tagDay));
             } else if (slot.order === 'ordered') {
                 positions.set(key, ordered(show, constraint, record, key, tagDay));
             } else {
