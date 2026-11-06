@@ -3894,7 +3894,8 @@ Next.
 - **Multi-part stories stay together, in all three.** An episode marked part n
   (n of 2 or more) belongs with the one right before it in its show's order
   when that one is marked n-1 - or, for part 2, when it has the same title
-  without a marker. Markers: `(2)`, `(II)`, `Part 2`, `Part Two`, `Pt. 2`.
+  without a marker. Markers: `(2)`, `(II)`, `Part 2`, `Part Two`, `Pt. 2`. A split
+  episode's halves are one story as well (Nov 6; "Split episodes stay together").
   Titles are not compared otherwise: "Stewie Kills Lois (1)" is followed by
   "Lois Kills Stewie (2)", Xiaolin Showdown by "Judging Omi (1)", "Saving Omi
   (2)", "Finding Omi (3)". The one exception is an arc a title names beside its
@@ -6960,6 +6961,77 @@ each own a tagged position (`@<day>`, `@fill:<day>`, `@holiday:<day>`; `specialD
 Back to back day rows have no times of their own, so the lineup holds the order (`specialRow`) and
 the planner's `specialDays` plan carries the next row, the picked items aired and the holiday
 episodes aired.
+
+### Split episodes stay together
+
+Built Nov 6, 2026 (Opus 5.5) from Ron's brief, on the `split-episodes` branch from `blocks` at
+69f656c; unmerged until Ron says.
+
+**What was wrong.** Some half-hour episodes are kept as one file per story: The Weekenders'
+"S03E11a - Clown" (11:33) and "S03E11b - Testing Dixon" (10:49). Time Slots filled a slot file by
+file, so the halves could part. Channel 3's Nov 2 lineup (3am backup): Saturday Nov 7's 2:30 slot
+started at 2:35 behind a late House of Mouse, 25 minutes left; 11a counted as its padded 15:00, so
+11b's 10:49 "didn't fit", and 11a aired alone with commercials after it, though both end by
+2:57:22. Sunday then started with 11b and every pair after it was out of step. A Back to back
+special day on the quarter hour split every pair (a at 6:00, its b at 7:15).
+
+**The shows**, read from the lineups, the custom shows and every show's full Plex catalog on all
+three channels (Nov 6): My Gym Partner's a Monkey (channel 1, 36 split episodes), The Ren & Stimpy
+Show (channel 2's custom show, 12 in seasons 3-4; its other files hold both halves), Invader Zim
+(channel 2, 19) and The Weekenders (channel 3, 34). None in three parts. Five files are named as a
+half with no partner and air as whole episodes, as before: Aqua Teen Hunger Force S04E03a, Ren &
+Stimpy S02E02a (a full-length file), Action League Now! "Episode 0", Marsupilami S01E02a and
+Teamo Supremo S02E05a. Phineas and Ferb ("S01E06a-b") and Jungle Cubs ("S02E06a+b") keep both
+halves in one file. In the saved lineups all four split shows drift out of step somewhere in the
+year (35, 23 and 153 halves apart on channels 1-3).
+
+**The rules.**
+- A file is a half when its title, or else its file name, has `SxxEyy` and one letter, a to d
+  (`S03E11a`, `S03.E01b`, `S01E08A`); `a-b`, `a+b` and `E01a.E01b` are whole episodes
+  (`multi-part.js` `halfOf`). A half joins the one right before it in its show's order when that
+  is the previous letter of the same episode (`joinsHalf`), so a lone half stays single.
+- **A slot that starts an "a" half plays the rest of that episode in the same slot**, everywhere
+  Time Slots fills from a position: a regular slot and a Set times row, a slot running late after
+  a swap, a slot with a kept row in it (only a whole episode fits before the row), a Back to back
+  row, and a special day's "Fill long breaks with". The episode fits or doesn't as one; when its
+  halves fit only without their pads they air back to back (Ron's 2:35: 11a, then 11b at
+  2:46:33, Flex to 3:00); on time they keep their 2:30 and 2:45, as before. Longer than its slot,
+  it slides whole like any long program, and the next show starts after it.
+- **A slot never starts with a "b" half.** The planner moves a Play Next place on a later half
+  back to the first half of its episode, unless that half is the program on air, which the lineup
+  keeps - then the rest follows it in its slot. An episode start or an Advance day's start on a b
+  half starts at its a. A show already out of step therefore realigns at its next Create Lineup by
+  airing the a half once more, with its b.
+- The halves are one story (`multiPart.stories`), so Shuffle and Rerun pick and air them together.
+- A picked item (This item) is only itself, and a row kept in the list airs as it is: Ron's Fri
+  Nov 6 swap (S02E02a) and insert (S03E07b) stay as he made them.
+
+**What this doesn't change.** Shows without split files: the generator's arithmetic is the same
+unless a slot holds a split episode. Random Slots, the editor, and the kept-rows ripple in the list
+(it moves an episode along one airing at a time; Create Lineup pairs again).
+
+**Proof**, on copies of `.dizquetv-dev` taken Fri Nov 6 at 4:06am Central, with every show's
+full catalog read from Plex, Create Lineup at Fri 5:00am from `blocks` and from the branch
+(`progress-check --catalog`). Suite 2872 at the start, 2902 at the end (`test/split-episodes.js`:
+the halves, stories, the late slot, on time, room for one half, a short slot, Shuffle, a kept row,
+the program on air, Back to back on the quarter hour, an Advance start, the fill, the planner).
+- **Next three weeks:** every airing of every other show identical on all three channels (1,318,
+  1,003 and 1,063); every split episode aired whole (5, 12 and 6), and the split shows' airings
+  are the same as blocks' there too. The only halves apart are Ron's two Fri Nov 6 edits.
+- **The year:** 0 halves apart on any channel (blocks: 36, 27, 124). Other shows move only
+  because a split show's episodes land on other dates: on channel 1, Gym Partner's 41-minute
+  special airs a week earlier and pushes Code Lyoko, so Megas XLR is one episode along on each
+  later weekend (61 airings); on channels 2 and 3, four times in the year a late slot's pair runs a
+  few minutes past the half hour and the next show starts 5 or 10 minutes late (5 airings).
+- **Realigned:** Ron's Nov 2 lineup at Sat Nov 7 3:00pm: Sunday 3:00 airs 11a, 3:15 11b (blocks:
+  11b, then 12a). The saved lineups where each show is out of step: The Weekenders Fri Nov 20 (Sat
+  airs 4a and 4b), Gym Partner Sat Nov 28 (Sun 2:30 S02E03a, 2:45 S02E03b), Ren & Stimpy Mon May 24,
+  2027 (Tue 3:10 S04E02a and b). Each time only that show's position moves.
+- **Twice in a row:** regenerated from the branch's lineups on Sun Nov 8 at 3:05pm (11a on air,
+  carried: 11b follows at 3:15) and Sat Nov 14 at 2:40pm: every position continues exactly (138 of
+  138, 163 of 163, and 145 and 142 on channel 3) and every pair stays whole.
+- **A special day** (channel 3, Sat Nov 28, Back to back on the quarter hour: The Weekenders,
+  Recess, Kim Possible): 16 episodes whole (blocks: all 20 halves apart).
 
 ### Chapter and segment detector, and stage 6 midrolls
 
