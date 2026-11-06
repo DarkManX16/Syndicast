@@ -917,9 +917,11 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
 function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, places, oldRecords, positions, candidatePool, fromPlace, getShowData }) {
     let live = specialDays.ahead(schedule, now);
     let liveIds = new Set(live.map( (d) => d.id ));
+    // A day's "Fill long breaks with" position is tagged "fill:" + the day's id.
+    let dayOfTag = (tag) => tag.startsWith('fill:') ? tag.slice('fill:'.length) : tag;
     Object.keys(positions).forEach( (key) => {
         let tag = specialDays.tagOf(key);
-        if ( (tag !== null) && ! liveIds.has(tag) ) {
+        if ( (tag !== null) && ! liveIds.has(dayOfTag(tag)) ) {
             delete positions[key];
         }
     } );
@@ -974,6 +976,19 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                 }
             }
         } );
+        // The fill's own position (time-slots-service.js's fillItemsFor) carries on
+        // from its airings in the lineup, as a Keep-apart row's does once begun.
+        let fill = day.fillBreaksWith;
+        if ( (typeof(fill) === 'string') && (fill !== '') && ! fill.startsWith('filler:') ) {
+            let slot = { showId: fill, order: 'next' };
+            let key = specialDays.taggedKey(positionKey(fill, 'next', constraintOf(slot, schedule)), 'fill:' + day.id);
+            let record = places.has(key) ? fromPlace(key, places.get(key)) : (oldRecords[key] || null);
+            if (record !== null) {
+                positions[key] = record;
+            } else {
+                delete positions[key];
+            }
+        }
         if (begun) {
             // Where the day is: what began in it before now (or before the end of the
             // program on air, which is carried and counts as aired).

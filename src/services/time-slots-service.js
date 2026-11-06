@@ -713,7 +713,16 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             return;
         }
         if (start > t) {
-            pushFlex(start - t);
+            // Waiting for the next row's mark after something already laid (the
+            // program on air, carried by a re-make): a long wait fills as any long
+            // break of the day does.
+            let gap = start - t;
+            let fill = (gap > FILL_THRESHOLD) ? fillItemsFor(d, gap) : [];
+            fill.forEach( (item) => {
+                pushProgram(item);
+                gap -= item.duration;
+            } );
+            pushFlex(gap);
             return;
         }
         occurrenceStart = t;

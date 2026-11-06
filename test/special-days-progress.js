@@ -48,9 +48,10 @@ function daily() {
 }
 // X is on no regular slot; its later episodes come first in the pool, so the
 // founder rule alone would start it at S1E31.
+// Z, 7-minute shorts on no slot, fills long breaks.
 function pool() {
     return seasons('A', 80).concat(seasons('B', 80), seasons('C', 80), seasons('D', 80),
-        seasons('X', 60).slice(30), seasons('X', 60).slice(0, 30));
+        seasons('X', 60).slice(30), seasons('X', 60).slice(0, 30), seasons('Z', 40, 7 * MIN));
 }
 function day(extra) {
     return Object.assign({
@@ -181,6 +182,26 @@ module.exports = async function () {
         const di = inside(items, FRI6, SAT6);
         suite.check('...a day of only picked items airs each once, then Flex to its end',
             titles(di).join(', ') === 'The Short One, The Long One' && shows(items).find( (a) => a.start >= fri(9) ).start >= SAT6, titles(di).join(', '));
+    }
+
+    suite.log('-- Fill long breaks with, during the day --');
+    {
+        // 47:00 at 6:00 leaves 13:00 on air: Z S1E1 fills it. 95:00 at 7:00 ends 8:35:
+        // Z S1E2-4 fill the 25:00 before 9:00. Step 7, Nov 5: a Create Lineup at 7:30,
+        // the long movie on air, replayed the fill from Z S1E1 at 8:35 - the fill's own
+        // position (tagged "fill:" + the day) was dropped as a day's that had ended.
+        const fd = day({ positions: 'advance', fillBreaksWith: 'tv.Z',
+            slots: [ { showId: 'movie.', item: { program: SHORT } }, { showId: 'movie.', item: { program: LONG } }, { showId: 'tv.X', order: 'next' } ] });
+        const laid = await make(first, sched(fd), NOW + HOUR);
+        const zs = (res, from) => inside(res, from, SAT6).filter( (a) => a.program.showTitle === 'Z' ).map( (a) => `${clock(a.start)} ${a.program.title}` );
+        suite.check('the day\'s fill, as laid: Z S1E1 after the 6:00 movie, Z S1E2-4 after the 7:00 one',
+            zs(laid, FRI6).join(', ') === 'Fri 6:50 AM Z S1E1, Fri 8:35 AM Z S1E2, Fri 8:42 AM Z S1E3, Fri 8:49 AM Z S1E4', zs(laid, FRI6).join(', '));
+        const during = await make(laid, sched(fd), fri(7, 30));
+        suite.check('...a Create Lineup at 7:30 carries the fill on: Z S1E2 at 8:35, not Z S1E1 again',
+            sameDay(laid, during, fri(8)), zs(during, fri(8)).join(', '));
+        const after = await make(during, sched(fd), sat(12));
+        const tagged = Object.keys(after.schedule.progress.positions).filter( (k) => /@fill:sd_t/.test(k) );
+        suite.check('...and once the day has ended, the fill\'s record goes too', tagged.length === 0, JSON.stringify(tagged));
     }
 
     suite.log('-- the quarter hour --');
