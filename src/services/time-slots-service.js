@@ -344,6 +344,14 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     // load the programs
     for (let i = 0; i < programs.length; i++) {
         let p = programs[i];
+        // An episode enters the pool as itself: a special day's own airing in the
+        // lineup this pool came from (specialCopy) would otherwise be what every
+        // regular slot plays of it from here on, marked as a row of that day.
+        if ( (typeof(p.specialDay) !== 'undefined') || (typeof(p.specialRow) !== 'undefined') ) {
+            p = Object.assign( {}, p );
+            delete p.specialDay;
+            delete p.specialRow;
+        }
         let show = getShow(p);
         if (show != null) {
             if (typeof(showsById[show.id] ) === 'undefined') {
@@ -752,17 +760,21 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             total += padded.totalDuration;
         }
         let leftover = Math.max(0, remaining - total);
-        if (leftover <= FILL_THRESHOLD) {
+        // "Long" is the break as it airs - everything after the row's own items, their
+        // pads included - not what is left once the pads round them up: 76:28 padded
+        // to 80:00 leaves 10:00, but 13:32 airs.
+        let onAir = remaining - pads.reduce( (sum, p) => sum + p.item.duration, 0 );
+        let fill = (onAir > FILL_THRESHOLD) ? fillItemsFor(d, leftover) : [];
+        if (fill.length === 0) {
             layPads(pads, leftover);
             return;
         }
-        // Long enough to fill: the row's own item(s) with only their usual
-        // small pad (schedule.flexPreference never spreads the long part of
-        // this break across them), then fill items back to back, then one
-        // plain break for whatever is still left - the next row still starts
-        // right on its mark either way.
+        // Filled: the row's own item(s) with only their usual small pad
+        // (schedule.flexPreference never spreads the long part of this break
+        // across them), then fill items back to back, then one plain break for
+        // whatever is still left - the next row still starts right on its mark.
         layPads(pads, 0);
-        fillItemsFor(d, leftover).forEach( (item) => {
+        fill.forEach( (item) => {
             pushProgram(item);
             leftover -= item.duration;
         } );

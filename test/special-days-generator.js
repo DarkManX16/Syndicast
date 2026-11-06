@@ -226,6 +226,22 @@ module.exports = async function () {
             ! d.some( (a) => a.program.showTitle === 'Z' ) && (longestFlex(res, fri(7), fri(9)) === 25 * MIN), d.map(line).join(' / '));
     }
     {
+        // The break as it airs, not as the pad rounds it (step 7, Nov 5): 76:28 from 7:00
+        // (Batman: Mask of the Phantasm's length) ends 8:16:28 and pads to 8:20 - exactly
+        // 10:00 left after the pad, but 13:32 of break on air before X's 8:30 row. Over
+        // 10 minutes as it airs, so a Z short (7:00) fills it: the movie's own 3:32 pad,
+        // Z from 8:20, a 3:00 break, X right on 8:30.
+        const PHANTASM = movie('Seventy Six Twenty Eight', 76 * MIN + 28 * SEC, 5);
+        const rows = [ item(PHANTASM), { showId: 'tv.X', order: 'next' } ];
+        const res = await generate(pool(), withDays(daily(), [ day({ from: { date: '2026-10-09', time: 7 * HOUR }, slots: rows, fillBreaksWith: 'tv.Z' }) ]), NOW);
+        const d = withStarts(res).filter( (a) => (a.start >= fri(7)) && (a.start <= fri(8, 30)) );
+        const zs = d.filter( (a) => a.program.showTitle === 'Z' );
+        const x = d.find( (a) => a.program.title === 'X S1E1' );
+        suite.check('a break of 13:32 on air is long, though the movie\'s pad leaves exactly 10:00: a Z short fills it',
+            (zs.length === 1) && (zs[0].start === fri(8, 20)), d.map( (a) => a.program.isOffline ? `${clock(a.start)} Flex ${a.program.duration / SEC}s` : line(a) ).join(' / '));
+        suite.check('...and X\'s row still starts right on 8:30', x && (x.start === fri(8, 30)), x ? clock(x.start) : 'not found');
+    }
+    {
         // Under the threshold: 22:00 from 6:00 ends 6:22, 8:00 short of 6:30 - a long
         // break's source is never used on a break this short.
         const SHORT_GAP = movie('Just Under Ten', 22 * MIN, 7);
@@ -236,20 +252,24 @@ module.exports = async function () {
     }
     {
         // A filler list: fillerPools passed in, as the server reads its own filler
-        // store (src/api.js) or progress-check.js reads <data>/filler. Two 10:00 clips
-        // fit the 25:00 gap, a 5:00 break closing out the rest.
+        // store (src/api.js) or progress-check.js reads <data>/filler. The 47:00 movie
+        // at 6:00 leaves 13:00 on air before 7:00 (10:00 after its pad): Bumper One
+        // fills it. Then two 10:00 clips fit the 25:00 gap after the 95:00 one, the
+        // round robin carrying on - Bumper Two, Bumper One - a 5:00 break closing out the rest.
         const clip = (title, duration) => ({ title, duration, isOffline: false, type: 'movie', key: '/c/' + title, serverKey: 'srv' });
         const pools = { fc_test: [ clip('Bumper One', 10 * MIN), clip('Bumper Two', 10 * MIN) ] };
         const rows = [ item(SHORT_MOVIE), item(LONG_MOVIE), { showId: 'tv.X', order: 'next' } ];
         const res = await generate(pool(), withDays(daily(), [ day({ slots: rows, fillBreaksWith: 'filler:fc_test' }) ]), NOW, undefined, pools);
+        const first = withStarts(res).filter( (a) => (a.start >= fri(6)) && (a.start < fri(7)) && /^Bumper/.test(a.program.title) );
         const d = withStarts(res).filter( (a) => (a.start >= fri(7)) && (a.start <= fri(9)) );
         const bumpers = d.filter( (a) => /^Bumper/.test(a.program.title) );
         const x = d.find( (a) => a.program.title === 'X S1E1' );
         const brk = x ? d[d.indexOf(x) - 1] : undefined;
-        suite.check('a filler list\'s own clips fill a long break the same way',
-            (bumpers.length === 2) && (bumpers[0].program.title === 'Bumper One') && (bumpers[1].program.title === 'Bumper Two')
+        suite.check('a filler list\'s own clips fill a long break the same way, round robin across the day\'s breaks',
+            (first.length === 1) && (first[0].program.title === 'Bumper One') && (first[0].start === fri(6, 50))
+                && (bumpers.length === 2) && (bumpers[0].program.title === 'Bumper Two') && (bumpers[1].program.title === 'Bumper One')
                 && bumpers.every( (a) => a.program.specialDay === 'sd_test' ),
-            bumpers.map( (a) => a.program.title ).join(','));
+            first.concat(bumpers).map( (a) => `${clock(a.start)} ${a.program.title}` ).join(','));
         suite.check('...then a break of what is left, and the next row still right on its mark',
             brk && brk.program.isOffline && (brk.program.duration === 5 * MIN) && x && (x.start === fri(9)),
             `${brk ? brk.program.duration / MIN : '?'} min, X at ${x ? clock(x.start) : '?'}`);
@@ -272,6 +292,29 @@ module.exports = async function () {
             as.length > 0, as.map( (a) => a.program.title ).join(','));
         suite.check('...but A\'s own regular rotation after the day is exactly as it would be with no fill at all',
             JSON.stringify(filledA) === JSON.stringify(unfilledA), `${filledA.slice(0, 3)} vs ${unfilledA.slice(0, 3)}`);
+    }
+
+    suite.log('-- Create Lineup again, from a lineup that already holds the day --');
+    {
+        // Step 7, Nov 5: the dialog's pool is the channel's own programs, first copy of
+        // each episode kept - and once a day is laid, the first copy of an episode the
+        // day aired first is the day's own, carrying specialDay/specialRow. A second run
+        // made that copy the episode every regular slot played: on the real copy, 25
+        // regular airings from March to May 2027 marked as rows of the New Year's day.
+        const rows = [ { showId: 'tv.A', order: 'next' }, { showId: 'tv.B', order: 'next' } ];
+        const sched = withDays(daily(), [ day({ slots: rows }) ]);
+        const first = await generate(pool(), sched, NOW);
+        const again = await generate(first.programs.concat(pool()), sched, NOW);
+        const leaked = (res) => withStarts(res).filter( (a) => (typeof(a.program.specialDay) !== 'undefined')
+            && ( (a.start < FRI6) || (a.start >= SAT6 + HOUR) ) );
+        const insideAgain = inside(again, FRI6, SAT6);
+        suite.check('a second run from the first one\'s lineup marks no airing outside the day as the day\'s',
+            leaked(first).length === 0 && leaked(again).length === 0,
+            leaked(again).slice(0, 3).map( (a) => `${clock(a.start)} ${a.program.title} row ${a.program.specialRow}` ).join(' / '));
+        suite.check('...and inside the day every airing still carries the day and its row',
+            insideAgain.length > 0 && insideAgain.every( (a) => (a.program.specialDay === 'sd_test') && (typeof(a.program.specialRow) === 'number') ), '');
+        suite.check('...the same day, airing for airing, as the first run laid it',
+            JSON.stringify(inside(first, FRI6, SAT6).map(line)) === JSON.stringify(insideAgain.map(line)), '');
     }
 
     suite.log('-- the edges --');
