@@ -6716,7 +6716,7 @@ the next row still starts exactly on its mark.
   real UI on an isolated preview (port 18215): the dropdown lists shows and filler lists
   correctly; Create Lineup and Update Channel save it both ways; the saved lineup's fill items
   carry `specialDay` and `specialRow: 'fill'`, same as the script-based proof. `npm test`
-  2790/2790; the workflow checklist, all ten, on a fresh copy; the additive check, blocks' Create Lineup against this branch's on all three channels, identical.
+  2790/2790; the workflow checklist, all ten, on a fresh copy.
 - **Left alone, on purpose:** no best-fit search when the fill source's current item does not fit
   a gap (it simply stops there, as a row's own extra items already do); Set times days (explicit
   times already, no "mark" gap to fill); no `problems()` check for a `fillBreaksWith` that names a
