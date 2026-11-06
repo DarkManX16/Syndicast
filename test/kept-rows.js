@@ -300,6 +300,18 @@ module.exports = async function () {
         suite.check('...and says so in one sentence, with where the episode it pushed out airs',
             short.text === 'Anthology of Interest replaces Futurama 1 at 12:00am; Futurama 1 airs Fri Nov 6, 12:00am.', short.text);
 
+        // Picked from the channel's own list, an episode's first copy can be a special
+        // day's own airing (its specialDay and specialRow): what's swapped or inserted
+        // in is the episode, never a row of that day.
+        const fromDay = episode('Futurama', 97, 20 * MIN, { title: 'Roswell That Ends Well', specialDay: 'sd_ny', specialRow: 4 });
+        const swappedDay = kept.swap({ lineup: base, index: i, item: fromDay, now: NOW }).programs[i];
+        const insertedDay = kept.insertAfter({ lineup: base, index: i, item: fromDay, now: NOW });
+        const insertedRow = (insertedDay.programs || []).find( (p) => p.title === 'Roswell That Ends Well' );
+        suite.check('a swap or insert of a special day\'s own copy airs the episode, not a row of that day',
+            swappedDay.title === 'Roswell That Ends Well' && ! ('specialDay' in swappedDay) && ! ('specialRow' in swappedDay)
+                && insertedRow && ! ('specialDay' in insertedRow) && ! ('specialRow' in insertedRow) && fromDay.specialDay === 'sd_ny',
+            JSON.stringify([ swappedDay.specialDay, insertedRow && insertedRow.specialDay, insertedDay.refused ]));
+
         const longer = kept.swap({ lineup: base, index: i, item: episode('Futurama', 98, 25 * MIN), now: NOW });
         suite.check('a longer item that fits: the Flex after it shrinks',
             longer.programs[i + 1].duration === 5 * MIN && starts({ programs: longer.programs, startTime: base.startTime })[i + 2] === fri(0, 30), '');

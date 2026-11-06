@@ -83,12 +83,15 @@ function sortedPrograms(show) {
  * airing, which used to ride along from the old lineup and found the next
  * run's Shuffle at the wrong place, and no mark of a hand edit (src/kept-rows.js):
  * an episode a kept row left in the pool airs in its slot as an ordinary airing.
+ * Nor a special day's mark: a day's own row adds its own after this.
  */
 function labelled(program, text) {
     let copy = Object.assign( {}, program );
     delete copy.shuffleOrder;
     delete copy.kept;
     delete copy.pin;
+    delete copy.specialDay;
+    delete copy.specialRow;
     copy.slotPosition = text;
     return copy;
 }

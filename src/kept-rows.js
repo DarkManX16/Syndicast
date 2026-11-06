@@ -114,10 +114,11 @@ function withoutEdit(program, id) {
     return copy;
 }
 
-// A copy of a picked item carrying nothing of where it came from.
+// A copy of a picked item carrying nothing of where it came from - a special
+// day's own copy, picked from the list, included.
 function stripped(item) {
     let copy = JSON.parse(JSON.stringify(item));
-    [ 'slotPosition', 'shuffleOrder', 'start', 'stop', '$index', 'pin', 'kept' ].forEach( (k) => delete copy[k] );
+    [ 'slotPosition', 'shuffleOrder', 'start', 'stop', '$index', 'pin', 'kept', 'specialDay', 'specialRow' ].forEach( (k) => delete copy[k] );
     return copy;
 }
 
