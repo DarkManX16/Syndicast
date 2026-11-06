@@ -11,7 +11,34 @@ const wereThereTooManyAttempts = require('./throttler');
 const lineupCursor = require('./lineup-cursor');
 const transitions = require('./transitions');
 const sharedBreaks = require('./shared-breaks');
+const playable = require('./playable');
 const crypto = require('crypto');
+
+// How many items one /stream request skips for files it can't open before
+// it gives up and plays the error screen.
+const MAX_SKIPS = 20;
+
+/*
+ * Express 4 doesn't catch an async route's rejection, and an unhandled
+ * rejection ends the process: one bad request would stop every channel. A
+ * route that fails answers 500, or ends a response already under way.
+ */
+function guarded(name, handler) {
+    return (req, res) => {
+        Promise.resolve().then( () => handler(req, res) ).catch( (err) => {
+            console.error(`${name} failed: ` + ( (err && err.stack) ? err.stack : err) );
+            try {
+                if (! res.headersSent) {
+                    res.status(500).send("Unable to play this channel right now.");
+                } else {
+                    res.end();
+                }
+            } catch (err2) {
+                console.error(err2);
+            }
+        } );
+    };
+}
 
 module.exports = { router: video, shutdown: shutdown }
 
@@ -146,19 +173,22 @@ function video( channelService, fillerService, db, programmingService, activeCha
         ffmpeg.on('end', () => {
             console.log("Queue exhausted so we are appending the channel stream again to the http output.")
             // the same viewer, so the same stream id: its cursor carries on
-            concat(req, res, audioOnly, step+1, streamId);
+            concat(req, res, audioOnly, step+1, streamId).catch( (err) => {
+                console.error("Unable to append the channel stream again", err);
+                stop();
+            } );
         })
 
         let channelNum = parseInt(req.query.channel, 10)
         let ff = await ffmpeg.spawnConcat(`http://localhost:${process.env.PORT}/playlist?channel=${channelNum}&audioOnly=${audioOnly}&stepNumber=${step}&stream=${streamId}`);
         ff.pipe(res,  { end: false}  );
     };
-    router.get('/video', async(req, res) => {
+    router.get('/video', guarded('/video', async(req, res) => {
         return await concat(req, res, false);
-    } );
-    router.get('/radio', async(req, res) => {
+    } ) );
+    router.get('/radio', guarded('/radio', async(req, res) => {
         return await concat(req, res, true);
-    } );
+    } ) );
 
     /*
      * The plan-builder lineup-cursor.js calls when a stream enters a break with
@@ -205,16 +235,22 @@ function video( channelService, fillerService, db, programmingService, activeCha
     };
 
     // Stream individual video to ffmpeg concat above. This is used by the server, NOT the client
-    let streamFunction = async (req, res, t0, allowSkip) => {
+    // `skip` is set when this request is deciding again because the item it
+    // chose can't be opened: how many it has skipped, and the cursor to carry
+    // on from (null: the stream's own, or the clock).
+    let streamFunction = async (req, res, t0, allowSkip, skip) => {
         if (stopPlayback) {
             res.status(503).send("Server is shutting down.")
             return;
         }
 
         // Check if channel queried is valid
-        res.on("error", (e) => {
-            console.error("There was an unexpected error in stream.", e);
-        } );
+        if (skip == null) {
+            // once per response: a skip decides again on the same one
+            res.on("error", (e) => {
+                console.error("There was an unexpected error in stream.", e);
+            } );
+        }
         if (typeof req.query.channel === 'undefined') {
             res.status(400).send("No Channel Specified")
             return
@@ -245,6 +281,8 @@ function video( channelService, fillerService, db, programmingService, activeCha
         let isBetween = ( (typeof req.query.between !== 'undefined') && (req.query.between=='1') );
 
         let ffmpegSettings = db['ffmpeg-settings'].find()[0]
+        // whether Plex items are played from their files (playable.js)
+        let plexSettings = (typeof(db['plex-settings']) !== 'undefined') ? db['plex-settings'].find()[0] : null;
 
         // Check if ffmpeg path is valid
         if (!fs.existsSync(ffmpegSettings.ffmpegPath)) {
@@ -302,7 +340,10 @@ function video( channelService, fillerService, db, programmingService, activeCha
         // the lineup (lineup-cursor.js), not whatever the clock lands on; the
         // clock, and the channel's replay cache, only decide when it can't.
         planFor = await plannerFor(channel, t0);
-        if (streamId !== null) {
+        if ( (skip != null) && (skip.cursor != null) ) {
+            // past an item that couldn't be opened, to what follows it
+            cursorProg = lineupCursor.nextEntry(channel, skip.cursor, t0, planFor);
+        } else if (streamId !== null) {
             cursorProg = lineupCursor.nextEntry(channel, channelCache.getCursor(streamId), t0, planFor);
         }
         if (cursorProg === null) {
@@ -318,6 +359,15 @@ function video( channelService, fillerService, db, programmingService, activeCha
         if ( (cursorProg === null) && (planFor !== null) ) {
             // from the clock, in or next to a break with steps: which phase of it
             prog = lineupCursor.placeByClock(channel, prog, t0, planFor);
+        }
+        if ( (prog.program.isOffline !== true) && playable.isKnownUnopenable(prog.program, plexSettings, t0) ) {
+            // a program whose file can't be opened: its slot plays Flex instead
+            prog = {
+                program: { isOffline: true, duration: prog.program.duration },
+                programIndex: -1,
+                timeElapsed: prog.timeElapsed,
+                startsIn: prog.startsIn,
+            };
         }
         activeChannelService.peekChannel(t0, channel.number);
 
@@ -390,7 +440,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 channelCache.clearPlayback(redirectChannels[i].number );
             }
             console.log("Too litlle time before the filler ends, skip to next slot");
-            return await streamFunction(req, res, t0 + dt + 1, false);
+            return await streamFunction(req, res, t0 + dt + 1, false, skip);
         }
         if ( (prog == null) || (typeof(prog) === 'undefined') || (prog.program == null) || (typeof(prog.program) == "undefined") ) {
             throw "No video to play, this means there's a serious unexpected bug or the channel db is corrupted."
@@ -427,10 +477,10 @@ function video( channelService, fillerService, db, programmingService, activeCha
 
         // Every list this channel could draw from, which for a channel without
         // day-parts is exactly the list on its Flex tab.
-        let fillers = await fillerService.getFillersFromCollections(
+        let fillers = playable.withoutUnopenable( await fillerService.getFillersFromCollections(
             brandChannel,
             dayParts.allFillerCollections(brandChannel)
-        );
+        ), plexSettings, t0 );
         /*
          * Flex shares one list of picks per break, per channel (shared-breaks.js),
          * so every viewer sees the same commercials. Decided here, after the
@@ -469,7 +519,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
                     channelCache.clearPlayback(redirectChannels[i].number );
                 }
                 console.log(`Nothing to fill the last ${Math.round(dt / 1000)}s of the break, so it ends here`);
-                return await streamFunction(req, res, t0 + dt + 1, false);
+                return await streamFunction(req, res, t0 + dt + 1, false, skip);
             }
             if ( (shared !== null) && (shared.kind === 'new') ) {
                 // only a clip is shared; with none to play, the next request tries again
@@ -503,6 +553,33 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 cursor = lineupItem.cursor;
             }
             lineupItem.cursor = cursor;
+        }
+
+        /*
+         * An item whose file can't be opened is never handed to a player
+         * (playable.js): this request decides again from just past it - the
+         * next Flex pick, the next step, or for a program, Flex in its slot.
+         * Nothing about it was recorded yet, so it doesn't count as played.
+         */
+        let unopenedFile = ( !isBetween && !isLoading && (lineupItem != null) ) ? playable.fileOf(lineupItem, plexSettings) : null;
+        if (unopenedFile !== null) {
+            let why = await playable.whyNot(unopenedFile, t0);
+            if (why !== null) {
+                let count = ( (skip != null) ? skip.count : 0 ) + 1;
+                console.error(`Skipping "${lineupItem.title}" on channel ${channel.number}: can't open ${unopenedFile} (${why})`);
+                for (let i = 0; i < redirectChannels.length; i++) {
+                    channelCache.clearPlayback(redirectChannels[i].number);
+                }
+                if (count <= MAX_SKIPS) {
+                    return await streamFunction(req, res, t0, allowSkip, { count: count, cursor: lineupItem.cursor });
+                }
+                console.error(`Skipped ${MAX_SKIPS} items on channel ${channel.number} that couldn't be opened; playing the error screen.`);
+                lineupItem = {
+                    isOffline: true,
+                    err: Error(`${MAX_SKIPS} items in a row couldn't be opened`),
+                    duration : 60000,
+                };
+            }
         }
 
         if ( !isBetween && !isLoading && (lineupItem != null) ) {
@@ -641,7 +718,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
                         setTimeout(stop, 100);
                     }
                 } catch (error) {
-                    console.err("Unexpected error when processing channel change during playback", error);
+                    console.error("Unexpected error when processing channel change during playback", error);
                 }
                         
             };
@@ -681,13 +758,13 @@ function video( channelService, fillerService, db, programmingService, activeCha
         });
     };
 
-    router.get('/stream', async (req, res) => {
+    router.get('/stream', guarded('/stream', async (req, res) => {
         let t0 = (new Date).getTime();
         return await streamFunction(req, res, t0, true);
-    });
+    }) );
 
 
-    router.get('/m3u8',  async (req, res) => {
+    router.get('/m3u8', guarded('/m3u8', async (req, res) => {
         if (stopPlayback) {
             res.status(503).send("Server is shutting down.")
             return;
@@ -740,8 +817,8 @@ function video( channelService, fillerService, db, programmingService, activeCha
         }
 
         res.send(data)
-    })
-    router.get('/playlist', async (req, res) => {
+    }) );
+    router.get('/playlist', guarded('/playlist', async (req, res) => {
         if (stopPlayback) {
             res.status(503).send("Server is shutting down.")
             return;
@@ -809,7 +886,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
         }
 
         res.send(data)
-    })
+    }) );
 
     let shieldActiveChannels = (channelList, t0, timeout) => {
         // because of channel redirects, it's possible that multiple channels

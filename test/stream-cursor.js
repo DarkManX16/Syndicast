@@ -16,6 +16,8 @@
  * Flex, in step, the show from its start - one plan per break shared by every
  * viewer and rebuilt after a save, and tuning in near the end of the break.
  */
+const fs = require('fs');
+const os = require('os');
 const http = require('http');
 const path = require('path');
 const { EventEmitter } = require('events');
@@ -202,10 +204,13 @@ module.exports = async function run() {
                 starts: [{ days: [0, 1, 2, 3, 4, 5, 6], time: 0 }],
                 transitions: { betweenShows: { out: [{ id: 'c', kind: 'generated', templateId: 'tpl', keyedOn: 'next' }], in: [] } } }] });
         const cardWants = [];
+        // a real file: /stream skips a card it can't open (playable.js)
+        const cardFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'syndicast-stream-cursor-')), 'abc.ts');
+        fs.writeFileSync(cardFile, 'x');
         const cardService = {
             cardFor: (want, ch) => {
                 cardWants.push( { want: want, channel: ch.number } );
-                return { file: 'C:/data/generated/cards/abc.ts', key: 'abc', title: 'Next Time: B', durationMs: 15 * SEC,
+                return { file: cardFile, key: 'abc', title: 'Next Time: B', durationMs: 15 * SEC,
                     streamStats: { videoWidth: 1920, videoHeight: 1080, videoCodec: 'mpeg2video', audioCodec: 'aac', audioIndex: 'a' } };
             },
         };
@@ -348,7 +353,7 @@ module.exports = async function run() {
                 viaCard.map((i) => i && `${i.type} ${i.title}`).join(', ') === 'program A, transition Next Time: B, commercial Fill#1',
                 viaCard.map(describe).join(' | '));
             suite.check('... the card is played from its file, whole, with its stream details and no Plex server',
-                viaCard[1] && (viaCard[1].generatedFile === 'C:/data/generated/cards/abc.ts') && (viaCard[1].start === 0)
+                viaCard[1] && (viaCard[1].generatedFile === cardFile) && (viaCard[1].start === 0)
                 && (viaCard[1].streamDuration === 15 * SEC) && (viaCard[1].streamStats.videoCodec === 'mpeg2video')
                 && (typeof(viaCard[1].serverKey) === 'undefined'), describe(viaCard[1]));
             suite.check('... the card service was asked for the show coming up, on this channel',

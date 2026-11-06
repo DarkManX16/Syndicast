@@ -97,34 +97,48 @@ class PlexPlayer {
             ffmpeg.on('close', () => {
                 emitter.emit('close');
             });
+            // async, so everything in it is caught: a rejection here would end the process
             ffmpeg.on('error', async (err) => {
-                console.log("Replacing failed stream with error stream");
-                ff.unpipe(outStream);
-                ffmpeg.removeAllListeners('data');
-                ffmpeg.removeAllListeners('end');
-                ffmpeg.removeAllListeners('error');
-                ffmpeg.removeAllListeners('close');
-                ffmpeg = new FFMPEG(ffmpegSettings, channel);  // Set the transcoder options
-                ffmpeg.setAudioOnly(this.context.audioOnly);
-                ffmpeg.on('close', () => {
-                    emitter.emit('close');
-                });
-                ffmpeg.on('end', () => {
-                    emitter.emit('end');
-                });
-                ffmpeg.on('error', (err) => {
-                    emitter.emit('error', err );
-                });
+                try {
+                    console.log("Replacing failed stream with error stream");
+                    ff.unpipe(outStream);
+                    ffmpeg.removeAllListeners('data');
+                    ffmpeg.removeAllListeners('end');
+                    ffmpeg.removeAllListeners('error');
+                    ffmpeg.removeAllListeners('close');
+                    ffmpeg = new FFMPEG(ffmpegSettings, channel);  // Set the transcoder options
+                    ffmpeg.setAudioOnly(this.context.audioOnly);
+                    this.ffmpeg = ffmpeg;
+                    ffmpeg.on('close', () => {
+                        emitter.emit('close');
+                    });
+                    ffmpeg.on('end', () => {
+                        emitter.emit('end');
+                    });
+                    ffmpeg.on('error', (err) => {
+                        emitter.emit('error', err );
+                    });
 
-                ff = await ffmpeg.spawnError('oops', 'oops', Math.min(streamStats.duration, 60000) );
-                ff.pipe(outStream);
+                    ff = await ffmpeg.spawnError('oops', 'oops', Math.min(streamStats.duration, 60000) );
+                    if (ff == null) {
+                        // no error screen to play ("kill", or no transcoding): the item ends here
+                        outStream.end();
+                        emitter.emit('end');
+                        return;
+                    }
+                    ff.pipe(outStream);
 
-                emitter.emit('error', err);
+                    emitter.emit('error', err);
+                } catch (err2) {
+                    console.error("Unable to replace a failed stream with the error screen", err2);
+                    outStream.end();
+                }
             });
             return emitter;
 
         } catch(err) {
-            return Error("Error when playing plex program: " + JSON.stringify(err) );
+            // program-player.js plays the error screen in its place, and logs why
+            throw Error("Error when playing plex program: " + ( (err instanceof Error) ? err.message : JSON.stringify(err) ) );
         }
     }
 }

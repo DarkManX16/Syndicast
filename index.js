@@ -1,4 +1,15 @@
 
+/*
+ * A promise rejected with nothing to catch it ends the process, and with it
+ * every channel. Each one found has been caught where it starts (NOTES.md,
+ * "One unreadable file crashed the server"); this keeps one that was missed
+ * from stopping the server, and logs it so it can be found and fixed.
+ */
+process.on('unhandledRejection', (reason) => {
+    console.error("UNHANDLED REJECTION (the server keeps running; this is a bug to fix): "
+        + ( (reason && reason.stack) ? reason.stack : reason ) );
+});
+
 const db = require('diskdb')
 const fs = require('fs')
 const unzip = require('unzipper')
@@ -264,7 +275,10 @@ let xmltvInterval = {
 
 guideService.on("xmltv-updated", (data) => {
     try {
-        xmltvInterval.notifyPlex();
+        // async: its rejection is caught here, or it would end the process
+        xmltvInterval.notifyPlex().catch( (err) => {
+            console.error("Unable to tell Plex the TV guide was updated", err);
+        } );
     } catch (err) {
         console.error("Unexpected issue when reacting to xmltv update", err);
     }

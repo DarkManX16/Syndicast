@@ -24,9 +24,12 @@ class FileCacheService {
         return new Promise((resolve, reject) => {
             try {
                 const file = fs.createWriteStream(path.join(this.cachePath, fullFilePath));
+                // A write stream's 'error' with no listener, or a throw in its
+                // callback, ends the process; the caller gets a rejection instead.
+                file.on('error', (err) => reject( Error(`Can't save ${fullFilePath}: ${err.message}`) ));
                 file.write(data, (err) => {
                     if(err) {
-                        throw Error("Can't save file: ", err);
+                        reject( Error(`Can't save ${fullFilePath}: ${err.message}`) );
                     } else {
                         this.cache[fullFilePath] = data;
                         resolve(true);

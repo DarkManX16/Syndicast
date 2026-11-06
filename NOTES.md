@@ -3464,7 +3464,11 @@ be built:
       its channels match what's on disk - before you trust it for this.
 - [ ] Random crashes during streaming, caught by a 48-hour soak and fixed if
       seen (Opus 5.5). See the Infrastructure roadmap line above and the
-      Model guide below.
+      Model guide below. One found before the soak, Nov 5, 2026: an
+      unreadable file took the whole server down; it and every other way an
+      error escaped during playback are fixed (Resolved, "One unreadable file
+      crashed the server"). During the soak, grep the log for "UNHANDLED
+      REJECTION" and "Skipping": each is a lead.
 - [ ] Public channel sharing without exposing my IP address (Opus 5.5 · Xhigh
       to design, Sonnet 5 · High to build). Moved into 1.0 from after it; now
       also covers livestreaming straight from the UI. See its Infrastructure
@@ -7402,6 +7406,44 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### One unreadable file crashed the server
+
+Ron, Nov 5, 2026, 9:26:44am: the whole server crashed and every channel froze as channel 1's
+break started "Tom & Jerry Kids to Flintstones [Hippie]" (CN Powerhouse Up Next, Plex library
+".CN Next bumpers (Powerhouse)"). With direct paths on, `plexTranscoder.js` checked the file with
+`fs.access` and threw from its callback, where nothing can catch it. Fixed on `playback-errors`.
+
+- **What failed.** The clip's stored path is right (Plex has the same path and size) and it opens
+  now; its last play time on channel 1 says it started 9:26:44am. Nothing in the System log
+  then: no boot, sleep, USB or disk event (uptime 24 days). So G: (a USB exFAT drive) didn't
+  open it for that moment. Why is lost: the old throw dropped the error's code. Now the log says.
+- **Skipped, not played.** `/stream` opens an item's file before handing it to a player
+  (`src/playable.js`: a generated card, or a Plex item with direct paths; 5 s limit). One that
+  doesn't open is logged (`Skipping "<title>" on channel N: can't open <file> (<why>)`) and the
+  request decides again from just past it, with nothing recorded as played: a Flex clip for the
+  next pick, a transition step or card for what follows it, a program for the channel's Flex in
+  its slot, and with nothing left, the channel's fallback. A file that failed is left out of the
+  Flex picker for 5 minutes, then tried again. After 20 skips in one request, the error screen.
+- **Every other way an error escaped during playback**, each found and fixed: the Plex play
+  status post (`updatePlex`, not awaited); the players' async ffmpeg `'error'` handlers
+  (`plex-player`, `card-player`, `offline-player`: no error screen when it's set to "kill",
+  or the error screen failing too); an `'error'` emitted after `program-player` had dropped its
+  listeners; Express 4 not catching an async route's rejection (`/stream`, `/video`, `/radio`,
+  `/playlist`, `/m3u8` now answer 500); the concat restart; the channels.m3u cache write
+  (`file-cache-service.js` threw from its write callback, as plexTranscoder did); the guide's
+  Plex notify; `console.err` in the channel-update listener. `plex-player` now throws its
+  failure (with the reason) instead of returning it, as its contract says.
+- **A net.** `index.js` logs an unhandled rejection ("UNHANDLED REJECTION ... a bug to fix")
+  instead of exiting. Each one found is caught where it starts; this keeps a missed one from
+  taking every channel down. An uncaught synchronous exception still exits.
+- **Guarded by** `test/playback-errors.js`: through the real `/stream`, a break whose next clip
+  is missing (the next pick), a break with nothing that opens (the fallback), fifteen missing
+  in a row, a missing step and a missing card (the Flex after them) and a missing program
+  (Flex in its slot), each logging the file and why; and each escape above in a process of
+  its own (`test/playback-errors-child.js`), which must live. All 21 failed first; the old
+  `plexTranscoder.js` crash reproduces with Ron's stack (`plexTranscoder.js:88:29`,
+  `FSReqCallback.oncomplete`). `test/stream-cursor.js`'s card is now a real file.
 
 ### Thousands of rows kept in time, and Delete that asked
 
