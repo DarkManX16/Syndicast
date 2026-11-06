@@ -50,22 +50,34 @@ class CardPlayer {
         ff.pipe(outStream, { end: false });
         ffmpeg.on('end', () => emitter.emit('end'));
         ffmpeg.on('close', () => emitter.emit('close'));
+        // async, so everything in it is caught: a rejection here would end the process
         ffmpeg.on('error', async (err) => {
-            console.log('Replacing failed card with error stream');
-            ff.unpipe(outStream);
-            ffmpeg.removeAllListeners('data');
-            ffmpeg.removeAllListeners('end');
-            ffmpeg.removeAllListeners('error');
-            ffmpeg.removeAllListeners('close');
-            ffmpeg = new FFMPEG(ffmpegSettings, channel);
-            ffmpeg.setAudioOnly(this.context.audioOnly);
-            this.ffmpeg = ffmpeg;
-            ffmpeg.on('close', () => emitter.emit('close'));
-            ffmpeg.on('end', () => emitter.emit('end'));
-            ffmpeg.on('error', (e) => emitter.emit('error', e));
-            ff = await ffmpeg.spawnError('oops', 'oops', Math.min(streamStats.duration || 15000, 60000));
-            ff.pipe(outStream);
-            emitter.emit('error', err);
+            try {
+                console.log('Replacing failed card with error stream');
+                ff.unpipe(outStream);
+                ffmpeg.removeAllListeners('data');
+                ffmpeg.removeAllListeners('end');
+                ffmpeg.removeAllListeners('error');
+                ffmpeg.removeAllListeners('close');
+                ffmpeg = new FFMPEG(ffmpegSettings, channel);
+                ffmpeg.setAudioOnly(this.context.audioOnly);
+                this.ffmpeg = ffmpeg;
+                ffmpeg.on('close', () => emitter.emit('close'));
+                ffmpeg.on('end', () => emitter.emit('end'));
+                ffmpeg.on('error', (e) => emitter.emit('error', e));
+                ff = await ffmpeg.spawnError('oops', 'oops', Math.min(streamStats.duration || 15000, 60000));
+                if (ff == null) {
+                    // no error screen to play ("kill", or no transcoding): the card ends here
+                    outStream.end();
+                    emitter.emit('end');
+                    return;
+                }
+                ff.pipe(outStream);
+                emitter.emit('error', err);
+            } catch (err2) {
+                console.error('Unable to replace a failed card with the error screen', err2);
+                outStream.end();
+            }
         } );
         return emitter;
     }

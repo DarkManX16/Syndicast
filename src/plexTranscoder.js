@@ -82,16 +82,19 @@ class PlexTranscoder {
             // Update transcode decision for session
             await this.getDecision(stream.directPlay);
             stream.streamUrl = (this.settings.streamPath === 'direct') ? this.file : this.plexFile;
-            if(this.settings.streamPath === 'direct') {
-                fs.access(this.file, fs.F_OK, (err) => {
-                    if (err) {
-                      throw Error("Can't access this file", err);
-                      return
-                    }
-                })
-            }
             if (typeof(stream.streamUrl) == 'undefined') {
                 throw Error("Direct path playback is not possible for this program because it was registered at a time when the direct path settings were not set. To fix this, you must either revert the direct path setting or rebuild this channel.");
+            }
+            if(this.settings.streamPath === 'direct') {
+                // Awaited, so a missing file fails this stream. It used to be
+                // thrown from fs.access's callback, which no one can catch, and
+                // took the whole server down (NOTES.md, "One unreadable file
+                // crashed the server").
+                try {
+                    await fs.promises.access(this.file, fs.constants.F_OK);
+                } catch (err) {
+                    throw Error(`Can't access ${this.file}: ${err.message}`);
+                }
             }
         } else if (this.isVideoDirectStream() === false) {
                 this.log("Decision: Should transcode")
@@ -433,13 +436,11 @@ X-Plex-Token=${this.server.accessToken}`;
     updatePlex() {
         this.log("Updating plex status");
         const statusUrl = this.getStatusUrl();
-        try {
-            axios.post(statusUrl);
-        } catch (error) {
+        // not awaited, so caught here: a rejection nobody catches ends the process
+        axios.post(statusUrl).catch( (error) => {
             this.log(`Problem updating Plex status using status URL ${statusUrl}:`);
             this.log(error);
-            return false;
-        }
+        } );
         this.currTimeMs += this.updateInterval;
         if (this.currTimeMs > this.duration) {
             this.currTimeMs = this.duration;

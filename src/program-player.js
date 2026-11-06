@@ -82,6 +82,12 @@ class ProgramPlayer {
                     stream.removeAllListeners("end");
                     stream.removeAllListeners("close");
                     stream.removeAllListeners("error");
+                    // An error the stream emits after this (its error screen
+                    // failing too) would have no listener, and an 'error'
+                    // nobody listens to ends the process.
+                    stream.on("error", (err) => {
+                        console.error("Error after the stream had ended: " + JSON.stringify(err));
+                    });
                     emitter.emit("end");
                 }
                 stream.on("error", err => {
