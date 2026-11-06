@@ -686,12 +686,12 @@ function insertAfter({ lineup, index, item, now, schedule }) {
  * at `index`, each an insert after the one before. The list, and each one's
  * sentence; or why the first can't go in.
  */
-function insertMany({ lineup, index, items, now }) {
+function insertMany({ lineup, index, items, now, schedule }) {
     let programs = lineup.programs;
     let at = index;
     let texts = [];
     for (let k = 0; k < items.length; k++) {
-        let got = insertAfter({ lineup: { programs, startTime: lineup.startTime }, index: at, item: items[k], now: now + k });
+        let got = insertAfter({ lineup: { programs, startTime: lineup.startTime }, index: at, item: items[k], now: now + k, schedule });
         if (! Array.isArray(got.programs)) {
             return (k === 0) ? { refused: got.refused } : { programs, texts };
         }

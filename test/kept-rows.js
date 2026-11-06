@@ -855,6 +855,9 @@ module.exports = async function () {
             kept.swap({ lineup: l, index: futuramaAt, item, now: NOW, schedule: sched }).refused === msg, '');
         suite.check('insertAfter: refused inside the day',
             kept.insertAfter({ lineup: l, index: futuramaAt, item, now: NOW, schedule: sched }).refused === msg, '');
+        // The library's "insert after this row" with several episodes (review, Nov 5).
+        suite.check('insertMany: refused inside the day',
+            kept.insertMany({ lineup: l, index: futuramaAt, items: [ item, episode('Family Guy', 98, 22 * MIN) ], now: NOW, schedule: sched }).refused === msg, '');
         suite.check('deleteRow: refused inside the day, for an episode and for a plain Flex row',
             (kept.deleteRow({ lineup: l, index: futuramaAt, now: NOW, schedule: sched }).refused === msg)
                 && (kept.deleteRow({ lineup: l, index: futuramaAt + 1, now: NOW, schedule: sched }).refused === msg), '');

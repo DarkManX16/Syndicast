@@ -2379,15 +2379,15 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             let hatched = false;
                             if (day !== null) {
                                 specialRanges.push( { startMs: seg.startMs, endMs: seg.endMs } );
-                                let airings = (readSpecialAirings().get(day.id) || []).filter( (a) => (a.at >= columnStart) && (a.at < columnStart + CAL_DAY) && (a.at + a.duration > columnStart + seg.startMs) && (a.at < columnStart + seg.endMs) );
-                                if (airings.length === 0) {
+                                let spans = specialDays.spansIn(readSpecialAirings().get(day.id) || [], columnStart + seg.startMs, columnStart + seg.endMs);
+                                if (spans.length === 0) {
                                     hatched = true;
                                 } else {
-                                    chips = chips.concat(airings.map( (a) => ( {
-                                        topPct: (Math.max(a.at, columnStart) - columnStart) / CAL_DAY * 100,
-                                        heightPct: (Math.min(a.at + a.duration, columnStart + CAL_DAY) - Math.max(a.at, columnStart)) / CAL_DAY * 100,
-                                        label: a.label,
-                                        title: a.label + ': ' + clockString(Math.max(a.at, columnStart) - columnStart),
+                                    chips = chips.concat(spans.map( (s) => ( {
+                                        topPct: (s.from - columnStart) / CAL_DAY * 100,
+                                        heightPct: (s.to - s.from) / CAL_DAY * 100,
+                                        label: s.label,
+                                        title: s.label + ': ' + clockString(s.from - columnStart),
                                     } ) ));
                                 }
                             }
@@ -2982,7 +2982,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     if (lineup.programs[i].isOffline) {
                         continue;
                     }
-                    let got = keptRows.insertMany({ lineup, index: i, items: selected, now: Date.now() });
+                    let got = keptRows.insertMany({ lineup, index: i, items: selected, now: Date.now(), schedule: scope.channel.scheduleBackup });
                     if (Array.isArray(got.programs)) {
                         applyEdit({ programs: got.programs, text: got.texts.join(' ') });
                         return;

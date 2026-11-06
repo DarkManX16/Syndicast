@@ -319,5 +319,24 @@ module.exports = async () => {
     }
     suite.check('timetable on a day with no proper window answers empty, not throws',
         JSON.stringify(sd.timetable({ programs: [], startTime: 0, day: {}, schedule: {} })) === '{"rows":[],"restarts":[],"never":[],"overrun":null}', '');
+
+    suite.log('spansIn (the Schedule tab\'s chips for a day\'s band)');
+    {
+        // Review, Nov 5: a column kept only airings starting inside it, so Batman: Mask
+        // of the Phantasm (11:30pm Fri to 12:46am Sat) drew nothing in Saturday's column.
+        const airings = [
+            { at: local(2027, 1, 1, 22, 0), duration: 61 * MIN, label: 'Tree of Might' },
+            { at: local(2027, 1, 1, 23, 30), duration: 76 * MIN + 28 * SEC, label: 'Mask of the Phantasm' },
+            { at: local(2027, 1, 2, 1, 0), duration: 59 * MIN, label: "World's Strongest" },
+        ];
+        const sat = sd.spansIn(airings, local(2027, 1, 2, 0, 0), local(2027, 1, 2, 6, 0));
+        suite.check('an airing that crosses midnight shows in the next day\'s band from midnight to its end',
+            (sat.length === 2) && (sat[0].label === 'Mask of the Phantasm') && (sat[0].from === local(2027, 1, 2, 0, 0))
+                && (sat[0].to === local(2027, 1, 2, 0, 46, 28)) && (sat[1].label === "World's Strongest"),
+            JSON.stringify(sat.map( (s) => [ s.label, iso(s.from), iso(s.to) ] )));
+        const fri = sd.spansIn(airings, local(2027, 1, 1, 6, 0), local(2027, 1, 2, 0, 0));
+        suite.check('...and in its own day\'s band up to midnight; nothing outside the band',
+            (fri.length === 2) && (fri[1].label === 'Mask of the Phantasm') && (fri[1].to === local(2027, 1, 2, 0, 0)), JSON.stringify(fri.map( (s) => s.label )));
+    }
     return suite;
 };

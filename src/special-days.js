@@ -478,6 +478,17 @@ function timetable({ programs, startTime, day, schedule }) {
     };
 }
 
+/*
+ * The Schedule tab's chips for a day's band, [from, to): each airing ({ at,
+ * duration, label }) that overlaps it, clipped to it - one that began before
+ * the band (the movie still on at midnight) included.
+ */
+function spansIn(airings, from, to) {
+    return airings
+        .filter( (a) => (a.at < to) && (a.at + a.duration > from) )
+        .map( (a) => ({ label: a.label, from: Math.max(a.at, from), to: Math.min(a.at + a.duration, to) }) );
+}
+
 module.exports = {
     localInstant: localInstant,
     windowOf: windowOf,
@@ -498,4 +509,5 @@ module.exports = {
     fillTimes: fillTimes,
     wrapFinder: wrapFinder,
     timetable: timetable,
+    spansIn: spansIn,
 };

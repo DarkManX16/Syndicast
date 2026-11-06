@@ -1176,7 +1176,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
 
             //`pinsToKeep`, when given, are the swaps and inserts to keep
             //instead of the lineup's own (src/pins.js) - for a re-lay.
-            let makeLineup = async(fromInstant, pinsToKeep, atNow) => {
+            //`preview`: only shown, never saved - so nothing a real run spends
+            //(afterRun's one-time start seasons) is spent.
+            async function makeLineup(fromInstant, pinsToKeep, atNow, preview) {
                 let { run, carry, history, t0 } = await planLineup(atNow);
                 //Every row kept in the list stays where the list has it (src/kept-rows.js) - a
                 //re-lay's pins aside, which the old Swap still hands over.
@@ -1196,14 +1198,14 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     await doWait(w);
                 }
 
-                return Object.assign(res, afterRun(scope.schedule, run));
+                return preview ? res : Object.assign(res, afterRun(scope.schedule, run));
             }
 
             //Create Lineup, Regenerate, Swap, Insert and undo all come through here: none
             //is made against a server still running older code than this page (src/build-check.js).
-            let doIt = (fromInstant, pinsToKeep, atNow) => buildCheck.guard({
+            let doIt = (fromInstant, pinsToKeep, atNow, preview) => buildCheck.guard({
                 fetchVersion: () => dizquetv.getCodeBuild(),
-                run: () => makeLineup(fromInstant, pinsToKeep, atNow),
+                run: () => makeLineup(fromInstant, pinsToKeep, atNow, preview),
             });
 
             /*
@@ -1215,7 +1217,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
              * doIt itself already does for a real Create Lineup.
              */
             scope.dayPreview = null;
-            scope.previewDay = async (day) => {
+            async function previewDay(day) {
                 scope.dayPreview = { day: day, loading: true, error: null, tt: null };
                 $timeout();
                 let dayProblems = specialDays.problems(scope.schedule, scope.channelBlocks).filter( (p) => p.dayId === day.id );
@@ -1225,7 +1227,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     return;
                 }
                 try {
-                    let res = await doIt(false);
+                    let res = await doIt(false, undefined, undefined, true);
                     let tt = specialDays.timetable({ programs: res.programs, startTime: Date.parse(res.startTime), day: day, schedule: scope.schedule });
                     scope.dayPreview = { day: day, loading: false, error: null, tt: tt };
                 } catch (err) {
@@ -1233,7 +1235,8 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     scope.dayPreview = { day: day, loading: false, error: 'There was an error generating the preview', tt: null };
                 }
                 $timeout();
-            };
+            }
+            scope.previewDay = previewDay;
             scope.closeDayPreview = () => { scope.dayPreview = null; };
             scope.dayPreviewLine = (at) => pinTools.dayClock(at);
             scope.dayPreviewLength = (ms) => pinTools.length(ms);

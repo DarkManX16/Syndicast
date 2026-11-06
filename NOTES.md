@@ -6849,6 +6849,24 @@ day used. Create Lineup and Update Channel through the dialog; the server warned
 - `npm test` 2840/2840; the workflow checklist, all ten including `special-day`, on a fresh copy
   (9:49pm Nov 5, port 18223).
 
+**The review before merging, Nov 5, 2026** (the whole branch against `blocks`). Fixed, each with
+a failing check first:
+- *Preview this day spent a slot's one-time start season.* It runs Create Lineup's own
+  `makeLineup`, whose `afterRun` clears each slot's `startSeason` once used - so a preview
+  cleared it before the real run. A preview's run now skips `afterRun`
+  (test/special-days-preview.js lifts `previewDay` and `makeLineup` from the directive).
+- *The library's insert of several episodes went into a special day.* `insertMany` had no
+  schedule, unlike Swap, Insert after, Delete and drag; it refuses inside a day now, so the
+  library's add goes after the first row in view outside it.
+- *The Schedule tab dropped an airing crossing midnight* from the next day's column (Phantasm,
+  11:30pm-12:46am): the chips are `specialDays.spansIn`, each airing clipped to its band.
+
+Set aside: the Schedule tab's columns are fixed 24-hour days, an hour off in a week with a clock
+change (no special day planned near one); `specialDaysPlan` counts a row with `item: null` as a
+picked item (`problems()` already blocks such a day); two Time Slots dialog caches that
+re-serialize on each digest (`dayRowLine`, `problemsOf`), no slowness seen; the fill position's
+`fill:` tag riding on the day tag (one special case in the planner, tested).
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's
