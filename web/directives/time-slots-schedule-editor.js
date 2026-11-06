@@ -9,10 +9,13 @@ const keptRows = require('../../src/kept-rows');
 const buildCheck = require('../../src/build-check');
 const poolSeasons = require('../../src/pool-seasons');
 const catalogKeep = require('../../src/catalog-keep');
+const specialDays = require('../../src/special-days');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
     const WEEK = 7 * DAY;
+    const HOUR = 60*60*1000;
+    const MIN = 60*1000;
     // Thursday-first: a weekly slot's time is ms into the epoch week. See
     // src/slot-week.js.
     const WEEK_DAYS = slotWeek.DAY_NAMES;
@@ -50,10 +53,14 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     maxDays: 365,
                     flexPreference : "distribute",
                     slots : [],
+                    specialDays: [],
                     pad: 1,
                     fake: { time: -1 },
                 }
- 
+                scope.editingDay = null;
+                scope.dayPicker = null;
+                scope.dayPreview = null;
+
             }
             reset();
 
@@ -84,6 +91,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 if (typeof(scope.schedule.period) === 'undefined') {
                     scope.schedule.period = DAY;
+                }
+                if (! Array.isArray(scope.schedule.specialDays)) {
+                    scope.schedule.specialDays = [];
                 }
                 scope.schedule.fake = {
                     time: -1,
@@ -791,6 +801,307 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             };
             scope.dismissDroppedStarts = () => { scope.droppedStarts = []; };
 
+            /*
+             * Special days (src/special-days.js; NOTES.md, Known issues, "Special
+             * days"): a date's own Time Slots, with an optional block for the day.
+             * The list above the regular slots, one line per day; its editor opens
+             * inline, mirroring the Day-Parts/Blocks tabs' own cards rather than a
+             * dialog of its own. Keep it simple (Ron, Oct 30): nothing shown here
+             * that he did not ask for.
+             */
+            function newSpecialDayId() {
+                return 'sd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+            }
+            // A YYYY-MM-DD this many days from today, in the local zone - a
+            // sensible default for a new day's dates.
+            function todayPlus(offsetDays) {
+                let d = new Date();
+                d.setDate(d.getDate() + offsetDays);
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
+            scope.dayHourOptions = [];
+            for (let i = 0; i < 24; i++) {
+                scope.dayHourOptions.push({ id: i, description: String(i).padStart(2, '0') });
+            }
+            scope.dayMinuteOptions = [];
+            for (let i = 0; i < 60; i += 5) {
+                scope.dayMinuteOptions.push({ id: i, description: String(i).padStart(2, '0') });
+            }
+            scope.dayPositionOptions = [
+                { id: 'advance', description: 'Advance my shows' },
+                { id: 'apart', description: 'Keep my shows where they are' },
+            ];
+            scope.dayLayoutOptions = [
+                { id: 'back', description: 'Back to back' },
+                { id: 'times', description: 'Set times' },
+            ];
+            scope.dayRoundingOptions = [
+                { id: 'half', description: 'Rows start on the half hour' },
+                { id: 'quarter', description: 'Rows start on the quarter hour' },
+            ];
+
+            scope.addSpecialDay = () => {
+                let day = {
+                    id: newSpecialDayId(), name: 'New special day',
+                    from: { date: todayPlus(7), time: 6 * HOUR },
+                    to: { date: todayPlus(8), time: 6 * HOUR },
+                    blockId: null, positions: 'advance', layout: 'back', rounding: 'half',
+                    fillBreaksWith: null,
+                    slots: [],
+                };
+                scope.schedule.specialDays.push(day);
+                scope.editSpecialDay(day);
+            };
+            scope.editSpecialDay = (day) => {
+                scope.editingDay = (scope.editingDay === day) ? null : day;
+            };
+            scope.deleteSpecialDay = (day) => {
+                let i = scope.schedule.specialDays.indexOf(day);
+                if (i !== -1) {
+                    scope.schedule.specialDays.splice(i, 1);
+                }
+                if (scope.editingDay === day) {
+                    scope.editingDay = null;
+                }
+            };
+            scope.copySpecialDay = (day) => {
+                let copy = JSON.parse(JSON.stringify(day));
+                copy.id = newSpecialDayId();
+                copy.name = day.name + ' (copy)';
+                scope.schedule.specialDays.push(copy);
+                scope.editSpecialDay(copy);
+            };
+            scope.dayAired = (day) => specialDays.aired(day, Date.now());
+            scope.dayWindowLabel = (day) => {
+                let w = specialDays.windowOf(day);
+                if (w === null) {
+                    return 'Needs a start and an end';
+                }
+                return episodeStart.whenLabel({ at: w.from, now: false }) + ' – ' + episodeStart.whenLabel({ at: w.to, now: false });
+            };
+            scope.dayBlockName = (day) => {
+                if ( (day.blockId === null) || (typeof(day.blockId) === 'undefined') ) {
+                    return '';
+                }
+                let b = (scope.channelBlocks || []).find( (x) => x.id === day.blockId );
+                return b ? b.name : '';
+            };
+            // Rebuilt only when the channel's blocks change, not on every digest -
+            // a fresh array each time defeats ng-options' own dirty check.
+            let blockOptionsCache = null;
+            scope.dayBlockOptions = () => {
+                if ( (blockOptionsCache === null) || (blockOptionsCache.blocks !== scope.channelBlocks) ) {
+                    blockOptionsCache = {
+                        blocks: scope.channelBlocks,
+                        list: [ { id: null, name: 'None' } ].concat( (scope.channelBlocks || []).map( (b) => ({ id: b.id, name: b.name }) ) ),
+                    };
+                }
+                return blockOptionsCache.list;
+            };
+            scope.dayLabel = (day) => {
+                let bn = scope.dayBlockName(day);
+                return day.name + ' · ' + scope.dayWindowLabel(day) + (bn ? ' · ' + bn : '');
+            };
+            // "Fill long breaks with" (NOTES.md, "Special days"): one dropdown, a
+            // show or custom show (its own showId, exactly as a row names one) or
+            // a filler list ("filler:<id>"). Off by default. Rebuilt only when the
+            // shows or filler lists change, same reason as dayBlockOptions.
+            let fillOptionsCache = null;
+            scope.dayFillOptions = () => {
+                if ( (fillOptionsCache === null) || (fillOptionsCache.shows !== scope.showOptions) || (fillOptionsCache.fillers !== scope.channelFillerLists) ) {
+                    fillOptionsCache = {
+                        shows: scope.showOptions, fillers: scope.channelFillerLists,
+                        list: [ { id: null, name: 'Off' } ]
+                            .concat( (scope.showOptions || []).filter( (s) => s.id !== 'flex.' ).map( (s) => ({ id: s.id, name: s.description }) ) )
+                            .concat( (scope.channelFillerLists || []).map( (f) => ({ id: 'filler:' + f.id, name: f.name + ' (filler list)' }) ) ),
+                    };
+                }
+                return fillOptionsCache.list;
+            };
+            // One short line per problem, at the field it concerns - never a wall of
+            // text. Create Lineup is blocked while any day has one (scope.finished).
+            // Rebuilt only when the days or blocks actually change: three fields
+            // across every day call this each digest, and it walks every day's rows.
+            let allDayProblems = null;
+            let problemsOf = () => {
+                let days = scope.schedule.specialDays || [];
+                let key = JSON.stringify(days) + '|' + JSON.stringify(scope.channelBlocks || []);
+                if ( (allDayProblems === null) || (allDayProblems.key !== key) ) {
+                    allDayProblems = { key: key, list: specialDays.problems(scope.schedule, scope.channelBlocks) };
+                }
+                return allDayProblems.list;
+            };
+            scope.dayProblems = (day) => problemsOf().filter( (p) => p.dayId === day.id );
+            scope.dayProblemFor = (day, field) => {
+                let found = scope.dayProblems(day).find( (p) => p.field === field );
+                return found ? found.text : '';
+            };
+            // Your own swaps, inserts and dragged rows inside the day's window
+            // (keptRows.sayKept), rebuilt when the dialog opens or Create Lineup
+            // runs - not on every digest, the lineup can be tens of thousands of
+            // rows long.
+            let dayKeptNotes = new Map();
+            let rebuildDayKeptNotes = (keptAheadNow) => {
+                dayKeptNotes = new Map();
+                if (! Array.isArray(keptAheadNow)) {
+                    return;
+                }
+                (scope.schedule.specialDays || []).forEach( (day) => {
+                    let w = specialDays.windowOf(day);
+                    if (w === null) {
+                        return;
+                    }
+                    let note = keptRows.sayKept(keptAheadNow.filter( (x) => (x.at >= w.from) && (x.at < w.to) ));
+                    if (note) {
+                        dayKeptNotes.set(day, note);
+                    }
+                } );
+            };
+            scope.dayKeptNote = (day) => dayKeptNotes.get(day) || '';
+
+            // Dates and times: day.from/to, and a Set times row's own `at` - ms from
+            // the day's own start date's local midnight, so a row past midnight (a
+            // multi-day special day) carries a day offset too.
+            //
+            // `<input type="date">` binds a Date object (see channel-config.js's own
+            // goTo: "the date and time inputs hold Date objects"); day.from.date and
+            // day.to.date are 'YYYY-MM-DD' strings (src/special-days.js), so each
+            // gets its own Date wrapper, read and written through these.
+            let dateStringOf = (d) => ( (d instanceof Date) && ! isNaN(d) )
+                ? (d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')) : null;
+            let dateObjectOf = (s) => {
+                let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+                return (m === null) ? null : new Date( Number(m[1]), Number(m[2]) - 1, Number(m[3]) );
+            };
+            scope.dayFromDateModel = (day) => dateObjectOf(day.from.date);
+            scope.setDayFromDate = (day, d) => { day.from.date = dateStringOf(d); };
+            scope.dayToDateModel = (day) => dateObjectOf(day.to.date);
+            scope.setDayToDate = (day, d) => { day.to.date = dateStringOf(d); };
+            scope.dayFromHour = (day) => Math.floor( (day.from.time || 0) / HOUR );
+            scope.dayFromMinute = (day) => Math.floor( ((day.from.time || 0) % HOUR) / MIN );
+            scope.setDayFromHour = (day, v) => { day.from.time = v * HOUR + scope.dayFromMinute(day) * MIN; };
+            scope.setDayFromMinute = (day, v) => { day.from.time = scope.dayFromHour(day) * HOUR + v * MIN; };
+            scope.dayToHour = (day) => Math.floor( (day.to.time || 0) / HOUR );
+            scope.dayToMinute = (day) => Math.floor( ((day.to.time || 0) % HOUR) / MIN );
+            scope.setDayToHour = (day, v) => { day.to.time = v * HOUR + scope.dayToMinute(day) * MIN; };
+            scope.setDayToMinute = (day, v) => { day.to.time = scope.dayToHour(day) * HOUR + v * MIN; };
+
+            // A multi-day special day's rows may start on a later date than the
+            // day's own; shown only when the day actually spans more than one.
+            // Rebuilt only when the day's own window changes, not every digest -
+            // called once per row, and a fresh array each time defeats ng-options.
+            let dayOffsetCache = null;
+            scope.dayOffsetOptions = (day) => {
+                let w = specialDays.windowOf(day);
+                let key = day.id + ':' + (w === null ? '' : w.from + '-' + w.to);
+                if ( (dayOffsetCache !== null) && (dayOffsetCache.key === key) ) {
+                    return dayOffsetCache.list;
+                }
+                let spanDays = (w === null) ? 1 : Math.max(1, Math.ceil( (w.to - w.from) / DAY ));
+                let out = [];
+                for (let i = 0; i < spanDays; i++) {
+                    out.push({ id: i, description: 'Day ' + (i + 1) });
+                }
+                dayOffsetCache = { key: key, list: out };
+                return out;
+            };
+            scope.dayRowOffset = (row) => Math.floor( (row.at || 0) / DAY );
+            scope.dayRowHour = (row) => Math.floor( ((row.at || 0) % DAY) / HOUR );
+            scope.dayRowMinute = (row) => Math.floor( ((row.at || 0) % HOUR) / MIN );
+            scope.setDayRowOffset = (row, v) => { row.at = v * DAY + (row.at || 0) % DAY; };
+            scope.setDayRowHour = (row, v) => { row.at = scope.dayRowOffset(row) * DAY + v * HOUR + scope.dayRowMinute(row) * MIN; };
+            scope.setDayRowMinute = (row, v) => { row.at = scope.dayRowOffset(row) * DAY + scope.dayRowHour(row) * HOUR + v * MIN; };
+
+            // Rows: show/order/seasons, or a picked item (This item). Repeat a slot
+            // is not offered on a special day - a marathon re-airing its own earlier
+            // rows is a row of the same show instead.
+            scope.addDayRow = (day) => {
+                let row = { showId: 'flex.', order: 'next' };
+                if (day.layout === 'times') {
+                    row.at = (typeof(day.from.time) === 'number') ? day.from.time : 0;
+                }
+                day.slots.push(row);
+            };
+            scope.deleteDayRow = (day, row) => {
+                let i = day.slots.indexOf(row);
+                if (i !== -1) {
+                    day.slots.splice(i, 1);
+                }
+            };
+            scope.moveDayRowUp = (day, row) => {
+                let i = day.slots.indexOf(row);
+                if (i > 0) {
+                    day.slots.splice(i - 1, 2, day.slots[i], day.slots[i - 1]);
+                }
+            };
+            scope.moveDayRowDown = (day, row) => {
+                let i = day.slots.indexOf(row);
+                if ( (i !== -1) && (i < day.slots.length - 1) ) {
+                    day.slots.splice(i, 2, day.slots[i + 1], day.slots[i]);
+                }
+            };
+            scope.dayOrderOptionsFor = (row) => scope.orderOptionsFor(row).filter( (o) => o.id !== 'repeat' );
+            scope.dayRowSeasonsText = (row) => {
+                let excluded = (row.seasons && Array.isArray(row.seasons.excludeSeasons)) ? row.seasons.excludeSeasons : [];
+                return excluded.join(', ');
+            };
+            scope.setDayRowSeasonsText = (row, text) => {
+                let nums = (text || '').split(',').map( (s) => parseInt(s.trim(), 10) ).filter( (n) => ! isNaN(n) );
+                if (nums.length === 0) {
+                    delete row.seasons;
+                } else {
+                    row.seasons = { excludeSeasons: nums };
+                }
+            };
+
+            // Fill from a block: the block's own slots, once, in the order they air
+            // through the week.
+            scope.fillDayFromBlock = (day) => {
+                let block = (scope.channelBlocks || []).find( (b) => b.id === day.blockId );
+                if (! block) {
+                    return;
+                }
+                let rows = specialDays.fillFromBlock({ block: block, schedule: scope.schedule });
+                day.slots = rows.map( (r) => { let c = Object.assign( {}, r ); delete c.length; return c; } );
+            };
+
+            // This item: the Swap picker (airing-swap.js, mode 'pick'), reused for a
+            // single pick with no row to fit into. Picking for a blank row (openFor
+            // null) adds a new row; picking for an existing row replaces its item.
+            scope.pickItemFor = (day, row) => {
+                scope.dayPicker = { day: day, row: row || null,
+                    request: { channel: { programs: scope.programs, scheduleBackup: scope.schedule }, mode: 'pick', title: 'an item for ' + day.name } };
+            };
+            scope.itemPicked = (program) => {
+                let picker = scope.dayPicker;
+                scope.dayPicker = null;
+                if ( (picker === null) || ! program) {
+                    return;
+                }
+                let showId = program.customShowId ? ('custom.' + program.customShowId)
+                    : (program.type === 'movie') ? 'movie.' : ('tv.' + (program.showTitle || ''));
+                if (picker.row === null) {
+                    picker.day.slots.push({ showId: showId, item: { program: program } });
+                } else {
+                    picker.row.showId = showId;
+                    picker.row.item = { program: program };
+                }
+            };
+
+            // Each row's "Next" line (episode-start.js dayRowLines), rebuilt only
+            // when the day being shown or its rows change - not on every digest.
+            let dayLines = null;
+            scope.dayRowLine = (day, index) => {
+                if (! scope.visible) {
+                    return '';
+                }
+                let key = JSON.stringify(day.slots);
+                if ( (dayLines === null) || (dayLines.day !== day) || (dayLines.key !== key) ) {
+                    dayLines = { day: day, key: key, lines: episodeStart.dayRowLines({ day: day, schedule: scope.schedule, pool: scope.catalogPool(), getShowData: getShowData }) };
+                }
+                return (dayLines.lines && dayLines.lines[index]) || '';
+            };
+
             //Everything a lineup is made from but its pins, as of `atNow`: the
             //pool, every position's place, history and the program on air.
             let planLineup = async(atNow) => {
@@ -865,7 +1176,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
 
             //`pinsToKeep`, when given, are the swaps and inserts to keep
             //instead of the lineup's own (src/pins.js) - for a re-lay.
-            let makeLineup = async(fromInstant, pinsToKeep, atNow) => {
+            //`preview`: only shown, never saved - so nothing a real run spends
+            //(afterRun's one-time start seasons) is spent.
+            async function makeLineup(fromInstant, pinsToKeep, atNow, preview) {
                 let { run, carry, history, t0 } = await planLineup(atNow);
                 //Every row kept in the list stays where the list has it (src/kept-rows.js) - a
                 //re-lay's pins aside, which the old Swap still hands over.
@@ -885,25 +1198,64 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     await doWait(w);
                 }
 
-                return Object.assign(res, afterRun(scope.schedule, run));
+                return preview ? res : Object.assign(res, afterRun(scope.schedule, run));
             }
 
             //Create Lineup, Regenerate, Swap, Insert and undo all come through here: none
             //is made against a server still running older code than this page (src/build-check.js).
-            let doIt = (fromInstant, pinsToKeep, atNow) => buildCheck.guard({
+            let doIt = (fromInstant, pinsToKeep, atNow, preview) => buildCheck.guard({
                 fetchVersion: () => dizquetv.getCodeBuild(),
-                run: () => makeLineup(fromInstant, pinsToKeep, atNow),
+                run: () => makeLineup(fromInstant, pinsToKeep, atNow, preview),
             });
 
+            /*
+             * Preview this day (NOTES.md, "Special days"): the same generator
+             * Create Lineup itself runs (doIt - nothing of its own, so it can
+             * never disagree), read down to this one day's own timetable
+             * (special-days.js's timetable) and shown - never saved, the
+             * dialog stays open and scope.schedule untouched beyond what
+             * doIt itself already does for a real Create Lineup.
+             */
+            scope.dayPreview = null;
+            async function previewDay(day) {
+                scope.dayPreview = { day: day, loading: true, error: null, tt: null };
+                $timeout();
+                let dayProblems = specialDays.problems(scope.schedule, scope.channelBlocks).filter( (p) => p.dayId === day.id );
+                if (dayProblems.length > 0) {
+                    scope.dayPreview = { day: day, loading: false, error: dayProblems.map( (p) => p.text ).join(' '), tt: null };
+                    $timeout();
+                    return;
+                }
+                try {
+                    let res = await doIt(false, undefined, undefined, true);
+                    let tt = specialDays.timetable({ programs: res.programs, startTime: Date.parse(res.startTime), day: day, schedule: scope.schedule });
+                    scope.dayPreview = { day: day, loading: false, error: null, tt: tt };
+                } catch (err) {
+                    console.error('Preview this day failed', err);
+                    scope.dayPreview = { day: day, loading: false, error: 'There was an error generating the preview', tt: null };
+                }
+                $timeout();
+            }
+            scope.previewDay = previewDay;
+            scope.closeDayPreview = () => { scope.dayPreview = null; };
+            scope.dayPreviewLine = (at) => pinTools.dayClock(at);
+            scope.dayPreviewLength = (ms) => pinTools.length(ms);
 
 
-            
+
+
             //`lineup` returns the channel's programs and startTime as the
             //editor has them, read again when Create Lineup runs.
             //`keepCatalogs`: reading only the shows the last read didn't get.
-            let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs) => {
+            //`blocks`: the channel's blocks (full objects, read-only here), for
+            //Special days' "Block for the day" and "Fill from a block".
+            //`fillerOptions`: the channel's filler lists ({id, name}, read-only
+            //here), for "Fill long breaks with".
+            let prepare = (programs, limit, backup, instant, slotScope, lineup, catalogState, keepCatalogs, blocks, fillerOptions) => {
                 scope.limit = limit;
                 scope.programs = programs;
+                scope.channelFillerLists = Array.isArray(fillerOptions) ? fillerOptions : [];
+                scope.channelBlocks = Array.isArray(blocks) ? blocks : [];
                 catalogs = keepCatalogs ? keptCatalogs.catalogs(Date.now()) : {};
                 reading = null;
                 lastRun = null;
@@ -973,14 +1325,17 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 //One short line, only when your own swaps, inserts or dragged rows will be kept (Ron, Oct 30).
                 scope.keptPins = '';
+                let keptAheadNow = null;
                 if (typeof(lineup) === 'function') {
                     let onAir = lineup();
-                    scope.keptPins = keptRows.sayKept(keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() }));
+                    keptAheadNow = keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: Date.now() });
+                    scope.keptPins = keptRows.sayKept(keptAheadNow);
                 }
+                rebuildDayKeptNotes(keptAheadNow);
             }
 
-            let startDialog = (programs, limit, backup, instant, slotScope, lineup, catalogState) => {
-                prepare(programs, limit, backup, instant, slotScope, lineup, catalogState);
+            let startDialog = (programs, limit, backup, instant, slotScope, lineup, catalogState, blocks, fillerOptions) => {
+                prepare(programs, limit, backup, instant, slotScope, lineup, catalogState, undefined, blocks, fillerOptions);
                 scope.visible = true;
                 if (instant) {
                     scope.finished(false, true);
@@ -1005,6 +1360,13 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                         .map( (s) => slotLabel(s.time) + ": " + scope.repeatProblemOf(s) );
                     if (problem.length > 0) {
                         scope.error = "A Repeat slot needs a source before the lineup can be made. " + problem.join(" ");
+                        return;
+                    }
+                    let dayProblems = specialDays.problems(scope.schedule, scope.channelBlocks);
+                    if (dayProblems.length > 0) {
+                        let names = {};
+                        (scope.schedule.specialDays || []).forEach( (d) => { names[d.id] = d.name || d.id; } );
+                        scope.error = dayProblems.map( (p) => `${ (p.dayId !== null) ? names[p.dayId] || p.dayId : 'A special day' }: ${p.text}` ).join(' ');
                         return;
                     }
 

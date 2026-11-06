@@ -2,6 +2,7 @@ const getShowData = require("./get-show-data")();
 const slotProgress = require('../slot-progress');
 const rounds = require('../shuffle-rounds');
 const multiPart = require('../multi-part');
+const specialDays = require('../special-days');
 
 
 
@@ -82,17 +83,28 @@ function sortedPrograms(show) {
  * airing, which used to ride along from the old lineup and found the next
  * run's Shuffle at the wrong place, and no mark of a hand edit (src/kept-rows.js):
  * an episode a kept row left in the pool airs in its slot as an ordinary airing.
+ * Nor a special day's mark: a day's own row adds its own after this.
  */
 function labelled(program, text) {
     let copy = Object.assign( {}, program );
     delete copy.shuffleOrder;
     delete copy.kept;
     delete copy.pin;
+    delete copy.specialDay;
+    delete copy.specialRow;
     copy.slotPosition = text;
     return copy;
 }
 
-function playNext(show, constraint, record) {
+/*
+ * A label, tagged with its special day for a Keep-apart day's own position
+ * (src/special-days.js), so it never reads as a regular position's place.
+ */
+function labelFor(text, tagDay) {
+    return (typeof(tagDay) === 'string') ? specialDays.taggedLabel(text, tagDay) : text;
+}
+
+function playNext(show, constraint, record, tagDay) {
     let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
     let position = ( (typeof(record) === 'object') && (record !== null) && (typeof(record.next) === 'object') )
         ? slotProgress.resolveRef(record.next, candidates, getShowData)
@@ -100,7 +112,7 @@ function playNext(show, constraint, record) {
     // Whether the position has gone round its range, for Rerun: everything it
     // covers has aired once it has.
     let wrapped = (typeof(record) === 'object') && (record !== null) && (record.wrapped === true);
-    let text = slotProgress.label('next', constraint);
+    let text = labelFor(slotProgress.label('next', constraint), tagDay);
     return {
         mode: 'next',
         candidates: () => candidates,
@@ -116,6 +128,12 @@ function playNext(show, constraint, record) {
                 wrapped = true;
             }
         },
+        // A jump to an episode (an Advance special day's start): from here on, in order.
+        seek: (pick) => {
+            if (candidates.length > 0) {
+                position = slotProgress.resolveRef(pick, candidates, getShowData);
+            }
+        },
     };
 }
 
@@ -124,7 +142,7 @@ function playNext(show, constraint, record) {
  * shuffle-rounds.js. A record written while the old shuffler still ran holds
  * just its number; that becomes the rest of the old round, played first.
  */
-function shuffled(show, mode, constraint, record, key, eligible) {
+function shuffled(show, mode, constraint, record, key, eligible, tagDay) {
     // A Rerun passes over stories, so the later half of what it actually
     // aired goes last in its next round - see shuffle-rounds' player.
     let deferAired = (mode === 'rerun');
@@ -140,7 +158,7 @@ function shuffled(show, mode, constraint, record, key, eligible) {
         mode: mode,
         current: () => {
             let c = player.current();
-            return (c === null) ? null : labelled(c.program, slotProgress.label(mode, constraint, c.round));
+            return (c === null) ? null : labelled(c.program, labelFor(slotProgress.label(mode, constraint, c.round), tagDay));
         },
         next: () => player.next(),
     };
@@ -150,14 +168,14 @@ function shuffled(show, mode, constraint, record, key, eligible) {
  * An Ordered shuffle position: a series at random, and that series' next
  * episode in order - see shuffle-rounds' orderedPlayer.
  */
-function ordered(show, constraint, record, key) {
+function ordered(show, constraint, record, key, tagDay) {
     let candidates = applySeasonExclusions(sortedPrograms(show), constraint);
     let player = rounds.orderedPlayer({ seed: key, sortedPrograms: candidates, record: record });
     return {
         mode: 'ordered',
         current: () => {
             let c = player.current();
-            return (c === null) ? null : labelled(c.program, slotProgress.label('ordered', constraint, c.round));
+            return (c === null) ? null : labelled(c.program, labelFor(slotProgress.label('ordered', constraint, c.round), tagDay));
         },
         next: () => player.next(),
     };
@@ -182,20 +200,32 @@ function createPositions({ shows, schedule }) {
     let positions = new Map();
     let slots = ( (typeof(schedule) === 'object') && (schedule !== null) && Array.isArray(schedule.slots) ) ? schedule.slots : [];
 
+    /*
+     * A Keep-apart special day's row (`slot.apart`, the day's id) plays from a
+     * position of the day's own: its key and labels tagged with the day, and
+     * with no record, its range's first episode rather than the founder's.
+     */
     let forSlot = (slot) => {
         let constraint = slotProgress.constraintOf(slot, schedule);
+        let tagDay = (typeof(slot.apart) === 'string') ? slot.apart : undefined;
         let key = slotProgress.positionKey(slot.showId, slot.order, constraint);
+        if (typeof(tagDay) === 'string') {
+            key = specialDays.taggedKey(key, tagDay);
+        }
         if (! positions.has(key) ) {
             let show = byId.get(slot.showId);
+            if (typeof(tagDay) === 'string') {
+                show = Object.assign( {}, show, { founder: undefined } );
+            }
             let record = records[key];
             if (slot.order === 'next') {
-                positions.set(key, playNext(show, constraint, record));
+                positions.set(key, playNext(show, constraint, record, tagDay));
             } else if (slot.order === 'rerun') {
-                positions.set(key, shuffled(show, slot.order, constraint, record, key, rerunEligible(slot.showId)));
+                positions.set(key, shuffled(show, slot.order, constraint, record, key, rerunEligible(slot.showId), tagDay));
             } else if (slot.order === 'ordered') {
-                positions.set(key, ordered(show, constraint, record, key));
+                positions.set(key, ordered(show, constraint, record, key, tagDay));
             } else {
-                positions.set(key, shuffled(show, slot.order, constraint, record, key));
+                positions.set(key, shuffled(show, slot.order, constraint, record, key, undefined, tagDay));
             }
         }
         return positions.get(key);
@@ -218,7 +248,8 @@ function createPositions({ shows, schedule }) {
         } );
         Object.keys(records).forEach( (key) => {
             let parsed = JSON.parse(key);
-            if ( (parsed[0] !== showId) || (parsed[1] !== 'next') || positions.has(key) ) {
+            // A Keep-apart day's own Play Next is not the show's.
+            if ( (parsed[0] !== showId) || (parsed[1] !== 'next') || positions.has(key) || (specialDays.tagOf(key) !== null) ) {
                 return;
             }
             let record = records[key];

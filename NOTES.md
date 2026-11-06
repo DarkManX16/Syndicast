@@ -6132,6 +6132,26 @@ And Oct 30, before the merge:
 10. **A Christmas Eve marathon this year.** The holiday rows (build step 8) come
     right after the New Year's checkpoint (step 7), ready before Dec 24, 2026.
 
+And Oct 31, starting step 3:
+
+11. **A picked item airs once a day.** A This item row (one movie or episode) airs
+    once, even when the row list starts again from the top; only show and
+    custom-show rows go round again.
+12. **Where Back to back rows start is a per-day choice:** the next :00 or :30 (the
+    default), or the next quarter hour, so a movie ending at 12:35 doesn't leave 25
+    minutes of commercials.
+13. **The real Toonami "Full Cycle" is the reference throughout**: Cartoon Network,
+    Sat Apr 8, 2000 6:00am to Sun Apr 9 6:00am (cnas.fandom.com, "April 8, 2000" and
+    "April 9, 2000"). It ran Superman, Super Friends and ThunderCats in the morning;
+    the same Dragon Ball Z, Gundam Wing (two) and Ronin Warriors hour at 10:00am, 6:00pm
+    and 1:00am, the same episodes each time; ThunderCats, Sailor Moon and The
+    Powerpuff Girls in the afternoon; and five films - Batman & Mr. Freeze: SubZero
+    1:30pm, DBZ: Dead Zone 5:00pm, DBZ: The Tree of Might 8:00pm, Batman: Mask of the
+    Phantasm 9:30pm, DBZ: The World's Strongest 11:30pm - each starting on the hour or
+    half hour, with the commercials inside the film's own time. All five are in Ron's
+    Plex ("Y. Toonami Movies" and "Y.Cartoon Theatre"), with more Batman, DBZ, Gundam
+    and Sailor Moon films.
+
 #### The design
 
 **A special day** has a name, a start and an end (a date and a clock time
@@ -6172,9 +6192,12 @@ same rule a regular slot fills by: two 11-minute halves share a half hour, a
 6:47 and the next row is at 7:00, and a 95-minute movie at 7:00 ends at 8:35
 and the next row is at 9:00. No Flex stretch is ever longer than 30 minutes.
 When the rows run out before the day ends, the list **starts again from the
-top** (each row's show playing its next episode, and a This item row its item
-again), which is how a full Toonami cycle fills 24 hours from 16 rows; Preview
-says so. A row whose start would be at or after the day's end doesn't air.
+top**: each show row plays its show's next episode, and a This item row is passed
+over - a picked item airs once a day (decision 11) - which is how a full Toonami
+cycle fills 24 hours from 16 rows; Preview says so. A row whose start would be at
+or after the day's end doesn't air. **Rows start on the half hour by default, or on
+the quarter hour** (decision 12): after a movie ending at 12:35 the next row starts at
+12:45, not 1:00.
 
 **The edges.** At the start, a program still on finishes first - nothing is cut,
 as with a swap - and the day's first row starts the moment it ends (Set times)
@@ -6297,6 +6320,7 @@ schedule.specialDays = [{
   blockId: 'bl_muhiaegd_erj2f5',                    // or null
   positions: 'advance',                             // 'advance' | 'apart'
   layout: 'back',                                   // 'back' | 'times'
+  rounding: 'half',                                 // Back to back rows start on 'half' (default) | 'quarter'
   holiday: null,                                    // or 'Christmas', ...
   slots: [
     { showId: 'tv.Ronin Warriors', order: 'next' },              // 'times': also `at`, ms after from.date's midnight
@@ -6356,6 +6380,492 @@ Said here so they can be changed before they are built:
   through the week (for Toonami: Mon, Tue, Wed, Fri); Back to back then goes
   round them, and Set times fills the day by repeating them at their own
   lengths.
+
+#### Build record
+
+**Step 1, the rules, pure, Oct 30, 2026** (`special-days`, from `blocks` at 8ed98ce).
+Proof on copies of `.dizquetv-dev` taken Fri Oct 30 at 9:51pm Central (channels,
+custom shows, filler, aliases) and 10:11pm (the preview's data folder). Suite 2658 at
+the start, 2700 at the end.
+
+- **What shipped.** `src/special-days.js`: a day's window (`windowOf`, local dates and
+  clock times at their own offsets), `dayAt`, `ahead`, `aired`, `rowTimes`,
+  `nextHalfHour`, `problems` (each a few words, keyed by field), `fillFromBlock` and
+  `fillTimes`, the Keep-apart tag (`taggedKey`, `taggedLabel`, `tagOf`), and
+  `wrapFinder`, which `slotProgress.slotFinder` now goes through: inside a Set times
+  day the day's row (marked `special`), inside a Back to back day `{ special, row:
+  null }`, otherwise the regular slot - and a schedule with no special day gets the
+  regular finder itself. `warnAboutSpecialDays` in `channel-db.js` warns at save and
+  rewrites nothing. `test/special-days.js`, 42 checks; the three on `slotAt` failed
+  before `slotFinder` changed. `scripts/special-days-check.js` drives them on a copy.
+  Nothing lays a day out yet.
+- **On the copy.** Channel 1, Fill from Toonami, Fri Jan 1 6:00am to Sat 6:00am: the
+  16 rows Ronin Warriors to Batman/New Batman Adventures, Mon, Tue, Wed, Fri; window
+  12:00Z to 12:00Z; no problems; the saved lineup's 62 airings of 50 shows displaced,
+  Waynehead at 6:00am first, The Smurfs at 5:45am last, Baby Looney Tunes at 6:00am
+  Saturday next, as measured Oct 28. Set times: 48 rows, the last Batman at 5:30am.
+  `slotAt` over every entry of 300 days against `blocks`' slot-progress: 37,672,
+  29,172 and 30,970 entries on channels 1-3, none different.
+- **The workflow checklist**, on a preview of a fresh copy (port 18210): all nine pass
+  on channel 1. On channels 2 and 3, delete, swap-drag-put-back and create-lineup
+  find "no plain episode row in view": every airing near 10pm Friday is a kept
+  Halloween swap, and the `blocks` build on its own fresh copy says the same.
+  first-open-silent passed on channel 3 (9 rows in view kept, nothing said).
+- **Found along the way, fixed in its own commit:** swap-drag-put-back failed now and
+  then on the `blocks` build too (TypeError reading 'k'): when the dragged row came
+  before the swap, the swap shifted with the playlist and Put back's lookup by start
+  time missed it. The workflow drags a row after the swap now; it passed twice on
+  `blocks` and in the full run. Cherry-picked onto `blocks` as fb62a15 and pushed Oct 31,
+  since every session runs the script; the rest of Special days merges at step 7.
+
+**Step 2, the generator lays out a special day, Oct 31, 2026** (`special-days`). Proof on
+the step 1 copy (channels, custom shows and aliases still identical to the live files at
+2:20am Oct 31; two filler lists changed, which the generator never reads) with a fresh
+read-only catalog snapshot of channel 1 (138 shows, 11,792 items), regenerated as of
+2:20am. Suite 2700 at the start, 2730 at the end.
+
+- **What shipped.** `time-slots-service.js` lays out each special day not yet ended and
+  with nothing that stops it: a regular slot stops at a day's start (and the 5-minute pad
+  never steps over one); Set times rows are slots at their instants, filled by the
+  generator's own slot code; Back to back rows go in order (`backStep`), each at the next
+  :00 or :30 after the one before ends, playing its first item and any more that finish by
+  that half hour, padded and sharing the Flex as a regular slot (the sharing lifted into
+  `layPads`, unchanged); the list starts again when it runs out, and a row whose start is at
+  or after the end doesn't air. An airing still on past a day's end runs the regular
+  schedule late from its end through the run-late pin path, until a program starts on time.
+  This item rows place their program (no label, no kept mark, never moving a position);
+  every airing in a day carries `specialDay` and `specialRow` (a re-make during a Back to
+  back day carries on with the row after the program on air's). `show-orderers.js`: a
+  Keep-apart row (`apart`) plays a position keyed and labelled with the day's tag, from its
+  range's first episode with no record; a tagged record never counts as the show's Play
+  Next for a Rerun. A regular Repeat never re-airs a day's airing (its Rerun fallback).
+  Kept rows inside a day stay where they sit; Back to back's next row at the next half hour
+  after one. `test/special-days-generator.js`, 30 checks, all failing before the change but
+  the "no special days" one. `progress-check --special <day.json> --timetable --outside
+  <days> --follow <regex>` (report in `scripts/lib/special-days-report.js`) makes the lineup
+  with and without the days from the same pool, kept rows and carry.
+- **Ron's two days on channel 1, Advance, Back to back.** New Year's Eve Batman, Thu Dec 31
+  5:00pm to Fri 6:00am: Batman/New Batman Adventures, The Batman, Batman Beyond round and
+  round, 26 rows each on the :00 or :30, the longest Flex 9:43, then Ronin Warriors on time
+  at 6:00am. New Year's Toonami, Fri 6:00am to Sat 6:00am, the 16 Toonami shows, Bah
+  Humduck! (46:12), the 16 again, Osmosis Jones (1:35:24), the 16 again: Bah Humduck!
+  2:00-2:46pm, next row 3:00pm; Osmosis Jones 11:00pm-12:35am, next row 1:00am; rows 45-50
+  don't air (the day is full by 5:30am); every row on the :00 or :30, the longest Flex 24:36
+  (after Osmosis Jones); Baby Looney Tunes on time at 6:00am Saturday.
+- **Outside the two days, 300 days, 14,268 slot occurrences** against the same run without
+  them: every one keeps its show except three Tuesday noons (below). Episodes moved along in
+  the 60 shows the days displaced (7,239 occurrences kept apart, 6,732 advancing), and, in
+  Advance, the 9 marathon shows that weren't displaced (306) - none in Keep apart. I Am
+  Weasel: Mon Jan 4 2:30pm S4E5 instead of S4E8 (its three Jan 1 episodes waited). Advance:
+  Sailor Moon S1E29 Mon Jan 4 (the day aired S1E26-28), Ronin Warriors S1E17, The Batman
+  S2E10, Batman Beyond S2E12. Keep apart: Sailor Moon S1E26, X-Men: Evolution S2E2, each day
+  playing its shows from S1E1.
+- **The one knock-on, measured.** Toonheads is displaced the night of Jan 1-2, so its
+  double-length S8E8 (47:06) airs a week later than it would have. Where it lands it runs
+  into 13 Ghosts and The New Scooby-Doo Movies, and Looney Tunes' strip of 7-minute shorts at
+  noon fits one fewer - so Looney Tunes (133 occurrences), Metalocalypse (3, the same after an
+  Adult Swim show) and the three Tuesday noons left empty or filled change. The same happens
+  without special days whenever a displaced or swapped show's next episode is a different
+  length; it isn't something a day does to a show it doesn't touch.
+- **The workflow checklist** (`show-orderers.js` is bundled) on a preview of a fresh copy:
+  all nine pass on channel 1; delete, swap-drag-put-back and create-lineup pass on channel 3;
+  on channel 2, swap-drag-put-back found no plain row after its swap to drag (four of Ron's
+  kept swaps sit in the first screen) - delete and create-lineup pass there.
+- **Left for step 3:** starts on a day's rows, and a re-make during a day with no program
+  carried. (Corrected in step 3: a tagged label didn't parse at all before it, so
+  `placeOf` passed Keep-apart airings over rather than misreading them.)
+
+**Step 3, stored progress and starts - and decisions 11 and 12, Oct 31, 2026**
+(`special-days`). Proof on the step 1 copy (channels, custom shows and aliases identical
+to the live files; channel 1 has changed on 18000 since, see the checklist below), the
+channel 1 catalog snapshot, and Plex's two movie libraries read once (GET only), as of
+4:17am Oct 31. Suite 2730 at the start, 2754 at the end.
+
+- **What shipped.** `parseLabel` reads a Keep-apart label's day (`tag`, present only when
+  there is one), and `labelKey` gives its tagged position - `placeOf`, and kept-rows'
+  ripple (`positionOf`), read it, so a tagged airing is its day's place and never the
+  show's. `planProgress` plans special days (`specialDaysPlan`): a Keep-apart day's
+  positions from the row's start, or its range's first episode, until the day begins (never
+  what an earlier run laid out, so changing a start takes), from its own airings once it
+  has; an Advance day's rows of shows with no regular slot by the regular rules, its range's
+  first episode at worst; tagged records dropped once their day has ended; and, for a day
+  under way, `progress.specialDays[id] = { nextRow, airedItems }`. The generator starts a
+  day's rows there, and from the program on air when one is carried. An Advance row's start
+  is a jump as the day begins (`seek`, Play Next only - a Shuffle's place is a round); a day
+  begun before the lineup is made has jumped already. A This item row airs once a day in
+  Back to back (`itemsAired`) and once in Set times' fill (`fillTimes`); `rounding:
+  'quarter'` starts Back to back rows on the quarter hour (`nextMark`, `stepOf`, a
+  `problems` line for anything else). Episode start's Next for a regular row steps over a
+  special day. `test/special-days-progress.js`, 21 checks, failing first; 3 more in
+  `test/special-days.js`; step 2's "starts again" check now expects the movies once.
+- **The days, on the Full Cycle (decision 13).** New Year's: the Apr 8, 2000 running order
+  in Ron's shows - Superman: The Animated Series, Super Friends, ThunderCats, the DBZ /
+  Gundam / Gundam / Ronin Warriors hour three times, Sailor Moon, The Powerpuff Girls - and
+  the real five films from Plex, Back to back on the quarter hour, Advance, block Toonami:
+  SubZero 3:00-4:06pm (next row 4:15), Dead Zone 6:15-6:56pm (7:00), Tree of Might
+  9:00-10:00pm (10:15), Mask of the Phantasm 10:15-11:31pm (11:45), The World's Strongest
+  11:45pm-12:44am, Powerpuff at 12:45am; the longest Flex 14:47; rows 38-39 don't fit;
+  the last row runs 1:05 past 6:00am and the regular schedule is back on time at 6:30am.
+  New Year's Eve: Batman/New Batman Adventures, The Batman, Batman Beyond with Mystery of the
+  Batwoman (6:30pm), Return of the Joker (9:30pm) and The Batman vs. Dracula (12:30am) - when
+  the list starts again at 2:00am only the show rows come round - and New Year's starts at
+  6:00am straight after. Ron's Super Friends are 45-minute double episodes: with SLACK, one
+  ending 7:45:06 counts as on the quarter hour and the next starts at once.
+- **Re-made, each against the run before it:** Dec 31 noon - both days, 57 airings,
+  identical; Jan 1 3:05pm (SubZero on air) and 9:30pm (Tree of Might on air) - the rest of
+  the day identical; 4:10pm, nothing on air - the planner says row 17 next and SubZero aired,
+  the rest identical. An Advance start jumping Ronin Warriors to S1E1: the day airs S1E1-3
+  and Mon Jan 4 S1E4; re-made Dec 31 and Jan 1 7pm, Jan 1-5 identical. Keep apart with
+  Dragon Ball Z started at S1E1: the day airs S1E1-3, the regular DBZ waits at S2E35 (the
+  episode the day displaced) Mon Jan 4, no marathon show moves outside the day; re-made Dec
+  31 and Jan 1 9:30pm, identical; at Jan 2 noon the day's 8 tagged records are gone and the
+  next 10 days are identical.
+- **Outside the days, 300 days,** as in step 2: every slot occurrence keeps its show but the
+  three Tuesday noons; the shows the days displace move along, and, Advancing, the shows
+  they air; plus knock-ons where a moved-along episode is another length - Toonheads' S8E8
+  into Looney Tunes (as in step 2), and now Super Friends' alternating 22- and 45-minute
+  episodes into The Tex Avery Show after its Sunday 8am slot (and G.I. Joe ('83)). Ron's
+  Dragon Ball Z jumps S2E35 to S2E43 with or without a day: Plex has no S2E36-42.
+- **The workflow checklist**, fresh copy taken 4:19am (port 18210): channel 1 - open,
+  update, library-add, add-delete-create and first-open-silent pass (first-open kept 8 rows:
+  Ron's channel 1 on 18000 now has 17 edits still to air); delete, swap-drag-put-back and
+  create-lineup find no plain row in view, since every row there is one of them; filler
+  failed twice on its 1.5 s read-back - both deletes had landed (550, 549, 548) - and passed
+  on the third run. Channel 3: delete, swap-drag-put-back and create-lineup pass.
+- **Seen in the reference, not built:** the Full Cycle aired the same episodes in each of its
+  three DBZ / Gundam / Ronin hours. Rows here play each show's next episode every pass; airing
+  an earlier row's episodes again would be a new row kind (a Repeat of a row of the day) for
+  Ron to decide.
+
+**Step 4, the block for the day, Oct 31, 2026** (`special-days`). Proof on run 1 of step 3 (the
+Full Cycle and Batman days laid out as of 4:17am Oct 31 on the step 1 copy), with the copy's
+filler lists refreshed from the live ones at 8:21am. Suite 2754 at the start, 2767 at the end.
+
+- **What shipped.** `resolveContext` asks `specialBlockAt` first: a moment inside a special day
+  naming a block that exists is that block - the block object itself, so its own airings inside
+  the day are the same context. A day with no block, or a block that's gone, and an on-demand
+  channel, resolve as before. `hasOverlay` needs nothing: the block is one of the channel's.
+  `test/special-days-block.js`, 13 checks, 10 failing first (the other 3 are "as before").
+  `scripts/special-days-check.js` gains `--breaks` (every break with its situation, contexts,
+  mix and the clips `buildPlan` picks from the real lists) and `--guide` (`getChannelPrograms`
+  against the lineup, `--plain` without the days, `--context-from/-to` every minute).
+- **The breaks, 5:00am Jan 1 to 7:30am Jan 2, 40 of them, Ron's real steps:** the break before
+  the first row (5:50am) is the one boundary, Adult Swim into Toonami - out: Adult Swim's
+  "First Aid" sign-off, CN Next Toonami, a Toonami NEXT promo; in: the Powerhouse intro; 34
+  inside are Toonami's (12 between episodes, 22 between shows: Toonami bumpers, show intros),
+  with Toonami's mix - none at 3:00pm, 5:00pm or 1:00am, where Toonami's own airing, Cartoon
+  Cartoon Fridays and the Midnight Run would begin; CN City (Day) from 6:23am Saturday.
+- **Found: no sign-off when the day's last item runs over, and fixed the same day.** The last
+  row, Super Friends at 5:15am, runs to 6:01:05, and the regular schedule picked up right there
+  with no Flex between (the run-late rule), so there was no break and Toonami's leaving steps
+  had nowhere to play. **Ron's decision:** the regular schedule starts at the day's own next
+  mark after the overrun - the half or quarter hour it rounds to - so the break between holds
+  the leaving and entering steps; from there it runs late and catches up as before, unless the
+  mark lands on a regular slot boundary, where the slot it ran into is simply skipped (nothing
+  to catch up on). `test/special-days-generator.js` gained two checks, failing first: the
+  existing 44:09 overrun case (half-hour day: the mark lands exactly on the next slot's own
+  start, 6:30, so that slot is skipped rather than run late) and the same overrun on a
+  quarter-hour day (the mark, 6:15, isn't on the slot grid, so the slot it lands in runs 15:00
+  late and is back on time three slots later). Re-proved on the real New Year's day: the break
+  is now 13:54.3 (6:01:05 to 6:15:00, the quarter-hour mark) and plays "Toonami - Sign-Off" then
+  "CN City Opening" then a Baby Looney Tunes bumper, out of real lists - the break the design
+  always called for. Baby Looney Tunes now starts 14:55 late at 6:15am instead of on time at
+  6:01:05, and the regular schedule is back on time by 7:00am rather than 6:30am: the break
+  necessarily costs some of the catch-up time, which is the trade the sign-off needs.
+- **The guide**, Thu 4:00pm to Sat 8:00am: 64 entries for 64 airings, each at its lineup time
+  under its title, the films too; identical with the days taken off the channel - no break in
+  either day reaches the 30 minutes that gives a Flex its own entry (and with it a guide name),
+  which `test/special-days-block.js` covers. **Context every minute** Sun Dec 27 to Sun Jan 10:
+  17,940 minutes outside the days, 0 different; inside, New Year's Toonami 1,440 minutes, New
+  Year's Eve (no block) Primetime, Powerhouse Era and Adult Swim as on any Thursday night.
+- **The workflow checklist** (`day-parts.js` is bundled), fresh copy taken 8:24am, port 18210,
+  with the script made sturdier first (1a77b18 on `blocks`: saves waited for, the list scrolled
+  past kept edits): all nine pass on channel 1 - delete used Cowboy Bebop at 3:30am Nov 1, past
+  27 kept edits.
+
+**Step 5, the Time Slots dialog, Oct 31-Nov 1, 2026** (`special-days`). `npm test` 2780/2780;
+the workflow checklist, all nine plus a new `special-day`, 10/10 on a fresh copy, port 18210.
+
+- **What shipped.** A **Special days** section above the regular slots in the Time Slots dialog:
+  one line per day with Edit/Copy/Delete, an inline editor (name, Block for the day, start/end
+  date and time, Advance/Keep apart, Back to back/Set times with its rounding), its rows (show +
+  order + seasons, or a picked item, each with Episode start's own "Next: … · when" line, reusing
+  `src/episode-start.js`'s `dayRowLines` - the same `orderers.createPositions` the generator
+  itself runs, so the dialog can never disagree with what airs), **+ Add row**, **This item…**
+  (extends `web/directives/airing-swap.js` with a `mode: 'pick'` rather than duplicating its
+  ~250 lines of show/custom-show/library picking) and **Fill from a block…**. A problem is one
+  line at its field and blocks Create Lineup (`specialDays.problems`). `src/kept-rows.js` gained
+  `specialDayMessage`/`whyNot` (now exported - it wasn't before) so Swap, Insert after, Delete and
+  a drag into, out of or inside a day all answer "Change this in Time Slots, {day name}." before
+  `pins.whyNot`'s own checks; threaded through `channel-config.js`'s `openPlacing`/`deleteRow`/
+  `move` and the 3 `startDialog` call sites (which now also pass the channel's blocks).
+- **Two UI bugs, found interactively, fixed:** a native `<input type="date">` wants a `Date`
+  object bound via `ng-model`, never a `'YYYY-MM-DD'` string (`channel-config.js`'s `goTo` already
+  says so) - `dateStringOf`/`dateObjectOf` and six wrapper scope functions convert at the edges.
+  The block select showed only an empty option: `dayBlockOptions()` was called from the template
+  but never defined.
+- **Proof, real clicks only, port 18210 (`special-days-data`):** added a day, Toonami for its
+  block, **Fill from a block…** (16 rows, matching the block's own slots); **This item…** →
+  **From the library…** → "Dragon Ball" → Dragon Ball Z: Bojack Unbound, added as row 17; Create
+  Lineup (39,738 → 40,000 slots) and Update Channel. The saved `channels/1.json`: 1 special day,
+  17 slots, 47 airings tagged with it, Bojack Unbound at row 16 (0-based) - exactly the picked
+  item, in its own row, once. Cancel (Time Slots, then the channel editor) left the file
+  byte-identical to before (`diff`). A real `type` into the Name field, and into the regular
+  Filter slots field with no special day open at all, both logged an AngularJS
+  `[$rootScope:infdig] 10 $digest() iterations reached` warning in the console - traced (watcher
+  value snapshots across repeated raw `$digest()` calls, then confirmed via real typing) to a
+  single watcher, unrelated to Special days, that keeps changing every digest regardless of what
+  triggers it or whether a special day exists at all: **pre-existing**, not introduced here, not
+  chased further. It doesn't corrupt data (`scope.dayRowLine`'s 16 returned strings, and the saved
+  file above, both checked directly) and self-corrects once the heavy editor card closes; two real
+  inefficiencies of my own that fed it are fixed anyway - `dayProblems` recomputed every day's
+  problems from scratch up to 3 times per digest (now cached on the days+blocks), `dayBlockOptions`
+  and `dayOffsetOptions` built a fresh array of fresh objects on every call (now cached). At 6:00am
+  on the day (Ronin Warriors), Swap gave "Change this in Time Slots, New special day." - confirmed
+  both by the list showing no Swap/Insert icons on the day's rows and directly: `startSwap` sets
+  `scope.error.programs` to exactly that text.
+- **`scripts/editor-workflows.js`** gained a `special-day` workflow (cherry-picked to `blocks`
+  with the rest of the script's changes): add a day 40 days out (clear of the other workflows'
+  own near-term windows), a row of its own shows, Create Lineup, Update Channel; Delete on one of
+  its airings refused; then deletes the day and regenerates, so it leaves the channel clean for
+  whatever runs after it.
+- **Left for Step 6 ("Preview this day", NOTES.md plan): the dialog has no preview of the day's
+  own timetable yet** - by design, that's Step 6's task, not a gap here.
+
+**A block with no weekly airings, named by a special day, Nov 5, 2026** (`special-days`, before
+step 6). Ron's plan for marathon-specific bumpers: a block that exists only for its transitions
+(its own show intros and NEXT promos), never on the weekly schedule - a special day names it, its
+transitions are copied from the block it stands in for, and one step's filler list is swapped for
+a marathon-specific one with the regular list as its fallback.
+
+- **Already there, nothing to build.** `transitions-editor.js`'s `copySituations` (the "Copy
+  transitions to..." button) and `transitions.js`'s own resolve logic already carry a
+  `fallbackListId` per step: the real Toonami block's own `betweenShows.in` show-intro step
+  already falls back from "Toonami Show Intros" to "Toonami Bumpers" when no clip names the show.
+  `resolve`'s `attempts` order - the step's own list's specific tier, the fallback's specific
+  tier, the step's own list's general tier, *then* the fallback's general tier - means a list
+  with one show's clip and nothing else wins for that show and loses for every other, which is
+  exactly "first choice, with the other list as fallback."
+- **Found and fixed: a block with no airings warned on every save**, `channel-db.js`'s
+  `warnAboutBlocks`, "has no airings, so it never airs" - true in general, a false alarm for a
+  block a special day names on purpose. Fixed: the complaint is skipped for a block any special
+  day's `blockId` names. `test/special-days.js` gained three checks (failing first): a no-airings
+  block warns on its own; not when a special day names it; a block with real airings is
+  unaffected either way. The Time Slots dialog's own `problems()` never checked airings, so it
+  needed no change; the Blocks tab shows no warning of its own either (only this server log line
+  existed).
+- **Proof, a copy of the real Toonami block and the Full Cycle day:** "Toonami: Full Cycle" (no
+  airings), its transitions copied from Toonami via `copySituations`, its show-intro step's list
+  swapped for a test Full Cycle list (one clip, "Ronin Warriors Intro 2 (Full Cycle)") with the
+  real "Toonami Show Intros" as its fallback, named as the Full Cycle day's block. Regenerated:
+  "special days: ... problems: none". Every break across the day: `mix Toonami: Full Cycle`, the
+  block correctly resolved for the whole day despite having no airings of its own. All three
+  Ronin Warriors show-intro breaks play "Ronin Warriors Intro 2 (Full Cycle)"; DBZ, G Gundam and
+  Superman's breaks play their regular Toonami Show Intros clips ("DBZ Intro [Moltar]", "G Gundam
+  Intro", "Superman Intro"); the boundary at the day's end still leaves Toonami and enters CN
+  City (Day) as before. Also proved through the real UI, on an isolated copy (port 18213, since
+  18211 is Ron's): "+ Add block" starts with no airings and no warning shown anywhere in the
+  card; "Copy transitions to..." lists it and copies into it cleanly ("Copied 10 steps to 1
+  card"); the special day's "Block for the day" dropdown lists it, picks it, and shows no
+  problem. The server log warned once, right after the block was added with nothing naming it
+  yet (expected - a truly orphaned block still should warn); after the special day named it,
+  Create Lineup and Update Channel, no further warning. `npm test` 2783/2783.
+- **Added to step 7's live checklist** (docs/special-days-plan.md): naming this block for Ron's
+  real New Year's day, saved with no warning, a Ronin Warriors break playing the Full Cycle clip
+  and another show's break the regular one, checked live on the clock-shifted preview.
+
+**Fill long breaks with, Nov 5, 2026** (`special-days`, folded into step 6). Found building the
+real New Year's day on 18214: Dragon Ball Z: The Tree of Might (1:00:53) from 7:30am left a
+29-minute bare Flex to the next row's own 9:00 mark. Ron's fix, one setting on a special day:
+**Fill long breaks with** - a show, custom show or filler list, off by default. A Back to back
+break over 10 minutes plays as many items of that source as fit, then a shorter plain break, so
+the next row still starts exactly on its mark.
+
+- **What shipped.** `time-slots-service.js`'s `backStep`, right where a row's own leftover gap
+  to the next mark is worked out: under 10 minutes, nothing changes; over, `fillItemsFor` pulls
+  items from `day.fillBreaksWith` - a showId (the same `getNextForSlot`/`advanceSlot` a row
+  itself uses, so the position is remembered between runs the normal way) or `"filler:<listId>"`
+  (round robin within the one run only - filler is disposable, nothing to remember) - until
+  nothing more fits, then a plain break closes out whatever is left. Every fill item carries
+  `specialDay`/`specialRow: 'fill'`, the same as a row's own items, so it reads like any other
+  airing of the day. The generator is a pure function and cannot read a filler list itself, so it
+  takes one more, optional argument, `fillerPools` - `{ [listId]: [item, ...] } `, read ahead by
+  whoever calls it: `api.js`'s `/api/channel-tools/time-slots` reads any named lists from
+  `fillerDB` before calling the generator; `progress-check.js` gained `fillerPoolsFor`, reading
+  `<data>/filler/<id>.json` the same way for `--special`'s own proof. The dialog: one dropdown
+  next to Rounding, "Fill long breaks with" - Off, then `showOptions` (already built for the
+  regular Program picker - a show's or custom show's own id), then the channel's filler lists
+  (`scope.fillerOptions`, threaded through the 3 `startDialog` call sites the same way `blocks`
+  was for step 5), memoized the same way `dayBlockOptions` is.
+- **A real bug on the way: `layPads`'s own `flexPreference` would have scattered the long part of
+  the break across the fill items** (`schedule.flexPreference !== 'end'` is the common case) -
+  not what "then a normal break" means. Avoided rather than fixed: the row's own item(s) are laid
+  with `layPads(pads, 0)` (only their usual small per-item pad), then fill items are pushed
+  directly (`pushProgram`, no pad between them), then one `pushFlex` for whatever is left - never
+  going through `layPads`'s own distribution for the long part at all.
+- **Proof, the real Full Cycle day, half-hour rounding (Ron's own words), I Am Weasel (6-7 minute
+  episodes) as the fill source:** Dragon Ball Z: The Tree of Might (60:53) from 10:00pm - a
+  4.1-minute pad, three I Am Weasel shorts (19:48), a 5.3-minute break, Batman: Mask of the
+  Phantasm right on 11:30pm. Every movie's gap across the whole day filled the same way (SubZero,
+  Dead Zone, and so on); a couple of gaps were left alone where I Am Weasel's own rotation landed
+  on an episode too long to fit, same as a row's own extra items already behave - not a bug, the
+  same first-fit rule throughout. Every single row in the whole day, filled gap or not, lands
+  exactly on its own :00 or :30 mark - checked airing by airing, no exceptions. A filler list
+  (Toonami Bumpers) fills the same way when named instead. The day's own sign-off at its end
+  (Step 4) is unaffected - still the real break, still the real clips. Proven again through the
+  real UI on an isolated preview (port 18215): the dropdown lists shows and filler lists
+  correctly; Create Lineup and Update Channel save it both ways; the saved lineup's fill items
+  carry `specialDay` and `specialRow: 'fill'`, same as the script-based proof. `npm test`
+  2790/2790; the workflow checklist, all ten, on a fresh copy.
+- **Left alone, on purpose:** no best-fit search when the fill source's current item does not fit
+  a gap (it simply stops there, as a row's own extra items already do); Set times days (explicit
+  times already, no "mark" gap to fill); no `problems()` check for a `fillBreaksWith` that names a
+  show or list that is gone (it is simply not used that run, the same graceful way a missing
+  block's mix already degrades).
+- **Found and fixed, same day: filling moved the show's own regular place.** A show or custom
+  show named by `fillBreaksWith` reused `getNextForSlot`/`advanceSlot` with a plain
+  `{ showId, order: 'next' }` slot - the exact position key a regular channel slot for that show
+  would use (`show-orderers.js`'s `forSlot` keys only by showId, order and season constraint
+  unless tagged). I Am Weasel is one of channel 1's own regular slots; filling with it was quietly
+  advancing its real rotation. Fixed the same way a Keep-apart row already stays off the regular
+  position: the fill slot is tagged `"fill:" + day.id` (`specialDays.taggedKey`), its own position,
+  remembered between runs the normal way, never shared with anything else. `test/special-days-generator.js`
+  gained a check (failing first, confirmed by reverting the tag and re-running): A, one of the
+  fixture's own regular slots, used to fill a break, comes out with its regular rotation identical
+  to a run with no fill at all. Re-proved on the real data: I Am Weasel's regular airings after
+  the Full Cycle day are byte-identical whether the day's breaks are filled with it or not.
+  `npm test` 2792/2792.
+
+**Preview this day, the Schedule tab, the transitions Preview's date, Nov 5, 2026** (`special-days`,
+step 6). Ron's keep-it-simple rule: Preview this day is a plain timetable, one line per show or
+movie with its start time, nothing more unless asked.
+
+- **`src/special-days.js` gained `timetable({ programs, startTime, day, schedule })`**, pure: walks
+  `programs` from `startTime` across the day's own window (`windowOf`), keeping only rows tagged
+  with this day's id, each as `{ at, title }` (`pins.label`). Reports where the list restarts (a
+  `specialRow` lower than the row before it - the day wrapped and is replaying from its own top),
+  which of the day's own rows never aired (past the last `specialRow` seen, reading the slot's own
+  picked item or showId), and at most one overrun line (`overMs`, `backOnTimeAt` via `nextMark`) -
+  `null` when the day ends on time. Requires `./pins` lazily, same reason as `wrapFinder`
+  (`pins.js` reaches back here through `slot-progress.js`).
+- **`time-slots-schedule-editor.js`/its template**: "Preview this day..." button opens an inline
+  panel - `scope.previewDay(day)` lays the day out through the relay worker with the real generator,
+  then reads `timetable` off the result, so what shows is exactly what Create Lineup would save.
+  One line per row (`dayPreviewLine`), a thin rule where `restarts` lands, the `never` rows greyed
+  under it, the one `overrun` line in red when present (`dayPreviewLength` formats `overMs` - a
+  nonexistent `| dayLength` filter was the first draft; a scope function replaced it). `reset()`
+  clears `scope.dayPreview`.
+- **`channel-config.js`/`channel-config.html`, the Schedule tab**: a week chooser (`scheduleWeekAt`,
+  `scheduleWeekShift`, `scheduleWeekLabel`, `scheduleWeekIsThisWeek`) feeds `weeklySegments` a
+  chosen week instead of always "now" - the block-for-the-day resolution itself
+  (`resolveContext`/`specialBlockAt`) was already special-day-aware from an earlier step, untouched
+  here. Each day's band gets real chips from the SAVED lineup's own `specialDay`-tagged airings
+  (`bandDay`, a bounded lazy walk of `channel.programs`), `hatched` (a diagonal-stripe class in
+  `style.css`) when none are found yet - "not in the saved lineup yet" in the band's own label, not
+  a separate line.
+- **Found and fixed: regular weekly slots and the day's own chips rendered at once, overlapping.**
+  Both used the identical `.sched-cal-slot` class for the same covered hours - Ron would have seen
+  the regular Friday lineup (Waynehead, Detention) duplicated under the special day's own content
+  (Superman, I Am Weasel). `rebuildScheduleCalendar` now tracks each day's `specialRanges` while
+  building bands and filters `daySlots` against them before returning the day.
+- **`transitions-editor.js`/its template**: a "From" date next to "Preview on this week's lineup" -
+  `runPreview` uses it (`scope.previewOptions.from.getTime()`) instead of always `Date.now()`, and
+  the header now says which date it walked from (`pinTools.dayClock`).
+- **Found and fixed: the date field never reached `runPreview` at all.** The preview panel sits
+  behind `ng-if="open"` (template line 87), which gives it its own child scope; `ng-model` on a
+  bare `previewFrom` wrote a new property onto *that* child scope instead of the one `runPreview`'s
+  closure actually reads, so picking a date did nothing - the walk silently stayed on "now" no
+  matter what the field showed. The "use suggested clip names" checkbox (pre-existing, not part of
+  this step) had the identical bug under the identical `ng-if`, confirmed the same way. Found by
+  watching `scope.previewFrom` directly (a `$watch` log showed it never changed once set,
+  disproving a race) and comparing the date-input's own scope `$id` against the button's - same
+  `$id`, so the shadowing was on an *ancestor* scope, not a sibling. Fixed with the standard dot
+  rule: both moved into one `scope.previewOptions = { from, useNames }` object, template and
+  `runPreview` updated to match.
+- **Proof, real clicks, port 18218 (Full Cycle day, half-hour rows, fill long breaks, the real
+  Full Cycle block - all as Ron built them on 18217):** Preview this day for the New Year's day
+  shows one line per show/movie at its real start time, nothing else, greyed never-aired rows and a
+  thin restart rule where the schedule confirms a restart is real. The Schedule tab's week chooser
+  walks forward/back correctly ("This week" appears/disappears right); the week of 12/27-1/2/2027
+  shows the real Full Cycle chips (Superman, Super Friends, ThunderCats, Dragon Ball Z, G
+  Gundam/Gundam Wing/Gundam SEED+Destiny, Ronin Warriors...) under a "Toonami: Full Cycle" band with
+  none of the regular Friday/Saturday lineup showing through (`slotsAfter6am: []`, checked directly
+  off `scope.scheduleCalendarDays`); a week with no saved lineup yet shows the band hatched,
+  labelled "(not in the saved lineup yet)", chips empty. The transitions Preview's "Toonami" block,
+  From set to Jan 1 2027 via real keystrokes into the native date input: header reads "from Fri Jan
+  1, 6:46am for 7 days" and the walk starts there - confirmed broken (always "Thu Nov 5") before the
+  scope fix, confirmed fixed after a rebuild and reload. `npm test` 2799/2799; the workflow
+  checklist, all ten including `special-day`, on a fresh copy (port 18219).
+- **Left for step 7**, same as the live checklist already calls for: nothing new here beyond what's
+  already listed there.
+
+**Step 7, the New Year's checkpoint, Nov 5, 2026** (`special-days`, rebased onto `blocks` f5c0391 -
+the playback-errors crash fix and the play-cache pool - first; one conflict, `editor-workflows.js`,
+resolved to `blocks`' own newer copy, byte-identical to it). Proved on a copy of the live data
+(7:49pm Nov 5): the Full Cycle running order (39 half-hour rows, Fri Jan 1 6:00am to Sat Jan 2
+6:00am, I Am Weasel filling long breaks) named to Ron's own "Toonami: Full Cycle" block. Ron's day
+from 18217 was never saved (no Update Channel landed in `special-days-data-ny2`), so this was the
+day used. Create Lineup and Update Channel through the dialog; the server warned nothing.
+
+- **Live, on a server and page clock-shifted per moment, tuned in through `/video`** (each item the
+  server started, stamped with the shifted clock): Mission Hill out at 5:52:33, Adult Swim's
+  sign-off, "CN Next Toonami", the Full Cycle block's own commercials, Superman at 6:00:01; every
+  movie start on its mark (SubZero 3:29:57, Dead Zone 7:00:02, Tree of Might 9:59:54, Phantasm
+  11:29:57, World's Strongest 1:00:00) and every end played whole into its break, then the I Am
+  Weasel fill, the next row on its mark (Sailor Moon, DBZ, Powerpuff Girls); 2:59 to 3:00pm, the
+  regular Toonami hour, a between-episodes break with no sign-on; the day out at 6:16:21am, Toonami's
+  sign-off, CN City's opening, Hamtaro at 6:29:55. A Ronin Warriors break: "Ronin Warriors NEXT Promo
+  (Full Cycle)", the commercials, "Ronin Warriors Intro 2 (Full Cycle)"; another show's break the
+  regular Toonami clips - once the two Full Cycle clips were matched to Ronin Warriors (below).
+  Create Lineup at 12:05pm on the day: Dragon Ball Z, on air, stays first; the rest of the day
+  identical, fill included. At Jan 2 12:05pm: the day listed Aired, no airing of it laid, the next
+  7 days identical (442 airings). The guide for Jan 1 (XMLTV at 5:30am and 5:30pm): 53 entries for
+  channel 1, the timetable airing for airing.
+- **Found and fixed, each with a failing check first:**
+  - *A long break judged after the pad* (fbaa29a): Phantasm (1:16:28) pads to 1:20:00, leaving
+    exactly 10:00 - not "over 10" - so its 13:32 break went unfilled. Now judged as it airs.
+  - *A day's own airing leaking into regular ones* (fbaa29a, 8efb663): the second Create Lineup
+    marked 25 regular airings, March to May 2027, as rows of the day - the pool keeps each
+    episode's first copy, often the day's own (`specialDay`/`specialRow`). The generator loads its
+    pool without the marks, and every writer of a new airing from that pool drops them: the
+    orderers' `labelled`, kept-rows' `stripped` (Swap, Insert), pins.js's `makePin`.
+  - *The fill restarting on a re-make during the day* (f2a29c8): the planner dropped every tagged
+    position whose tag wasn't a live day's id, and the fill's is `fill:` + the id; and the wait for
+    the next row after the program on air was a plain Flex. Kept and re-established now, as a
+    Keep-apart row's, and that wait fills.
+  - *The transitions Preview's From walking from the current time of day* (6b5a104, step 6's): the
+    date field keeps the time it was made with - "from Fri Jan 1, 9:22pm". A picked date walks
+    from its midnight; today from now, as before.
+- **Ron's own setup, not code:** his Full Cycle lists' clips named no show, so every "for the show
+  coming up" step on them found nothing and his cascade fell back to the regular clips as built.
+  "Match shows" suggests Ronin Warriors for both Ronin clips (accepted on the copy only); "DragonBall
+  Z Garlic Jr. Saga Intro (Full Cycle)" is flagged (a saga, no season nickname) and the SubZero NEXT
+  promo wasn't looked at. Jan 1 is a Friday: the block's own entering steps (TOM Intro, Toonami Show
+  Intros) are Mon-Wed only, and Adult Swim's leaving step plays the Cartoon Network Powerhouse Intro
+  right before the marathon's first show.
+- **The additive check:** Create Lineup on all three of Ron's channels, `blocks`' code against this
+  branch's (each version's own `progress-check.js`, the same files, the same frozen moment): the
+  lineups identical, and everything else saved - schedule, stored positions, catalog state - too.
+- `npm test` 2840/2840; the workflow checklist, all ten including `special-day`, on a fresh copy
+  (9:49pm Nov 5, port 18223).
+
+**The review before merging, Nov 5, 2026** (the whole branch against `blocks`). Fixed, each with
+a failing check first:
+- *Preview this day spent a slot's one-time start season.* It runs Create Lineup's own
+  `makeLineup`, whose `afterRun` clears each slot's `startSeason` once used - so a preview
+  cleared it before the real run. A preview's run now skips `afterRun`
+  (test/special-days-preview.js lifts `previewDay` and `makeLineup` from the directive).
+- *The library's insert of several episodes went into a special day.* `insertMany` had no
+  schedule, unlike Swap, Insert after, Delete and drag; it refuses inside a day now, so the
+  library's add goes after the first row in view outside it.
+- *The Schedule tab dropped an airing crossing midnight* from the next day's column (Phantasm,
+  11:30pm-12:46am): the chips are `specialDays.spansIn`, each airing clipped to its band.
+
+Set aside: the Schedule tab's columns are fixed 24-hour days, an hour off in a week with a clock
+change (no special day planned near one); `specialDaysPlan` counts a row with `item: null` as a
+picked item (`problems()` already blocks such a day); two Time Slots dialog caches that
+re-serialize on each digest (`dayRowLine`, `problemsOf`), no slowness seen; the fill position's
+`fill:` tag riding on the day tag (one special case in the planner, tested).
 
 ### Chapter and segment detector, and stage 6 midrolls
 

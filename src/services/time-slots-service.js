@@ -7,6 +7,7 @@ const throttle = require('./throttle');
 const orderers = require("./show-orderers");
 const slotProgress = require('../slot-progress');
 const keptRows = require('../kept-rows');
+const specialDays = require('../special-days');
 
 const MINUTE = 60*1000;
 const DAY = 24*60*MINUTE;
@@ -87,8 +88,13 @@ function addProgramToShow(show, program) {
  * one whose break is on air - { start, program }: it stays where it is, and
  * the lineup is made from its end, as after a run-late pin (src/pins.js
  * carryAt; the planner counts it as aired).
+ *
+ * `fillerPools`, optional, is every filler list a special day's "Fill long
+ * breaks with" might name, read ahead of time - { [listId]: [item, ...] } -
+ * since this is a pure function and cannot read one itself. See
+ * special-days.js's `fillBreaksWith` and this file's `fillItemsFor`.
  */
-module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
+module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPools ) => {
     if (! Array.isArray(programs) ) {
         return { userError: 'Expected a programs array' };
     }
@@ -200,8 +206,10 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
                 break;
             }
         }
+        // A special day's airing isn't the source slot's: the day replaced it, so
+        // the repeat finds nothing and airs a Rerun, as for a source that aired nothing.
         let inWindow = (a) => (a.start >= from) && (a.start < from + length)
-            && ! a.program.isOffline && (getShowData(a.program).showId === source.showId);
+            && ! a.program.isOffline && ! a.program.specialDay && (getShowData(a.program).showId === source.showId);
         let before = (Array.isArray(history) ? history : []).filter( (a) => (a.start < ts) && inWindow(a) );
         let after = aired.filter( (a) => (a.start >= ts) && inWindow(a) );
         return before.concat(after).sort( (a, b) => a.start - b.start ).map( (a) => a.program );
@@ -234,9 +242,53 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         };
     }
 
+    /*
+     * A special day's row (src/special-days.js): a picked item, once per
+     * occurrence of its row, or its show's position - the regular one on an
+     * Advance day, the day's own on a Keep-apart day (`apart`). Every airing it
+     * gives carries the day and the row, `specialRow`, so a re-make during a
+     * Back to back day knows which row comes next. A show not in the pool has
+     * nothing to give.
+     */
+    let itemState = new Map();
+    let specialCopy = (program, slot) => {
+        let copy = Object.assign( {}, program );
+        copy.specialDay = slot.special;
+        copy.specialRow = slot.specialRow;
+        return copy;
+    };
+    function specialItem(slot) {
+        if ( (typeof(slot.item) === 'object') && (slot.item !== null) ) {
+            if ( (typeof(slot.item.program) !== 'object') || (slot.item.program === null) || (itemState.get(slot) === occurrenceStart) ) {
+                return null;
+            }
+            let copy = specialCopy(slot.item.program, slot);
+            delete copy.slotPosition;
+            delete copy.shuffleOrder;
+            delete copy.kept;
+            delete copy.pin;
+            return copy;
+        }
+        if ( (typeof(showsById[slot.showId]) === 'undefined') || ! positions.plays(slot.order) ) {
+            return null;
+        }
+        let next = positions.forSlot(slot).current();
+        return ( (next === null) || (typeof(next) === 'undefined') ) ? null : specialCopy(next, slot);
+    }
+    function advanceSpecial(slot) {
+        if ( (typeof(slot.item) === 'object') && (slot.item !== null) ) {
+            itemState.set(slot, occurrenceStart);
+        } else if ( (typeof(showsById[slot.showId]) !== 'undefined') && positions.plays(slot.order) ) {
+            positions.forSlot(slot).next();
+        }
+    }
+
     function getNextForSlot(slot, remaining) {
         //remaining doesn't restrict what next show is picked. It is only used
         //for shows with flexible length (flex and redirects)
+        if (typeof(slot.special) === 'string') {
+            return specialItem(slot);
+        }
         if (slot.showId === "flex.") {
             return {
                 isOffline: true,
@@ -260,6 +312,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     }
     
     function advanceSlot(slot) {
+        if (typeof(slot.special) === 'string') {
+            return advanceSpecial(slot);
+        }
         if ( (slot.showId === "flex.") || (slot.showId.startsWith("redirect.") ) ) {
             return;
         }
@@ -289,6 +344,14 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     // load the programs
     for (let i = 0; i < programs.length; i++) {
         let p = programs[i];
+        // An episode enters the pool as itself: a special day's own airing in the
+        // lineup this pool came from (specialCopy) would otherwise be what every
+        // regular slot plays of it from here on, marked as a row of that day.
+        if ( (typeof(p.specialDay) !== 'undefined') || (typeof(p.specialRow) !== 'undefined') ) {
+            p = Object.assign( {}, p );
+            delete p.specialDay;
+            delete p.specialRow;
+        }
         let show = getShow(p);
         if (show != null) {
             if (typeof(showsById[show.id] ) === 'undefined') {
@@ -430,6 +493,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
         }
     }
 
+    // The last airing a special day placed, for the run-late after its end.
+    let lastSpecial = null;
     let pushProgram = (item) => {
         if ( item.isOffline && (item.type !== 'redirect') ) {
             pushFlex(item.duration);
@@ -437,9 +502,292 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             if (! item.isOffline) {
                 aired.push({ start: t, program: item });
             }
+            if (typeof(item.specialDay) === 'string') {
+                lastSpecial = { start: t, end: t + item.duration, day: item.specialDay };
+            }
             p.push(item);
             t += item.duration;
         }
+    };
+
+    /*
+     * A slot's programs with their pads, and what is left of it shared out as
+     * Flex - between them, or after the last ("end") - then laid down.
+     */
+    let layPads = (pads, rem) => {
+        if (flexBetween) {
+            let div = Math.floor(rem / schedule.pad );
+            let mod = rem % schedule.pad;
+            // add mod to the latest item
+            pads[ pads.length - 1].pad += mod;
+            pads[ pads.length - 1].totalDuration += mod;
+
+            let sortedPads = pads.map( (p, $index) => {
+                return {
+                    pad: p.pad,
+                    index : $index,
+                }
+            });
+            sortedPads.sort( (a,b) => { return a.pad - b.pad; } );
+            for (let i = 0; i < pads.length; i++) {
+                let q = Math.floor( div / pads.length );
+                if (i < div % pads.length) {
+                    q++;
+                }
+                let j = sortedPads[i].index;
+                pads[j].pad += q * schedule.pad;
+            }
+        } else {
+            //also add div to the latest item
+            pads[ pads.length - 1].pad += rem;
+            pads[ pads.length - 1].totalDuration += rem;
+        }
+        // now unroll them all
+        for (let i = 0; i < pads.length; i++) {
+            pushProgram( pads[i].item );
+            pushFlex( pads[i].pad );
+        }
+    };
+
+    /*
+     * Special days (src/special-days.js; NOTES.md, "Special days"): each one not
+     * yet ended, and with nothing that stops it, replaces the regular slots for
+     * its hours. A regular slot stops where a day begins. Set times rows are
+     * slots at their instants, filled as any slot is; Back to back rows go in
+     * order, each from the next :00 or :30 after the one before ends (backStep).
+     * An airing still on at the day's end runs the regular schedule late from
+     * its end, as after a run-late pin, until a program starts on time.
+     */
+    let stopped = {};
+    specialDays.problems(schedule, undefined).forEach( (x) => {
+        if (x.field !== 'block') {
+            stopped[x.dayId] = true;
+        }
+    } );
+    let laidDays = specialDays.ahead(schedule, ts).filter( (day) => ! stopped[day.id] ).map( (day) => {
+        let w = specialDays.windowOf(day);
+        let rows = day.slots.filter( (row) => (row !== null) && (typeof(row) === 'object') );
+        let slotOf = rows.map( (row, k) => Object.assign( {}, row, {
+            time: -1, special: day.id, specialRow: k, apart: (day.positions === 'apart') ? day.id : undefined } ) );
+        let timed = null;
+        if (day.layout === 'times') {
+            timed = specialDays.rowTimes(day).filter( (x) => ! x.gap && (x.at >= w.from) && (x.at < w.to) )
+                .map( (x) => ({ at: x.at, slot: slotOf[rows.indexOf(x.row)] }) );
+        }
+        // Where a day under way is, from the planner (slot-progress specialDaysPlan):
+        // the next Back to back row, and the picked items already aired.
+        let at = ( (typeof(schedule.progress) === 'object') && (schedule.progress !== null)
+                   && (typeof(schedule.progress.specialDays) === 'object') && (schedule.progress.specialDays !== null) )
+            ? schedule.progress.specialDays[day.id] : undefined;
+        let k = ( (typeof(at) === 'object') && (at !== null) && Number.isInteger(at.nextRow) ) ? at.nextRow : 0;
+        let itemsAired = new Set( ( (typeof(at) === 'object') && (at !== null) && Array.isArray(at.airedItems) ) ? at.airedItems : [] );
+        return { day: day, from: w.from, to: w.to, slotOf: slotOf, timed: timed, k: k, itemsAired: itemsAired,
+            step: specialDays.stepOf(day), jumped: (w.from <= ts) };
+    } );
+    let dayAt = (x) => laidDays.find( (d) => (d.from <= x) && (x < d.to) ) || null;
+    let nextDayFrom = (x) => laidDays.reduce( (m, d) => ( (d.from > x) && (d.from < m) ) ? d.from : m, Infinity );
+    const FLEX_SLOT = { time: -1, showId: 'flex.' };
+
+    // A Set times day's row covering t, as findSlot answers for a regular slot.
+    let timedFound = (d) => {
+        let cur = -1;
+        for (let k = 0; k < d.timed.length; k++) {
+            if (d.timed[k].at <= t + SLACK) {
+                cur = k;
+            }
+        }
+        if (cur === -1) {
+            let first = (d.timed.length > 0) ? d.timed[0].at : d.to;
+            return { slot: FLEX_SLOT, dayTime: null, remaining: first - t, late: 0, special: true };
+        }
+        let end = (cur + 1 < d.timed.length) ? d.timed[cur + 1].at : d.to;
+        return { slot: d.timed[cur].slot, dayTime: null, remaining: end - t, late: Math.max(0, t - d.timed[cur].at), special: true };
+    };
+
+    let isItem = (row) => (typeof(row.item) === 'object') && (row.item !== null);
+
+    /*
+     * An Advance day's row with a start (decision 3): its position jumps there as
+     * the day begins, and carries on from wherever the day leaves it. A day already
+     * begun when the lineup is made jumped then; its places say where it is now.
+     * Play Next only: a Shuffle's place is a round, not an episode to jump to.
+     */
+    let jump = (d) => {
+        d.jumped = true;
+        if (d.day.positions === 'apart') {
+            return;
+        }
+        let seen = new Set();
+        d.slotOf.forEach( (row) => {
+            if ( isItem(row) || (row.order !== 'next') || (typeof(row.start) !== 'object') || (row.start === null)
+                 || (typeof(showsById[row.showId]) === 'undefined') ) {
+                return;
+            }
+            let key = slotProgress.positionKey(row.showId, row.order, slotProgress.constraintOf(row, schedule));
+            if (! seen.has(key)) {
+                seen.add(key);
+                positions.forSlot(row).seek(row.start);
+            }
+        } );
+    };
+
+    /*
+     * "Fill long breaks with" (special-days.js's `day.fillBreaksWith`): when a
+     * Back to back row ends with more than FILL_THRESHOLD left before the next
+     * row's own mark, that gap plays as many items of this source as fit
+     * first, a normal (shorter) Flex still closing it out exactly on the mark.
+     * Off (null/undefined) leaves every gap as it always was, one Flex.
+     *
+     * A show or custom show (its showId, exactly as a row names one) reuses
+     * getNextForSlot/advanceSlot, but never the show's own regular position -
+     * filling a break must never move where its regular slot picks up next
+     * (Ron, Nov 5). Tagged "fill:<dayId>" (specialDays.taggedKey, the same
+     * mechanism a Keep-apart row's own position already uses to stay off the
+     * regular one), it gets its own position, round robin, remembered between
+     * runs the normal way, just never shared with anything else. "filler:<listId>"
+     * reads `fillerPools[listId]` - plain items this function cannot read itself -
+     * round robin too, but only within this one run: filler is disposable,
+     * nothing to remember.
+     */
+    const FILL_THRESHOLD = 10 * MINUTE;
+    let fillCounters = new Map();
+    let fillItemsFor = (d, roomLeft) => {
+        let source = d.day.fillBreaksWith;
+        if ( (typeof(source) !== 'string') || (source === '') ) {
+            return [];
+        }
+        let out = [];
+        let room = roomLeft;
+        let tag = { special: d.day.id, specialRow: 'fill' };
+        if (source.startsWith('filler:')) {
+            let listId = source.slice('filler:'.length);
+            let pool = ( (typeof(fillerPools) === 'object') && (fillerPools !== null) && Array.isArray(fillerPools[listId]) )
+                ? fillerPools[listId] : [];
+            if (pool.length === 0) {
+                return out;
+            }
+            let i = fillCounters.get(listId) || 0;
+            for (let tries = 0; (tries < pool.length) && (room >= constants.SLACK); tries++) {
+                let clip = pool[i % pool.length];
+                i++;
+                if ( (clip.duration > 0) && (clip.duration <= room) ) {
+                    out.push(specialCopy(clip, tag));
+                    room -= clip.duration;
+                }
+            }
+            fillCounters.set(listId, i);
+            return out;
+        }
+        if (typeof(showsById[source]) === 'undefined') {
+            return out;
+        }
+        let slot = { time: -1, showId: source, order: 'next', apart: 'fill:' + d.day.id };
+        for (let tries = 0; (tries < 1000) && (room >= constants.SLACK); tries++) {
+            let next = getNextForSlot(slot, room);
+            if ( (next === null) || (typeof(next) === 'undefined') || next.isOffline || ! (next.duration > 0) || (next.duration > room) ) {
+                break;
+            }
+            out.push(specialCopy(next, tag));
+            advanceSlot(slot);
+            room -= next.duration;
+        }
+        return out;
+    };
+
+    /*
+     * One step of a Back to back day: Flex to the next row's start, or the next
+     * row with something to air - its first item, then any more of its own that
+     * finish by the next :00 or :30, padded and sharing the Flex as a regular
+     * slot does. A kept row ahead never waits: a row that wouldn't finish before
+     * it waits for after it instead.
+     */
+    let backStep = (d) => {
+        let start = (t <= d.from + SLACK) ? t : specialDays.nextMark(t, d.step);
+        let pinAt = (nextPin < pins.length) ? pins[nextPin].at : Infinity;
+        if (start >= d.to - SLACK) {
+            pushFlex(Math.min(d.to, pinAt) - t);
+            return;
+        }
+        if (pinAt < start) {
+            pushFlex(pinAt - t);
+            return;
+        }
+        if (start > t) {
+            // Waiting for the next row's mark after something already laid (the
+            // program on air, carried by a re-make): a long wait fills as any long
+            // break of the day does.
+            let gap = start - t;
+            let fill = (gap > FILL_THRESHOLD) ? fillItemsFor(d, gap) : [];
+            fill.forEach( (item) => {
+                pushProgram(item);
+                gap -= item.duration;
+            } );
+            pushFlex(gap);
+            return;
+        }
+        occurrenceStart = t;
+        let n = d.slotOf.length;
+        let row = null;
+        let first = null;
+        for (let tries = 0; (tries < n) && (first === null); tries++) {
+            row = d.slotOf[d.k % n];
+            // A picked item airs once a day, though the list starts again.
+            first = ( isItem(row) && d.itemsAired.has(row.specialRow) ) ? null : specialItem(row);
+            if (first === null) {
+                d.k++;
+            }
+        }
+        if (first === null) {
+            pushFlex(Math.min(d.to, pinAt) - t);
+            return;
+        }
+        if (t + first.duration > pinAt + SLACK) {
+            pushFlex(pinAt - t);
+            return;
+        }
+        d.k++;
+        advanceSpecial(row);
+        if (isItem(row)) {
+            d.itemsAired.add(row.specialRow);
+        }
+        if (t + first.duration > d.to + SLACK) {
+            pushProgram(first);
+            return;
+        }
+        let end = Math.min(specialDays.nextMark(t + first.duration, d.step), d.to, pinAt);
+        let remaining = end - t;
+        let pads = [ makePadded(first) ];
+        let total = pads[0].totalDuration;
+        while ( (typeof(row.item) !== 'object') || (row.item === null) ) {
+            let more = specialItem(row);
+            if ( (more === null) || (total + more.duration > remaining) ) {
+                break;
+            }
+            let padded = makePadded(more);
+            pads.push(padded);
+            advanceSpecial(row);
+            total += padded.totalDuration;
+        }
+        let leftover = Math.max(0, remaining - total);
+        // "Long" is the break as it airs - everything after the row's own items, their
+        // pads included - not what is left once the pads round them up: 76:28 padded
+        // to 80:00 leaves 10:00, but 13:32 airs.
+        let onAir = remaining - pads.reduce( (sum, p) => sum + p.item.duration, 0 );
+        let fill = (onAir > FILL_THRESHOLD) ? fillItemsFor(d, leftover) : [];
+        if (fill.length === 0) {
+            layPads(pads, leftover);
+            return;
+        }
+        // Filled: the row's own item(s) with only their usual small pad
+        // (schedule.flexPreference never spreads the long part of this break
+        // across them), then fill items back to back, then one plain break for
+        // whatever is still left - the next row still starts right on its mark.
+        layPads(pads, 0);
+        fill.forEach( (item) => {
+            pushProgram(item);
+            leftover -= item.duration;
+        } );
+        pushFlex(Math.max(0, leftover));
     };
 
     // A take pin, pushed later than its own time, ending in a slot that began after it
@@ -516,8 +864,37 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
     } else if (ts > t0) {
         pushFlex( ( (typeof(flexOnAir) !== 'undefined') ? flexOnAir.at : ts ) - t0 );
     }
+    // A Back to back day on air carries on with the row after the program on air's.
+    if ( (carry !== null) && (typeof(carry.program.specialDay) === 'string') && (typeof(carry.program.specialRow) === 'number') ) {
+        let d = laidDays.find( (x) => x.day.id === carry.program.specialDay );
+        if (typeof(d) !== 'undefined') {
+            d.k = carry.program.specialRow + 1;
+            if ( isItem(d.slotOf[carry.program.specialRow] || {}) ) {
+                d.itemsAired.add(carry.program.specialRow);
+            }
+        }
+    }
     while ( (t < hardLimit) && (p.length < LIMIT) ) {
         await throttle();
+        // An airing of a special day still on past its end: the regular schedule
+        // starts at the day's own next mark after it - the half hour or the quarter
+        // hour, whichever the day rounds to - never right where the overrun ends, so
+        // the break between holds the day's own leaving and entering steps (its
+        // sign-off, then the regular context's sign-on). From there it runs late and
+        // catches up, as after a run-late pin (rule 3) - unless the mark happens to
+        // land on a regular slot boundary, where nothing needs to catch up and the
+        // slot the overrun ran into is simply skipped, like any slot with no time left.
+        if ( (lastSpecial !== null) && (t === lastSpecial.end) && ! lastSpecial.handled ) {
+            lastSpecial.handled = true;
+            let d = laidDays.find( (x) => x.day.id === lastSpecial.day );
+            if ( (typeof(d) !== 'undefined') && (t > d.to + SLACK) ) {
+                let mark = specialDays.nextMark(t, d.step);
+                pushFlex(mark - t);
+                lastPin = { start: lastSpecial.start, end: mark, then: 'late', kind: undefined, ownEnd: mark };
+                runningLate = false;
+            }
+            continue;
+        }
         //ensure t is padded - except while running late after a pin (rule 3)
         let m = t % schedule.pad;
         let afterLatePin = (lastPin !== null) && (t === lastPin.end) && ( (lastPin.then === 'late') || pushedPast(lastPin, t) );
@@ -526,6 +903,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             if ( (nextPin < pins.length) && (pins[nextPin].at - t < d) ) {
                 d = Math.max(0, pins[nextPin].at - t);
             }
+            // nor past a special day's start
+            d = Math.min(d, Math.max(0, nextDayFrom(t) - t));
             if (d > 0) {
                 pushFlex( d );
                 continue;
@@ -537,7 +916,15 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             continue;
         }
 
-        let found = findSlot(localMsIntoPeriod(t));
+        let inDay = dayAt(t);
+        if ( (inDay !== null) && ! inDay.jumped ) {
+            jump(inDay);
+        }
+        if ( (inDay !== null) && (inDay.timed === null) ) {
+            backStep(inDay);
+            continue;
+        }
+        let found = (inDay !== null) ? timedFound(inDay) : findSlot(localMsIntoPeriod(t));
         if (found == null) {
             throw Error("Unexpected. Unable to find slot for time of day " + t + " " + localMsIntoPeriod(t));
         }
@@ -554,7 +941,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
          * exactly this length, an uncorrected value overshoots the next
          * boundary and skips that slot for the day.
          */
-        if (remaining !== null) {
+        if ( (remaining !== null) && ! found.special ) {
             let boundaryLocal = (dayTime + remaining) % schedule.period;
             let drift = localMsIntoPeriod(t + remaining) - boundaryLocal;
             if (drift > schedule.period / 2) {
@@ -587,6 +974,11 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
                 // correction that cancels the interval entirely would stall it.
                 remaining = (corrected > constants.SLACK) ? corrected : remaining;
             }
+        }
+
+        // A regular slot stops where a special day begins.
+        if ( ! found.special && (t + remaining > nextDayFrom(t)) ) {
+            remaining = nextDayFrom(t) - t;
         }
 
         let occStart = t - late;
@@ -704,40 +1096,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn ) => {
             advanceSlot(slot);
             total += padded2.totalDuration;
         }
-        let rem = Math.max(0, remaining - total);
-
-        if (flexBetween) {
-            let div = Math.floor(rem / schedule.pad );
-            let mod = rem % schedule.pad;
-            // add mod to the latest item
-            pads[ pads.length - 1].pad += mod;
-            pads[ pads.length - 1].totalDuration += mod;
-
-            let sortedPads = pads.map( (p, $index) => {
-                return {
-                    pad: p.pad,
-                    index : $index,
-                }
-            });
-            sortedPads.sort( (a,b) => { return a.pad - b.pad; } );
-            for (let i = 0; i < pads.length; i++) {
-                let q = Math.floor( div / pads.length );
-                if (i < div % pads.length) {
-                    q++;
-                }
-                let j = sortedPads[i].index;
-                pads[j].pad += q * schedule.pad;
-            }
-        } else {
-            //also add div to the latest item
-            pads[ pads.length - 1].pad += rem;
-            pads[ pads.length - 1].totalDuration += rem;
-        }
-        // now unroll them all
-        for (let i = 0; i < pads.length; i++) {
-            pushProgram( pads[i].item );
-            pushFlex( pads[i].pad );
-        }
+        layPads(pads, Math.max(0, remaining - total));
     }
     while ( (t > hardLimit) || (p.length >= LIMIT) ) {
         t -= p.pop().duration;

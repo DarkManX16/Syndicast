@@ -1,6 +1,7 @@
 const path = require('path');
 var fs = require('fs');
 const transitions = require('../transitions');
+const specialDays = require('../special-days');
 
 /*
  * A channel file that will not parse is retried rather than treated as missing,
@@ -193,6 +194,31 @@ function warnAboutDayParts(json) {
  * day-parts.js's blockContextAt gives it to whichever block was declared
  * first - this only makes sure that isn't happening silently.
  */
+/*
+ * Special days on the Time Slots schedule (src/special-days.js): what stops
+ * one being laid out, said once per save. Warns and rewrites nothing, as
+ * warnAboutBlocks; the editor blocks Create Lineup on the same problems.
+ */
+function warnAboutSpecialDays(json) {
+    const schedule = json.scheduleBackup;
+    if ( (schedule == null) || (typeof(schedule.specialDays) === 'undefined') ) {
+        return;
+    }
+    if (! Array.isArray(schedule.specialDays) ) {
+        console.error(`Channel ${json.number}: scheduleBackup.specialDays was saved as ${typeof(schedule.specialDays)} rather than an array. It will be ignored.`);
+        return;
+    }
+    const names = {};
+    schedule.specialDays.forEach( (day) => {
+        if ( (day != null) && (typeof(day.id) === 'string') ) {
+            names[day.id] = day.name || day.id;
+        }
+    } );
+    for (const p of specialDays.problems(schedule, json.blocks)) {
+        console.error(`Channel ${json.number}: special day ${ (p.dayId !== null) ? `"${names[p.dayId] || p.dayId}"` : '(no id)' }: ${p.text}`);
+    }
+}
+
 function warnAboutBlocks(json) {
     if (typeof(json.blocks) === 'undefined') {
         return;
@@ -205,6 +231,12 @@ function warnAboutBlocks(json) {
         return;
     }
     const badTime = (t) => (typeof(t) !== 'number') || isNaN(t) || (t < 0) || (t >= DAY_MS);
+    // A block a special day names as its own (src/special-days.js) exists only
+    // for that day - never on the weekly schedule - so having no airings is how
+    // it is meant to be, not a mistake to warn about.
+    const specialDaysBlocks = new Set(
+        ( (json.scheduleBackup && Array.isArray(json.scheduleBackup.specialDays)) ? json.scheduleBackup.specialDays : [] )
+            .filter( (d) => (d != null) && (d.blockId != null) ).map( (d) => d.blockId ) );
     // Every valid airing's occupied span this week, in week-position terms,
     // carried alongside the block it belongs to - collected first so overlap
     // can be checked pairwise afterwards, across every block at once rather
@@ -225,7 +257,9 @@ function warnAboutBlocks(json) {
         }
         warnAboutCommercialsFrom(label, block, complain);
         if (! Array.isArray(block.airings) || (block.airings.length === 0) ) {
-            complain(`${label} has no airings, so it never airs.`);
+            if (! specialDaysBlocks.has(block.id)) {
+                complain(`${label} has no airings, so it never airs.`);
+            }
             continue;
         }
         for (let j = 0; j < block.airings.length; j++) {
@@ -498,6 +532,7 @@ class ChannelDB {
         warnAboutAbsoluteImages(json);
         warnAboutDayParts(json);
         warnAboutBlocks(json);
+        warnAboutSpecialDays(json);
         warnAboutTransitions(json);
         warnAboutAspect(json);
     }

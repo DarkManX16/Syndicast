@@ -16,6 +16,7 @@
 
 const rounds = require('./shuffle-rounds');
 const multiPart = require('./multi-part');
+const specialDays = require('./special-days');
 
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
@@ -104,6 +105,11 @@ function parseLabel(text) {
         return { mode: 'repeat', excluded: [], round: null };
     }
     let parts = text.split('|');
+    // A Keep-apart special day's own position ends with its day's tag (src/special-days.js).
+    let tag = null;
+    if ( (parts.length > 1) && /^@./.test(parts[parts.length - 1]) ) {
+        tag = parts.pop().slice(1);
+    }
     let mode = parts[0];
     if ( (MODES.indexOf(mode) === -1) || (mode === 'repeat') ) {
         return null;
@@ -126,7 +132,17 @@ function parseLabel(text) {
         }
         round = parseInt(parts[2], 10);
     }
-    return { mode: mode, excluded: excluded, round: round };
+    let parsed = { mode: mode, excluded: excluded, round: round };
+    if (tag !== null) {
+        parsed.tag = tag;
+    }
+    return parsed;
+}
+
+/* The position a parsed label names, for a show: tagged with its day when it has one. */
+function labelKey(showId, parsed) {
+    let key = positionKey(showId, parsed.mode, { excludeSeasons: parsed.excluded });
+    return (typeof(parsed.tag) === 'string') ? specialDays.taggedKey(key, parsed.tag) : key;
 }
 
 /*
@@ -164,9 +180,15 @@ function resolveRef(refValue, sortedCandidates, getShowData) {
  * localMsIntoPeriod and findSlot in time-slots-service.js, which
  * test/dst-fall-back.js lifts to check this agrees with through a
  * daylight-saving change. Built once per schedule, since reading a lineup
- * asks it for every airing.
+ * asks it for every airing. Inside a special day the day's own row answers
+ * instead (src/special-days.js wrapFinder); a schedule with none gets the
+ * regular finder itself.
  */
 function slotFinder(schedule) {
+    return specialDays.wrapFinder(schedule, regularFinder(schedule));
+}
+
+function regularFinder(schedule) {
     let period = (typeof(schedule.period) === 'number') ? schedule.period : DAY;
     let s = (Array.isArray(schedule.slots) ? schedule.slots : [])
         .filter( (slot) => typeof(slot.time) === 'number' )
@@ -479,7 +501,7 @@ function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
         // The old shuffler labels its airings and still numbers them; nothing
         // else leaves a number on a labelled airing, so one here is its.
         return {
-            key: positionKey(show.showId, parsed.mode, { excludeSeasons: parsed.excluded }),
+            key: labelKey(show.showId, parsed),
             round: parsed.round,
             legacyShuffleOrder: ( (parsed.mode === 'shuffle') && (typeof(program.shuffleOrder) === 'number') )
                 ? program.shuffleOrder
@@ -868,7 +890,136 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         }
     } );
 
-    return { asOf: new Date(now).toISOString(), positions: positions };
+    let days = specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, places, oldRecords, positions,
+        candidatePool, fromPlace, getShowData });
+    let out = { asOf: new Date(now).toISOString(), positions: positions };
+    if (Object.keys(days).length > 0) {
+        out.specialDays = days;
+    }
+    return out;
+}
+
+/*
+ * Special days in the planner (src/special-days.js; NOTES.md, "Special days").
+ *
+ * A Keep-apart day plays positions of its own, tagged with the day. Until the
+ * day begins its place is the row's start, kept on the row, or its range's first
+ * episode - never what an earlier run laid out, so changing a start takes; once it
+ * has begun, its first tagged airing on air or ahead, as any place. An Advance
+ * day's row of a show no regular slot plays gets the regular rules 2, 3 and 5.
+ * Tagged records go once their day has ended or is gone. (An Advance row's start
+ * is a jump the generator makes at the day's start.)
+ *
+ * Each day under way also says where it is, for a re-make with nothing carried:
+ * { nextRow, airedItems } - the Back to back row after the last that began
+ * before now, and the picked items already aired, which air once a day.
+ */
+function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, places, oldRecords, positions, candidatePool, fromPlace, getShowData }) {
+    let live = specialDays.ahead(schedule, now);
+    let liveIds = new Set(live.map( (d) => d.id ));
+    // A day's "Fill long breaks with" position is tagged "fill:" + the day's id.
+    let dayOfTag = (tag) => tag.startsWith('fill:') ? tag.slice('fill:'.length) : tag;
+    Object.keys(positions).forEach( (key) => {
+        let tag = specialDays.tagOf(key);
+        if ( (tag !== null) && ! liveIds.has(dayOfTag(tag)) ) {
+            delete positions[key];
+        }
+    } );
+    let info = {};
+    let firstOf = (showId, constraint) => {
+        let candidates = candidatesFor(candidatePool, showId, constraint, getShowData);
+        return (candidates.length > 0) ? candidates[0] : null;
+    };
+    live.forEach( (day) => {
+        let w = specialDays.windowOf(day);
+        let begun = (w.from <= now);
+        let rows = Array.isArray(day.slots) ? day.slots.filter( (r) => (r !== null) && (typeof(r) === 'object') ) : [];
+        let done = new Set();
+        rows.forEach( (row) => {
+            if ( (typeof(row.item) === 'object') || (typeof(row.showId) !== 'string') || (MODES.indexOf(row.order) === -1) || (row.order === 'repeat') ) {
+                return;
+            }
+            let constraint = constraintOf(row, schedule);
+            let regularKey = positionKey(row.showId, row.order, constraint);
+            if (day.positions === 'apart') {
+                let key = specialDays.taggedKey(regularKey, day.id);
+                if (done.has(key)) {
+                    return;
+                }
+                done.add(key);
+                let record = null;
+                if (begun) {
+                    record = places.has(key) ? fromPlace(key, places.get(key)) : (oldRecords[key] || null);
+                } else {
+                    let withStart = rows.find( (r) => (typeof(r.item) !== 'object') && (r.showId === row.showId) && (r.order === row.order)
+                        && (positionKey(r.showId, r.order, constraintOf(r, schedule)) === regularKey) && (typeof(r.start) === 'object') && (r.start !== null) );
+                    if (typeof(withStart) !== 'undefined') {
+                        record = startRecord({ key, mode: row.order, record: null, pick: withStart.start, pool: candidatePool, getShowData });
+                    }
+                }
+                if (record !== null) {
+                    positions[key] = record;
+                } else {
+                    delete positions[key];
+                }
+            } else if (! groups.has(regularKey) && ! done.has(regularKey)) {
+                done.add(regularKey);
+                let record = places.has(regularKey) ? fromPlace(regularKey, places.get(regularKey)) : (oldRecords[regularKey] || null);
+                if ( (record === null) && (row.order === 'next') ) {
+                    let found = firstOf(row.showId, constraint);
+                    record = (found === null) ? null : { next: ref(found, getShowData), wrapped: false };
+                } else if ( (record === null) && (ROUND_MODES.indexOf(row.order) !== -1) ) {
+                    record = { round: 0, deferred: [] };
+                }
+                if (record !== null) {
+                    positions[regularKey] = record;
+                }
+            }
+        } );
+        // The fill's own position (time-slots-service.js's fillItemsFor) carries on
+        // from its airings in the lineup, as a Keep-apart row's does once begun.
+        let fill = day.fillBreaksWith;
+        if ( (typeof(fill) === 'string') && (fill !== '') && ! fill.startsWith('filler:') ) {
+            let slot = { showId: fill, order: 'next' };
+            let key = specialDays.taggedKey(positionKey(fill, 'next', constraintOf(slot, schedule)), 'fill:' + day.id);
+            let record = places.has(key) ? fromPlace(key, places.get(key)) : (oldRecords[key] || null);
+            if (record !== null) {
+                positions[key] = record;
+            } else {
+                delete positions[key];
+            }
+        }
+        if (begun) {
+            // Where the day is: what began in it before now (or before the end of the
+            // program on air, which is carried and counts as aired).
+            let upTo = (typeof(placesFrom) === 'number') ? Math.max(now, placesFrom) : now;
+            let lastRow = null;
+            let airedItems = [];
+            let total = cycleLength(programs);
+            if (total > 0) {
+                let into = ( ( (w.from - start) % total ) + total ) % total;
+                let t = w.from - into;
+                let i = 0;
+                while ( (i < programs.length) && (t + programs[i].duration <= w.from) ) {
+                    t += programs[i].duration;
+                    i++;
+                }
+                for (let n = 0; (n < programs.length) && (t < upTo); n++) {
+                    let p = programs[i % programs.length];
+                    if ( ! p.isOffline && (p.specialDay === day.id) && (typeof(p.specialRow) === 'number') && (t + p.duration <= upTo + 1000) ) {
+                        lastRow = p.specialRow;
+                        if ( (typeof(rows[p.specialRow]) === 'object') && (typeof(rows[p.specialRow].item) === 'object') ) {
+                            airedItems.push(p.specialRow);
+                        }
+                    }
+                    t += p.duration;
+                    i++;
+                }
+            }
+            info[day.id] = { nextRow: (lastRow === null) ? 0 : lastRow + 1, airedItems: airedItems };
+        }
+    } );
+    return info;
 }
 
 /*
@@ -1023,6 +1174,7 @@ module.exports = {
     positionKey: positionKey,
     label: label,
     parseLabel: parseLabel,
+    labelKey: labelKey,
     ref: ref,
     resolveRef: resolveRef,
     slotAt: slotAt,

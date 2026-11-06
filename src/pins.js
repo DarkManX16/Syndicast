@@ -337,6 +337,8 @@ function makePin({ program, at, kind, then, was, slotShow, now }) {
     delete copy.stop;
     delete copy.$index;
     delete copy.pin;
+    delete copy.specialDay;
+    delete copy.specialRow;
     copy.pin = { at: at, kind: kind, then: then };
     if (typeof(was) === 'string') {
         copy.pin.was = was;

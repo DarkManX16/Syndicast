@@ -848,6 +848,14 @@ div.programming-programs div.list-group-item {
   animation: schedCalPulse 1.6s ease-out;
 }
 
+/* A special day's band where the saved lineup doesn't actually reach yet (or
+   Create Lineup hasn't been run since the day was added) - still the day's
+   own colour, striped rather than solid, so it reads as "planned" rather
+   than "confirmed by what airs". */
+.sched-cal-band-hatched {
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0, rgba(255,255,255,.35) 6px, transparent 6px, transparent 12px);
+}
+
 @keyframes schedCalPulse {
   0%   { background-color: #fff3cd; }
   100% { background-color: transparent; }

@@ -900,6 +900,20 @@ module.exports = async function run() {
         suite.check('and Day\'s own other rows were kept', day.transitions.betweenEpisodes.out.length === 1 && day.transitions.leaving.out.length === 1);
     }
 
+    // ---- where the preview starts walking (its From date) ---------------------
+    {
+        // The date field keeps whatever time of day it was made with (9:22pm, say):
+        // a date picked walks from the start of that day; today, from now, as before.
+        const now = new Date(2026, 10, 5, 21, 22).getTime();
+        const jan1 = new Date(2027, 0, 1, 21, 22);
+        suite.check('a picked date walks from midnight of that day, whatever time the field holds',
+            editor.previewStart(jan1, now) === new Date(2027, 0, 1).getTime(), new Date(editor.previewStart(jan1, now)).toString());
+        suite.check('...today walks from now, as before there was a date',
+            editor.previewStart(new Date(2026, 10, 5, 3, 0), now) === now);
+        suite.check('...and an empty or broken date from now too',
+            editor.previewStart(null, now) === now && editor.previewStart(new Date('x'), now) === now && editor.previewStart(undefined, now) === now);
+    }
+
     return suite;
 };
 

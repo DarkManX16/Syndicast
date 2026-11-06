@@ -997,6 +997,19 @@ function clockLabel(t) {
     return `${DAY_NAMES[d.getDay()]} ${h12}:${m < 10 ? '0' : ''}${m}${h < 12 ? 'am' : 'pm'}`;
 }
 
+// Where the preview starts walking for its From date: the start of a picked day,
+// or now for today (or no usable date). The date field keeps whatever time of day
+// it was made with, which is never what a picked date means.
+function previewStart(chosen, now) {
+    if ( ! (chosen instanceof Date) || isNaN(chosen.getTime()) ) {
+        return now;
+    }
+    const midnight = new Date(chosen.getFullYear(), chosen.getMonth(), chosen.getDate()).getTime();
+    const today = new Date(now);
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    return (midnight === todayMidnight) ? now : midnight;
+}
+
 // "4:12"
 function mmss(ms) {
     const total = Math.max(0, Math.round(ms / 1000));
@@ -1052,5 +1065,6 @@ module.exports = {
     previewBreaks: previewBreaks,
     wouldFitHints: wouldFitHints,
     clockLabel: clockLabel,
+    previewStart: previewStart,
     mmss: mmss,
 };

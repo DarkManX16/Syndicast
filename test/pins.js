@@ -37,6 +37,9 @@ module.exports = async function () {
             JSON.stringify(p.pin));
         const insert = pins.makePin({ program: special, at, kind: 'insert', then: 'late', slotShow: 'tv.Rugrats', now: NOW });
         suite.check('...and leaves out what it replaced for an insert', ! ('was' in insert.pin));
+        const fromDay = pins.makePin({ program: Object.assign({}, special, { specialDay: 'sd_ny', specialRow: 4 }), at, kind: 'swap', then: 'take', slotShow: 'tv.Hey Arnold!', now: NOW });
+        suite.check('...and a special day\'s own copy pins as the episode, not a row of that day',
+            ! ('specialDay' in fromDay) && ! ('specialRow' in fromDay), JSON.stringify([ fromDay.specialDay, fromDay.specialRow ]));
 
         suite.check('label names an episode, a custom-show item and a movie',
             pins.label(from) === 'Hey Arnold! S03E23 Best Man / Cool Party'

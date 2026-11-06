@@ -1,6 +1,7 @@
 const makeVsRepeatDragGuard = require('../services/vs-repeat-drag-guard');
 const makeDeferredDragMove = require('../services/deferred-drag-move');
 const dayParts = require('../../src/day-parts');
+const specialDays = require('../../src/special-days');
 const slotWeek = require('../../src/slot-week');
 const transitions = require('../../src/transitions');
 const transitionsEditor = require('../../src/transitions-editor');
@@ -406,7 +407,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             $timeout();
                             return;
                         }
-                        let move = (sure) => keptRows.move({ lineup: lineupMs(), from: from, to: before, now: Date.now(), sure: sure });
+                        let move = (sure) => keptRows.move({ lineup: lineupMs(), from: from, to: before, now: Date.now(), sure: sure, schedule: scope.channel.scheduleBackup });
                         let got = move(false);
                         if (typeof(got.ask) === 'string') {
                             scope.undoPrompt = { title: 'Move ' + commonProgramTools.getProgramDisplayTitle(item) + '?', text: got.ask, go: 'Move it',
@@ -1465,7 +1466,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return;
                 }
                 if (scope.hasTimeSlots()) {
-                    if (! applyEdit(keptRows.deleteRow({ lineup: lineupMs(), index: x, now: Date.now() }))) {
+                    if (! applyEdit(keptRows.deleteRow({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup }))) {
                         return;
                     }
                 } else {
@@ -2194,6 +2195,30 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.scheduleCalendarDays = [];
             scope.highlightCard = null;
 
+            // The week chooser (NOTES.md, "Special days", step 6): which week
+            // the calendar reads, Sunday of that week at local midnight by
+            // construction (weeklySegments reads it the same way). Defaults to
+            // this week, same as before the chooser existed.
+            scope.scheduleWeekAt = Date.now();
+            scope.scheduleWeekLabel = () => {
+                let now = new Date(scope.scheduleWeekAt);
+                let sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+                let saturday = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate() + 6);
+                let fmt = (d) => (d.getMonth() + 1) + '/' + d.getDate();
+                return fmt(sunday) + ' - ' + fmt(saturday) + '/' + saturday.getFullYear();
+            };
+            scope.scheduleWeekShift = (weeks) => {
+                scope.scheduleWeekAt = scope.scheduleWeekAt + weeks * CAL_WEEK;
+                scope.rebuildScheduleCalendar();
+            };
+            scope.scheduleWeekIsThisWeek = () => {
+                let now = new Date();
+                let sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()).getTime();
+                let shown = new Date(scope.scheduleWeekAt);
+                let shownSunday = new Date(shown.getFullYear(), shown.getMonth(), shown.getDate() - shown.getDay()).getTime();
+                return sunday === shownSunday;
+            };
+
             // A slot's showId already carries its display name for the common
             // cases (get-show-data.js builds it as "tv." + showTitle, and so
             // on) - reading it here is what lets this tab avoid
@@ -2278,9 +2303,19 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 return [blocks, blocks, blocks, blocks, blocks, blocks, blocks];
             }
 
+            // A band's special day, if its segment is one (specialDays.dayAt, a
+            // point safely inside the segment) - null for a regular day-part or
+            // block's own band. Cheap and pure: no reading of channel.programs.
+            function bandDay(backup, columnStart, seg) {
+                if ( (backup == null) || ! Array.isArray(backup.specialDays) || (backup.specialDays.length === 0) ) {
+                    return null;
+                }
+                return specialDays.dayAt(backup, columnStart + seg.startMs + 1);
+            }
+
             scope.rebuildScheduleCalendar = () => {
                 rebuildScheduleLegend();
-                let weekBands = scope.channelHasOverlay() ? dayParts.weeklySegments(scope.channel) : null;
+                let weekBands = scope.channelHasOverlay() ? dayParts.weeklySegments(scope.channel, scope.scheduleWeekAt) : null;
 
                 let backup = scope.channel.scheduleBackup;
                 let hasSlots = (backup != null) && Array.isArray(backup.slots) && (backup.slots.length > 0);
@@ -2289,8 +2324,48 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let daily = hasSlots && (backup.period === dayParts.DAY);
                 let slotsByDay = weekly ? weeklySlotLayout(sortedSlots) : (daily ? dailySlotLayout(sortedSlots) : null);
 
+                let shown = new Date(scope.scheduleWeekAt);
+                let sunday = new Date(shown.getFullYear(), shown.getMonth(), shown.getDate() - shown.getDay()).getTime();
+
+                // The lineup's own airings of a special day, within this week -
+                // read only when some band in the week actually is one (bandDay
+                // above, pure, no programs needed to answer that), and only once
+                // for however many of the week's 7 columns need it, not per
+                // column: channel.programs can be tens of thousands long.
+                let specialAiringsByDay = null;
+                let readSpecialAirings = () => {
+                    if (specialAiringsByDay !== null) {
+                        return specialAiringsByDay;
+                    }
+                    specialAiringsByDay = new Map();
+                    let programs = Array.isArray(scope.channel.programs) ? scope.channel.programs : [];
+                    let t = (typeof(scope.channel.startTime) !== 'undefined') ? new Date(scope.channel.startTime).getTime() : NaN;
+                    let weekEnd = sunday + CAL_WEEK;
+                    if (! isNaN(t)) {
+                        for (let i = 0; (i < programs.length) && (t < weekEnd); i++) {
+                            let p = programs[i];
+                            let start = t;
+                            t += p.duration;
+                            if ( (t > sunday) && ! p.isOffline && (typeof(p.specialDay) === 'string') ) {
+                                if (! specialAiringsByDay.has(p.specialDay)) {
+                                    specialAiringsByDay.set(p.specialDay, []);
+                                }
+                                specialAiringsByDay.get(p.specialDay).push( { at: start, duration: p.duration, label: pinTools.label(p) } );
+                            }
+                        }
+                    }
+                    return specialAiringsByDay;
+                };
+
                 scope.scheduleCalendarDays = DP_STRIP_DAY_NAMES.map( (name, d) => {
+                    let columnStart = sunday + d * CAL_DAY;
                     let bands = [];
+                    let chips = [];
+                    // A special day replaces the regular schedule for its hours
+                    // (src/special-days.js) - its own chip or the hatch saying
+                    // there isn't one yet either way, never the regular slot
+                    // underneath, which will not really air there.
+                    let specialRanges = [];
                     if (weekBands !== null) {
                         bands = weekBands[d].map( (seg) => {
                             let info = classifyContext(seg.context);
@@ -2300,17 +2375,39 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             } else if (info && info.kind === 'bl') {
                                 colorClass = 'bl-color-' + (info.index % BL_STRIP_COLOR_COUNT);
                             }
+                            let day = bandDay(backup, columnStart, seg);
+                            let hatched = false;
+                            if (day !== null) {
+                                specialRanges.push( { startMs: seg.startMs, endMs: seg.endMs } );
+                                let spans = specialDays.spansIn(readSpecialAirings().get(day.id) || [], columnStart + seg.startMs, columnStart + seg.endMs);
+                                if (spans.length === 0) {
+                                    hatched = true;
+                                } else {
+                                    chips = chips.concat(spans.map( (s) => ( {
+                                        topPct: (s.from - columnStart) / CAL_DAY * 100,
+                                        heightPct: (s.to - s.from) / CAL_DAY * 100,
+                                        label: s.label,
+                                        title: s.label + ': ' + clockString(s.from - columnStart),
+                                    } ) ));
+                                }
+                            }
                             return {
                                 topPct: (seg.startMs / CAL_DAY) * 100,
                                 heightPct: ( (seg.endMs - seg.startMs) / CAL_DAY ) * 100,
                                 label: info ? info.name : '',
                                 colorClass: colorClass,
-                                title: (info ? info.name : 'Nothing scheduled') + ': ' + clockString(seg.startMs) + ' - ' + clockString(seg.endMs),
+                                hatched: hatched,
+                                title: (info ? info.name : 'Nothing scheduled') + ': ' + clockString(seg.startMs) + ' - ' + clockString(seg.endMs)
+                                    + (hatched ? ' (not in the saved lineup yet)' : ''),
                                 info: info,
                             };
                         } );
                     }
-                    return { name: name, bands: bands, slots: slotsByDay ? slotsByDay[d] : [] };
+                    let daySlots = slotsByDay ? slotsByDay[d] : [];
+                    if (specialRanges.length > 0) {
+                        daySlots = daySlots.filter( (slot) => ! specialRanges.some( (r) => (slot.topPct * CAL_DAY / 100 < r.endMs) && ( (slot.topPct + slot.heightPct) * CAL_DAY / 100 > r.startMs) ) );
+                    }
+                    return { name: name, bands: bands, chips: chips, slots: daySlots };
                 } );
             };
 
@@ -2340,7 +2437,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
-                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir, state
+                    progs, scope.maxSize, scope.channel.scheduleBackup, false, slotScope, lineupOnAir, state, scope.channel.blocks, scope.fillerOptions
                 );
                 $timeout();
             };
@@ -2677,7 +2774,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 ensureHandEditsKept();
                 let progs = commonProgramTools.slotPool( scope.channel.programs );
                 let state = await catalogFor();
-                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state );
+                scope.timeSlots.startDialog( progs, scope.maxSize, scope.channel.scheduleBackup, false, null, lineupOnAir, state, scope.channel.blocks, scope.fillerOptions );
                 $timeout();
             }
             scope.onRandomSlotsButtonClick = async () => {
@@ -2710,7 +2807,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let state = await catalogFor();
                 scope.timeSlots.startDialog(
                     progs, scope.maxSize, scope.channel.scheduleBackup,
-                    true, null, lineupOnAir, state
+                    true, null, lineupOnAir, state, scope.channel.blocks, scope.fillerOptions
                 );
                 $timeout();
             }
@@ -2859,7 +2956,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             scope.swapRequest = null;
             let openPlacing = (index, mode) => {
                 ensureHandEditsKept();
-                let why = pinTools.whyNot({ airing: scope.channel.programs[index], now: Date.now(), what: mode });
+                let program = scope.channel.programs[index];
+                let why = keptRows.whyNot({ row: { program: program, start: program.start }, now: Date.now(), what: mode, schedule: scope.channel.scheduleBackup });
                 if (why !== null) {
                     showError(why);
                     return;
@@ -2884,7 +2982,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     if (lineup.programs[i].isOffline) {
                         continue;
                     }
-                    let got = keptRows.insertMany({ lineup, index: i, items: selected, now: Date.now() });
+                    let got = keptRows.insertMany({ lineup, index: i, items: selected, now: Date.now(), schedule: scope.channel.scheduleBackup });
                     if (Array.isArray(got.programs)) {
                         applyEdit({ programs: got.programs, text: got.texts.join(' ') });
                         return;

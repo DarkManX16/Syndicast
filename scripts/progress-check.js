@@ -37,6 +37,13 @@
  *       [--around "<local time>"]  the three hours either side, saved and regenerated, Flex after each
  *       [--changed <days>]        airings whose start or episode differ over that many days, by show
  *       [--restart-on-air]        as before Oct 12, 2026: the program on air starts again, and counts as not aired
+ *       [--special <day.json>]    a special day (src/special-days.js) added to the schedule, repeatable;
+ *                                 the lineup is also made without them, from the same pool and kept rows
+ *       [--timetable]             with --special: each day's airings, start, end and the Flex after,
+ *                                 the rows that won't air, and how the regular schedule picks up after
+ *       [--outside <days>]        with --special: every airing outside the days against the lineup made
+ *                                 without them - slot, show, start and episode, by show
+ *       [--follow <regex>]        with --outside: where matching shows stand either side of the days
  *       [--start <show|mode|seasons=episode>]  Episode start, repeatable: the position of <show> in <mode>
  *                                 (next, shuffle, rerun) leaving out <seasons> (comma-separated, may be
  *                                 empty) plays <episode> next - S01E34, or #12 for the 12th item of a
@@ -59,6 +66,8 @@ const showCatalog = require('../src/show-catalog');
 const rounds = require('../src/shuffle-rounds');
 const pinTools = require('../src/pins');
 const keptRows = require('../src/kept-rows');
+const specialDays = require('../src/special-days');
+const specialReport = require('./lib/special-days-report');
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -91,6 +100,10 @@ function parseArgs(argv) {
         else if (a === '--restart-on-air') args.restartOnAir = true;
         else if (a === '--first-open') args.firstOpen = true;
         else if (a === '--save-edited') args.saveEdited = next();
+        else if (a === '--special') (args.special = args.special || []).push(next());
+        else if (a === '--timetable') args.timetable = true;
+        else if (a === '--outside') args.outside = Number(next());
+        else if (a === '--follow') args.follow = new RegExp(next());
         else if ( [ '--swap', '--remove', '--move', '--put-back' ].indexOf(a) !== -1 ) (args.edits = args.edits || []).push({ what: a.slice(2), spec: next() });
         else throw new Error('Unknown argument ' + a);
     }
@@ -128,7 +141,7 @@ function rotate(programs, startTime, at) {
 }
 
 // test/dst-fall-back.js's generate: the real generator with `new Date()` frozen.
-async function generate(programs, schedule, at, history, pins, carry) {
+async function generate(programs, schedule, at, history, pins, carry, fillerPools) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(at); else super(...a); }
@@ -136,10 +149,32 @@ async function generate(programs, schedule, at, history, pins, carry) {
     }
     global.Date = FrozenDate;
     try {
-        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history, pins, carry);
+        return await timeSlotsService(programs, JSON.parse(JSON.stringify(schedule)), history, pins, carry, fillerPools);
     } finally {
         global.Date = RealDate;
     }
+}
+
+// Every filler list a special day's "Fill long breaks with" names (--special,
+// src/special-days.js's fillBreaksWith), read from <data>/filler - the same
+// read the server itself does from its filler store at Create Lineup.
+function fillerPoolsFor(specials, dataDir) {
+    let pools = {};
+    (specials || []).forEach( (day) => {
+        let f = day && day.fillBreaksWith;
+        if ( (typeof(f) === 'string') && f.startsWith('filler:') ) {
+            let id = f.slice('filler:'.length);
+            if (typeof(pools[id]) === 'undefined') {
+                let p = path.join(dataDir, 'filler', id + '.json');
+                try {
+                    pools[id] = JSON.parse(fs.readFileSync(p, 'utf8')).content || [];
+                } catch (e) {
+                    pools[id] = [];
+                }
+            }
+        }
+    } );
+    return pools;
 }
 
 // The row (a program, or a removal's kept Flex) starting at a local time, within 2 s, in the first pass of the list.
@@ -196,7 +231,7 @@ async function main() {
         } else if (e.what === 'remove') {
             r = keptRows.removeOnly({ lineup, index, now: at + n + 1, schedule: channel.scheduleBackup });
         } else if (e.what === 'move') {
-            r = keptRows.move({ lineup, from: index, to: rowAtLocal(lineup, parts[1]), now: at + n + 1, sure: true });
+            r = keptRows.move({ lineup, from: index, to: rowAtLocal(lineup, parts[1]), now: at + n + 1, sure: true, schedule: channel.scheduleBackup });
         } else {
             r = keptRows.putBack({ lineup, index, now: at + n + 1, schedule: channel.scheduleBackup, catalog: channel.programs });
         }
@@ -334,7 +369,20 @@ async function main() {
     } );
     if (total0 <= 0) pins = [];
     if (carry && (carry.program.pin || keptRows.keptKind(carry.program))) pins = pins.filter( (x) => x.program !== carry.program );
-    let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined);
+    // Special days: the same run without them first, for --outside.
+    let specials = (args.special || []).map( (f) => JSON.parse(fs.readFileSync(f, 'utf8')) );
+    let base = null;
+    let regular = JSON.parse(JSON.stringify(schedule));
+    let fillerPools = {};
+    if (specials.length > 0) {
+        fillerPools = fillerPoolsFor(specials, args.data || path.dirname(path.dirname(file)));
+        let copy = (x) => (typeof(x) === 'undefined') ? undefined : JSON.parse(JSON.stringify(x));
+        base = await generate(copy(pool), regular, at, copy(history), pins.length ? copy(pins) : undefined, copy(carry || undefined));
+        schedule.specialDays = (Array.isArray(schedule.specialDays) ? schedule.specialDays : []).concat(specials);
+        let problems = specialDays.problems(schedule, channel.blocks);
+        console.log(`special days: ${specials.map( (d) => d.name ).join(', ')}; problems: ${problems.length ? problems.map( (p) => p.text ).join(' / ') : 'none'}`);
+    }
+    let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined, fillerPools);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
     seasonConstraints.clearStartSeasons(schedule);
 
@@ -438,6 +486,23 @@ async function main() {
         }
         console.log(`CHANGED over ${args.changed} days: ${b.length} saved airings, ${a.length} regenerated; ${b.length - same} saved airings moved or changed:`
             + ` ${JSON.stringify(byShow)}`);
+    }
+
+    if (specials.length > 0) {
+        let customNames = {};
+        pool.forEach( (p) => { if (p.customShowId) customNames['custom.' + p.customShowId] = p.customShowName; } );
+        let showOf = (p) => { let id = getShowData(p).showId || p.title; return customNames[id] || id.replace(/^tv\./, ''); };
+        let nameOf = (p) => (p.type === 'movie' && ! p.customShowId) ? p.title : (p.customShowName ? `${p.customShowName}: ${p.title}` : `${p.showTitle} ${p.title}`);
+        let baseStart = Date.parse(base.startTime);
+        let baseTotal = base.programs.reduce( (a, p) => a + p.duration, 0 );
+        while (baseStart > at) baseStart -= baseTotal;
+        if (args.timetable) {
+            specials.forEach( (day) => specialReport.timetable({ day, programs: res.programs, startTime: newStart, regular, nameOf, print: (l) => console.log(l) }) );
+        }
+        if (args.outside) {
+            specialReport.outside({ days: specials, base: { programs: base.programs, startTime: baseStart }, withDays: { programs: res.programs, startTime: newStart },
+                regular, from: at, to: at + args.outside * DAY, showOf, follow: args.follow, print: (l) => console.log(l) });
+        }
     }
 
     if (args.save) {

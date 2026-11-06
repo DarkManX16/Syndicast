@@ -237,9 +237,11 @@
         </div>
 
         <div class="tr-preview">
+            <label class="small" style="margin-right: 4px;">From</label>
+            <input type="date" class="form-control form-control-sm" style="width: auto; display: inline-block;" ng-model="previewOptions.from">
             <button type="button" class="btn btn-sm btn-outline-primary" ng-click="runPreview()" ng-disabled="preview.busy">Preview on this week's lineup</button>
             <label class="small tr-preview-names">
-                <input type="checkbox" ng-model="usePreviewNames"></input>
+                <input type="checkbox" ng-model="previewOptions.useNames"></input>
                 &nbsp;use suggested clip names
             </label>
             <span class="small text-muted" ng-if="preview.busy">working&hellip;</span>
