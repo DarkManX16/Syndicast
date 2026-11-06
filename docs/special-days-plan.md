@@ -227,17 +227,17 @@ Found building the real New Year's day on 18214: a Back to back row ending off t
 
 ### Task 7: Jan 1 as it will air, on a clock-shifted preview
 
-No code in the repo. On `special-days-data`, with the day made in step 5:
+Done Nov 5, 2026, on a fresh copy of the live data (`special-days-data-step7`), the branch rebased onto `blocks` f5c0391 first. Ron's own day from 18217 was never saved, so the day was the Full Cycle running order (39 half-hour rows, I Am Weasel filling long breaks), named to Ron's real "Toonami: Full Cycle" block. Every moment was its own server and page with the clock shifted, tuned in through `/video`; what each started is in NOTES.md, "Special days", Step 7. Four bugs found and fixed on the way, each with a failing check first (fbaa29a, 8efb663, f2a29c8, 6b5a104).
 
-- [ ] Clock-shifted to Fri Jan 1, 2027 5:50am: tune in through `/video` on channel 1 (and in TiviMate if Ron wants to watch it): the last regular show, the boundary break with Toonami's sign-on, the first row at 6:00am.
-- [ ] Shifted to each movie's start and end: the movie plays whole and the next row starts on its :00 or :30.
-- [ ] Shifted to Fri 3:00pm: the regular Toonami hour is the marathon's, with no sign-on.
-- [ ] Shifted to Sat Jan 2 5:40am: the day's last item, Toonami's sign-off, CN City (Day), and the regular schedule back on time when the timetable said.
-- [ ] Create Lineup during the day (shifted to Jan 1 noon): the program on air stays, the rest of the day is unchanged.
-- [ ] Shifted to Jan 2 noon, Create Lineup: the day is listed Aired and ignored; nothing else changes.
-- [ ] A block of its own for the marathon's bumpers (NOTES.md, "Special days", the block-with-no-airings check, Nov 5): "Toonami: Full Cycle" (no weekly airings), its transitions copied from Toonami, Ronin Warriors' show-intro step's list set to a Full Cycle filler list with the regular Toonami Show Intros as its fallback. Named as the day's block, saved, no warning in the server log or the dialog. Tuned in at a Ronin Warriors break: the Full Cycle clip plays; at another show's break: the regular Toonami one does.
-- [ ] The guide (XMLTV from the preview) for Jan 1.
-- [ ] **Stop** and report to Ron with what aired at each moment. **Then Ron decides** whether to merge into `blocks`, restart 18000 himself, and build the real day on his channel - well before Jan 1. Step 8 follows at once.
+- [x] Clock-shifted to Fri Jan 1, 2027 5:50am: Mission Hill ends 5:52:33; Adult Swim's sign-off, CN Next Toonami, the Full Cycle block's commercials, then the Cartoon Network Powerhouse Intro (Adult Swim's own leaving step - Ron's setup, his to change); Superman at 6:00:01. No Toonami sign-on: the block's entering steps are Mon-Wed and Jan 1 is a Friday.
+- [x] Shifted to each movie's start and end: all five start on their marks and play whole; each break then the I Am Weasel fill, and the next row on its :00 or :30. Found and fixed: a 13:32 break after Phantasm went unfilled (judged after the pad).
+- [x] Shifted to Fri 3:00pm: ThunderCats into ThunderCats, a between-episodes break, no sign-on.
+- [x] Shifted to Sat Jan 2: Super Friends to 6:16:21 (16:21 over), Toonami's sign-off, CN City's opening, Hamtaro at 6:29:55 - back on time at 6:30, as the timetable said.
+- [x] Create Lineup during the day (Jan 1 12:05pm): Dragon Ball Z, on air, stays; the rest of the day identical, fill included. Found and fixed: the fill started over from I Am Weasel S01E01.
+- [x] Shifted to Jan 2 noon, Create Lineup: the day listed Aired, none of it laid; the next 7 days identical, 442 airings. Found and fixed on the way: a second Create Lineup leaked the day's marks into 25 regular airings.
+- [x] A block of its own for the marathon's bumpers: Ron's real "Toonami: Full Cycle" block named as the day's, saved, no warning in the log or the dialog. At a Ronin Warriors break: "Ronin Warriors NEXT Promo (Full Cycle)" and "Ronin Warriors Intro 2 (Full Cycle)"; at other shows' breaks the regular Toonami clips - once the two Full Cycle clips were matched to Ronin Warriors through "Match shows" (on the copy; on Ron's channel they name no show yet).
+- [x] The guide (XMLTV from the preview) for Jan 1: 53 entries for channel 1, the timetable airing for airing.
+- [x] **Stop** and report to Ron with what aired at each moment. **Then Ron decides** whether to merge into `blocks`, restart 18000 himself, and build the real day on his channel - well before Jan 1. Step 8 follows at once.
 
 ## Step 8 - Holiday rows, for Christmas and Halloween
 

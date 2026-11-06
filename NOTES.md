@@ -6799,6 +6799,56 @@ movie with its start time, nothing more unless asked.
 - **Left for step 7**, same as the live checklist already calls for: nothing new here beyond what's
   already listed there.
 
+**Step 7, the New Year's checkpoint, Nov 5, 2026** (`special-days`, rebased onto `blocks` f5c0391 -
+the playback-errors crash fix and the play-cache pool - first; one conflict, `editor-workflows.js`,
+resolved to `blocks`' own newer copy, byte-identical to it). Proved on a copy of the live data
+(7:49pm Nov 5): the Full Cycle running order (39 half-hour rows, Fri Jan 1 6:00am to Sat Jan 2
+6:00am, I Am Weasel filling long breaks) named to Ron's own "Toonami: Full Cycle" block. Ron's day
+from 18217 was never saved (no Update Channel landed in `special-days-data-ny2`), so this was the
+day used. Create Lineup and Update Channel through the dialog; the server warned nothing.
+
+- **Live, on a server and page clock-shifted per moment, tuned in through `/video`** (each item the
+  server started, stamped with the shifted clock): Mission Hill out at 5:52:33, Adult Swim's
+  sign-off, "CN Next Toonami", the Full Cycle block's own commercials, Superman at 6:00:01; every
+  movie start on its mark (SubZero 3:29:57, Dead Zone 7:00:02, Tree of Might 9:59:54, Phantasm
+  11:29:57, World's Strongest 1:00:00) and every end played whole into its break, then the I Am
+  Weasel fill, the next row on its mark (Sailor Moon, DBZ, Powerpuff Girls); 2:59 to 3:00pm, the
+  regular Toonami hour, a between-episodes break with no sign-on; the day out at 6:16:21am, Toonami's
+  sign-off, CN City's opening, Hamtaro at 6:29:55. A Ronin Warriors break: "Ronin Warriors NEXT Promo
+  (Full Cycle)", the commercials, "Ronin Warriors Intro 2 (Full Cycle)"; another show's break the
+  regular Toonami clips - once the two Full Cycle clips were matched to Ronin Warriors (below).
+  Create Lineup at 12:05pm on the day: Dragon Ball Z, on air, stays first; the rest of the day
+  identical, fill included. At Jan 2 12:05pm: the day listed Aired, no airing of it laid, the next
+  7 days identical (442 airings). The guide for Jan 1 (XMLTV at 5:30am and 5:30pm): 53 entries for
+  channel 1, the timetable airing for airing.
+- **Found and fixed, each with a failing check first:**
+  - *A long break judged after the pad* (fbaa29a): Phantasm (1:16:28) pads to 1:20:00, leaving
+    exactly 10:00 - not "over 10" - so its 13:32 break went unfilled. Now judged as it airs.
+  - *A day's own airing leaking into regular ones* (fbaa29a, 8efb663): the second Create Lineup
+    marked 25 regular airings, March to May 2027, as rows of the day - the pool keeps each
+    episode's first copy, often the day's own (`specialDay`/`specialRow`). The generator loads its
+    pool without the marks, and every writer of a new airing from that pool drops them: the
+    orderers' `labelled`, kept-rows' `stripped` (Swap, Insert), pins.js's `makePin`.
+  - *The fill restarting on a re-make during the day* (f2a29c8): the planner dropped every tagged
+    position whose tag wasn't a live day's id, and the fill's is `fill:` + the id; and the wait for
+    the next row after the program on air was a plain Flex. Kept and re-established now, as a
+    Keep-apart row's, and that wait fills.
+  - *The transitions Preview's From walking from the current time of day* (6b5a104, step 6's): the
+    date field keeps the time it was made with - "from Fri Jan 1, 9:22pm". A picked date walks
+    from its midnight; today from now, as before.
+- **Ron's own setup, not code:** his Full Cycle lists' clips named no show, so every "for the show
+  coming up" step on them found nothing and his cascade fell back to the regular clips as built.
+  "Match shows" suggests Ronin Warriors for both Ronin clips (accepted on the copy only); "DragonBall
+  Z Garlic Jr. Saga Intro (Full Cycle)" is flagged (a saga, no season nickname) and the SubZero NEXT
+  promo wasn't looked at. Jan 1 is a Friday: the block's own entering steps (TOM Intro, Toonami Show
+  Intros) are Mon-Wed only, and Adult Swim's leaving step plays the Cartoon Network Powerhouse Intro
+  right before the marathon's first show.
+- **The additive check:** Create Lineup on all three of Ron's channels, `blocks`' code against this
+  branch's (each version's own `progress-check.js`, the same files, the same frozen moment): the
+  lineups identical, and everything else saved - schedule, stored positions, catalog state - too.
+- `npm test` 2840/2840; the workflow checklist, all ten including `special-day`, on a fresh copy
+  (9:49pm Nov 5, port 18223).
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's
