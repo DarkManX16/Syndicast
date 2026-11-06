@@ -8532,11 +8532,15 @@ Lesson: puppeteer's `setDragInterception` drags never touch Windows' drag-and-dr
 lockup that lives in the browser. Never run `msedge.exe --version` to read the version on Windows: it hands
 off to Ron's running Edge and opens a window. Read the folder names under `Edge\Application` instead.
 
-Preview gotcha found on the way: a preview server on a data copy opens ~7,700 play-cache files at startup
-and hits EMFILE. A `bundle.js` request during that burst fails its rebuild, and the footer then says the page
-code "failed to rebuild". With no build record yet the checker never retries that failure, so only a restart clears
-it. The burst runs past "Server Started" (about a minute on Oct 25's copy): restart, wait until the log's EMFILE count
-has held still for a minute, then load the first page.
+Preview gotcha found on the way, and it was a real bug, fixed Nov 5, 2026: `ProgramPlayTimeDB.load()` opened every
+file under `play-cache/<channel>/` at once, ran past the open-file limit (EMFILE) and never loaded the files that
+failed. On a copy of `.dizquetv-dev` taken Nov 5 (14,685 files) the old code loaded 8,189 and logged 6,502 EMFILE
+lines at startup (12,970 failed in the session that first saw it: how many fail depends on what else the process has open); the live server hits the same
+thing on every restart, so Flex clips looked never played (cooldowns and longest-idle reset). `load()` now reads
+through a pool of 32 (`LOAD_CONCURRENCY`): the same copy loads all 14,685 with no EMFILE (`test/play-cache-load.js`
+holds it with a stood-in limit of 64). A `bundle.js` request during the old burst failed its rebuild and the footer
+said the page code "failed to rebuild"; that no longer happens at startup. Count real errors with the pattern
+`EMFILE:`, not `EMFILE`: a data folder or worktree with "emfile" in its name matches the bare word.
 
 #### A drop threw away the row still being dragged, Oct 25, 2026
 

@@ -75,6 +75,7 @@ const suites = [
     './break-detect',
     './break-scan',
     './breaks-store',
+    './play-cache-load',
 ];
 
 (async () => {

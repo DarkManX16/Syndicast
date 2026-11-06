@@ -1,5 +1,8 @@
 const path = require('path');
 var fs = require('fs');
+
+// Files read at once while loading; far under any open-file limit.
+const LOAD_CONCURRENCY = 32;
  
 class ProgramPlayTimeDB {
 
@@ -42,21 +45,34 @@ class ProgramPlayTimeDB {
             }
         }
 
-        let processFileName = async(fileName) => {
-
+        // One list of every file under every channel's folder, read through a
+        // small pool: opening them all at once ran past the process's limit on
+        // open files (EMFILE) and dropped most of the play history.
+        let jobs = [];
+        await Promise.all( files.map( async fileName => {
+            const subDir = path.join(this.dir, fileName);
             try {
-                const subDir = path.join(this.dir, fileName);
                 let subFiles = await fs.promises.readdir( subDir );
-
-                await Promise.all( subFiles.map( async subFileName => {
-                    return processSubFileName(fileName, subDir, subFileName);
-                }) );
+                for (let i = 0; i < subFiles.length; i++) {
+                    jobs.push( [fileName, subDir, subFiles[i]] );
+                }
             } catch (err) {
                 console.log(`When processing ${subDir}`, err);
             }
-        }
+        }) );
 
-        await Promise.all( files.map(processFileName) );
+        let next = 0;
+        let worker = async () => {
+            while (next < jobs.length) {
+                let [fileName, subDir, subFileName] = jobs[next++];
+                await processSubFileName(fileName, subDir, subFileName);
+            }
+        };
+        let workers = [];
+        for (let i = 0; i < Math.min(LOAD_CONCURRENCY, jobs.length); i++) {
+            workers.push( worker() );
+        }
+        await Promise.all( workers );
     }
 
     getProgramLastPlayTime(channelId, programKey) {
