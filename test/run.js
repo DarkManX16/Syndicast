@@ -64,6 +64,7 @@ const suites = [
     './special-days-progress',
     './special-days-block',
     './special-days-preview',
+    './special-days-holiday-dialog',
     './build-check',
     './multi-part',
     './shuffle-rounds',

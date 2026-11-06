@@ -600,7 +600,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
              */
             let holidayCatalogs = {};
             let holidayRead = 0;
-            let holidayShowIds = () => {
+            function holidayShowIds() {
                 let ids = [];
                 (scope.schedule.specialDays || []).forEach( (day) => {
                     if (specialDays.holidayNames(day.holiday).length === 0) {
@@ -613,30 +613,40 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     } );
                 } );
                 return ids;
-            };
-            let readHoliday = () => {
-                let ids = holidayShowIds().filter( (id) => ! catalogs[id] && ! holidayCatalogs[id] );
-                if ( (ids.length === 0) || scope.catalog.unreadable ) {
-                    return Promise.resolve();
+            }
+            function readHoliday() {
+                // The regular read may be under way: let it land first, so a show on a holiday
+                // row that is a regular slot too (all of them, in practice) is read once.
+                return ( (reading !== null) ? reading : Promise.resolve() ).then( () => {
+                    let ids = holidayShowIds().filter( (id) => ! catalogs[id] && ! holidayCatalogs[id] );
+                    if ( (ids.length === 0) || scope.catalog.unreadable ) {
+                        return;
+                    }
+                    let into = holidayCatalogs;
+                    let shows = ids.map( (id) => {
+                        let record = scope.catalog.state.shows[id];
+                        let items = lineupItemsOf(id);
+                        into[id] = { pending: true };
+                        return { showId: id, title: items.length ? items[0].showTitle : nameOf(id), lineupItems: items, source: record ? record.source : undefined };
+                    } );
+                    return catalogReader.read(shows).then( (got) => {
+                        Object.assign(into, got);
+                    } ).catch( (err) => {
+                        shows.forEach( (sh) => { into[sh.showId] = { error: (err && err.message) ? err.message : String(err) }; } );
+                    } ).then( () => {
+                        holidayRead++;
+                        $timeout();
+                    } );
+                } );
+            }
+            function holidayItemsNow() {
+                // The catalog state is copied to read it: not for a channel with no holiday rows.
+                if (holidayShowIds().length === 0) {
+                    return {};
                 }
-                let into = holidayCatalogs;
-                let shows = ids.map( (id) => {
-                    let record = scope.catalog.state.shows[id];
-                    let items = lineupItemsOf(id);
-                    into[id] = { pending: true };
-                    return { showId: id, title: items.length ? items[0].showTitle : nameOf(id), lineupItems: items, source: record ? record.source : undefined };
-                } );
-                return catalogReader.read(shows).then( (got) => {
-                    Object.assign(into, got);
-                } ).catch( (err) => {
-                    shows.forEach( (sh) => { into[sh.showId] = { error: (err && err.message) ? err.message : String(err) }; } );
-                } ).then( () => {
-                    holidayRead++;
-                    $timeout();
-                } );
-            };
-            let holidayItemsNow = () => specialDays.holidayItems( { schedule: scope.schedule, state: catalogStateNow(),
-                catalogs: Object.assign( {}, holidayCatalogs, catalogs ) } );
+                return specialDays.holidayItems( { schedule: scope.schedule, state: catalogStateNow(),
+                    catalogs: Object.assign( {}, holidayCatalogs, catalogs ) } );
+            }
             scope.holidayChanged = () => { readHoliday(); };
             //The holidays Ron has set episodes aside for, as the Catalog page names them;
             //the Christmas season among them when any of its three is. Rebuilt only when

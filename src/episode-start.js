@@ -79,8 +79,9 @@ function firstAiring({ slots, schedule, now, pins }) {
     let at = nextStart(from);
     for (let n = 0; n < 400; n++) {
         // A special day replaces the regular slots for its hours: its next start is after it.
-        if (specialDays.dayAt(schedule, at) !== null) {
-            from = at + 1000;
+        let inDay = specialDays.dayAt(schedule, at);
+        if (inDay !== null) {
+            from = specialDays.windowOf(inDay).to;
             at = nextStart(from);
             continue;
         }

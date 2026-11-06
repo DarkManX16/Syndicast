@@ -258,7 +258,7 @@ Right after step 7, for Ron's Christmas Eve 2026 marathon: built, proved and mer
 
 ### Task 9: Final review and the record
 
-- [ ] Every step's proof re-run on the final code and a fresh copy; the additive check on channels 1-3 at three moments.
-- [ ] A code review of the branch against this plan's Review Focus.
-- [ ] NOTES.md: the Special days entry gains its Build record; the Scheduling roadmap line and the 1.0 line ticked with what shipped; anything built differently from the design said in its own subsection, as Swaps' "Built differently" does.
-- [ ] Commit `Special days: the record`; Ron says when it merges.
+- [x] Every step's proof re-run on the final code and a fresh copy: the workflow checklist, all ten, and the additive check on channels 1-3 on the merged result; the New Year's and Christmas Eve proofs were each made on the code they merged with (step 7 after the rebase, step 8 on the step 7 merge) and the Christmas Eve day re-checked in the browser after the review's fixes.
+- [x] A code review of the branch: Nov 5 (the whole branch, 3 fixes) and Nov 6 (holiday rows and the whole, 3 fixes and a trigger); what was set aside is in NOTES.md.
+- [x] NOTES.md: the Special days entry has its Build record, one paragraph per step; the Scheduling roadmap line and the 1.0 line are ticked with what shipped; "Built differently from the design" is its own paragraph.
+- [x] Commit `Special days: the record`; Ron says when it merges - Nov 6, with the review.

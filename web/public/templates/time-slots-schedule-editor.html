@@ -170,7 +170,7 @@
                                         <div ng-if="!row.item">
                                             <div class="form-row">
                                                 <div class="form-group col-md-4" style="margin-bottom: 4px;">
-                                                    <select class="custom-select custom-select-sm form-control" ng-model="row.showId"
+                                                    <select class="custom-select custom-select-sm form-control" ng-model="row.showId" ng-change="holidayChanged()"
                                                         ng-options="s.id as s.description for s in showOptions"></select>
                                                 </div>
                                                 <div class="form-group col-md-3" style="margin-bottom: 4px;">

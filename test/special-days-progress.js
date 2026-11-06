@@ -260,6 +260,13 @@ module.exports = async function () {
         const at = episodeStart.firstAiring({ slots: s.slots.filter( (x) => x.time === 6 * HOUR ), schedule: s, now: fri(3) });
         suite.check('a regular row\'s next airing skips the slot the day replaces: the 6:00am slot airs next Saturday',
             at.at === sat(6), clock(at.at));
+        // Review, Nov 6: it stepped one slot at a time, so a long day over a dense schedule ran
+        // out of its 400 steps inside the day. 288 slots a day (every 5 minutes), a 2-day day.
+        const dense = Object.assign( daily(), { slots: Array.from( { length: 288 }, (_, k) => ({ time: k * 5 * MIN, showId: 'tv.A', order: 'next' }) ) } );
+        const longDay = Object.assign( {}, dense, { specialDays: [ day({ positions: 'advance', to: { date: '2026-10-11', time: 6 * HOUR } }) ] } );
+        const denseAt = episodeStart.firstAiring({ slots: dense.slots, schedule: longDay, now: fri(7) });
+        suite.check('...over a dense schedule and a 2-day day, the next airing is the first slot after the day, not a moment inside it',
+            denseAt.at === new Date(2026, 9, 11, 6).getTime(), clock(denseAt.at));
     }
     return suite;
 };
