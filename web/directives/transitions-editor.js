@@ -425,8 +425,7 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                             return all;
                         }, {} ) ),
                     };
-                    const chosen = (scope.previewOptions.from instanceof Date) && ! isNaN(scope.previewOptions.from.getTime());
-                    const from = chosen ? scope.previewOptions.from.getTime() : Date.now();
+                    const from = editor.previewStart(scope.previewOptions.from, Date.now());
                     const view = editor.previewBreaks(channel, scope.context, from, from + WEEK, env);
                     let hints = {};
                     if (! useNames) {
