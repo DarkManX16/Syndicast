@@ -128,10 +128,11 @@ function playNext(show, constraint, record, tagDay) {
                 wrapped = true;
             }
         },
-        // A jump to an episode (an Advance special day's start): from here on, in order.
+        // A jump to an episode (an Advance special day's start): from here on, in order -
+        // from the first half of a split episode (multi-part.js).
         seek: (pick) => {
             if (candidates.length > 0) {
-                position = slotProgress.resolveRef(pick, candidates, getShowData);
+                position = multiPart.episodeAround(candidates, slotProgress.resolveRef(pick, candidates, getShowData)).first;
             }
         },
     };

@@ -72,14 +72,66 @@ function joinsPrevious(previous, program) {
 }
 
 /*
+ * Split episodes: a half-hour episode kept as one file per story, "S03E11a -
+ * Clown" and "S03E11b - Testing Dixon". The half a title says it is - or,
+ * when the title doesn't say, the file's name (Plex titles an episode by its
+ * stories) - as season, episode and letter. A file holding both halves
+ * ("S01E06a-b", "S02E06a+b", "S01.E01a.E01b") is a whole episode.
+ */
+const HALF = /S(\d+)[ ._-]*E(\d+)([a-d])(?![a-z0-9])/i;
+// Right after the letter, with nothing between: "a-b", "a+b", "a.E01b" - so "S03E11a - A Day" is a half.
+const BOTH = /^(?:[-+&][a-d](?![a-z0-9])|[ ._-]*E\d+[a-d](?![a-z0-9]))/i;
+
+function halfIn(text) {
+    let m = (typeof(text) === 'string') ? HALF.exec(text) : null;
+    if ( (m === null) || BOTH.test(text.slice(m.index + m[0].length)) ) {
+        return null;
+    }
+    return { season: parseInt(m[1], 10), episode: parseInt(m[2], 10), letter: m[3].toLowerCase() };
+}
+
+function halfOf(program) {
+    if ( (typeof(program) !== 'object') || (program === null) ) {
+        return null;
+    }
+    let file = (typeof(program.file) === 'string') ? program.file.split(/[\\/]/).pop() : null;
+    return halfIn(program.title) || halfIn(file);
+}
+
+// The next half of the same episode, right after the one before it in its show's order.
+function joinsHalf(previous, program) {
+    let before = halfOf(previous);
+    let half = halfOf(program);
+    return (before !== null) && (half !== null) && (before.season === half.season) && (before.episode === half.episode)
+        && (half.letter.charCodeAt(0) === before.letter.charCodeAt(0) + 1);
+}
+
+/*
+ * Where a split episode starts and ends around index i of a show's sorted
+ * episodes: the first half and the last, i itself for any other episode.
+ */
+function episodeAround(sortedPrograms, i) {
+    let first = i;
+    while ( (first > 0) && joinsHalf(sortedPrograms[first - 1], sortedPrograms[first]) ) {
+        first--;
+    }
+    let last = i;
+    while ( (last + 1 < sortedPrograms.length) && joinsHalf(sortedPrograms[last], sortedPrograms[last + 1]) ) {
+        last++;
+    }
+    return { first: first, last: last };
+}
+
+/*
  * A show's episodes, in its order, grouped into stories: every episode in
- * exactly one, a single episode being a story of one.
+ * exactly one, a single episode being a story of one. A split episode's
+ * halves are one story.
  */
 function stories(sortedPrograms) {
     let out = [];
     for (let i = 0; i < sortedPrograms.length; i++) {
         let program = sortedPrograms[i];
-        if ( (out.length > 0) && joinsPrevious(sortedPrograms[i - 1], program) ) {
+        if ( (out.length > 0) && ( joinsPrevious(sortedPrograms[i - 1], program) || joinsHalf(sortedPrograms[i - 1], program) ) ) {
             out[out.length - 1].push(program);
         } else {
             out.push([ program ]);
@@ -91,4 +143,7 @@ function stories(sortedPrograms) {
 module.exports = {
     partOf: partOf,
     stories: stories,
+    halfOf: halfOf,
+    joinsHalf: joinsHalf,
+    episodeAround: episodeAround,
 };
