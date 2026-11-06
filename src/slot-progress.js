@@ -892,6 +892,31 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
 
     let days = specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, places, oldRecords, positions,
         candidatePool, fromPlace, getShowData });
+
+    // A Play Next place on a split episode's later half goes back to its first
+    // half (multi-part.js) - a slot never starts with a "b" - unless the half
+    // before it is the program on air, which the lineup keeps (placesFrom): the
+    // rest of its episode follows it in its slot.
+    let carried = null;
+    if (typeof(placesFrom) === 'number') {
+        let before = airings({ programs, startTime: start, from: now - DAY, to: now + 1, schedule: {}, getShowData: () => ({ hasShow: false }) })
+            .filter( (a) => a.start <= now );
+        carried = (before.length > 0) ? before[before.length - 1].program : null;
+    }
+    Object.keys(positions).forEach( (key) => {
+        let record = positions[key];
+        let parsed = JSON.parse(key);
+        if ( (parsed[1] !== 'next') || ! isRecord(record) || ! isRecord(record.next) ) {
+            return;
+        }
+        let candidates = candidatesFor(candidatePool, parsed[0], { excludeSeasons: parsed[2] }, getShowData);
+        let i = candidates.findIndex( (p) => rounds.fileKey(p) === record.next.key );
+        let first = (i === -1) ? i : multiPart.episodeAround(candidates, i).first;
+        if ( (first === i) || ( (carried !== null) && (rounds.fileKey(carried) === rounds.fileKey(candidates[i - 1])) ) ) {
+            return;
+        }
+        positions[key] = Object.assign( {}, record, { next: ref(candidates[first], getShowData) } );
+    } );
     let out = { asOf: new Date(now).toISOString(), positions: positions };
     if (Object.keys(days).length > 0) {
         out.specialDays = days;

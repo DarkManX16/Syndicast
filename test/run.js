@@ -65,6 +65,7 @@ const suites = [
     './special-days-block',
     './special-days-preview',
     './special-days-holiday-dialog',
+    './split-episodes',
     './build-check',
     './multi-part',
     './shuffle-rounds',
