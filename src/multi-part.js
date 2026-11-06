@@ -79,7 +79,8 @@ function joinsPrevious(previous, program) {
  * ("S01E06a-b", "S02E06a+b", "S01.E01a.E01b") is a whole episode.
  */
 const HALF = /S(\d+)[ ._-]*E(\d+)([a-d])(?![a-z0-9])/i;
-const BOTH = /^(?:\s*[-+&]\s*[a-d](?![a-z0-9])|[ ._-]*E?\d+[a-d](?![a-z0-9]))/i;
+// Right after the letter, with nothing between: "a-b", "a+b", "a.E01b" - so "S03E11a - A Day" is a half.
+const BOTH = /^(?:[-+&][a-d](?![a-z0-9])|[ ._-]*E\d+[a-d](?![a-z0-9]))/i;
 
 function halfIn(text) {
     let m = (typeof(text) === 'string') ? HALF.exec(text) : null;

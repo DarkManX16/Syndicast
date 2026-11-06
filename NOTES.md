@@ -7001,20 +7001,38 @@ year (35, 23 and 153 halves apart on channels 1-3).
   back to the first half of its episode, unless that half is the program on air, which the lineup
   keeps - then the rest follows it in its slot. An episode start or an Advance day's start on a b
   half starts at its a. A show already out of step therefore realigns at its next Create Lineup by
-  airing the a half once more, with its b.
+  airing the a half once more, with its b. A swap or a repeat of that half on air isn't the
+  position's, so it doesn't count.
+- **Create Lineup with an a half on air** keeps the rest in its slot: after the half's pad when it
+  still fits by the slot's end, else straight after it (Ron's Nov 2 lineup at Sat 2:40pm: 11a
+  2:35, 11b 2:46:32, Recess on time). In a Back to back day, which moves on to the next row once a
+  program is on air, the rest is laid with the half either way.
+- A row kept in time airs its position's next episode, and a split episode's rest straight after.
 - The halves are one story (`multiPart.stories`), so Shuffle and Rerun pick and air them together.
-- A picked item (This item) is only itself, and a row kept in the list airs as it is: Ron's Fri
+- A picked item (This item) is only itself, and a row kept as it is airs as it is: Ron's Fri
   Nov 6 swap (S02E02a) and insert (S03E07b) stay as he made them.
 
 **What this doesn't change.** Shows without split files: the generator's arithmetic is the same
-unless a slot holds a split episode. Random Slots, the editor, and the kept-rows ripple in the list
-(it moves an episode along one airing at a time; Create Lineup pairs again).
+unless a slot holds a split episode. The kept-rows ripple in the list (it moves an episode along one
+airing at a time; Create Lineup pairs again). The Random Slots generator doesn't pair halves; its
+editor shares the planner, so an out-of-step place there goes back to its a as well. None of Ron's
+channels uses Random Slots.
+
+**Found by the review before merging**, each fixed with a test that failed first: Create Lineup
+with a squeezed a half on air left its b for the next day, and in a Back to back day sent it to the
+next row; a kept row in the break after an on-time pair moved the b to 2:41:33; a row kept in time
+on an a left the b; a swap of the half on air kept the place on the b; and "S03E11a - A Day at the
+Beach" (a story starting with one letter) read as a file holding both halves. Left as is: a Repeat
+measures a split episode by its show's order rather than by what its source aired, which changes
+nothing on the air (the one half it has slides instead of filling, and the next slot is padded the
+same).
 
 **Proof**, on copies of `.dizquetv-dev` taken Fri Nov 6 at 4:06am Central, with every show's
 full catalog read from Plex, Create Lineup at Fri 5:00am from `blocks` and from the branch
-(`progress-check --catalog`). Suite 2872 at the start, 2902 at the end (`test/split-episodes.js`:
-the halves, stories, the late slot, on time, room for one half, a short slot, Shuffle, a kept row,
-the program on air, Back to back on the quarter hour, an Advance start, the fill, the planner).
+(`progress-check --catalog`). Suite 2872 at the start, 2910 at the end (`test/split-episodes.js`:
+the halves, stories, the late slot, on time, room for one half, a short slot, Shuffle, kept rows,
+the program on air on time and late, Back to back on the quarter hour with and without a half on
+air, an Advance start, the fill, the planner). Every proof below re-run on the final code.
 - **Next three weeks:** every airing of every other show identical on all three channels (1,318,
   1,003 and 1,063); every split episode aired whole (5, 12 and 6), and the split shows' airings
   are the same as blocks' there too. The only halves apart are Ron's two Fri Nov 6 edits.
@@ -7026,7 +7044,9 @@ the program on air, Back to back on the quarter hour, an Advance start, the fill
 - **Realigned:** Ron's Nov 2 lineup at Sat Nov 7 3:00pm: Sunday 3:00 airs 11a, 3:15 11b (blocks:
   11b, then 12a). The saved lineups where each show is out of step: The Weekenders Fri Nov 20 (Sat
   airs 4a and 4b), Gym Partner Sat Nov 28 (Sun 2:30 S02E03a, 2:45 S02E03b), Ren & Stimpy Mon May 24,
-  2027 (Tue 3:10 S04E02a and b). Each time only that show's position moves.
+  2027 (Tue 3:10 S04E02a and b). Each time only that show's position moves. And Ron's Nov 2 lineup
+  at Sat 2:40pm, 11a on air in the late slot: 11b at 2:46:32, Recess 3:00, Sunday 12a and 12b
+  (blocks: 11a alone, Sunday 11b and 12a).
 - **Twice in a row:** regenerated from the branch's lineups on Sun Nov 8 at 3:05pm (11a on air,
   carried: 11b follows at 3:15) and Sat Nov 14 at 2:40pm: every position continues exactly (138 of
   138, 163 of 163, and 145 and 142 on channel 3) and every pair stays whole.

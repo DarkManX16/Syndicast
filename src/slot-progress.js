@@ -896,12 +896,17 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
     // A Play Next place on a split episode's later half goes back to its first
     // half (multi-part.js) - a slot never starts with a "b" - unless the half
     // before it is the program on air, which the lineup keeps (placesFrom): the
-    // rest of its episode follows it in its slot.
+    // rest of its episode follows it in its slot. Only when it is that position's own
+    // airing: a swap of the same half, or a repeat of it, isn't.
     let carried = null;
+    let carriedKey = null;
     if (typeof(placesFrom) === 'number') {
-        let before = airings({ programs, startTime: start, from: now - DAY, to: now + 1, schedule: {}, getShowData: () => ({ hasShow: false }) })
+        let before = airings({ programs, startTime: start, from: now - DAY, to: now + 1, schedule: readWith, getShowData })
             .filter( (a) => a.start <= now );
-        carried = (before.length > 0) ? before[before.length - 1].program : null;
+        if (before.length > 0) {
+            carried = before[before.length - 1].program;
+            carriedKey = before[before.length - 1].key;
+        }
     }
     Object.keys(positions).forEach( (key) => {
         let record = positions[key];
@@ -912,7 +917,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
         let candidates = candidatesFor(candidatePool, parsed[0], { excludeSeasons: parsed[2] }, getShowData);
         let i = candidates.findIndex( (p) => rounds.fileKey(p) === record.next.key );
         let first = (i === -1) ? i : multiPart.episodeAround(candidates, i).first;
-        if ( (first === i) || ( (carried !== null) && (rounds.fileKey(carried) === rounds.fileKey(candidates[i - 1])) ) ) {
+        if ( (first === i) || ( (carried !== null) && (carriedKey === key) && (rounds.fileKey(carried) === rounds.fileKey(candidates[i - 1])) ) ) {
             return;
         }
         positions[key] = Object.assign( {}, record, { next: ref(candidates[first], getShowData) } );

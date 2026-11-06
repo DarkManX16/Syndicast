@@ -403,10 +403,12 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     }
     // A slot holding a split episode whose halves fit only without their pads lays them without:
     // Ron's 2:35 slot airs 11a and 11b back to back, ending 2:57:22, rather than 11a alone.
-    function squeeze(pads, room, split) {
+    // `openEnd`: the last item's pad isn't laid (before a pin), so it doesn't count.
+    function squeeze(pads, room, split, openEnd) {
         let padded = pads.reduce( (sum, x) => sum + x.totalDuration, 0 );
         let plain = pads.reduce( (sum, x) => sum + x.item.duration, 0 );
-        if (split && (padded > room) && (plain <= room)) {
+        let laid = (openEnd === true) ? padded - pads[pads.length - 1].pad : padded;
+        if (split && (laid > room) && (plain <= room)) {
             pads.forEach( (x) => { x.pad = 0; x.totalDuration = x.item.duration; } );
             return plain;
         }
@@ -913,13 +915,16 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     let nextPin = 0;
     let lastPin = null;
     let runningLate = false;
-    // A row kept in time is a one-off slot of its position, at its instant.
+    // A row kept in time is a one-off slot of its position, at its instant - and
+    // the rest of a split episode it starts follows it straight away.
+    let keptSlot = null;
     let keptEpisode = (pin) => {
         let [ showId, order, excluded ] = JSON.parse(pin.key);
         if ( (typeof(showsById[showId]) === 'undefined') || ! positions.plays(order) ) {
             return null;
         }
-        let position = positions.forSlot({ time: -1, showId: showId, order: order, seasons: { excludeSeasons: excluded } });
+        keptSlot = { time: -1, showId: showId, order: order, seasons: { excludeSeasons: excluded } };
+        let position = positions.forSlot(keptSlot);
         let next = position.current();
         if ( (next === null) || (typeof(next) === 'undefined') || next.isOffline ) {
             return null;
@@ -930,8 +935,12 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     let placePin = () => {
         let pin = pins[nextPin++];
         let program = Object.assign( {}, pin.program );
+        keptSlot = null;
+        let fromPosition = false;
         if (pin.kept) {
-            program = (typeof(pin.key) === 'string') ? (keptEpisode(pin) || program) : program;
+            let episode = (typeof(pin.key) === 'string') ? keptEpisode(pin) : null;
+            fromPosition = (episode !== null);
+            program = fromPosition ? episode : program;
         } else {
             delete program.slotPosition;
             delete program.shuffleOrder;
@@ -943,12 +952,61 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             t += program.duration;
         } else {
             pushProgram(program);
+            if (fromPosition) {
+                takeRest(keptSlot, unitOf(keptSlot, program), pushProgram);
+            }
         }
         // `ownEnd`: where it would end from its own time - take covers no slot past it (pushedPast).
         lastPin = { start: start, end: t, then: ( ! pin.kept && (pin.then === 'late') ) ? 'late' : 'take',
-            kind: program.pin ? program.pin.kind : (keptKindOf(program) || undefined), ownEnd: pin.at + program.duration };
+            kind: program.pin ? program.pin.kind : (keptKindOf(program) || undefined), ownEnd: pin.at + (t - start) };
         runningLate = false;
     };
+
+    /*
+     * The program on air, a split episode's half from its slot's position: the rest of
+     * the episode stays in its slot. After its usual pad when it still fits by the slot's
+     * end (as the slot would have laid it); otherwise straight after it, as a slot short
+     * of room lays its halves. A Back to back row moves on once its program is on air, so
+     * the rest is laid here either way.
+     */
+    function carryRest(c) {
+        let program = c.program;
+        let parsed = slotProgress.parseLabel(program.slotPosition);
+        if ( (parsed === null) || (parsed.mode === 'repeat') || slotProgress.keptAsItIs(program) || program.pin ) {
+            return;
+        }
+        let slot = null;
+        let end = null;
+        let back = false;
+        if (typeof(program.specialDay) === 'string') {
+            let d = laidDays.find( (x) => x.day.id === program.specialDay );
+            slot = ( (typeof(d) !== 'undefined') && (typeof(program.specialRow) === 'number') ) ? (d.slotOf[program.specialRow] || null) : null;
+            if (slot !== null) {
+                back = (d.timed === null);
+                let later = back ? [] : d.timed.filter( (x) => x.at > c.start + SLACK );
+                end = back ? Math.min(specialDays.nextMark(c.start + unitOf(slot, program).duration, d.step), d.to)
+                           : ( (later.length > 0) ? later[0].at : d.to );
+            }
+        } else {
+            let found = findSlot(localMsIntoPeriod(c.start));
+            if ( (found !== null) && (found.slot.showId === getShowData(program).showId) && positions.plays(found.slot.order) ) {
+                slot = found.slot;
+                end = c.start + found.remaining;
+            }
+        }
+        if (slot === null) {
+            return;
+        }
+        let unit = unitOf(slot, program);
+        let pad = makePadded(program).pad;
+        if ( (unit.rest.length === 0) || ( ! back && (t + pad + unit.duration - program.duration <= end) ) ) {
+            return;
+        }
+        if (t + pad + unit.duration - program.duration <= end) {
+            pushFlex(pad);
+        }
+        takeRest(slot, unit, pushProgram);
+    }
 
     let carry = ( (carryChecked !== null) && (carryChecked.start >= t0) ) ? carryChecked : null;
     if (carry !== null) {
@@ -957,6 +1015,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             pushFlex( carry.start - t0 );
         }
         pushProgram( Object.assign( {}, carry.program ) );
+        carryRest(carry);
         // Its own slot gets only what fits whole after it (rule 2); slots it ran into
         // are filled as the generator always has, so what follows is what it was -
         // unless it is a pin, which keeps its own choice for them (rule 3).
@@ -1174,7 +1233,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
                 pads.push(makePadded(item));
                 advanceSlot(slot);
                 split = (takeRest(slot, unit, (x) => pads.push(makePadded(x))) > 0) || split;
-                total = squeeze(pads, remaining, split);
+                total = squeeze(pads, remaining, split, true);
                 item = getNextForSlot(slot, remaining);
                 unit = unitOf(slot, item);
             }

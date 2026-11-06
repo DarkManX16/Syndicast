@@ -125,6 +125,9 @@ module.exports = async function () {
             && half('Stimpy\'s Big Day / The Big Shot', 'F:\\Ren\\The.Ren.And.Stimpy.Show.S01.E01a.E01b.mp4') === null);
         suite.check('a release hash in brackets is not a half (Cowboy Bebop "[E548716B]")',
             half('Waltz for Venus', 'G:\\Cowboy.Bebop.S01E04.1080p-Hi10p.BluRay.FLAC5.1.x264.[E548716B].mkv') === null);
+        suite.check('a story whose title starts with one letter is still a half ("A Day...", "B Movie", "3D...")',
+            said(half('S03E11a - A Day at the Beach')) === 'S3E11a' && said(half('S03E11b - B Movie')) === 'S3E11b'
+            && said(half('S01E01a - 3D Adventure')) === 'S1E1a' && said(half('S03E11a - D-Day')) === 'S3E11a');
         suite.check('a show\'s own title is not a half ("A Sappy Ending")', half('A Sappy Ending', 'G:\\Pokemon S03E03 A Sappy Ending.mp4') === null);
     }
 
@@ -185,6 +188,27 @@ module.exports = async function () {
         const carried = await generate(pool(), Object.assign(daily(), { progress: { positions: atWk('/wk/2') } }), day(0, 14, 40),
             { carry: { start: day(0, 14, 30), program: Object.assign({}, a, { slotPosition: 'next|' }) } });
         suite.check('with 11a on air, 11b follows it in the same slot', same(wkOn(carried, 0), [ '2:30:00 PM S03E11a', '2:45:00 PM S03E11b' ]), show(wkOn(carried, 0)));
+
+        // Ron's late slot again, Create Lineup at 2:40 with 11a on air: 11b still fits only unpadded.
+        const lateCarry = await generate(pool(32 * MIN), Object.assign(daily(), { progress: { positions: atWk('/wk/2') } }), day(0, 14, 40),
+            { carry: { start: day(0, 14, 35), program: Object.assign({}, a, { slotPosition: 'next|' }) } });
+        suite.check('with 11a on air in a late slot, 11b follows it at once', same(wkOn(lateCarry, 0), [ '2:35:00 PM S03E11a', '2:46:33 PM S03E11b' ]), show(wkOn(lateCarry, 0)));
+        suite.check('...Recess on time, and the next day starts with 12a', (startOf(lateCarry, 'Recess', 0) === '3:00:00 PM')
+            && short(wkOn(lateCarry, 1)[0] || '').endsWith('S03E12a'), startOf(lateCarry, 'Recess', 0) + ' ' + show(wkOn(lateCarry, 1)));
+
+        // A row kept as it is in the break right after an on-time pair moves nothing.
+        const insert = Object.assign(episode('Recess', 31, 2 * MIN), { title: 'Recess Bumper', kept: { edits: [ { id: 'e2', kind: 'insert', made: '2026-10-08T00:00:00.000Z' } ] } });
+        const afterPair = await generate(pool(), Object.assign(daily(), { progress: { positions: atWk('/wk/1') } }), NOON,
+            { pins: [ { at: day(0, 14, 55, 49), program: insert, kept: true } ] });
+        suite.check('a kept row in the break after 11b leaves the halves at 2:30 and 2:45',
+            same(wkOn(afterPair, 0), [ '2:30:00 PM S03E11a', '2:45:00 PM S03E11b' ]), show(wkOn(afterPair, 0)));
+
+        // A row kept in time at 2:40 airs the position's next, 11a: 11b goes with it.
+        const shiftedRow = Object.assign({}, wk()[1], { slotPosition: 'next|', kept: { edits: [ { id: 'e3', kind: 'shifted', made: '2026-10-08T00:00:00.000Z' } ] } });
+        const shifted = await generate(pool(), Object.assign(daily(), { progress: { positions: atWk('/wk/1') } }), NOON,
+            { pins: [ { at: day(0, 14, 40), program: shiftedRow, kept: true, key: slotProgress.positionKey(WK, 'next', undefined) } ] });
+        suite.check('a row kept in time on 11a has 11b right after it', same(wkOn(shifted, 0), [ '2:40:00 PM S03E11a', '2:51:33 PM S03E11b' ]), show(wkOn(shifted, 0)));
+        suite.check('...and the next day starts with 12a', short(wkOn(shifted, 1)[0] || '').endsWith('S03E12a'), show(wkOn(shifted, 1)));
     }
 
     suite.log('-- special days --');
@@ -196,6 +220,14 @@ module.exports = async function () {
         const quarter = await generate(pool(), Object.assign(daily(), { specialDays: [ sd({ rounding: 'quarter' }) ], progress: { positions: atWk('/wk/1') } }), NOON);
         suite.check('Back to back on the quarter hour: the row plays 12a and 12b before the next row',
             same(wkOn(quarter, 1).slice(0, 2), [ '2:00:00 PM S03E12a', '2:15:00 PM S03E12b' ]), show(wkOn(quarter, 1)));
+
+        // Create Lineup at 2:05 during that day, 12a on air: 12b still follows it in its row.
+        const onAirRow = Object.assign({}, wk()[3], { slotPosition: 'next|', specialDay: 'sd_t', specialRow: 0 });
+        const quarterCarry = await generate(pool(), Object.assign(daily(), { specialDays: [ sd({ rounding: 'quarter' }) ], progress: { positions: atWk('/wk/4') } }),
+            day(1, 14, 5), { carry: { start: day(1, 14), program: onAirRow } });
+        suite.check('Back to back, 12a on air: 12b follows in its row, and the next row is at 2:30',
+            same(wkOn(quarterCarry, 1).slice(0, 2), [ '2:00:00 PM S03E12a', '2:15:00 PM S03E12b' ]) && (startOf(quarterCarry, 'Recess', 1) === '2:30:00 PM'),
+            show(wkOn(quarterCarry, 1)) + ' Recess ' + startOf(quarterCarry, 'Recess', 1));
 
         const jumped = await generate(pool(), Object.assign(daily(), { specialDays: [ sd({ slots: [
             { showId: WK, order: 'next', start: slotProgress.ref(wk()[2], getShowData) }, { showId: 'tv.Recess', order: 'next' } ] }) ] }), NOON);
@@ -234,6 +266,11 @@ module.exports = async function () {
         suite.check('after 11a aired alone, the place is 11a again, not 11b', titleOf(after.positions[key]) === 'S03E11a', titleOf(after.positions[key]));
         const onAir = plan(day(1, 14, 40), day(1, 14, 46, 33));
         suite.check('with 11a on air and carried, the place stays on 11b', titleOf(onAir.positions[key]) === 'S03E11b', titleOf(onAir.positions[key]));
+        const swapped = lineup.map( (p) => (p.key === wk()[1].key)
+            ? Object.assign({}, p, { slotPosition: undefined, kept: { edits: [ { id: 'e4', kind: 'swap', made: '2026-10-08T00:00:00.000Z' } ] } }) : p );
+        const swapOnAir = slotProgress.planProgress({ programs: swapped, startTime: THU, now: day(1, 14, 40), placesFrom: day(1, 14, 46, 33),
+            openedSchedule: daily(), schedule: daily(), pool: pool(), getShowData });
+        suite.check('11a on air as a swap is not the position\'s: the place goes back to 11a', titleOf(swapOnAir.positions[key]) === 'S03E11a', titleOf(swapOnAir.positions[key]));
         const before = plan(day(1, 10));
         suite.check('before it, the place is 11a as it was', titleOf(before.positions[key]) === 'S03E11a', titleOf(before.positions[key]));
         const picked = slotProgress.planProgress({ programs: lineup, startTime: THU, now: day(1, 16), openedSchedule: daily(), schedule: daily(),
