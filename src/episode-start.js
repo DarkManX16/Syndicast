@@ -304,10 +304,14 @@ function dateOnlyLabel(at) {
  *     a regular slot of it would read.
  *
  * `day` is read as the editor has it, which may not be on `schedule` yet.
+ *   - A holiday row (`holidayItems`: special-days.js's, what the generator is
+ *     given): the first of the episodes set aside for the day's holiday, from
+ *     the position of its own - the same line, but never the regular next.
+ *
  * Pure; one line per row, '' where there is nothing to say (a bad row, or a
  * show with nothing in the pool).
  */
-function dayRowLines({ day, schedule, pool, getShowData }) {
+function dayRowLines({ day, schedule, pool, getShowData, holidayItems }) {
     let shows = [];
     let byId = new Map();
     pool.forEach( (p) => {
@@ -332,9 +336,20 @@ function dayRowLines({ day, schedule, pool, getShowData }) {
     let w = specialDays.windowOf(day);
     let startLabel = (w === null) ? '' : whenLabel({ at: w.from, now: false });
     let apart = (day.positions === 'apart') ? day.id : undefined;
+    let aside = ( (specialDays.holidayNames(day.holiday).length > 0) && (typeof(holidayItems) === 'object') && (holidayItems !== null) && (typeof(holidayItems[day.id]) === 'object') )
+        ? holidayItems[day.id] : {};
     return rows.map( (row) => {
         if ( (row === null) || (typeof(row) !== 'object') ) {
             return '';
+        }
+        if ( (row.holidayOnly === true) && (typeof(row.showId) === 'string') && Array.isArray(aside[row.showId]) && ! ((typeof(row.item) === 'object') && (row.item !== null)) ) {
+            let holidaySlot = Object.assign( {}, row, { order: specialDays.holidayOrder(row.order), apart: 'holiday:' + day.id, pool: aside[row.showId] } );
+            if (positions.plays(holidaySlot.order)) {
+                let first = positions.forSlot(holidaySlot).current();
+                if ( (first !== null) && (typeof(first) !== 'undefined') ) {
+                    return `Next: ${episodeLabel(first)} · ${startLabel}`;
+                }
+            }
         }
         if ( (typeof(row.item) === 'object') && (row.item !== null) && (typeof(row.item.program) === 'object') && (row.item.program !== null) ) {
             return pinTools.label(row.item.program);

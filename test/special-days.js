@@ -338,5 +338,52 @@ module.exports = async () => {
         suite.check('...and in its own day\'s band up to midnight; nothing outside the band',
             (fri.length === 2) && (fri[1].label === 'Mask of the Phantasm') && (fri[1].to === local(2027, 1, 2, 0, 0)), JSON.stringify(fri.map( (s) => s.label )));
     }
+
+    suite.log('holiday rows (step 8)');
+    {
+        const ep = (show, season, n, key) => ({ type: 'episode', showTitle: show, title: `${show} ${season}.${n}`, season, episode: n,
+            duration: 22 * MIN, serverKey: 'srv', key: key || `/e/${show}/${season}/${n}` });
+        const aside = (program, holiday, reason) => ({ showId: 'tv.' + program.showTitle, season: program.season, episode: program.episode,
+            title: program.title, reason: reason || 'holiday', holiday });
+        const xmas1 = ep('Hey Arnold!', 0, 1, '/x/1');
+        const xmas2 = ep('Hey Arnold!', 0, 2, '/x/2');
+        const hanuk = ep('Hey Arnold!', 0, 3, '/x/3');
+        const scary = ep('Hey Arnold!', 0, 4, '/x/4');
+        const never = ep('Hey Arnold!', 0, 5, '/x/5');
+        const regular = ep('Hey Arnold!', 1, 1);
+        const items = [ xmas2, regular, xmas1, hanuk, scary, never ];
+        const state = { shows: {}, neverAir: {
+            'srv|/x/1': aside(xmas1, 'Christmas'), 'srv|/x/2': aside(xmas2, 'Christmas'), 'srv|/x/3': aside(hanuk, 'Hanukkah'),
+            'srv|/x/4': aside(scary, 'Halloween'), 'srv|/x/5': aside(never, undefined, 'never') } };
+        const keys = (list) => list.map( (p) => p.key );
+
+        suite.check('a holiday day names its holidays: one, or the Christmas season\'s three',
+            JSON.stringify(sd.holidayNames('Halloween')) === '["Halloween"]'
+                && JSON.stringify(sd.holidayNames('Christmas season')) === '["Christmas","Hanukkah","Kwanzaa"]'
+                && sd.holidayNames(null).length === 0 && sd.holidayNames('').length === 0,
+            JSON.stringify(sd.holidayNames('Christmas season')));
+        suite.check('candidates are exactly the episodes set aside as that holiday - not the rest of the show, not other holidays, not never-air',
+            JSON.stringify(keys(sd.holidayCandidates({ state, items, holiday: 'Christmas' }))) === '["/x/2","/x/1"]',
+            JSON.stringify(keys(sd.holidayCandidates({ state, items, holiday: 'Christmas' }))));
+        suite.check('...the Christmas season adds Hanukkah\'s; a holiday with none set aside has none',
+            JSON.stringify(keys(sd.holidayCandidates({ state, items, holiday: 'Christmas season' }))) === '["/x/2","/x/1","/x/3"]'
+                && sd.holidayCandidates({ state, items, holiday: 'Easter' }).length === 0 && sd.holidayCandidates({ state, items, holiday: null }).length === 0, '');
+        suite.check('...and an episode the catalog lists twice is one candidate',
+            sd.holidayCandidates({ state, items: items.concat([ xmas1 ]), holiday: 'Christmas' }).length === 2, '');
+
+        const day = { id: 'sd_x', name: 'Eve', from: { date: '2026-12-24', time: 0 }, to: { date: '2026-12-25', time: 0 }, blockId: null,
+            positions: 'advance', layout: 'back', holiday: 'Christmas',
+            slots: [ { showId: 'tv.Hey Arnold!', order: 'next', holidayOnly: true }, { showId: 'tv.Rugrats', order: 'next' },
+                { showId: 'tv.Hey Arnold!', order: 'shuffle', holidayOnly: true }, { showId: 'tv.Hey Arnold!', order: 'next', holidayOnly: false } ] };
+        const got = sd.holidayItems({ schedule: { specialDays: [ day ] }, state, catalogs: { 'tv.Hey Arnold!': { items }, 'tv.Rugrats': { items: [ ep('Rugrats', 1, 1) ] } } });
+        suite.check('what the generator is given: per day, per show of a holiday row, its candidates once - rows that are not holiday rows add nothing',
+            JSON.stringify(Object.keys(got)) === '["sd_x"]' && JSON.stringify(Object.keys(got.sd_x)) === '["tv.Hey Arnold!"]'
+                && JSON.stringify(keys(got.sd_x['tv.Hey Arnold!'])) === '["/x/2","/x/1"]', JSON.stringify(got).slice(0, 200));
+        suite.check('...a day with no holiday, or a show not read, gives nothing',
+            JSON.stringify(sd.holidayItems({ schedule: { specialDays: [ Object.assign( {}, day, { holiday: null } ) ] }, state, catalogs: { 'tv.Hey Arnold!': { items } } })) === '{}'
+                && JSON.stringify(sd.holidayItems({ schedule: { specialDays: [ day ] }, state, catalogs: { 'tv.Hey Arnold!': { error: 'down' } } })) === '{}', '');
+        suite.check('the tag on a holiday row\'s position names its day, as the fill\'s and a Keep-apart row\'s do',
+            sd.dayOfTag('sd_x') === 'sd_x' && sd.dayOfTag('fill:sd_x') === 'sd_x' && sd.dayOfTag('holiday:sd_x') === 'sd_x', '');
+    }
     return suite;
 };

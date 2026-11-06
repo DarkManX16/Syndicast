@@ -19,13 +19,14 @@ module.exports = async function () {
     const suite = new Suite('special-days-preview');
 
     // makeLineup with everything around it stubbed; afterRun as the directive's own does.
-    const makeLineupWith = (scope) => new Function('planLineup', 'keptRows', 'scope', 'dizquetv', 'doWait', 'afterRun',
+    const makeLineupWith = (scope) => new Function('planLineup', 'keptRows', 'scope', 'dizquetv', 'doWait', 'holidayItemsNow', 'afterRun',
         'return ' + 'async ' + liftSource(FILE, 'makeLineup'))(
         async () => ({ run: { pool: [] }, carry: null, history: [], t0: 0 }),
         { keptAhead: () => [], keptKind: () => null },
         scope,
         { calculateTimeSlots: async () => ({ programs: [], startTime: new Date(0).toISOString() }) },
         async () => {},
+        () => ({}),
         (s) => { s.slots.forEach( (slot) => { delete slot.seasons.startSeason; } ); return { schedule: s }; });
 
     {

@@ -591,6 +591,72 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 } );
                 return reading;
             };
+            /*
+             * Holiday rows (NOTES.md, "Special days", step 8): the episodes a show has
+             * set aside for the day's holiday are in no pool, so the catalogs of the
+             * shows of holiday rows are read apart from the regular ones - nothing of
+             * the catalog notes, or of what Create Lineup records, changes - and the
+             * candidates handed to the generator with the schedule.
+             */
+            let holidayCatalogs = {};
+            let holidayRead = 0;
+            let holidayShowIds = () => {
+                let ids = [];
+                (scope.schedule.specialDays || []).forEach( (day) => {
+                    if (specialDays.holidayNames(day.holiday).length === 0) {
+                        return;
+                    }
+                    (day.slots || []).forEach( (row) => {
+                        if ( (row !== null) && (row.holidayOnly === true) && (typeof(row.showId) === 'string') && ! row.item && (ids.indexOf(row.showId) === -1) ) {
+                            ids.push(row.showId);
+                        }
+                    } );
+                } );
+                return ids;
+            };
+            let readHoliday = () => {
+                let ids = holidayShowIds().filter( (id) => ! catalogs[id] && ! holidayCatalogs[id] );
+                if ( (ids.length === 0) || scope.catalog.unreadable ) {
+                    return Promise.resolve();
+                }
+                let into = holidayCatalogs;
+                let shows = ids.map( (id) => {
+                    let record = scope.catalog.state.shows[id];
+                    let items = lineupItemsOf(id);
+                    into[id] = { pending: true };
+                    return { showId: id, title: items.length ? items[0].showTitle : nameOf(id), lineupItems: items, source: record ? record.source : undefined };
+                } );
+                return catalogReader.read(shows).then( (got) => {
+                    Object.assign(into, got);
+                } ).catch( (err) => {
+                    shows.forEach( (sh) => { into[sh.showId] = { error: (err && err.message) ? err.message : String(err) }; } );
+                } ).then( () => {
+                    holidayRead++;
+                    $timeout();
+                } );
+            };
+            let holidayItemsNow = () => specialDays.holidayItems( { schedule: scope.schedule, state: catalogStateNow(),
+                catalogs: Object.assign( {}, holidayCatalogs, catalogs ) } );
+            scope.holidayChanged = () => { readHoliday(); };
+            //The holidays Ron has set episodes aside for, as the Catalog page names them;
+            //the Christmas season among them when any of its three is. Rebuilt only when
+            //the catalog state changes.
+            let holidayOptionsCache = null;
+            scope.dayHolidayOptions = () => {
+                let left = scope.catalog.leftOut.length;
+                if ( (holidayOptionsCache === null) || (holidayOptionsCache.state !== scope.catalog.state) || (holidayOptionsCache.left !== left) ) {
+                    let names = showCatalog.byHoliday(catalogStateNow()).map( (g) => g.holiday ).filter( (h) => h !== 'Other' );
+                    let list = [ { id: null, name: 'Off' } ];
+                    Object.keys(specialDays.HOLIDAY_GROUPS).forEach( (group) => {
+                        if (specialDays.HOLIDAY_GROUPS[group].some( (h) => names.indexOf(h) !== -1 )) {
+                            list.push( { id: group, name: group } );
+                        }
+                    } );
+                    names.forEach( (h) => list.push( { id: h, name: h } ) );
+                    holidayOptionsCache = { state: scope.catalog.state, left: left, list: list };
+                }
+                return holidayOptionsCache.list;
+            };
             //The pool notes and menus see: the catalog-built one once read.
             scope.catalogPool = () => (lastRun !== null) ? lastRun.pool : (scope.programs || []);
             scope.leaveOutFresh = (program, reason, holiday) => {
@@ -846,7 +912,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     from: { date: todayPlus(7), time: 6 * HOUR },
                     to: { date: todayPlus(8), time: 6 * HOUR },
                     blockId: null, positions: 'advance', layout: 'back', rounding: 'half',
-                    fillBreaksWith: null,
+                    fillBreaksWith: null, holiday: null,
                     slots: [],
                 };
                 scope.schedule.specialDays.push(day);
@@ -1095,9 +1161,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if (! scope.visible) {
                     return '';
                 }
-                let key = JSON.stringify(day.slots);
+                let key = JSON.stringify(day.slots) + '|' + day.holiday + '|' + holidayRead;
                 if ( (dayLines === null) || (dayLines.day !== day) || (dayLines.key !== key) ) {
-                    dayLines = { day: day, key: key, lines: episodeStart.dayRowLines({ day: day, schedule: scope.schedule, pool: scope.catalogPool(), getShowData: getShowData }) };
+                    dayLines = { day: day, key: key, lines: episodeStart.dayRowLines({ day: day, schedule: scope.schedule, pool: scope.catalogPool(), getShowData: getShowData,
+                        holidayItems: holidayItemsNow() }) };
                 }
                 return (dayLines.lines && dayLines.lines[index]) || '';
             };
@@ -1119,6 +1186,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 if (! scope.catalog.unreadable) {
                     await readMissing();
+                    await readHoliday();
                 }
                 let run = runNow();
                 lastRun = run;
@@ -1190,7 +1258,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 if ( (carry !== null) && (carry.program.pin || keptRows.keptKind(carry.program)) ) {
                     keep = keep.filter( (x) => x.program !== carry.program );
                 }
-                let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history, keep, carry );
+                let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history, keep, carry, holidayItemsNow() );
                 let t1 = new Date().getTime();
 
                 let w = Math.max(0, 250 - (t1 - t0) );
@@ -1257,6 +1325,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 scope.channelFillerLists = Array.isArray(fillerOptions) ? fillerOptions : [];
                 scope.channelBlocks = Array.isArray(blocks) ? blocks : [];
                 catalogs = keepCatalogs ? keptCatalogs.catalogs(Date.now()) : {};
+                holidayCatalogs = {};
                 reading = null;
                 lastRun = null;
                 //A re-roll shows no notes, so its newcomers stay new for next time.
@@ -1322,6 +1391,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 applyFilter();
                 if ( (typeof(catalogState) === 'object') && (catalogState !== null) && ! catalogState.unreadable ) {
                     readMissing();
+                    readHoliday();
                 }
                 //One short line, only when your own swaps, inserts or dragged rows will be kept (Ron, Oct 30).
                 scope.keptPins = '';
