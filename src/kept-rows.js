@@ -682,6 +682,87 @@ function insertAfter({ lineup, index, item, now, schedule }) {
 }
 
 /*
+ * The break in front of the airing at `index`: the Flex between it and the row
+ * before, 0 when there is none.
+ */
+function breakBefore({ lineup, index }) {
+    let rows = rowsOf(lineup);
+    let k = rows.findIndex( (r) => r.index === index );
+    return (k > 0) ? rows[k - 1].flex : 0;
+}
+
+/*
+ * The item right before the airing at `index`, after the break in front of it
+ * (Ron, Nov 6): that break shrinks by the item's length and nothing else
+ * moves. Refused when there is no break, when it is shorter than the item, or
+ * when the item would have to begin in the past. Put back gives the break its
+ * length again.
+ */
+function insertBefore({ lineup, index, item, now, schedule }) {
+    let rows = rowsOf(lineup);
+    let k = rows.findIndex( (r) => r.index === index );
+    let row = rows[k];
+    if ( (typeof(row) === 'undefined') || row.program.isOffline ) {
+        return { refused: 'Pick a program to insert before.' };
+    }
+    let why = whyNot({ row, now, what: 'insertBefore', schedule });
+    if (why !== null) {
+        return { refused: why };
+    }
+    let room = (k > 0) ? rows[k - 1].flex : 0;
+    if (room <= 0) {
+        return { refused: `There is no break before ${title(row.program)}.` };
+    }
+    if (item.duration > room) {
+        return { refused: `${title(item)} is longer than the ${pins.length(room)} break before ${title(row.program)}.` };
+    }
+    if (row.start - item.duration <= now) {
+        return { refused: `The break before ${title(row.program)} has already begun.` };
+    }
+    let programs = lineup.programs;
+    let id = newId(programs, now);
+    let inserted = stripped(item);
+    inserted.kept = { edits: [ { id: id, kind: 'insert', before: true, made: iso(now) } ] };
+    let left = room - item.duration;
+    let out = programs.slice(0, rows[k - 1].index + 1).concat( (left > 0) ? [ flex(left) ] : [], [ inserted ], programs.slice(row.index) );
+    let said = (left > 0) ? `the break before it is ${pins.length(left)} now.` : 'the break before it is gone.';
+    return {
+        programs: out,
+        text: `${title(item)} goes in right before ${title(row.program)} at ${clockAm(row.start)}; ${said}`,
+        edit: id,
+    };
+}
+
+/*
+ * The library's add before an airing: `items` in order, the last against the
+ * airing, all in the break in front of it - or none, with why. The list, and
+ * each one's sentence.
+ */
+function insertManyBefore({ lineup, index, items, now, schedule }) {
+    let room = breakBefore({ lineup, index });
+    let total = items.reduce( (a, p) => a + p.duration, 0 );
+    if ( (items.length > 1) && (total > room) ) {
+        // All of them or none: the first one's own reason if it has one, else that they don't fit together.
+        let first = insertBefore({ lineup, index, item: items[0], now, schedule });
+        return { refused: first.refused || `They are ${pins.length(total)} together, longer than the ${pins.length(room)} break before ${title(lineup.programs[index])}.` };
+    }
+    let programs = lineup.programs;
+    let at = index;
+    let texts = [];
+    for (let k = items.length - 1; k >= 0; k--) {
+        let got = insertBefore({ lineup: { programs, startTime: lineup.startTime }, index: at, item: items[k], now: now + (items.length - 1 - k), schedule });
+        if (! Array.isArray(got.programs)) {
+            // All or none: what went in before it is dropped with it.
+            return { refused: got.refused };
+        }
+        programs = got.programs;
+        texts.push(got.text);
+        at = programs.findIndex( (p) => editsOf(p).some( (e) => (e.id === got.edit) && (e.kind === 'insert') ) );
+    }
+    return { programs, texts: texts.reverse() };
+}
+
+/*
  * The library's add: `items` one after another in the break after the airing
  * at `index`, each an insert after the one before. The list, and each one's
  * sentence; or why the first can't go in.
@@ -851,6 +932,24 @@ function rowNote(program) {
     return 'Kept at this time: it moved with the rows around it.';
 }
 
+// A row dropped right after its own break: the break goes in front of it. It is kept as it
+// is, from where it sat; Put back gives the break its place after it again.
+function movePastBreak({ lineup, row, now, schedule }) {
+    let next = rowsOf(lineup).find( (r) => r.index > row.index );
+    let why = whyNot({ row, now, what: 'move', schedule }) || specialDayMessage(schedule, next.start);
+    if (why !== null) {
+        return { refused: why };
+    }
+    let programs = lineup.programs;
+    let id = newId(programs, now);
+    let moved = withEdit(row.program, { id: id, kind: 'moved', from: row.start, past: row.flex, made: iso(now) });
+    return {
+        programs: programs.slice(0, row.index).concat([ flex(row.flex), moved ], programs.slice(row.last + 1)),
+        text: `${title(row.program)} moves past its ${pins.length(row.flex)} of Flex, to ${clockAm(row.start + row.flex)}; nothing else moves.`,
+        edit: id,
+    };
+}
+
 /*
  * A drag: the row at `from`, with its break, put in front of the row at
  * `to`. The rows between shift like a playlist - later when it moves
@@ -866,8 +965,17 @@ function move({ lineup, from, to, now, sure, schedule }) {
     }
     // Dropped on a break: in front of the row after it.
     let kt = rows.findIndex( (r) => r.index >= to );
-    if ( (kt === kf) || (kt === kf + 1) ) {
+    if (kt === kf) {
         return {};
+    }
+    if (kt === kf + 1) {
+        // Dropped right after its own break, in front of the airing after it (Ron, Nov 6):
+        // the row moves past the break and sits against that airing; nothing else moves.
+        // Anywhere in or before its break it is already there.
+        if ( (to !== rows[kt].index) || (rf.flex <= 0) ) {
+            return {};
+        }
+        return movePastBreak({ lineup, row: rf, now, schedule });
     }
     let rt = rows[kt];
     if (typeof(rt) === 'undefined') {
@@ -911,6 +1019,20 @@ function move({ lineup, from, to, now, sure, schedule }) {
 function undoInsert(lineup, index, edit) {
     let programs = lineup.programs;
     let out = programs.slice(0, index);
+    if (edit.before) {
+        // Put before an airing: the break in front of it gets the item's length back, and
+        // any break the item has since been given joins it.
+        let had = programs[index].duration;
+        while ( (out.length > 0) && isBreak(out[out.length - 1]) ) {
+            had += out.pop().duration;
+        }
+        let j = index + 1;
+        while ( (j < programs.length) && isBreak(programs[j]) ) {
+            had += programs[j++].duration;
+        }
+        out.push(flex(had));
+        return out.concat(programs.slice(j));
+    }
     let j = index + 1;
     while ( (j < programs.length) && isBreak(programs[j]) ) {
         j++;
@@ -943,6 +1065,24 @@ function undoInsert(lineup, index, edit) {
 // Undoes a drag: the row and its break taken out and put back in front of the
 // first row at or after where it was.
 function undoMove(lineup, index, edit) {
+    if (edit.past > 0) {
+        // It moved past its own break: the break goes back after it, out of the one in front.
+        let programs = lineup.programs;
+        let out = programs.slice(0, index);
+        let left = edit.past;
+        while ( (left > 0) && (out.length > 0) && isBreak(out[out.length - 1]) ) {
+            let b = out.pop();
+            if (b.duration > left) {
+                out.push(flex(b.duration - left));
+            }
+            left -= Math.min(b.duration, left);
+        }
+        out.push(withoutEdit(programs[index], edit.id));
+        if (edit.past - left > 0) {
+            out.push(flex(edit.past - left));
+        }
+        return out.concat(programs.slice(index + 1));
+    }
     let rows = rowsOf(lineup);
     let k = rows.findIndex( (r) => r.index === index );
     let row = rows[k];
@@ -1451,6 +1591,9 @@ module.exports = {
     swap: swap,
     insertAfter: insertAfter,
     insertMany: insertMany,
+    insertBefore: insertBefore,
+    insertManyBefore: insertManyBefore,
+    breakBefore: breakBefore,
     deleteRow: deleteRow,
     removeOnly: removeOnly,
     leaveOut: leaveOut,

@@ -8,6 +8,9 @@
  * re-laid. See NOTES.md, Known issues, "What you see is what airs: hand edits
  * kept in the list".
  *
+ * `request.mode === 'insertBefore'` puts the item right before the row clicked,
+ * after the break in front of it: that break is its room, and it never runs late.
+ *
  * `request.mode === 'pick'` (the Special days editor's This item row, NOTES.md
  * "Special days") reuses the same picker - a custom show's list, a show's
  * catalog, one item from the Plex library - with no row to fit into and no
@@ -44,19 +47,27 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let lineupNow = () => ({ programs: channel.programs, startTime: startTime() });
             let isPick = (req.mode === 'pick');
             let isInsert = (req.mode === 'insert');
+            // Right before the airing, after the break in front of it (Ron, Nov 6).
+            let isBefore = (req.mode === 'insertBefore');
             scope.isPick = isPick;
-            scope.verb = isPick ? 'Pick' : (isInsert ? 'Insert after' : 'Swap');
+            scope.verb = isPick ? 'Pick' : (isInsert ? 'Insert after' : (isBefore ? 'Insert before' : 'Swap'));
             // The row clicked - or, for an insert moved to another break, the row before
             // it. A pick has no row: it is choosing an item, not fitting one in.
             let index = req.index;
             let rowOf = (i) => keptRows.rowsOf(lineupNow()).find( (r) => r.index === i );
             let row = isPick ? null : rowOf(index);
             let airing = isPick ? null : row.program;
+            // The break in front of the row, read once: every item listed is measured against it.
+            let roomBefore = isBefore ? keptRows.breakBefore({ lineup: lineupNow(), index: index }) : 0;
             let around = isPick ? null : pins.slotAround({ schedule, at: row.start });
             scope.showId = isPick ? '' : pins.swapShow({ airing, slotShow: around ? around.showId : undefined, getShowData });
             let retitle = () => {
                 if (isPick) {
                     scope.title = req.title || '';
+                    return;
+                }
+                if (isBefore) {
+                    scope.title = `${pins.dayClock(row.start)} - ${pins.label(airing)}` + ( (roomBefore > 0) ? `, after its ${pins.length(roomBefore)} of Flex` : ', with no Flex before it' );
                     return;
                 }
                 scope.title = isInsert
@@ -91,14 +102,15 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 if (isPick) {
                     return { program: p, label: pins.label(p), length: pins.length(p.duration), holiday: showCatalog.holidayOf(p.title), fits: true, over: '' };
                 }
-                let room = isInsert ? row.flex : row.program.duration + row.flex;
+                let room = isBefore ? roomBefore : (isInsert ? row.flex : row.program.duration + row.flex);
                 let overrun = p.duration - room;
                 return {
                     program: p,
                     label: pins.label(p),
                     length: pins.length(p.duration),
                     holiday: showCatalog.holidayOf(p.title),
-                    fits: overrun <= constants.SLACK,
+                    // An insert before takes the break exactly: it never runs late.
+                    fits: overrun <= (isBefore ? 0 : constants.SLACK),
                     over: pins.length(Math.max(0, overrun)),
                 };
             };
@@ -227,7 +239,9 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 let option = (label, got) => ({ label: label, got: got, text: got.programs ? got.text : got.refused, refused: ! got.programs });
                 scope.options = [];
                 scope.breaks = [];
-                if (isInsert) {
+                if (isBefore) {
+                    scope.options.push(option('Insert', keptRows.insertBefore({ lineup, index, item: p, now, schedule })));
+                } else if (isInsert) {
                     let got = keptRows.insertAfter({ lineup, index, item: p, now, schedule });
                     scope.options.push(option('Insert', got));
                     if (got.programs && (p.duration > row.flex + constants.SLACK)) {

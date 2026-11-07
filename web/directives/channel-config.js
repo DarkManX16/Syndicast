@@ -2967,6 +2967,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
             scope.startSwap = (index) => openPlacing(index, 'swap');
             scope.startInsert = (index) => openPlacing(index, 'insert');
+            scope.startInsertBefore = (index) => openPlacing(index, 'insertBefore');
             scope.finishSwap = (result) => {
                 scope.swapRequest = null;
                 if (result) {
@@ -2974,21 +2975,25 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 $timeout();
             };
-            // The library's add: one after another after the first row in view that takes them.
+            // The library's add: one after another, right before the first airing in view, in
+            // the break in front of it (Ron, Nov 6).
             let insertFromLibrary = (selected) => {
                 ensureHandEditsKept();
                 let lineup = lineupMs();
-                for (let i = Math.max(0, scope.currentStartIndex || 0); i < lineup.programs.length; i++) {
-                    if (lineup.programs[i].isOffline) {
-                        continue;
-                    }
-                    let got = keptRows.insertMany({ lineup, index: i, items: selected, now: Date.now(), schedule: scope.channel.scheduleBackup });
-                    if (Array.isArray(got.programs)) {
-                        applyEdit({ programs: got.programs, text: got.texts.join(' ') });
-                        return;
-                    }
+                let i = Math.max(0, scope.currentStartIndex || 0);
+                while ( (i < lineup.programs.length) && lineup.programs[i].isOffline ) {
+                    i++;
                 }
-                showError('There is no break ahead in view to put it in.');
+                if (i >= lineup.programs.length) {
+                    showError('There is no airing in view to put it before.');
+                    return;
+                }
+                let got = keptRows.insertManyBefore({ lineup, index: i, items: selected, now: Date.now(), schedule: scope.channel.scheduleBackup });
+                if (Array.isArray(got.programs)) {
+                    applyEdit({ programs: got.programs, text: got.texts.join(' ') });
+                    return;
+                }
+                showError(got.refused);
             };
 
             // What a kept row's mark says, and which: a pin for a row kept as it is, a clock for one kept in time.

@@ -41,16 +41,18 @@ below says what we do and why. **Syndicast innovates.**
   7. Filler list editing.
   8. Adding a show at the end of the list, deleting five of its episodes (each
      gone from the list at once), then Create Lineup (added by Ron Oct 30).
+  9. Insert before, and a clip dropped between a Flex and the airing after it
+     (added by Ron Nov 6): `--only insert-before`.
 
   `node scripts/editor-workflows.js --url http://localhost:<port> --channel 3`
-  does all eight against a running preview, from a fresh page each, clicking
+  does all nine against a running preview, from a fresh page each, clicking
   each control with the real mouse at its middle after checking nothing covers
   it there (a covered button fails, naming what covers it). It waits for each
   save to land rather than a fixed delay, and when the first screen of the list
   is all kept edits it scrolls on until it finds a plain row. It saves a channel
   and a filler list, so it refuses port 18000. `--only` runs some of them
   (`first-open-silent`, `open-cancel`, `open-update`, `library-add`, `delete`,
-  `add-delete-create`, `swap-drag-put-back`, `create-lineup`, `filler`);
+  `add-delete-create`, `swap-drag-put-back`, `insert-before`, `create-lineup`, `filler`);
   `first-open-silent` only has something to keep on a channel whose list still
   holds pins from before kept rows, so run it on a fresh copy - every other
   workflow's own `openEditor()` fails loudly if the old dialog ever shows, on
@@ -7052,6 +7054,49 @@ air, an Advance start, the fill, the planner). Every proof below re-run on the f
   138, 163 of 163, and 145 and 142 on channel 3) and every pair stays whole.
 - **A special day** (channel 3, Sat Nov 28, Back to back on the quarter hour: The Weekenders,
   Recess, Kim Possible): 16 episodes whole (blocks: all 20 halves apart).
+
+### Insert before, and a drop past a row's own break
+
+Built Nov 6, 2026 (Sonnet 5.5) from Ron's brief, on the `insert-before` branch from `blocks` at
+8f00d73; unmerged until Ron says.
+
+**What Ron hit.** On channel 1 he tried to put "Toonami Movie Intro (The Batman vs. Dracula)", 7
+seconds, right before the movie, after the commercials. The library's "Insert into the lineup here"
+put it after an airing, ahead of the break (the commercials play in the Flex), and dragging it to
+just before the movie did nothing: the clip, with its Flex after it, already sat directly in front
+of the movie, so the drag was read as "stay".
+
+**What it does now.**
+- **Insert before** on each airing row, and the library's "Insert into the lineup here" now goes
+  right before the first airing in view (it was after it). The item goes in right against the
+  airing, after the break in front of it; that break shrinks by the item's length, and nothing else
+  moves (`keptRows.insertBefore`, `insertManyBefore`: several items go in order, all or none). One
+  line says so: "X goes in right before Y at 12:30am; the break before it is 7:23 now." Refused, in
+  one line, when there is no break before the airing, the break is shorter than the item, the break
+  has already begun, the airing is on air or aired, or a special day covers it. It never runs the
+  rows after it late: the item has to fit.
+- **A row dropped right after its own break** (between a Flex and the airing after it) moves past
+  that break and sits against the airing: "X moves past its 7:23 of Flex, to 12:59:53am; nothing else
+  moves." A drop onto the row itself or its own Flex is still nothing, and a row dropped anywhere
+  else still goes there with its break after it, as before (`movePastBreak`).
+- **Put back** gives each its place back exactly. An insert before gives the break its length again
+  (`edit.before`); a move past a break puts the break after the row again (`edit.past`).
+
+**The old rule that changed.** `test/kept-rows.js` said a drop on "the row after it" is nothing; that
+was the drop Ron needed, so it now moves the row past its break, and only a drop onto the row or its
+own Flex is nothing.
+
+**Not changed, found on the way.** Dragging the very last airing of a list earlier throws (`move`
+reads `rows[kf + 1]` for the "back on time" sentence); Ron's lists end a year out, so it is rare.
+The Swap dialog's list
+can show the row's own show after a quick switch to Custom shows, because the first read lands over
+the second; wait for "Reading..." to go.
+
+**Proof.** Suite 2910 at the start, 2952 at the end (`test/insert-before.js`, 36 checks, failing
+first; 6 in `test/kept-editor.js`, 5 of which failed on the old code). `node scripts/editor-workflows.js
+--only insert-before` on a copy of `.dizquetv-dev` (taken Fri Nov 6, 9:15pm Central), channel 1: the
+Insert before button, a clip chosen from Looney Tunes, a real drag, Put back each, then Create Lineup
+with a clip in front of an airing.
 
 ### Chapter and segment detector, and stage 6 midrolls
 

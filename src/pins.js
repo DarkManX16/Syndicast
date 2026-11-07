@@ -162,7 +162,7 @@ function whyNot({ airing, now, what }) {
         return `${name} has already aired.`;
     }
     if (start <= now) {
-        let verb = ( { swap: 'swapped', remove: 'removed', undo: 'undone', move: 'moved' } )[what] || 'changed';
+        let verb = ( { swap: 'swapped', remove: 'removed', undo: 'undone', move: 'moved', insertBefore: 'inserted before' } )[what] || 'changed';
         return `${name} is on air now, so it can't be ${verb} - it finishes airing first. Pick an airing after it.`;
     }
     return null;
