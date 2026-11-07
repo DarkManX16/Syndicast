@@ -28,13 +28,17 @@ function safeString(object) {
 }
 
 module.exports = { router: api }
-function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService, cardService ) {
+function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideService, _m3uService, eventService, ffmpegSettingsService, plexServerDB, plexProxyService, fillerService, bundleChecker, showMatchService, cardService, breakScanService ) {
     let m3uService = _m3uService;
     const router = express.Router()
 
     // Generated cards: the Cards page and the step editor's template list (card-api.js).
     if (cardService != null) {
         require('./card-api')(router, cardService);
+    }
+    // The break scanner's status and switch (break-scan-api.js).
+    if (breakScanService != null) {
+        require('./break-scan-api')(router, breakScanService);
     }
 
     router.get('/api/version', async (req, res) => {

@@ -40,6 +40,7 @@ class CardPlayer {
 
         let ffmpeg = new FFMPEG(ffmpegSettings, channel);
         ffmpeg.setAudioOnly(this.context.audioOnly);
+        ffmpeg.setMeterInfo( { title: `card: ${lineupItem.title || ''}`, file: lineupItem.generatedFile } );
         this.ffmpeg = ffmpeg;
         const emitter = new EventEmitter();
         let ff = await ffmpeg.spawnStream(lineupItem.generatedFile, streamStats, undefined, streamDuration,

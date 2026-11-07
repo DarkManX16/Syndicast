@@ -3504,6 +3504,22 @@ Everything else unticked stays in the roadmap as it is.
 
 ## Known issues / future work
 
+### The break scanner skips E: until its health is checked
+
+E: (the Toshiba) logged read/write retries in early November 2026, so the
+break scanner is kept off it (`"skipDrives": ["E:"]` in
+`<data>/break-scanner.json`, set Nov 7, 2026). Live streams still play from E:
+as before; only the scanner's reads are held back, and E:'s files wait
+unscanned. Once the drive checks out, turn it back on while Syndicast is
+running:
+
+```powershell
+Invoke-RestMethod -Method Put -Uri http://localhost:18000/api/breaks/scanner -ContentType 'application/json' -Body '{"skipDrives":[]}'
+```
+
+It takes effect at once and is kept across restarts. Step 4's Breaks page
+will offer the same.
+
 ### Channel 1's lineup runs out on Aug 3, 2027
 
 Regenerate it before then: re-run Time Slots on channel 1 and click Update

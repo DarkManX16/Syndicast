@@ -3,6 +3,7 @@ const events = require('events')
 const { PassThrough } = require('stream')
 const imageUrl = require('./image-url')
 const { markHighQos } = require('./ffmpeg-qos')
+const paceMeter = require('./pace-meter')
 
 const MAXIMUM_ERROR_DURATION_MS = 60000;
 const REALLY_RIDICULOUSLY_HIGH_FPS_FOR_DIZQUETVS_USECASE = 120;
@@ -127,6 +128,11 @@ class FFMPEG extends events.EventEmitter {
         this.volumePercent =  this.opts.audioVolumePercent;
         this.hasBeenKilled = false;
         this.audioOnly = false;
+        this.meterInfo = {};
+    }
+    // What the pace meter shows for this item: { title, file }.
+    setMeterInfo(info) {
+        this.meterInfo = info || {};
     }
     setAudioOnly(audioOnly) {
         this.audioOnly = audioOnly;
@@ -696,13 +702,21 @@ class FFMPEG extends events.EventEmitter {
         }
         this.ffmpegName = (isConcatPlaylist ? "Concat FFMPEG":  "Stream FFMPEG");
 
+        const metered = !isConcatPlaylist && (FFMPEG.meter != null);
+        if (metered) {
+            ffmpegArgs = paceMeter.progressArgs().concat(ffmpegArgs);
+        }
+
         if (isNvenc && videoEncoded && !isConcatPlaylist) {
-            return this.spawnWithFallback(ffmpegArgs, doLogs);
+            return this.spawnWithFallback(ffmpegArgs, doLogs, metered);
         }
 
         //console.log(this.ffmpegPath + " " + ffmpegArgs.join(" ") );
-        this.ffmpeg = spawn(this.ffmpegPath, ffmpegArgs, { stdio: ['ignore', 'pipe', (doLogs?process.stderr:"ignore") ] } );
+        this.ffmpeg = spawn(this.ffmpegPath, ffmpegArgs, { stdio: ['ignore', 'pipe', (doLogs?process.stderr:"ignore")].concat(metered ? ['pipe'] : []) } );
         markHighQos(this.ffmpeg);
+        if (metered) {
+            this.attachMeter(this.ffmpeg);
+        }
         if (this.hasBeenKilled) {
             console.log("Send SIGKILL to ffmpeg");
             this.ffmpeg.kill("SIGKILL");
@@ -745,20 +759,51 @@ class FFMPEG extends events.EventEmitter {
             this.emit('error', { code: code, cmd: `${this.opts.ffmpegPath} ${ffmpegArgs.join(' ')}` })
         }
     }
+    // The item's progress, on fd 3, into the pace meter; never the stream.
+    attachMeter(child) {
+        const pipe = (child.stdio != null) ? child.stdio[3] : null;
+        if (pipe == null) {
+            return;
+        }
+        const handle = FFMPEG.meter.start( {
+            channel: this.channel.number,
+            channelName: this.channel.name,
+            title: this.meterInfo.title,
+            file: this.meterInfo.file,
+            // Read, never changed: a reader that is slow or gone leaves stdout
+            // paused with a full buffer, and the item waiting on it.
+            held: () => {
+                const out = child.stdout;
+                return (out != null) && ( (out.readableFlowing !== true) || (out.readableLength >= out.readableHighWaterMark) );
+            },
+        } );
+        pipe.on('data', (chunk) => {
+            try {
+                handle.feed(chunk);
+            } catch (err) {
+                // a meter fault must never touch playback
+            }
+        } );
+        pipe.on('error', () => {});
+        child.on('close', () => handle.end());
+    }
     // Runs an h264_nvenc command. If that ffmpeg dies before sending a single
     // byte, the same item is run again with libx264 (see NVENC_RETRY_AFTER_MS)
     // and the viewer gets that stream instead; the failed attempt is never
     // reported. Hands back a stream that outlasts both, which is why only this
     // path has one: the other encoders return their ffmpeg's own stdout.
-    spawnWithFallback(nvencArgs, doLogs) {
+    spawnWithFallback(nvencArgs, doLogs, metered) {
         let out = new PassThrough();
         let fallbackArgs = libx264FallbackArgs(nvencArgs);
         let run = (args, isFallback, rescuing) => {
             let sent = 0;
             let lastOutput = '';
-            let child = spawn(this.ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            let child = spawn(this.ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'].concat(metered ? ['pipe'] : []) });
             this.ffmpeg = child;
             markHighQos(child);
+            if (metered) {
+                this.attachMeter(child);
+            }
             if (this.hasBeenKilled) {
                 console.log("Send SIGKILL to ffmpeg");
                 child.kill("SIGKILL");
@@ -869,6 +914,8 @@ function gcd(a, b) {
 }
 
 FFMPEG.isFullyNormalized = isFullyNormalized;
+// Where item progress goes; null runs every item exactly as before the meter.
+FFMPEG.meter = paceMeter.meter;
 FFMPEG.libx264FallbackArgs = libx264FallbackArgs;
 FFMPEG.NVENC_RETRY_AFTER_MS = NVENC_RETRY_AFTER_MS;
 // What the nvenc fallback remembers, for tests to set and clear.

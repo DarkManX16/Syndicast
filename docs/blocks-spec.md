@@ -1170,6 +1170,15 @@ and 10 seconds after a channel is saved, it queues what needs scanning.
   left off. A file that takes over 15 minutes is stopped and retried a day
   later (on Oct 15 one read on the external F: drive took 7 minutes and the
   same read 2.4 s the next time).
+- **Very Low disk priority.** Idle CPU priority leaves a process's disk
+  priority at Normal (measured Nov 7), so each scanner ffmpeg and ffprobe is
+  also set to Very Low disk priority as it starts: on a shared drive its reads
+  wait for everyone else's, the other streaming server's included. If that
+  cannot be set, the run goes at Normal and the scanner carries on.
+- **Skipped drives.** Ron can keep the scanner off a drive ("E:", while its
+  health is checked): its files are not read at all, a scan already on it
+  stops at once without counting as a failure, and the Breaks page counts them
+  as skipped. Kept with the Pause switch, so a restart does not undo it.
 - **It measures its effect on live streams.** Each ffmpeg that Syndicast runs
   for a program or filler item reports its progress through ffmpeg's own
   progress output, on a separate pipe, every 2 s; the stream it sends is not
@@ -1183,8 +1192,11 @@ and 10 seconds after a channel is saved, it queues what needs scanning.
     rests twice as long as it ran (about a third of one core at most), and it
     does not read from a drive a live stream is reading right now, taking
     another drive's file first, or waiting.
-  - *Paused*, as soon as any live item's pace falls below 0.99 for 10 seconds
-    while the scanner is working, or the whole PC's CPU stays above 85% for 30
+  - *Paused*, as soon as a channel's pace stays below 0.99 for 10 seconds
+    while the scanner is working, counted across that channel's items (a break
+    of 6-second bumpers is one low stretch, not several short ones; approved by
+    Ron Nov 7), ignoring an item held back by a slow or departed viewer, whose
+    output simply is not being read, or the whole PC's CPU stays above 85% for 30
     seconds (the other streaming server's load counts here, since its streams
     cannot be measured directly): the scanner stops its own ffmpeg at once
     (a piece is at most 5 minutes of audio or a few seconds of picture, so
@@ -1194,7 +1206,10 @@ and 10 seconds after a channel is saved, it queues what needs scanning.
   3 streams playing", "Paused until 9:24pm: channel 2's item fell to 0.97"),
   each live stream's pace while scanning against while not, a log of every
   back-off, how much is scanned (the next week and the whole library), and a
-  Pause / Resume switch.
+  Pause / Resume switch. Until step 4 builds the page,
+  `GET /api/breaks/scanner` returns the same as JSON, and
+  `PUT /api/breaks/scanner` takes `{ "paused": true | false }` and
+  `{ "skipDrives": ["E:"] }` (`[]` scans every drive again).
 
 **How long.** The prototype ran at about 3 minutes per hour of video while
 four streams were playing: about 1 s per minute of SD, 2.6 s per minute of HD

@@ -84,6 +84,10 @@ const suites = [
     './break-scan',
     './breaks-store',
     './play-cache-load',
+    './pace-meter',
+    './break-scan-governor',
+    './break-scan-service',
+    './io-priority',
 ];
 
 (async () => {

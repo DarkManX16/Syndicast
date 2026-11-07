@@ -11,7 +11,9 @@
  *   2. blackdetect, only in the windows break-detect.windowsForSilences asks
  *      for, on the picture scaled down first.
  * Every ffmpeg process runs at idle priority (os.setPriority), one thread,
- * and is never asked to decode audio and video at once.
+ * and is never asked to decode audio and video at once. The scanner service
+ * also lowers its disk priority to Very Low (io-priority.js) through the
+ * runner's onSpawn.
  */
 
 const os = require('os');
@@ -22,8 +24,18 @@ const SILENCE_CHUNK_S = 5 * 60;
 const SILENCE_FILTER = 'silencedetect=n=-45dB:d=0.2';
 const BLACK_FILTER = 'scale=w=192:h=-2:flags=fast_bilinear,blackdetect=d=0.05:pix_th=0.10:pic_th=0.95';
 
-function defaultRunner(ffmpegPath, args) {
+/*
+ * options.signal: an AbortSignal that stops the ffmpeg at once; the result is
+ * then { aborted: true }. options.onSpawn(pid), if given, is called as soon as
+ * the process exists (the scanner lowers its disk priority there).
+ */
+function defaultRunner(ffmpegPath, args, options = {}) {
     return new Promise( (resolve) => {
+        const signal = options.signal;
+        if (signal && signal.aborted) {
+            resolve( { code: null, stderr: '', aborted: true } );
+            return;
+        }
         let child;
         try {
             child = childProcess.spawn(ffmpegPath, args, { windowsHide: true });
@@ -36,35 +48,74 @@ function defaultRunner(ffmpegPath, args) {
         } catch (err) {
             // not fatal: this run just goes at normal priority
         }
+        if ( (typeof(options.onSpawn) === 'function') && (child.pid != null) ) {
+            try {
+                Promise.resolve(options.onSpawn(child.pid)).catch( () => {} );
+            } catch (err) {
+                // not fatal either: this run keeps its normal disk priority
+            }
+        }
+        let aborted = false;
+        const onAbort = () => {
+            aborted = true;
+            child.kill('SIGKILL');
+        };
+        if (signal) {
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
         let stderr = '';
+        let stdout = '';
         child.stderr.on('data', (d) => { stderr += d; });
-        child.on('error', (err) => resolve( { code: 1, stderr: String(err.message) } ));
-        child.on('close', (code) => resolve( { code, stderr } ));
+        child.stdout.on('data', (d) => { stdout += d; });
+        const done = (result) => {
+            if (signal) {
+                signal.removeEventListener('abort', onAbort);
+            }
+            resolve(aborted ? { code: null, stderr, stdout, aborted: true } : result);
+        };
+        child.on('error', (err) => done( { code: 1, stderr: String(err.message), stdout } ));
+        child.on('close', (code) => done( { code, stderr, stdout } ));
     } );
 }
 
 /*
- * options: { ffmpegPath, run, beforeChunk }
- * beforeChunk(), awaited before every chunk including the first, is where a
- * caller pauses or slows down for a live stream; it throws to stop the scan
- * partway (scanSilence returns what it found so far, via the thrown value's
- * `.partial`, or simply propagates for the caller to catch).
+ * One piece: beforeChunk() first (where a caller pauses or slows down for a
+ * live stream, or throws to stop the scan), then the ffmpeg. A piece whose
+ * ffmpeg was stopped (`aborted`, a pause) is run again from its start once
+ * beforeChunk lets it; one that failed outright fails the scan.
  */
-async function scanSilence(file, durationS, options = {}) {
-    const ffmpegPath = options.ffmpegPath || 'ffmpeg';
+async function runPiece(ffmpegPath, args, options) {
     const run = options.run || defaultRunner;
-    const silence = [];
-    for (let start = 0; start < durationS; start += SILENCE_CHUNK_S) {
+    for (;;) {
         if (options.beforeChunk) {
             await options.beforeChunk();
         }
+        const result = await run(ffmpegPath, args);
+        if (result && result.aborted) {
+            continue;
+        }
+        if (result && (typeof(result.code) === 'number') && (result.code !== 0)) {
+            const last = String(result.stderr || '').trim().split(/\r?\n/).slice(-2).join(' | ');
+            throw new Error(`ffmpeg exited with code ${result.code}: ${last}`);
+        }
+        return result;
+    }
+}
+
+/*
+ * options: { ffmpegPath, run, beforeChunk } - see runPiece.
+ */
+async function scanSilence(file, durationS, options = {}) {
+    const ffmpegPath = options.ffmpegPath || 'ffmpeg';
+    const silence = [];
+    for (let start = 0; start < durationS; start += SILENCE_CHUNK_S) {
         const len = Math.min(SILENCE_CHUNK_S, durationS - start);
         const args = [
             '-hide_banner', '-nostats', '-threads', '1',
             '-ss', start.toFixed(3), '-i', file, '-t', len.toFixed(3),
             '-vn', '-map', '0:a:0', '-af', SILENCE_FILTER, '-f', 'null', '-',
         ];
-        const { stderr } = await run(ffmpegPath, args);
+        const { stderr } = await runPiece(ffmpegPath, args, options);
         for (const [s, e] of breakDetect.parseSilence(stderr, len)) {
             silence.push([start + s, start + e]);
         }
@@ -79,12 +130,8 @@ async function scanSilence(file, durationS, options = {}) {
  */
 async function scanBlackWindows(file, windows, options = {}) {
     const ffmpegPath = options.ffmpegPath || 'ffmpeg';
-    const run = options.run || defaultRunner;
     const black = [];
     for (const [ws, we] of windows) {
-        if (options.beforeChunk) {
-            await options.beforeChunk();
-        }
         if (we <= ws) {
             continue;
         }
@@ -93,7 +140,7 @@ async function scanBlackWindows(file, windows, options = {}) {
             '-ss', ws.toFixed(3), '-i', file, '-t', (we - ws).toFixed(3),
             '-an', '-vf', BLACK_FILTER, '-f', 'null', '-',
         ];
-        const { stderr } = await run(ffmpegPath, args);
+        const { stderr } = await runPiece(ffmpegPath, args, options);
         for (const [s, e] of breakDetect.parseBlack(stderr)) {
             black.push([ws + s, ws + e]);
         }
@@ -135,6 +182,6 @@ async function scanFile(file, options = {}) {
 
 module.exports = {
     scanSilence, scanBlackWindows, scanFile,
-    defaultRunner,
+    defaultRunner, runPiece,
     constants: { SILENCE_CHUNK_S, SILENCE_FILTER, BLACK_FILTER },
 };

@@ -25,6 +25,7 @@ class OfflinePlayer {
         }
         this.ffmpeg = new FFMPEG(context.ffmpegSettings, context.channel);
         this.ffmpeg.setAudioOnly(this.context.audioOnly);
+        this.ffmpeg.setMeterInfo( { title: this.error ? 'error screen' : 'offline screen' } );
     }
 
     cleanUp() {
