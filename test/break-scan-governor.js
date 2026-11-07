@@ -111,6 +111,46 @@ module.exports = async () => {
     }
 
     {
+        // A break of short bumpers on a starved channel: each item gives no
+        // reading for its first few seconds, then a few low ones, then ends.
+        const { g, feed } = rig();
+        g.setWorking(true);
+        const bumper = (id) => [
+            [ 4000, [ stream(null, { id, title: `CN City Bumper (${id})` }) ] ],
+            [ 4000, [ stream(0.60, { id, title: `CN City Bumper (${id})` }) ] ],
+        ];
+        let at = null;
+        let elapsed = 0;
+        for (const [ms, live] of [ ...bumper(11), ...bumper(12), ...bumper(13) ]) {
+            const p = feed(ms, live, 0.3);
+            if ( (p !== null) && (at === null) ) {
+                at = elapsed + p;
+            }
+            elapsed += ms;
+        }
+        suite.check('a run of short items, none slow for 10 s on its own, pauses once the channel has been slow for 10 s',
+            (at === 16000) && /channel 2's CN City Bumper \(12\) fell to 0\.600/.test(g.reason()), at);
+    }
+
+    {
+        const { g, feed } = rig();
+        g.setWorking(true);
+        const at = feed(30000, [ stream(0.97, { id: 1, title: 'Viewer A' }), stream(1.0, { id: 2, title: 'Viewer B' }) ], 0.3);
+        suite.check('two viewers of one channel, one slow: the slow one still pauses the scanner',
+            (at === 12000) && /Viewer A fell to 0\.970/.test(g.reason()), at);
+    }
+
+    {
+        const { g, feed } = rig();
+        g.setWorking(true);
+        feed(6000, [ stream(0.97) ], 0.3);
+        const at = feed(30000, [], 0.3);
+        feed(6000, [ stream(0.97, { id: 9 }) ], 0.3);
+        suite.check('a channel no one is watching any more ends its count',
+            (at === null) && (g.mode() !== 'paused'));
+    }
+
+    {
         const { g, feed } = rig();
         g.setWorking(true);
         const at = feed(30000, [ stream(0.0, { held: true, title: 'ATHF promo [Party]' }) ], 0.3);

@@ -9,7 +9,7 @@
  *   gentle  any stream playing (or the CPU at 70% or more, or just back from
  *           a pause): after each ffmpeg run, rest twice as long as it ran, and
  *           leave the drives live streams are reading alone.
- *   paused  a live item's pace below 0.99 for 10 s, or the CPU above 85% for
+ *   paused  a channel's live items below 0.99 for 10 s, or the CPU above 85% for
  *           30 s, while the scanner is working: its ffmpeg is stopped at once,
  *           it waits 10 minutes and resumes Gentle. A pause within an hour of
  *           the last one ending waits twice as long as that one did, up to 2
@@ -140,23 +140,45 @@ class ScanGovernor {
             this.cpu.shift();
         }
         this.live = live || [];
-        const ids = new Set();
+        /*
+         * The 10 s are counted per channel, not per item: measured, a break of
+         * 6-15 s bumpers each too short to fill 10 s on its own kept a
+         * starved stream slow for 80 s. A low reading on any of the channel's
+         * items carries the count on, a healthy one ends it, and the seconds
+         * at an item's start with no reading yet leave it as it is.
+         */
+        const channels = new Map();
         for (const item of this.live) {
-            ids.add(item.id);
+            const c = channels.get(item.channel) || { low: null, healthy: false };
+            channels.set(item.channel, c);
             // held back by its reader (a slow viewer, or none left): its pace
             // says nothing about what the scanner does to it
-            if (item.held === true) {
-                this.belowSince.delete(item.id);
+            if ( (item.held === true) || (item.pace == null) ) {
                 continue;
             }
-            if ( (item.pace != null) && (item.pace < PACE_FLOOR) ) {
-                if (! this.belowSince.has(item.id)) {
-                    this.belowSince.set(item.id, now);
+            if (item.pace < PACE_FLOOR) {
+                if ( (c.low === null) || (item.pace < c.low.pace) ) {
+                    c.low = item;
                 }
             } else {
-                this.belowSince.delete(item.id);
+                c.healthy = true;
             }
-            if (item.pace != null) {
+        }
+        for (const [channel, c] of channels) {
+            if (c.low !== null) {
+                const run = this.belowSince.get(channel);
+                this.belowSince.set(channel, { since: run ? run.since : now, item: c.low });
+            } else if (c.healthy) {
+                this.belowSince.delete(channel);
+            }
+        }
+        for (const channel of Array.from(this.belowSince.keys())) {
+            if (! channels.has(channel)) {
+                this.belowSince.delete(channel);
+            }
+        }
+        for (const item of this.live) {
+            if ( (item.held !== true) && (item.pace != null) ) {
                 let s = this.paceStats.get(item.id);
                 if (s == null) {
                     s = { channel: item.channel, title: item.title, scanning: { n: 0, sum: 0, min: null }, idle: { n: 0, sum: 0, min: null } };
@@ -168,20 +190,15 @@ class ScanGovernor {
                 b.min = (b.min === null) ? item.pace : Math.min(b.min, item.pace);
             }
         }
-        for (const id of Array.from(this.belowSince.keys())) {
-            if (! ids.has(id)) {
-                this.belowSince.delete(id);
-            }
-        }
         while (this.paceStats.size > PACE_STATS_KEEP) {
             this.paceStats.delete(this.paceStats.keys().next().value);
         }
 
         let pauseNow = false;
         if (this.working && ! this.manualPaused && ! this.isPaused()) {
-            const slow = this.live.find( (item) => this.belowSince.has(item.id) && (now - this.belowSince.get(item.id) >= PACE_LOW_FOR_MS) );
+            const slow = Array.from(this.belowSince.values()).find( (run) => now - run.since >= PACE_LOW_FOR_MS );
             if (slow != null) {
-                this.pause(`${itemName(slow)} fell to ${slow.pace.toFixed(3)}`);
+                this.pause(`${itemName(slow.item)} fell to ${slow.item.pace.toFixed(3)}`);
                 pauseNow = true;
             } else if (this.cpuHighForLong()) {
                 this.pause(`the PC's CPU stayed above ${Math.round(CPU_PAUSE * 100)}% for ${CPU_PAUSE_FOR_MS / 1000} s`);
