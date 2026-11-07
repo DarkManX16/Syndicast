@@ -7093,7 +7093,7 @@ can show the row's own show after a quick switch to Custom shows, because the fi
 the second; wait for "Reading..." to go.
 
 **Proof.** Suite 2910 at the start, 2952 at the end (`test/insert-before.js`, 36 checks, failing
-first; 6 in `test/kept-editor.js`, which failed on the old code too). `node scripts/editor-workflows.js
+first; 6 in `test/kept-editor.js`, 5 of which failed on the old code). `node scripts/editor-workflows.js
 --only insert-before` on a copy of `.dizquetv-dev` (taken Fri Nov 6, 9:15pm Central), channel 1: the
 Insert before button, a clip chosen from Looney Tunes, a real drag, Put back each, then Create Lineup
 with a clip in front of an airing.

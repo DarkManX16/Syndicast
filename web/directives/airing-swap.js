@@ -8,6 +8,9 @@
  * re-laid. See NOTES.md, Known issues, "What you see is what airs: hand edits
  * kept in the list".
  *
+ * `request.mode === 'insertBefore'` puts the item right before the row clicked,
+ * after the break in front of it: that break is its room, and it never runs late.
+ *
  * `request.mode === 'pick'` (the Special days editor's This item row, NOTES.md
  * "Special days") reuses the same picker - a custom show's list, a show's
  * catalog, one item from the Plex library - with no row to fit into and no
@@ -54,6 +57,8 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let rowOf = (i) => keptRows.rowsOf(lineupNow()).find( (r) => r.index === i );
             let row = isPick ? null : rowOf(index);
             let airing = isPick ? null : row.program;
+            // The break in front of the row, read once: every item listed is measured against it.
+            let roomBefore = isBefore ? keptRows.breakBefore({ lineup: lineupNow(), index: index }) : 0;
             let around = isPick ? null : pins.slotAround({ schedule, at: row.start });
             scope.showId = isPick ? '' : pins.swapShow({ airing, slotShow: around ? around.showId : undefined, getShowData });
             let retitle = () => {
@@ -62,8 +67,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                     return;
                 }
                 if (isBefore) {
-                    let brk = keptRows.breakBefore({ lineup: lineupNow(), index: index });
-                    scope.title = `${pins.dayClock(row.start)} - ${pins.label(airing)}` + ( (brk > 0) ? `, after its ${pins.length(brk)} of Flex` : ', with no Flex before it' );
+                    scope.title = `${pins.dayClock(row.start)} - ${pins.label(airing)}` + ( (roomBefore > 0) ? `, after its ${pins.length(roomBefore)} of Flex` : ', with no Flex before it' );
                     return;
                 }
                 scope.title = isInsert
@@ -98,7 +102,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 if (isPick) {
                     return { program: p, label: pins.label(p), length: pins.length(p.duration), holiday: showCatalog.holidayOf(p.title), fits: true, over: '' };
                 }
-                let room = isBefore ? keptRows.breakBefore({ lineup: lineupNow(), index: index }) : (isInsert ? row.flex : row.program.duration + row.flex);
+                let room = isBefore ? roomBefore : (isInsert ? row.flex : row.program.duration + row.flex);
                 let overrun = p.duration - room;
                 return {
                     program: p,
