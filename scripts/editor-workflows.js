@@ -26,6 +26,10 @@
  *                        at once; the Time Slots dialog's one line; Create Lineup leaves
  *                        the five out (never air); saved
  *   swap-drag-put-back   Swap an airing, drag a row, Put back each; Cancel
+ *   insert-before        a clip from a custom show put right before an airing that has a Flex
+ *                        above it (its Insert before): the Flex shrinks by the clip, no airing
+ *                        moves; Insert after, then the clip dropped just before the airing after
+ *                        its Flex: it sits there, nothing moves; Put back each; Cancel
  *   create-lineup        Time Slots... (at most one short line about kept rows), Create
  *                        Lineup; kept rows stay; saved
  *   filler               a filler list: drag a clip, delete one, Done; saved
@@ -276,13 +280,15 @@ function makeRunner(opts, page) {
     // A plain episode row a little way into the list, clear of the airing on air, with
     // `after` more plain rows below it in view. When the screen is all kept edits, the list
     // scrolls on a screen at a time until there is one.
-    const plainRow = async (skip, after = 0) => {
+    // `needs(all, row)` narrows it further, e.g. to a row with a Flex row right above it.
+    const plainRow = async (skip, after = 0, needs = null) => {
         for (let screen = 0; screen < 80; screen++) {
             const box = await page.evaluate(() => {
                 const r = document.getElementById('channelConfigProgramList').getBoundingClientRect();
                 return { top: r.top, bottom: r.bottom };
             });
-            const rows = (await rowsInView()).filter((r) => r.canSwap && !r.kept && !r.flex && r.top >= box.top && r.top <= box.bottom - 40);
+            const all = await rowsInView();
+            const rows = all.filter((r) => r.canSwap && !r.kept && !r.flex && r.top >= box.top && r.top <= box.bottom - 40 && (needs === null || needs(all, r)));
             if (rows.length > skip + after) {
                 return rows[skip];
             }
@@ -609,6 +615,208 @@ function makeRunner(opts, page) {
             said.push(await lastChange());
             await closeWith('Cancel');
             return said.map((s) => `"${s}"`).join(' / ') + '; Cancel dropped them';
+        },
+        'insert-before': async () => {
+            // Ron, Nov 6: a clip goes right before an airing, after the break in front of it -
+            // that break shrinks by the clip and nothing else moves - and a clip dropped between
+            // a Flex and the airing after it sits there. Real clicks and a real drag; the lineup
+            // is read from the editor's scope, so nothing is saved: Cancel at the end.
+            const snap = () => page.evaluate(() => {
+                const s = angular.element(document.getElementById('channelConfigProgramList')).scope();
+                return { startTime: new Date(s.channel.startTime).getTime(), rows: s.channel.programs.map((p) => ({ d: p.duration, o: !!p.isOffline, t: p.title || '', kept: p.kept ? JSON.stringify(p.kept) : '' })) };
+            });
+            const airs = (s) => {
+                let t = new Date(s.startTime).getTime();
+                const out = [];
+                for (const r of s.rows) {
+                    if (!r.o) out.push(`${t}|${r.t}`);
+                    t += r.d;
+                }
+                return out;
+            };
+            const startOf = (s, i) => s.rows.slice(0, i).reduce((t, r) => t + r.d, new Date(s.startTime).getTime());
+            const total = (s) => s.rows.reduce((a, r) => a + r.d, 0);
+            const sameList = (a, b, what) => {
+                if (JSON.stringify(a.rows) !== JSON.stringify(b.rows)) {
+                    const i = a.rows.findIndex((r, k) => JSON.stringify(r) !== JSON.stringify(b.rows[k]));
+                    throw new Check(`${what}: the list isn't as it was, first at entry ${i} (${a.rows.length} entries -> ${b.rows.length})`);
+                }
+            };
+            // The edit ids a list holds, to tell which row an edit just added.
+            const idsOf = (s) => new Set(s.rows.flatMap((r) => (r.kept ? JSON.parse(r.kept).edits.map((e) => e.id) : [])));
+            const newest = (before, after) => {
+                const had = idsOf(before);
+                const i = after.rows.findIndex((r) => r.kept && JSON.parse(r.kept).edits.some((e) => !had.has(e.id)));
+                if (i === -1) throw new Check('no row carries the edit just made');
+                return i;
+            };
+            const waitTitle = async (re, what) => {
+                const ok = await page.waitForFunction((src) => [...document.querySelectorAll('.modal-title')]
+                    .some((t) => new RegExp(src).test(t.textContent.trim()) && t.getClientRects().length > 0), { timeout: 15000, polling: 200 }, re.source).catch(() => null);
+                if (ok === null) throw new Check(`${what} didn't open`);
+            };
+            // A clip from a custom show, in the dialog that is open: the first one that fits.
+            const pickClip = async () => {
+                // The dialog reads the row's own show first; switching while it is still reading
+                // lets that answer land over the one asked for.
+                await page.waitForFunction(() => ![...document.querySelectorAll('.modal .small.text-muted')]
+                    .some((e) => /Reading/.test(e.textContent) && e.getClientRects().length > 0), { timeout: 120000, polling: 300 }).catch(() => {});
+                await sleep(500);
+                await clickText('.modal .btn-group button', 'Custom shows', 'Custom shows');
+                const chose = await page.waitForFunction((name) => {
+                    const sel = document.querySelector('.modal select[ng-model="pick.custom"]');
+                    const opt = sel && [...sel.options].find((o) => o.textContent.trim() === name);
+                    if (!opt) return null;
+                    sel.value = opt.value;
+                    angular.element(sel).triggerHandler('change');
+                    return true;
+                }, { timeout: 30000, polling: 300 }, 'Looney Tunes').catch(() => null);
+                if (chose === null) throw new Check('the Looney Tunes custom show isn\'t offered');
+                // One that fits with seconds to spare: the dialog's "fits" allows a few seconds over,
+                // which an insert after takes by running the rows after it late.
+                const fits = await page.waitForFunction(() => {
+                    const title = [...document.querySelectorAll('.modal-title')].find((t) => t.getClientRects().length > 0 && /of Flex/.test(t.textContent));
+                    const m = /(\d+):(\d+) of Flex/.exec(title ? title.textContent : '');
+                    const room = m ? (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) : 0;
+                    return [...document.querySelectorAll('.modal .list-group button.list-group-item')].find((b) => {
+                        const len = /(\d+):(\d+)/.exec((b.querySelector('.float-right') || b).textContent);
+                        return b.getClientRects().length > 0 && /fits/.test(b.textContent) && !b.querySelector('.text-success.ng-hide')
+                            && len && (parseInt(len[1], 10) * 60 + parseInt(len[2], 10)) <= room - 10;
+                    }) || null;
+                }, { timeout: 60000, polling: 500 }).catch(() => null);
+                if (fits === null) throw new Check('no clip of Looney Tunes fits the break with seconds to spare');
+                const label = await fits.evaluate((b) => b.querySelector('span').textContent.trim());
+                await click(fits.asElement(), 'a clip that fits');
+                const said = await page.waitForFunction(() => {
+                    const c = [...document.querySelectorAll('.modal .card-body')].find((x) => x.getClientRects().length > 0);
+                    return c ? c.querySelector('.small').textContent.trim() : null;
+                }, { timeout: 15000, polling: 200 }).catch(() => null);
+                if (said === null) throw new Check('the dialog offered no Insert');
+                await click(await find('.modal .card-body button.btn-primary', null, 'the Insert button'), 'the Insert button');
+                await sleep(800);
+                return { label, said: await said.jsonValue() };
+            };
+            const putBackRow = async (title) => {
+                const k = await page.evaluate((t) => [...document.querySelectorAll('#channelConfigProgramList .psr-row')]
+                    .findIndex((r) => r.textContent.includes(t)), title);
+                if (k === -1) throw new Check(`${title} isn't in view to Put back`);
+                await click(await (await rowHandle(k)).$('button[title="Put back..."]'), `${title}'s Put back`);
+                await clickText('.modal-footer button.btn-primary', 'Put it back', 'Put back\'s confirm');
+                await sleep(1000);
+            };
+            const sayings = [];
+
+            await openEditor();
+            const start = await snap();
+
+            // A: Insert before, on an airing with a Flex right above it.
+            const target = await plainRow(1, 0, (all, r) => r.k > 0 && all[r.k - 1].flex);
+            await click(await (await rowHandle(target.k)).$('button[title="Insert before..."]'), `${target.show} at ${target.start}'s Insert before`);
+            await waitTitle(/^Insert before/, 'the Insert before dialog');
+            const clipA = await pickClip();
+            const said = await lastChange();
+            sayings.push(said);
+            if (!/goes in right before .* at .*; the break before it is .* now\.$/.test(said)) {
+                throw new Check(`Insert before said "${said}"`);
+            }
+            const afterA = await snap();
+            const iA = newest(start, afterA);
+            const clipDur = afterA.rows[iA].d;
+            const clipEntry = `${startOf(afterA, iA)}|${afterA.rows[iA].t}`;
+            const wasAirs = airs(start);
+            const nowAirs = airs(afterA).filter((a) => a !== clipEntry);
+            if (nowAirs.join() !== wasAirs.join()) {
+                const d = wasAirs.findIndex((a, k) => a !== nowAirs[k]);
+                throw new Check(`Insert before moved an airing: ${wasAirs.length} airings -> ${nowAirs.length} without the clip; first difference at ${d}: "${wasAirs[d]}" -> "${nowAirs[d]}"; the clip row ${iA} is "${clipEntry}", kept ${afterA.rows[iA].kept.slice(0, 120)}`);
+            }
+            if (!afterA.rows[iA - 1].o || startOf(afterA, iA) + clipDur !== startOf(afterA, iA + 1) || afterA.rows[iA + 1].o) {
+                throw new Check('the clip isn\'t right against the airing after the break before it');
+            }
+            if (total(afterA) !== total(start)) {
+                throw new Check(`the list's length changed by ${(total(afterA) - total(start)) / 1000}s`);
+            }
+            if (!JSON.parse(afterA.rows[iA].kept).edits.some((e) => e.kind === 'insert')) {
+                throw new Check('the clip isn\'t kept as an insert');
+            }
+            if (!(await rowsInView()).some((r) => r.kept)) {
+                throw new Check('no row in view shows the kept mark');
+            }
+            await putBackRow(afterA.rows[iA].t);
+            sameList(await snap(), start, 'Put back of Insert before');
+
+            // B: Insert after puts a clip ahead of the break; dropped just before the airing it lands there.
+            const target2 = await plainRow(1, 0, (all, r) => r.k > 1 && all[r.k - 1].flex && !all[r.k - 2].flex && all[r.k - 2].canSwap);
+            const prevRow = (await rowsInView())[target2.k - 2];
+            await click(await (await rowHandle(prevRow.k)).$('button[title="Insert after..."]'), `${prevRow.show} at ${prevRow.start}'s Insert after`);
+            await waitTitle(/^Insert after/, 'the Insert after dialog');
+            const clipB = await pickClip();
+            sayings.push(await lastChange());
+            const afterB = await snap();
+            const iB = newest(start, afterB);
+            if (afterB.rows[iB - 1].o || !afterB.rows[iB + 1].o) {
+                throw new Check('Insert after didn\'t put the clip in the break after the airing, ahead of its Flex');
+            }
+            const clipTitle = afterB.rows[iB].t;
+            const rowsB = await page.evaluate((t) => [...document.querySelectorAll('#channelConfigProgramList .psr-row')]
+                .map((r, k) => ({ k, has: r.textContent.includes(t) })), clipTitle);
+            const c = rowsB.find((r) => r.has);
+            if (!c) throw new Check('the inserted clip isn\'t in view');
+            const clipBox = await (await rowHandle(c.k)).boundingBox();
+            const airingBox = await (await rowHandle(c.k + 2)).boundingBox();
+            // the upper quarter of the airing after the Flex: between that Flex and the airing
+            await realDrag({ x: clipBox.x + 40, y: clipBox.y + clipBox.height / 2 }, { x: airingBox.x + 40, y: airingBox.y + airingBox.height * 0.25 },
+                `dragging the clip to just before the airing`);
+            await sleep(1000);
+            const dragSaid = await lastChange();
+            sayings.push(dragSaid);
+            const afterDrag = await snap();
+            const iD = afterDrag.rows.findIndex((r) => r.t === clipTitle);
+            if (!/moves past its .* of Flex, to .*; nothing else moves\.$/.test(dragSaid)) {
+                throw new Check(`the drag said "${dragSaid}"`);
+            }
+            if (!afterDrag.rows[iD - 1].o || afterDrag.rows[iD + 1].o || startOf(afterDrag, iD) + afterDrag.rows[iD].d !== startOf(afterDrag, iD + 1)) {
+                throw new Check('the clip isn\'t between the Flex and the airing after it');
+            }
+            const noClip = (s) => airs(s).filter((a) => !a.endsWith(`|${clipTitle}`));
+            if (noClip(afterDrag).join() !== noClip(afterB).join() || total(afterDrag) !== total(afterB)) {
+                throw new Check('the drop moved an airing');
+            }
+            await putBackRow(clipTitle);
+            sameList(await snap(), afterB, 'Put back of the drop');
+            await putBackRow(clipTitle);
+            sameList(await snap(), start, 'Put back of Insert after');
+
+            // C: Create Lineup keeps the clip where it sits, against the airing, and the airing at its time.
+            const target3 = await plainRow(1, 0, (all, r) => r.k > 0 && all[r.k - 1].flex);
+            await click(await (await rowHandle(target3.k)).$('button[title="Insert before..."]'), `${target3.show} at ${target3.start}'s Insert before`);
+            await waitTitle(/^Insert before/, 'the Insert before dialog');
+            await pickClip();
+            const beforeC = await snap();
+            const iC = newest(start, beforeC);
+            const idC = JSON.parse(beforeC.rows[iC].kept).edits.find((e) => e.kind === 'insert').id;
+            const clipStart = startOf(beforeC, iC);
+            const airingC = `${startOf(beforeC, iC + 1)}|${beforeC.rows[iC + 1].t}`;
+            const timeSlotsShowing = await page.evaluate(() => [...document.querySelectorAll('button[title="Time Slots..."]')].some((b) => b.getClientRects().length > 0));
+            if (!timeSlotsShowing) {
+                await clickText('button[ng-click="toggleTools()"]', /Tools/, 'Tools');
+            }
+            await clickText('button[title="Time Slots..."]', /Time Slots\.\.\./, 'Time Slots...');
+            await find('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
+            await clickText('.modal-footer button', 'Create Lineup', 'Create Lineup', 180000);
+            const done = await page.waitForFunction(() => ![...document.querySelectorAll('.modal-title')]
+                .some((t) => t.textContent.trim() === 'Time Slots' && t.getClientRects().length > 0), { timeout: 300000, polling: 1000 }).catch(() => null);
+            if (done === null) throw new Check('Create Lineup didn\'t finish in 5 minutes');
+            await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 }).catch(() => {});
+            const afterC = await snap();
+            const jC = afterC.rows.findIndex((r) => r.kept && JSON.parse(r.kept).edits.some((e) => e.id === idC));
+            if (jC === -1) throw new Check('Create Lineup lost the clip');
+            if (startOf(afterC, jC) !== clipStart || `${startOf(afterC, jC + 1)}|${afterC.rows[jC + 1].t}` !== airingC || afterC.rows[jC + 1].o) {
+                throw new Check(`Create Lineup moved the clip or the airing after it: the clip ${clipStart} -> ${startOf(afterC, jC)}, the airing ${airingC} -> ${startOf(afterC, jC + 1)}|${afterC.rows[jC + 1].t}`);
+            }
+            await closeWith('Cancel');
+            return `Insert before ${target.show} at ${target.start}: "${clipA.label}" went in right against it, "${said}" - no airing moved, the list the same length, Put back gave the list back exactly; `
+                + `Insert after, then a drop just before ${afterDrag.rows[iD + 1].t}: "${dragSaid}", nothing moved; both Put backs gave the list back exactly; `
+                + `a clip put before ${target3.show} at ${target3.start} stayed against it, at the same second, through Create Lineup; Cancel`;
         },
         'create-lineup': async () => {
             const before = await api(`/api/channel/${opts.channel}`);

@@ -151,6 +151,59 @@ module.exports = async function () {
             (plain.programs[0].title === 'House of Mouse 1') && (plain.programs.length === lineup.length + 3) && (plain.keptInserts.length === 0));
     }
 
+    suite.log('-- the library\'s "insert here" goes right before the first airing in view; each row has Insert before --');
+    {
+        // Ron, Nov 6: "Insert into the lineup here" put a 7-second clip after an airing, ahead of
+        // the commercials; it goes in right before the airing in view, after the break in front.
+        const kept = require('../src/kept-rows');
+        const flex = (m) => ({ isOffline: true, duration: m * 60000 });
+        const programs = [
+            { title: 'Futurama', type: 'episode', duration: 22 * 60000 }, flex(8),
+            { title: 'The Batman vs. Dracula', type: 'movie', duration: 75 * 60000 }, flex(15),
+            { title: 'Robot Chicken', type: 'episode', duration: 22 * 60000 }, flex(8),
+        ];
+        const startTime = Date.now() + 3600000;
+        const intro = { title: 'Toonami Movie Intro', type: 'movie', duration: 7000 };
+        const run = (inView, selected) => {
+            const scope = { currentStartIndex: inView, channel: { programs: programs.slice(), startTime: new Date(startTime).toISOString(), scheduleBackup: { slots: [] } }, error: {} };
+            const page = {
+                keptRows: kept,
+                lineupMs: () => ({ programs: scope.channel.programs, startTime: startTime }),
+                ensureHandEditsKept: () => {},
+                updateChannelDuration: () => {},
+                showError: (text) => { scope.error.programs = text; },
+                $timeout: () => {},
+            };
+            // eslint-disable-next-line no-new-func
+            const make = new Function('scope', ...Object.keys(page),
+                `let applyEdit = ${liftArrow(src, 'applyEdit')}; return ${liftArrow(src, 'insertFromLibrary')};`);
+            make(scope, ...Object.values(page))(selected);
+            return { programs: scope.channel.programs, said: scope.lastChange || '', error: scope.error.programs || '' };
+        };
+        const titles = (got) => got.programs.map( (p) => p.isOffline ? 'Flex' : p.title ).join(', ');
+
+        // The first row in view is the Flex above the movie: the airing below it is the one.
+        const here = run(1, [ intro ]);
+        suite.check('the movie is the first airing in view: the clip goes right before it, after the break in front, and says so',
+            titles(here) === 'Futurama, Flex, Toonami Movie Intro, The Batman vs. Dracula, Flex, Robot Chicken, Flex'
+                && here.programs[2].duration === 7000 && here.programs[1].duration === 8 * 60000 - 7000
+                && /goes in right before The Batman vs. Dracula/.test(here.said) && here.error === '',
+            `${titles(here)}; ${here.said}; ${here.error}`);
+        const onMovie = run(2, [ intro ]);
+        suite.check('...the same with the movie itself the first row in view', titles(onMovie) === titles(here), titles(onMovie));
+        const noBreak = run(0, [ intro ]);
+        suite.check('the first row has no break before it: nothing goes in, and the page says why',
+            titles(noBreak) === 'Futurama, Flex, The Batman vs. Dracula, Flex, Robot Chicken, Flex' && noBreak.error === 'There is no break before Futurama.', noBreak.error);
+        const tooLong = run(2, [ Object.assign({}, intro, { duration: 9 * 60000 }) ]);
+        suite.check('...and a clip longer than the break says so too', /longer than the 8:00 break before The Batman/.test(tooLong.error) && tooLong.programs.length === programs.length, tooLong.error);
+
+        const html = fs.readFileSync(path.join(__dirname, '../web/public/templates/channel-config.html'), 'utf8');
+        suite.check('every airing row has an Insert before button, beside Insert after',
+            /title="Insert before\.\.\."[^>]*startInsertBefore\(x\.\$index\)/.test(html) && html.indexOf('Insert before...') < html.indexOf('Insert after...'), '');
+        const lib = fs.readFileSync(path.join(__dirname, '../web/public/templates/plex-library.html'), 'utf8');
+        suite.check('the library\'s choice says before, not after', /right before the first airing in view/.test(lib) && ! /after the first airing in view/.test(lib), '');
+    }
+
     suite.log('-- Delete takes an episode out at once --');
     {
         // Ron, Oct 30: on channel 3, after adding House of Mouse, deleting the episodes he

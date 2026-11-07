@@ -510,9 +510,12 @@ module.exports = async function () {
                 && later.text === 'Futurama 1 moves to Fri Oct 30, 3:30am; 8 airings shift 30 minutes earlier, back on time at 4:00am.',
             later.text);
 
-        suite.check('onto its own row, or the row after it: nothing',
+        // Ron, Nov 6: a drop right after the row's own Flex, in front of the airing after it, now
+        // moves the row past that Flex (test/insert-before.js); onto its own row or its own Flex
+        // is still nothing.
+        suite.check('onto its own row, or its own Flex: nothing',
             kept.move({ lineup: base, from, to: from, now: NOW }).programs === undefined
-                && kept.move({ lineup: base, from, to: from + 2, now: NOW }).programs === undefined, '');
+                && kept.move({ lineup: base, from, to: from + 1, now: NOW }).programs === undefined, '');
 
         const back = kept.putBack({ lineup: l, index: m.programs.indexOf(v), now: NOW });
         suite.check('Put back on the dragged row: the list exactly as before',

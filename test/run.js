@@ -59,6 +59,7 @@ const suites = [
     './editor-footer',
     './pins',
     './kept-rows',
+    './insert-before',
     './special-days',
     './special-days-generator',
     './special-days-progress',

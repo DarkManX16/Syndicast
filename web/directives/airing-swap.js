@@ -44,8 +44,10 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let lineupNow = () => ({ programs: channel.programs, startTime: startTime() });
             let isPick = (req.mode === 'pick');
             let isInsert = (req.mode === 'insert');
+            // Right before the airing, after the break in front of it (Ron, Nov 6).
+            let isBefore = (req.mode === 'insertBefore');
             scope.isPick = isPick;
-            scope.verb = isPick ? 'Pick' : (isInsert ? 'Insert after' : 'Swap');
+            scope.verb = isPick ? 'Pick' : (isInsert ? 'Insert after' : (isBefore ? 'Insert before' : 'Swap'));
             // The row clicked - or, for an insert moved to another break, the row before
             // it. A pick has no row: it is choosing an item, not fitting one in.
             let index = req.index;
@@ -57,6 +59,11 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let retitle = () => {
                 if (isPick) {
                     scope.title = req.title || '';
+                    return;
+                }
+                if (isBefore) {
+                    let brk = keptRows.breakBefore({ lineup: lineupNow(), index: index });
+                    scope.title = `${pins.dayClock(row.start)} - ${pins.label(airing)}` + ( (brk > 0) ? `, after its ${pins.length(brk)} of Flex` : ', with no Flex before it' );
                     return;
                 }
                 scope.title = isInsert
@@ -91,14 +98,15 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 if (isPick) {
                     return { program: p, label: pins.label(p), length: pins.length(p.duration), holiday: showCatalog.holidayOf(p.title), fits: true, over: '' };
                 }
-                let room = isInsert ? row.flex : row.program.duration + row.flex;
+                let room = isBefore ? keptRows.breakBefore({ lineup: lineupNow(), index: index }) : (isInsert ? row.flex : row.program.duration + row.flex);
                 let overrun = p.duration - room;
                 return {
                     program: p,
                     label: pins.label(p),
                     length: pins.length(p.duration),
                     holiday: showCatalog.holidayOf(p.title),
-                    fits: overrun <= constants.SLACK,
+                    // An insert before takes the break exactly: it never runs late.
+                    fits: overrun <= (isBefore ? 0 : constants.SLACK),
                     over: pins.length(Math.max(0, overrun)),
                 };
             };
@@ -227,7 +235,9 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 let option = (label, got) => ({ label: label, got: got, text: got.programs ? got.text : got.refused, refused: ! got.programs });
                 scope.options = [];
                 scope.breaks = [];
-                if (isInsert) {
+                if (isBefore) {
+                    scope.options.push(option('Insert', keptRows.insertBefore({ lineup, index, item: p, now, schedule })));
+                } else if (isInsert) {
                     let got = keptRows.insertAfter({ lineup, index, item: p, now, schedule });
                     scope.options.push(option('Insert', got));
                     if (got.programs && (p.duration > row.flex + constants.SLACK)) {
