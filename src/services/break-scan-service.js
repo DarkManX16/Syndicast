@@ -3,8 +3,9 @@
  * and live streams"), in the shape of the card service: a minute after boot,
  * every 30 minutes, and 10 seconds after a channel is saved, it works out what
  * needs scanning; a single worker scans one file at a time, one ffmpeg at a
- * time, at idle priority, and saves each file's result when it finishes, so
- * a restart picks up where it left off.
+ * time, at idle priority and Very Low disk priority (io-priority.js), and
+ * saves each file's result when it finishes, so a restart picks up where it
+ * left off.
  *
  *   order    every file airing in the next 7 days on any channel, soonest
  *            first, then the rest by next airing. Theatrical shows and movies
@@ -15,12 +16,13 @@
  *            PC's CPU. A pause stops the running ffmpeg at once; that piece
  *            runs again from its start when the pause ends.
  *   drives   in Gentle, a file on a drive a live stream is reading waits; a
- *            file on another drive goes first.
+ *            file on another drive goes first. A drive Ron skips ("E:") is
+ *            not read at all until he turns it back on.
  *   limits   a file whose ffmpeg runs add up to 15 minutes is stopped and tried
  *            again a day later, as is one that fails.
  *
- * The hand switch is kept in <data>/break-scanner.json, so a restart does not
- * undo it. BREAK_SCAN_FORCE_MODE (normal|gentle) pins the mode for a proof.
+ * The hand switch and the skipped drives are kept in
+ * <data>/break-scanner.json, so a restart does not undo them. BREAK_SCAN_FORCE_MODE (normal|gentle) pins the mode for a proof.
  */
 
 const fs = require('fs');
@@ -30,6 +32,7 @@ const breakScan = require('../break-scan');
 const transitions = require('../transitions');
 const paceMeter = require('../pace-meter');
 const { ScanGovernor } = require('../break-scan-governor');
+const { DiskPriority } = require('../io-priority');
 
 const FIRST_QUEUE_MS = 60 * 1000;
 const QUEUE_EVERY_MS = 30 * 60 * 1000;
@@ -42,6 +45,15 @@ const IDLE_POLL_MS = 5000;
 
 function ffprobeOf(ffmpegPath) {
     return String(ffmpegPath || 'ffmpeg').replace(/ffmpeg(\.exe)?$/i, (m, ext) => 'ffprobe' + (ext || ''));
+}
+
+// "E:" from "e", "E:", "E:\" or a path on the drive; null for anything else.
+function driveName(d) {
+    if (typeof(d) !== 'string') {
+        return null;
+    }
+    const s = d.trim();
+    return /^[A-Za-z]$/.test(s) ? (s.toUpperCase() + ':') : paceMeter.driveOf(s);
 }
 
 function scannable(program) {
@@ -88,7 +100,7 @@ function airingsOf(channel, now) {
 class BreakScanService {
     /*
      * options: { folder, channelService, getFfmpegSettings(), meter?, cpu?,
-     *            now?, log?, runner?, stat?, sleep?, force? }
+     *            now?, log?, runner?, stat?, sleep?, force?, diskPriority? }
      */
     constructor(options) {
         this.options = options;
@@ -124,6 +136,9 @@ class BreakScanService {
         this.indexByPath = options.indexByPath || store.indexByPath;
         this.ready = false;
         this.switchedByHand = false;
+        this.skipDrives = [];
+        this.drivesSetByHand = false;
+        this.disk = options.diskPriority || new DiskPriority( { log: this.log } );
     }
 
     /*
@@ -146,6 +161,9 @@ class BreakScanService {
         if (! this.switchedByHand) {
             this.governor.manualPaused = (saved.paused === true);
         }
+        if (! this.drivesSetByHand) {
+            this.skipDrives = BreakScanService.driveList(saved.skipDrives);
+        }
         this.index = index;
         this.ready = true;
     }
@@ -159,6 +177,10 @@ class BreakScanService {
     }
 
     start() {
+        if (this.baseRunner === breakScan.defaultRunner) {
+            // ready before the first scan, so its first reads are already Very Low
+            this.disk.start();
+        }
         const rebuild = () => this.rebuildQueue().catch( (err) => {
             this.log(`Breaks: could not work out what to scan: ${err.stack || err}`);
             if (! this.ready) {
@@ -189,6 +211,7 @@ class BreakScanService {
         if (this.worker) {
             await this.worker;
         }
+        this.disk.stop();
     }
 
     tick() {
@@ -211,7 +234,35 @@ class BreakScanService {
         if (paused === true) {
             this.abort('pause');
         }
-        await fs.promises.writeFile(this.settingsFile, JSON.stringify( { paused: paused === true } ), 'utf8');
+        await this.saveSettings();
+    }
+
+    /*
+     * Drives the scanner must not read ("E:"): their files leave the queue, a
+     * scan on one stops at once without counting as a failure, and nothing is
+     * read there until the drive is taken off the list.
+     */
+    async setSkipDrives(drives) {
+        this.drivesSetByHand = true;
+        this.skipDrives = BreakScanService.driveList(drives);
+        const skipped = new Set(this.skipDrives);
+        this.queue = this.queue.filter( (e) => ! skipped.has(e.drive) );
+        if ( (this.current !== null) && skipped.has(this.current.drive) ) {
+            this.abort('skip');
+        }
+        this.governor.addLog('drive', (this.skipDrives.length > 0) ? `Skipping ${this.skipDrives.join(', ')}` : 'Scanning every drive');
+        await this.saveSettings();
+        if (this.ready) {
+            this.rebuildQueue().catch( (err) => this.log(`Breaks: could not work out what to scan: ${err.stack || err}`) );
+        }
+    }
+
+    async saveSettings() {
+        await fs.promises.writeFile(this.settingsFile, JSON.stringify( { paused: this.governor.manualPaused === true, skipDrives: this.skipDrives } ), 'utf8');
+    }
+
+    isSkipped(drive) {
+        return (drive != null) && this.skipDrives.includes(drive);
     }
 
     // ---- what to scan ------------------------------------------------------------------------
@@ -296,7 +347,7 @@ class BreakScanService {
             } );
         }
         entries.sort( (a, b) => (a.inWeek === b.inWeek) ? (a.nextAt - b.nextAt) : (a.inWeek ? -1 : 1) );
-        const counts = { week: { files: 0, scanned: 0 }, library: { files: 0, scanned: 0 } };
+        const counts = { week: { files: 0, scanned: 0 }, library: { files: 0, scanned: 0 }, skipped: { files: 0 } };
         for (const e of entries) {
             const found = this.index.get(e.path);
             const done = this.usable(found ? found.record : null);
@@ -306,9 +357,12 @@ class BreakScanService {
                 counts.week.files++;
                 counts.week.scanned += done ? 1 : 0;
             }
+            if (this.isSkipped(e.drive) && ! done) {
+                counts.skipped.files++;
+            }
         }
         this.counts = counts;
-        this.queue = entries.filter( (e) => this.needsWork(e, now) && ( (this.current === null) || (this.current.path !== e.path) ) );
+        this.queue = entries.filter( (e) => ! this.isSkipped(e.drive) && this.needsWork(e, now) && ( (this.current === null) || (this.current.path !== e.path) ) );
         this.queuedAt = now;
     }
 
@@ -361,6 +415,9 @@ class BreakScanService {
             if (this.stopping) {
                 throw Object.assign(new Error('the scanner is stopping'), { stopping: true });
             }
+            if (this.isSkipped(entry.drive)) {
+                throw Object.assign(new Error(`${entry.drive} is skipped`), { skipped: true });
+            }
             const mode = this.governor.mode();
             if ( (mode === 'off') || (mode === 'paused') ) {
                 await this.sleep(1000);
@@ -392,7 +449,7 @@ class BreakScanService {
         this.governor.setWorking(true);
         let result;
         try {
-            result = await this.baseRunner(cmd, args, { signal: this.controller.signal });
+            result = await this.baseRunner(cmd, args, { signal: this.controller.signal, onSpawn: (pid) => this.disk.lower(pid) });
         } finally {
             clearTimeout(limit);
             this.governor.setWorking(false);
@@ -408,6 +465,9 @@ class BreakScanService {
             }
             if (this.abortReason === 'stop') {
                 throw Object.assign(new Error('the scanner is stopping'), { stopping: true });
+            }
+            if (this.abortReason === 'skip') {
+                throw Object.assign(new Error('its drive is skipped'), { skipped: true });
             }
         }
         return result;
@@ -434,7 +494,7 @@ class BreakScanService {
 
     async scanOne(entry) {
         const startedAt = this.now();
-        this.current = { path: entry.path, title: entry.title, key: entry.key, startedAt, step: 'checking' };
+        this.current = { path: entry.path, title: entry.title, key: entry.key, drive: entry.drive, startedAt, step: 'checking' };
         this.fileRunMs = 0;
         try {
             let st;
@@ -470,6 +530,10 @@ class BreakScanService {
             } catch (err) {
                 if (err && err.stopping) {
                     return 'stopped';
+                }
+                if (err && err.skipped) {
+                    this.log(`Breaks: stopped ${entry.title}: ${entry.drive} is skipped`);
+                    return 'skipped';
                 }
                 this.fail(entry, file, err);
                 if (err && err.timeLimit) {
@@ -509,6 +573,8 @@ class BreakScanService {
             current: this.current,
             queued: this.queue.length,
             counts: this.counts,
+            skipDrives: this.skipDrives.slice(),
+            diskPriority: this.disk.status(),
             live: this.meter.live().map( (i) => ({ channel: i.channel, title: i.title, drive: i.drive, startedAt: i.startedAt, pace: i.pace, held: i.held }) ),
             pace: g.paceReport(),
             log: g.log.slice(-100),
@@ -518,6 +584,8 @@ class BreakScanService {
 
 BreakScanService.airingsOf = airingsOf;
 BreakScanService.scannable = scannable;
+BreakScanService.driveName = driveName;
+BreakScanService.driveList = (drives) => Array.from(new Set( (Array.isArray(drives) ? drives : []).map(driveName).filter( (d) => d !== null ) )).sort();
 BreakScanService.constants = { FIRST_QUEUE_MS, QUEUE_EVERY_MS, AFTER_SAVE_MS, TICK_MS, WEEK_MS, DAY_MS, FILE_LIMIT_MS };
 
 module.exports = BreakScanService;

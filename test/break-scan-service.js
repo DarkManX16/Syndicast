@@ -118,7 +118,7 @@ module.exports = async () => {
         suite.check('theatrical movies, music, Flex and entries with no file are never queued',
             ! order.some( (p) => /iron|mp3/.test(p) ) && (service.queue.length === 5));
         suite.check('how much is scanned is counted for the week and the whole library',
-            JSON.stringify(service.counts) === JSON.stringify( { week: { files: 3, scanned: 0 }, library: { files: 5, scanned: 0 } } ));
+            JSON.stringify(service.counts) === JSON.stringify( { week: { files: 3, scanned: 0 }, library: { files: 5, scanned: 0 }, skipped: { files: 0 } } ), JSON.stringify(service.counts));
 
         // ---- one file, saved when it finishes ----------------------------------------------
         const hd = service.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' );
@@ -317,6 +317,108 @@ module.exports = async () => {
             await again.service.setPaused(false);
             suite.check('...and Resume clears it',
                 (again.service.governor.mode() !== 'off') && (JSON.parse(fs.readFileSync(path.join(f, 'break-scanner.json'), 'utf8')).paused === false));
+        }
+
+        // ---- a drive Ron skips -----------------------------------------------------------
+        {
+            const f = path.join(tmp, 'skip');
+            fs.mkdirSync(f);
+            const { service: s } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            await s.setSkipDrives( [ 'g', 'G:\\', 'nonsense', 7 ] );
+            await s.building;
+            suite.check('a skipped drive\'s files leave the queue; the drive is named once, as "G:"',
+                (JSON.stringify(s.queue.map( (e) => e.path )) === JSON.stringify([ 'E:\\Movies\\iron.mkv', 'F:\\Cheers\\s01e01.mkv' ])) && (JSON.stringify(s.status().skipDrives) === '["G:"]'), JSON.stringify(s.queue.map( (e) => e.path )));
+            suite.check('...and they are counted as skipped, not scanned',
+                (s.counts.skipped.files === 1) && (s.counts.library.scanned === 0), JSON.stringify(s.counts));
+            suite.check('...which does not pause the scanner',
+                s.governor.mode() !== 'off');
+            const again = rig(f, { channels: [ ch1 ] });
+            await again.service.init();
+            await again.service.buildOnce();
+            suite.check('the skip is kept across a restart',
+                (JSON.stringify(again.service.skipDrives) === '["G:"]') && ! again.service.queue.some( (e) => e.drive === 'G:' ));
+            await again.service.setSkipDrives( [] );
+            await again.service.building;
+            const saved = JSON.parse(fs.readFileSync(path.join(f, 'break-scanner.json'), 'utf8'));
+            suite.check('...and an empty list scans every drive again',
+                again.service.queue.some( (e) => e.drive === 'G:' ) && (JSON.stringify(saved) === JSON.stringify( { paused: false, skipDrives: [] } )), JSON.stringify(saved));
+        }
+        {
+            const f = path.join(tmp, 'skip-mid');
+            fs.mkdirSync(f);
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            st.durationS = 900;
+            let stoppedAtOnce = false;
+            st.during = async (call, opts) => {
+                if (call.args.join(' ').includes('silencedetect')) {
+                    await s.setSkipDrives( [ 'G:' ] );
+                    stoppedAtOnce = opts.signal.aborted;
+                    return opts.signal.aborted ? { code: null, stderr: '', aborted: true } : null;
+                }
+                return null;
+            };
+            const entry = s.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' );
+            const result = await s.scanOne(entry);
+            const record = store.loadShow(path.join(f, 'breaks'), 'tv.Happy Days').files[entry.path];
+            suite.check('skipping the drive of the file being scanned stops its ffmpeg at once, with no more runs',
+                stoppedAtOnce && (result === 'skipped') && (silenceStarts(st).join(',') === '0.000'), result + ' ' + silenceStarts(st).join(','));
+            suite.check('...and records nothing, so it is not a failure to retry',
+                record === undefined);
+        }
+
+        // ---- Very Low disk priority ------------------------------------------------------
+        {
+            const f = path.join(tmp, 'disk');
+            fs.mkdirSync(f);
+            const lowered = [];
+            const disk = { lower: async (pid) => { lowered.push(pid); return true; }, status: () => ({ level: 'very low', lowered: lowered.length, failed: 0, problem: null }), start: () => {}, stop: () => {} };
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ], service: { diskPriority: disk } });
+            let pid = 100;
+            st.during = async (call, opts) => {
+                opts.onSpawn(pid++);
+                return null;
+            };
+            await s.init();
+            await s.buildOnce();
+            st.durationS = 600;
+            await s.scanOne(s.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' ));
+            suite.check('every ffprobe and ffmpeg run is handed to the disk priority helper as it starts',
+                (lowered.length === st.calls.length) && (lowered.length >= 3) && (lowered[0] === 100), `${lowered.length} of ${st.calls.length}`);
+            suite.check('...and the status says what the scanner\'s reads run at',
+                s.status().diskPriority.level === 'very low');
+        }
+
+        // ---- the API ---------------------------------------------------------------------
+        {
+            const f = path.join(tmp, 'api');
+            fs.mkdirSync(f);
+            const { service: s } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            const routes = {};
+            require('../src/break-scan-api')( { get: (p, h) => { routes['GET ' + p] = h; }, put: (p, h) => { routes['PUT ' + p] = h; } }, s );
+            const put = async (body) => {
+                const res = { code: 200, body: null, status(c) { this.code = c; return this; }, send(b) { this.body = b; return this; } };
+                await routes['PUT /api/breaks/scanner']( { body }, res );
+                return res;
+            };
+            await put( { paused: true } );
+            const r1 = await put( { skipDrives: [ 'E:' ] } );
+            suite.check('PUT { skipDrives } sets the drives and leaves Pause by hand alone',
+                (r1.code === 200) && (JSON.stringify(r1.body.skipDrives) === '["E:"]') && (r1.body.pausedByHand === true));
+            const r2 = await put( { paused: false } );
+            suite.check('PUT { paused } leaves the drives alone',
+                (r2.body.pausedByHand === false) && (JSON.stringify(r2.body.skipDrives) === '["E:"]'));
+            const r3 = await put( { skipDrives: 'E:' } );
+            suite.check('a drive list that is not a list is refused and changes nothing',
+                (r3.code === 400) && (JSON.stringify(s.skipDrives) === '["E:"]'));
+            await put( { paused: true } );
+            const r4 = await put( {} );
+            suite.check('an empty PUT still resumes, as before',
+                r4.body.pausedByHand === false);
         }
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });

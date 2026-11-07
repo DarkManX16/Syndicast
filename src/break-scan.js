@@ -11,7 +11,9 @@
  *   2. blackdetect, only in the windows break-detect.windowsForSilences asks
  *      for, on the picture scaled down first.
  * Every ffmpeg process runs at idle priority (os.setPriority), one thread,
- * and is never asked to decode audio and video at once.
+ * and is never asked to decode audio and video at once. The scanner service
+ * also lowers its disk priority to Very Low (io-priority.js) through the
+ * runner's onSpawn.
  */
 
 const os = require('os');
@@ -24,7 +26,8 @@ const BLACK_FILTER = 'scale=w=192:h=-2:flags=fast_bilinear,blackdetect=d=0.05:pi
 
 /*
  * options.signal: an AbortSignal that stops the ffmpeg at once; the result is
- * then { aborted: true }.
+ * then { aborted: true }. options.onSpawn(pid), if given, is called as soon as
+ * the process exists (the scanner lowers its disk priority there).
  */
 function defaultRunner(ffmpegPath, args, options = {}) {
     return new Promise( (resolve) => {
@@ -44,6 +47,13 @@ function defaultRunner(ffmpegPath, args, options = {}) {
             os.setPriority(child.pid, os.constants.priority.PRIORITY_LOW);
         } catch (err) {
             // not fatal: this run just goes at normal priority
+        }
+        if ( (typeof(options.onSpawn) === 'function') && (child.pid != null) ) {
+            try {
+                Promise.resolve(options.onSpawn(child.pid)).catch( () => {} );
+            } catch (err) {
+                // not fatal either: this run keeps its normal disk priority
+            }
         }
         let aborted = false;
         const onAbort = () => {
