@@ -70,6 +70,10 @@ below says what we do and why. **Syndicast innovates.**
   already works: the full suite and the workflow checklist must pass, and
   existing behaviour stays the same unless Ron approves a change. Ron added this
   Nov 7, 2026.
+- Look at the entire design plan we have up to now and will have later. Then
+  innovate: think about the user experience and think outside the box. Use any
+  tool you have. Don't break anything or clutter the site. Ron added this
+  Nov 7, 2026.
 
 ## Feature roadmap
 
