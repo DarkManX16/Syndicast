@@ -272,6 +272,8 @@ function makeRunner(opts, page) {
         start: (r.querySelector('.psr-start') || {}).textContent,
         show: ((r.querySelector('.psr-show') || {}).textContent || '').trim(),
         flex: !r.querySelector('.psr-show'),
+        // The row's length as shown (m:ss or h:mm:ss), in seconds.
+        secs: ((((r.querySelector('.psr-duration') || {}).textContent || '').match(/\d+(:\d+)+/) || [ '0' ])[0]).split(':').reduce((a, n) => a * 60 + parseInt(n, 10), 0),
         kept: !!r.querySelector('.fa-thumbtack, .fa-clock'),
         canSwap: !!r.querySelector('button[title="Swap..."]'),
         top: r.getBoundingClientRect().top,
@@ -710,7 +712,9 @@ function makeRunner(opts, page) {
             const start = await snap();
 
             // A: Insert before, on an airing with a Flex right above it.
-            const target = await plainRow(1, 0, (all, r) => r.k > 0 && all[r.k - 1].flex);
+            // The clips are about 6 to 8 minutes: a Flex of 8:30 or more above the airing holds one.
+            const roomy = (all, k) => all[k].flex && all[k].secs >= 510;
+            const target = await plainRow(1, 0, (all, r) => r.k > 0 && roomy(all, r.k - 1));
             await click(await (await rowHandle(target.k)).$('button[title="Insert before..."]'), `${target.show} at ${target.start}'s Insert before`);
             await waitTitle(/^Insert before/, 'the Insert before dialog');
             const clipA = await pickClip();
@@ -745,7 +749,7 @@ function makeRunner(opts, page) {
             sameList(await snap(), start, 'Put back of Insert before');
 
             // B: Insert after puts a clip ahead of the break; dropped just before the airing it lands there.
-            const target2 = await plainRow(1, 0, (all, r) => r.k > 1 && all[r.k - 1].flex && !all[r.k - 2].flex && all[r.k - 2].canSwap);
+            const target2 = await plainRow(1, 0, (all, r) => r.k > 1 && roomy(all, r.k - 1) && !all[r.k - 2].flex && all[r.k - 2].canSwap);
             const prevRow = (await rowsInView())[target2.k - 2];
             await click(await (await rowHandle(prevRow.k)).$('button[title="Insert after..."]'), `${prevRow.show} at ${prevRow.start}'s Insert after`);
             await waitTitle(/^Insert after/, 'the Insert after dialog');
@@ -787,7 +791,7 @@ function makeRunner(opts, page) {
             sameList(await snap(), start, 'Put back of Insert after');
 
             // C: Create Lineup keeps the clip where it sits, against the airing, and the airing at its time.
-            const target3 = await plainRow(1, 0, (all, r) => r.k > 0 && all[r.k - 1].flex);
+            const target3 = await plainRow(1, 0, (all, r) => r.k > 0 && roomy(all, r.k - 1));
             await click(await (await rowHandle(target3.k)).$('button[title="Insert before..."]'), `${target3.show} at ${target3.start}'s Insert before`);
             await waitTitle(/^Insert before/, 'the Insert before dialog');
             await pickClip();
