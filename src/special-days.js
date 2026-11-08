@@ -130,11 +130,22 @@ function isItemRow(row) {
     return (row != null) && (typeof(row.item) === 'object') && (row.item !== null);
 }
 function untilAt(day, row) {
-    if ( (day == null) || (day.layout === 'times') || (row == null) || (typeof(row.until) !== 'number') || isItemRow(row) ) {
+    if ( (day == null) || (day.layout === 'times') || (row == null) || (typeof(row.until) !== 'number') || isItemRow(row)
+         || (row.showId === 'flex.') ) {
         return null;
     }
     let x = localInstant(day.from && day.from.date, row.until);
-    return (x === null) ? null : x.at;
+    let w = windowOf(day);
+    if ( (x === null) || (w === null) ) {
+        return null;
+    }
+    // Left outside the day by a change to the day's times (review, Nov 8): at or
+    // before its start it is no until at all, a go like any row; after its end it
+    // runs to the end. Neither stops the day.
+    if (x.at <= w.from) {
+        return null;
+    }
+    return Math.min(x.at, w.to);
 }
 
 /*
@@ -145,7 +156,7 @@ function untilAt(day, row) {
  * a day. A time the clock skips that night is left out.
  */
 const WEEKDAYS = [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ];
-function untilOptions(day) {
+function untilOptions(day, current) {
     let w = (day != null) ? windowOf(day) : null;
     if ( (w === null) || (w.to <= w.from) ) {
         return [];
@@ -162,6 +173,15 @@ function untilOptions(day) {
             continue;
         }
         out.push({ id: off, description: (multi ? WEEKDAYS[new Date(x.at).getDay()] + ' ' : '') + clock(x.at) });
+    }
+    // A row's own until that is not one of the marks (the day's times or rounding
+    // changed since) still shows as itself, in its place, rather than blank.
+    if ( (typeof(current) === 'number') && ! out.some( (o) => o.id === current ) ) {
+        let x = localInstant(day.from.date, current);
+        if (x !== null) {
+            out.push({ id: current, description: (multi ? WEEKDAYS[new Date(x.at).getDay()] + ' ' : '') + clock(x.at) });
+            out.sort( (a, b) => a.id - b.id );
+        }
     }
     return out;
 }
@@ -360,10 +380,6 @@ function problems(schedule, blocks) {
             say(day, 'rows', 'A row has no item picked.');
         }
         if (day.layout !== 'times') {
-            // A row running until a time: after the day starts, by the day's end.
-            if (rows.some( (row) => { let u = untilAt(day, row); return (u !== null) && ( (u <= w.from) || (u > w.to) ); } )) {
-                say(day, 'rows', 'A row runs until a time outside the day.');
-            }
             return;
         }
         if (rows.some( (row) => (row == null) || (typeof(row.at) !== 'number') )) {
@@ -542,6 +558,7 @@ function timetable({ programs, startTime, day, schedule }) {
     let t = startTime;
     let rows = [];
     let overrunEnd = null;
+    let dayRows = Array.isArray(day.slots) ? day.slots.filter( (r) => (r !== null) && (typeof(r) === 'object') ) : [];
     for (let i = 0; (i < programs.length) && (t < w.to + DAY); i++) {
         let p = programs[i];
         let start = t;
@@ -554,14 +571,20 @@ function timetable({ programs, startTime, day, schedule }) {
             break;
         }
         if (! p.isOffline && (p.specialDay === day.id)) {
-            // A row running until a time is one line for its run (Event tools).
-            let row = (typeof(p.specialRow) === 'number') && Array.isArray(day.slots) ? day.slots[p.specialRow] : null;
+            // A row running until a time is one line for its run (Event tools). Its
+            // specialRow counts the day's rows as the generator does, nulls left out;
+            // a long break's fill inside the run stays inside its line.
+            let row = (typeof(p.specialRow) === 'number') ? dayRows[p.specialRow] : null;
             let u = untilAt(day, row);
             let last = (rows.length > 0) ? rows[rows.length - 1] : null;
-            if ( (u !== null) && (start < u) && (last !== null) && (last.run !== undefined) && (last.specialRow === p.specialRow) ) {
+            let open = (last !== null) && (last.run !== undefined);
+            if ( open && (p.specialRow === 'fill') && (start < last.runUntil) ) {
+                continue;
+            }
+            if ( (u !== null) && (start < u) && open && (last.specialRow === p.specialRow) ) {
                 last.run.push(p);
             } else {
-                rows.push({ at: start, title: pins.label(p), specialRow: p.specialRow, run: ( (u !== null) && (start < u) ) ? [ p ] : undefined });
+                rows.push({ at: start, title: pins.label(p), specialRow: p.specialRow, run: ( (u !== null) && (start < u) ) ? [ p ] : undefined, runUntil: u });
             }
             if (end > w.to) {
                 overrunEnd = end;

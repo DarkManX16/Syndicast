@@ -689,7 +689,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         }
         let k = ( (typeof(at) === 'object') && (at !== null) && Number.isInteger(at.nextRow) ) ? at.nextRow : 0;
         let itemsAired = new Set( ( (typeof(at) === 'object') && (at !== null) && Array.isArray(at.airedItems) ) ? at.airedItems : [] );
-        return { day: day, from: w.from, to: w.to, slotOf: slotOf, timed: timed, k: k, itemsAired: itemsAired,
+        // An until run under way when the lineup is remade (planner: inRun).
+        let runK = ( (typeof(at) === 'object') && (at !== null) && (at.inRun === true) ) ? k : null;
+        return { day: day, from: w.from, to: w.to, slotOf: slotOf, timed: timed, k: k, runK: runK, itemsAired: itemsAired,
             step: specialDays.stepOf(day), jumped: (w.from <= ts) };
     } );
     let dayAt = (x) => laidDays.find( (d) => (d.from <= x) && (x < d.to) ) || null;
@@ -813,6 +815,18 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     let backStep = (d) => {
         // The row after a run that ended at its until time starts right there,
         // even when that time is not one of the day's marks.
+        // An until run under way (d.runK) whose time has come - its last go and
+        // break done, or a kept row run into it - is over: the next row, from the
+        // until time when it is that time now (review, Nov 8: a re-make in the last
+        // half hour gave the run one more go and moved the next row 30 minutes).
+        let n0 = d.slotOf.length;
+        let cur = (n0 > 0) ? d.slotOf[d.k % n0] : null;
+        if ( (d.runK === d.k) && (cur !== null) && (typeof(cur.untilAt) === 'number') && (t >= cur.untilAt - SLACK) ) {
+            d.k++;
+            if (t <= cur.untilAt + SLACK) {
+                d.untilEnd = cur.untilAt;
+            }
+        }
         let atUntil = (typeof(d.untilEnd) === 'number') && (Math.abs(t - d.untilEnd) <= SLACK);
         d.untilEnd = null;
         let start = ( (t <= d.from + SLACK) || atUntil ) ? t : specialDays.nextMark(t, d.step);
@@ -892,6 +906,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         if ( (until !== null) && (end >= until - SLACK) ) {
             d.k++;
             d.untilEnd = until;
+        } else if (until !== null) {
+            d.runK = d.k;
         }
         let remaining = end - t;
         let pads = [ makePadded(first) ];
@@ -1067,8 +1083,10 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         let d = laidDays.find( (x) => x.day.id === carry.program.specialDay );
         if (typeof(d) !== 'undefined') {
             let onAirRow = d.slotOf[carry.program.specialRow] || {};
-            let goesOn = (typeof(onAirRow.untilAt) === 'number') && (t < onAirRow.untilAt - SLACK);
+            // A go of a run (it began before the until time) leaves the run under way.
+            let goesOn = (typeof(onAirRow.untilAt) === 'number') && (carry.start < onAirRow.untilAt - SLACK);
             d.k = carry.program.specialRow + (goesOn ? 0 : 1);
+            d.runK = goesOn ? d.k : null;
             if ( isItem(d.slotOf[carry.program.specialRow] || {}) ) {
                 d.itemsAired.add(carry.program.specialRow);
             }

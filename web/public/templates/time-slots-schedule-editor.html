@@ -200,7 +200,7 @@
                                             <div class="form-row" ng-if="day.layout !== 'times' && row.showId !== 'flex.'">
                                                 <div class="form-group col-md-4" style="margin-bottom: 4px;">
                                                     <select class="custom-select custom-select-sm form-control day-row-until" ng-model="row.until"
-                                                        ng-options="o.id as ('Until ' + o.description) for o in dayUntilOptions(day)">
+                                                        ng-change="untilChanged(row)" ng-options="o.id as ('Until ' + o.description) for o in dayUntilOptions(day, row)">
                                                         <option value="">Until —</option>
                                                     </select>
                                                 </div>

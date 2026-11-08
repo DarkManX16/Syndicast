@@ -142,10 +142,17 @@ module.exports = async () => {
         const offset = (t) => t - (w.from - backDay(0).from.time);   // ms after from.date's midnight
         suite.check('problems: an until inside the day is fine', texts({ specialDays: [ backDay(offset(w.from) + 14 * HOUR) ] }).length === 0,
             texts({ specialDays: [ backDay(offset(w.from) + 14 * HOUR) ] }).join(' / '));
-        suite.check('problems: an until at or before the day starts is named, at its row',
-            texts({ specialDays: [ backDay(offset(w.from)) ] }).join() === 'A row runs until a time outside the day.'
-                && sd.problems({ specialDays: [ backDay(offset(w.from)) ] })[0].field === 'rows');
-        suite.check('problems: an until after the day ends is named', texts({ specialDays: [ backDay(offset(w.to) + 30 * MIN) ] }).join() === 'A row runs until a time outside the day.');
+        suite.check('problems: an until at or before the day starts stops nothing: the row is one go',
+            texts({ specialDays: [ backDay(offset(w.from)) ] }).length === 0
+                && sd.untilAt(backDay(offset(w.from)), backDay(offset(w.from)).slots[0]) === null);
+        suite.check('problems: an until after the day ends stops nothing: the row runs to the end of the day',
+            texts({ specialDays: [ backDay(offset(w.to) + 30 * MIN) ] }).length === 0
+                && sd.untilAt(backDay(offset(w.to) + 30 * MIN), backDay(offset(w.to) + 30 * MIN).slots[0]) === w.to);
+        suite.check('untilAt: a Flex row has no until', sd.untilAt(backDay(0), { showId: 'flex.', until: offset(w.from) + HOUR }) === null);
+        const kept = sd.untilOptions(newYears({ from: { date: '2027-01-01', time: 6 * HOUR }, to: { date: '2027-01-02', time: 6 * HOUR } }), 20 * HOUR + 15 * MIN);
+        suite.check('untilOptions: a row whose until is not one of the marks still shows it, in time order',
+            kept.length === 49 && kept.some( (o) => (o.id === 20 * HOUR + 15 * MIN) && (o.description === '8:15pm') )
+                && kept.every( (o, i) => (i === 0) || (kept[i - 1].id < o.id) ), String(kept.length));
         suite.check('problems: an until right at the end of the day is fine', texts({ specialDays: [ backDay(offset(w.to)) ] }).length === 0);
         suite.check('problems: a Set times day ignores until', texts({ specialDays: [ backDay(offset(w.to) + HOUR, { layout: 'times',
             slots: [ { showId: 'tv.X', order: 'next', at: newYears().from.time, until: 99 * HOUR } ] }) ] }).length === 0);
@@ -390,6 +397,15 @@ module.exports = async () => {
         suite.check('...at the run\u2019s start', tt.rows[0].at === local(2027, 1, 1, 6, 0) && tt.rows[1].at === local(2027, 1, 1, 7, 30), '');
         suite.check('...and the list starting again is still a thin rule', JSON.stringify(tt.restarts) === JSON.stringify([ local(2027, 1, 1, 8, 0) ]),
             JSON.stringify(tt.restarts));
+        const fill = { type: 'episode', showTitle: 'F', title: 'F 1x1', season: 1, episode: 1, duration: 5 * MIN, specialDay: 'sd_tt', specialRow: 'fill' };
+        const withFill = programs.slice(0, 2).concat([ fill ], programs.slice(2));
+        withFill[1] = { duration: 3 * MIN, isOffline: true };
+        const ttFill = sd.timetable({ programs: withFill, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} });
+        suite.check('...a long break filled inside the run stays inside its one line',
+            ttFill.rows[0].title === 'L, 3 episodes (S1E1–S2E1)' && ttFill.rows[1].title === 'The Movie', JSON.stringify(ttFill.rows.map( (r) => r.title )));
+        const withNull = Object.assign({}, ttDay, { slots: [ null ].concat(ttDay.slots) });
+        suite.check('...and a null row in the day does not move which row is which',
+            sd.timetable({ programs, startTime: local(2027, 1, 1, 6, 0), day: withNull, schedule: {} }).rows[0].title === 'L, 3 episodes (S1E1–S2E1)', '');
     }
     {
         // The Until dropdown: the day's own marks after its start, to its end.

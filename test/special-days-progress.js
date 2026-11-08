@@ -201,11 +201,20 @@ module.exports = async function () {
             const s = JSON.parse(JSON.stringify(sched(ud)));
             const progress = slotProgress.planProgress({ programs: laid.programs, startTime: Date.parse(laid.startTime), now,
                 openedSchedule: laid.schedule, schedule: s, pool: pool(), getShowData });
-            return progress.specialDays.sd_t.nextRow;
+            return JSON.stringify(progress.specialDays.sd_t);
         };
-        suite.check('...the planner itself says the row goes on before 8:00pm and moves on after it',
-            nextRowAt(fri(10, 25)) === 0 && nextRowAt(fri(19, 59)) === 0 && nextRowAt(fri(20, 10)) === 1,
-            `${nextRowAt(fri(10, 25))} ${nextRowAt(fri(19, 59))} ${nextRowAt(fri(20, 10))}`);
+        suite.check('...the planner itself says the run is under way during it, and after a go of the list’s second time round, the next row',
+            nextRowAt(fri(10, 25)) === '{"nextRow":0,"airedItems":[],"inRun":true}' && nextRowAt(fri(22, 40)) === '{"nextRow":1,"airedItems":[1]}',
+            `${nextRowAt(fri(10, 25))} ${nextRowAt(fri(22, 40))}`);
+        // Review, Nov 8: in the last half hour, the run's last go started, a re-make
+        // gave the run one more go at 8:00 and moved the movie to 8:30.
+        for (const [ label, when ] of [ [ '7:35pm, the last go on air', fri(19, 35) ], [ '7:55pm, in the break after it', fri(19, 55) ],
+            [ '7:25pm, the go before it on air', fri(19, 25) ] ]) {
+            const remade = await make(laid, sched(ud), when);
+            suite.check(`a Create Lineup at ${label}: the movie stays at 8:00pm, the rest of the day as laid`,
+                movieAt(remade) === fri(20) && sameDay(laid, remade, fri(20)),
+                titles(inside(remade, fri(19, 30), fri(21))).join(', '));
+        }
         const later = await make(laid, sched(ud), fri(22, 10));
         suite.check('...and at 10:10pm, the until time gone by, the day carries on as laid',
             sameDay(laid, later, fri(22, 30)), titles(inside(later, fri(22, 30), fri(23, 30))).join(', '));

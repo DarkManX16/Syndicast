@@ -264,6 +264,21 @@ module.exports = async function () {
         const withUntil = await generate(pool(), withDays(daily(), [ set({ until: 9 * HOUR }) ]), NOW);
         suite.check('on a Set times day an until changes nothing', JSON.stringify(without) === JSON.stringify(withUntil), '');
     }
+    {
+        // Review, Nov 8: an until outside the day (its end moved earlier after Until was
+        // set) took the whole day off the air. It now runs to the day's end instead.
+        const rows = [ { showId: 'tv.X', order: 'next', until: 30 * HOUR + 30 * MIN }, item(LONG_MOVIE) ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);
+        const d = inside(res, FRI6, SAT6);
+        suite.check('an until after the day ends: the day still airs, the show to its end',
+            d.length === 48 && d.every( (a) => a.program.showTitle === 'X' ), `${d.length} airings`);
+        const flexRow = [ { showId: 'flex.', order: 'next', until: 20 * HOUR }, { showId: 'tv.X', order: 'next' } ];
+        const plainFlex = [ { showId: 'flex.', order: 'next' }, { showId: 'tv.X', order: 'next' } ];
+        const a = await generate(pool(), withDays(daily(), [ day({ slots: flexRow }) ]), NOW);
+        const b = await generate(pool(), withDays(daily(), [ day({ slots: plainFlex }) ]), NOW);
+        suite.check('an until left on a Flex row (the dropdown hides it there) changes nothing',
+            JSON.stringify(a.programs) === JSON.stringify(b.programs), '');
+    }
 
     suite.log('-- Fill long breaks with (day.fillBreaksWith) --');
     {
@@ -520,6 +535,21 @@ module.exports = async function () {
         suite.check('a kept swap inside a Back to back day stays where it sits; the next row at the next half hour after it',
             k !== -1 && d[k].start === fri(9) && d[k + 1].start === fri(9, 30) && d[k + 1].program.title === 'X S1E1', d.slice(k, k + 2).map(line).join(' / '));
         suite.check('...the day\'s own airings carry no kept mark', d.filter( (a) => a.program.specialDay ).every( (a) => ! a.program.kept ), '');
+    }
+    {
+        // Review, Nov 8: a kept row inside an until run - the run still ends at its
+        // until time, and the next row starts there.
+        const rows = [ { showId: 'tv.X', order: 'next', until: 20 * HOUR }, item(LONG_MOVIE) ];
+        for (const mins of [ 22, 35 ]) {
+            const KEPT = Object.assign(episode('K', 1, 1, mins * MIN), { kept: { edits: [ { id: 'e1', kind: 'swap', made: '2026-10-08T12:00:00.000Z' } ] } });
+            const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW, [ { at: fri(19, 30), kept: true, program: KEPT } ]);
+            const d = inside(res, FRI6, SAT6);
+            const movieAt = d.find( (a) => a.program.title === 'The Long One' );
+            const expected = (mins === 22) ? fri(20) : fri(20, 30);
+            suite.check(`a ${mins}-minute kept row at 7:30pm inside a run until 8:00pm: no go after it, the movie at ${mins === 22 ? '8:00pm' : '8:30pm, the next half hour after it'}`,
+                (movieAt !== undefined) && (movieAt.start === expected) && ! d.some( (a) => (a.program.showTitle === 'X') && (a.start >= fri(19, 30)) && (a.start < fri(20, 30)) ),
+                d.filter( (a) => (a.start >= fri(19)) && (a.start < fri(21)) ).map(line).join(' / '));
+        }
     }
     {
         // Weekly: B at Thu 7pm, a Repeat of it Sat 7pm. The day covers Thu Oct 15 with B's rows.

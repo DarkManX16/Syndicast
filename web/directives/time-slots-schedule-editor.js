@@ -1095,14 +1095,23 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             // A Back to back row's Until (NOTES.md, "Event tools"): the day's own
             // marks. Rebuilt only when the day's window or rounding changes, so
             // ng-options keeps one array between digests.
+            // A row whose until is not one of the marks gets its own list with it in.
             let untilCache = {};
-            scope.dayUntilOptions = (day) => {
+            scope.dayUntilOptions = (day, row) => {
                 let w = specialDays.windowOf(day);
-                let key = (w === null) ? '' : w.from + '-' + w.to + '-' + day.rounding;
-                if ( (typeof(untilCache[day.id]) === 'undefined') || (untilCache[day.id].key !== key) ) {
-                    untilCache[day.id] = { key: key, list: specialDays.untilOptions(day) };
+                let own = ( (typeof(row.until) === 'number') && ! specialDays.untilOptions(day).some( (o) => o.id === row.until ) ) ? row.until : null;
+                let key = ( (w === null) ? '' : w.from + '-' + w.to + '-' + day.rounding ) + '|' + own;
+                let cacheKey = day.id + '|' + own;
+                if ( (typeof(untilCache[cacheKey]) === 'undefined') || (untilCache[cacheKey].key !== key) ) {
+                    untilCache[cacheKey] = { key: key, list: specialDays.untilOptions(day, own) };
                 }
-                return untilCache[day.id].list;
+                return untilCache[cacheKey].list;
+            };
+            // Cleared, the row saves as it was before Until existed.
+            scope.untilChanged = (row) => {
+                if ( (row.until === null) || (typeof(row.until) === 'undefined') ) {
+                    delete row.until;
+                }
             };
             scope.dayRowOffset = (row) => Math.floor( (row.at || 0) / DAY );
             scope.dayRowHour = (row) => Math.floor( ((row.at || 0) % DAY) / HOUR );
