@@ -1880,13 +1880,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 let mix = scope.channel.fillerCollections
                     .filter( (f) => f.id !== 'none' )
-                    .map( (f) => {
-                        return {
-                            id: f.id,
-                            weight: f.weight,
-                            cooldown: (typeof(f.cooldownMinutes) === 'number') ? (f.cooldownMinutes * 60 * 1000) : f.cooldown,
-                        };
-                    } );
+                    .map(dayParts.copyMixEntry);
                 let dayPart = {
                     id: newDayPartId(),
                     name: scope.channel.name,

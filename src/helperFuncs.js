@@ -180,8 +180,13 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
              */
             let mix = fillers;
             let collections = dayParts.resolveCollections(channel, t0, obj);
+            // A Mix entry with dates is in the mix only on them (day-parts.js's
+            // mixOn); with none dated, each hands back the array it was given.
+            let breakStart = dayParts.breakStartOf(t0, obj);
             if (collections !== null) {
-                mix = applyMix(fillers, collections);
+                mix = applyMix(fillers, dayParts.mixOn(collections, breakStart));
+            } else {
+                mix = dayParts.channelMixOn(channel, fillers, breakStart);
             }
             let randomResult = pickRandomWithMaxDuration(programPlayTime, channel, mix, remaining + (isFirst? (7*24*60*60*1000) : 0) , isFirst );
             filler = randomResult.filler;

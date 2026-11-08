@@ -1151,6 +1151,7 @@ module.exports = {
     setTimes: setTimes,
     setDates: setDates,
     dateInputOf: dateInputOf,
+    datesChipWord: datesChipWord,
     clockInputOf: clockInputOf,
     describeStep: describeStep,
     stepListName: stepListName,

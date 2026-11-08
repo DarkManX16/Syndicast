@@ -11,6 +11,9 @@
  * fields before saving - exactly as channel-config.js already does for the
  * channel's own mix.
  */
+const editor = require('../../src/transitions-editor');
+const dateRange = require('../../src/date-range');
+
 module.exports = function () {
     return {
         restrict: 'E',
@@ -94,9 +97,43 @@ module.exports = function () {
             }
 
             scope.deleteRow = (index) => {
+                if ( (scope.datesForm !== null) && (scope.datesForm.row === scope.mix[index]) ) {
+                    scope.datesForm = null;
+                }
                 scope.mix.splice(index, 1);
                 scope.refresh();
             }
+
+            /*
+             * Dates on a row (NOTES.md, "Event tools"): one calendar button per
+             * row opens From and To under it. Both or neither, as a step's
+             * dates (transitions-editor.js's setDates); cleared, the row loses
+             * the key, so a row nobody dates saves exactly as it was. The open
+             * form lives on the scope, never on the row, so nothing of it is saved.
+             */
+            scope.datesForm = null;
+            scope.toggleDates = (x) => {
+                if ( (scope.datesForm !== null) && (scope.datesForm.row === x) ) {
+                    scope.datesForm = null;
+                    return;
+                }
+                scope.datesForm = {
+                    row: x,
+                    from: editor.dateInputOf(x.dates && x.dates.from),
+                    to: editor.dateInputOf(x.dates && x.dates.to),
+                    error: '',
+                };
+            };
+            scope.datesChanged = () => {
+                let f = scope.datesForm;
+                let result = editor.setDates(f.row, f.from, f.to);
+                f.error = result.ok ? '' : result.error;
+                if (result.ok && (f.row.dates === null)) {
+                    delete f.row.dates;
+                }
+            };
+            scope.datesWord = (x) => editor.datesChipWord(x);
+            scope.datesPassed = (x) => dateRange.passed(x.dates, Date.now());
 
             scope.$watch('fillerOptions', () => {
                 scope.refresh();

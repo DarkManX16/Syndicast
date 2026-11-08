@@ -63,9 +63,19 @@ function inDates(dates, instant) {
     return (day >= dates.from) && (day <= dates.to);
 }
 
+// Whether `dates` have all gone by at `now`: its last date is before today.
+// No dates (or malformed ones) never pass.
+function passed(dates, now) {
+    if ( (dates == null) || (datesProblem({ dates: dates }) !== null) ) {
+        return false;
+    }
+    return localDate(now) > dates.to;
+}
+
 module.exports = {
     isDate: isDate,
     datesProblem: datesProblem,
     localDate: localDate,
     inDates: inDates,
+    passed: passed,
 };
