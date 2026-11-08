@@ -115,6 +115,16 @@ module.exports = async function () {
         suite.check(`...and its Put back says "${undoSaid[label]}"`, back === undoSaid[label], back);
     }
 
+    suite.log('-- a Keep apart day touches only itself --');
+    {
+        const s1 = dayEdits.withChange(s0, 'sd_t', 0, { n: 3, kind: 'swap', item: { program: SAME } }, 'ch1');
+        const R = await make(s1);
+        const got = dayEdits.splice({ lineup: L, relaid: R, day: s1.specialDays[0] });
+        const moved = dayEdits.alongAfter({ lineup: L, spliced: got, relaid: R, now: NOW, schedule: s1, catalog: pool() });
+        suite.check('a swap on a Keep apart day moves nothing after it and says nothing of an episode the day no longer airs',
+            moved.text === '' && moved.programs === got.programs, moved.text);
+    }
+
     suite.log('-- an Advance day: the show’s later episodes move along --');
     {
         const adv = sched(day({ positions: 'advance', slots: [ { showId: 'tv.A', order: 'next' } ] }));

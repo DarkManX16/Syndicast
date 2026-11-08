@@ -171,8 +171,10 @@ function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id }) {
         return { programs: lineup.programs, text: '' };
     }
     let fileKey = (p) => `${p.serverKey}|${p.key}`;
-    let before = lineup.programs.slice(spliced.from, spliced.oldTo).filter( (p) => keptRows.positionOf(p) !== null );
-    let now_ = spliced.programs.slice(spliced.from, spliced.to).filter( (p) => keptRows.positionOf(p) !== null );
+    // A Keep-apart day's positions are its own (tagged): it touches only itself.
+    let regular = (p) => { let key = keptRows.positionOf(p); return (key !== null) && (JSON.parse(key).length < 4); };
+    let before = lineup.programs.slice(spliced.from, spliced.oldTo).filter(regular);
+    let now_ = spliced.programs.slice(spliced.from, spliced.to).filter(regular);
     let had = new Set(now_.map(fileKey));
     let has = new Set(before.map(fileKey));
     let pushed = before.filter( (p) => ! had.has(fileKey(p)) );
