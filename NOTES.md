@@ -7276,8 +7276,7 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
 `cooldown: null` until the editor is reopened (pre-existing, noted before).
 
 **Feature 4, Swap and Insert inside a special day, built Nov 8, 2026 (Opus 5.5)** on
-`special-day-edits` from `blocks` at c4a5279; not merged until Ron confirms. Delete inside a day
-is **not** built - still refused, as are drags - waiting on Ron (below).
+`special-day-edits` from `blocks` at c4a5279. Drags into, out of and inside a day stay refused.
 
 - **Saved on the row.** `slots[k].changes: [{ id, n, kind: 'swap' | 'before' | 'after', item: {
   program } }]`, each a change to row k's nth airing in the day (an insert is no airing of the
@@ -7334,11 +7333,27 @@ is **not** built - still refused, as are drags - waiting on Ron (below).
   taken 8:44am, and again after the review's fixes on one taken 10:11am.
 - **The checklist** passed all eleven before the review's fixes (copy 8:44am) and again after them
   (copy 10:11am).
-- **For Ron to decide:** (1) What Delete means inside a day - today Delete on a Time Slots channel
-  puts the episode on the never-air list, and inside a day it is still refused. (2) A change is to
-  "the row's nth airing", so an insert stays at its place in the day when the episodes around it
-  change (after a swap's Put back, the insert after the 5:00 airing follows Gordo's Video instead of
-  Mom's Best Friend, still at 5:21pm). (3) Each edit takes 15-35 seconds while the day is laid again.
+- **Ron's answers, Nov 8:** (1) Delete inside a day is never air, as everywhere else on a Time
+  Slots channel - built below. (2) A change is to "the row's nth airing", so an insert stays at its
+  place in the day when the episodes around it change (after a swap's Put back, the insert after
+  the 5:00 airing follows Gordo's Video instead of Mom's Best Friend, still at 5:21pm): right, an
+  insert belongs to its time slot. (3) 15-35 seconds per edit, while the day is laid again, is fine
+  for now.
+- **Delete inside a day, built Nov 8** (d90c229): the episode goes on the never-air list - queued, as
+  every Delete's is, and already in the catalog state the re-lay reads - and the day is laid again at
+  once without it and spliced in; nothing is asked, one sentence after: "Gordo's Video is left out;
+  Rumors airs at 5:00pm instead. Nothing else in the day moves." On an Advance day the show's later
+  episodes move up one (the left-out episode is never pushed along). A picked item ("remove its row
+  in Time Slots"), an episode already set aside for the day's holiday ("change its row in Time
+  Slots"), and a day on the air are refused in one line; a failed re-lay takes the queued entry back
+  off. Tests failing first: `test/day-edits.js` (Keep apart and Advance, against a full Create Lineup
+  with the episode left out) and `test/kept-editor.js` (Delete on a day's airing goes to the day).
+  On the preview, Ron's Lizzie day: Delete on Gordo's Video, 43 seconds, saved: the day as
+  described, and the entry on the never-air list, "deleted, never".
+- **add-delete-create on fresh copies (asked Nov 8): not holiday entries.** "Mickey and the Culture
+  Clash" (S4E9, .../177340) and "House of Genius" (S4E8, .../177275) have no never-air entry of any
+  kind, by file key (what Delete checks), so Delete should have added them; the script was left
+  alone. Cause still unknown; later fresh-copy runs passed.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
