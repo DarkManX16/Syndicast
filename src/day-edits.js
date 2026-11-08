@@ -240,6 +240,24 @@ function describe({ before, after, day, change, undo }) {
         lead = undo ? `${old} is back at ${keptRows.clockAm( (nth !== -1) ? oS[nth] : wS[at] )}`
             : `${title(item)} replaces ${old} at ${keptRows.clockAm(wS[at])}`;
         pivot = (nth !== -1) ? oS[nth] : wS[at];
+        // The episodes too: the one swapped out airs at the row's next airing, and Put back
+        // takes each later airing back an episode.
+        let fileKey = (p) => `${p.serverKey}|${p.key}`;
+        if ( (nth !== -1) && ! undo ) {
+            let oldKey = fileKey(without.programs[nth]);
+            let later = withIt.programs.findIndex( (p, i) => (i > at) && ownAiring(p, day.id, k) && (fileKey(p) === oldKey) );
+            if (later !== -1) {
+                lead += `; it airs at ${keptRows.clockAm(wS[later])} instead`;
+            }
+        } else if (undo) {
+            let rowAfter = (list, starts) => list.programs.map( (p, i) => ({ p, t: starts[i] }) )
+                .filter( (x) => ownAiring(x.p, day.id, k) && (x.t > pivot) && ! marked(x.p) ).map( (x) => fileKey(x.p) );
+            let was = rowAfter(withIt, wS);
+            let now = rowAfter(without, oS);
+            if (was.some( (key, i) => (i < now.length) && (now[i] !== key) )) {
+                lead += ', and the airings after it go back an episode';
+            }
+        }
     } else {
         let target = withIt.programs.findIndex( (p, i) => ownAiring(p, day.id, k)
             && ( (change.kind === 'after') ? (i === at - 1) : (i === at + 1) ) );

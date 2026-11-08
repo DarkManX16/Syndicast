@@ -89,15 +89,15 @@ module.exports = async function () {
     }
 
     const undoSaid = {
-        'a same-length swap': 'X S1E3 is back at 7:00am. Nothing else in the day moves.',
-        'a longer swap': 'X S1E3 is back at 7:00am. The rows after it start 30 minutes earlier; X airs one more episode.',
+        'a same-length swap': 'X S1E3 is back at 7:00am, and the airings after it go back an episode. Nothing else in the day moves.',
+        'a longer swap': 'X S1E3 is back at 7:00am, and the airings after it go back an episode. The rows after it start 30 minutes earlier; X airs one more episode.',
         'an insert after': 'Promo Clip comes out after X S1E2 at 6:30am. Nothing else in the day moves.',
         'an insert before': 'Promo Clip comes out before X S1E3 at 7:00am. Nothing else in the day moves.',
     };
     suite.log('-- the day laid again, spliced in (Keep apart) --');
     for (const [ label, change, expect ] of [
-        [ 'a same-length swap', { n: 3, kind: 'swap', item: { program: SAME } }, 'K S1E1 replaces X S1E3 at 7:00am. Nothing else in the day moves.' ],
-        [ 'a longer swap', { n: 3, kind: 'swap', item: { program: SHORT } }, 'The Short One replaces X S1E3 at 7:00am. The rows after it start 30 minutes later; X airs one fewer episode.' ],
+        [ 'a same-length swap', { n: 3, kind: 'swap', item: { program: SAME } }, 'K S1E1 replaces X S1E3 at 7:00am; it airs at 7:30am instead. Nothing else in the day moves.' ],
+        [ 'a longer swap', { n: 3, kind: 'swap', item: { program: SHORT } }, 'The Short One replaces X S1E3 at 7:00am; it airs at 8:00am instead. The rows after it start 30 minutes later; X airs one fewer episode.' ],
         [ 'an insert after', { n: 2, kind: 'after', item: { program: CLIP } }, 'Promo Clip goes in right after X S1E2 at 6:52am. Nothing else in the day moves.' ],
         [ 'an insert before', { n: 3, kind: 'before', item: { program: CLIP } }, 'Promo Clip goes in right before X S1E3 at 7:00am. Nothing else in the day moves.' ],
     ]) {
