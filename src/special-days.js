@@ -722,6 +722,7 @@ module.exports = {
     aired: aired,
     untilAt: untilAt,
     daysOf: daysOf,
+    clockOfInstant: clock,
     untilOptions: untilOptions,
     copyTo: copyTo,
     usable: usable,

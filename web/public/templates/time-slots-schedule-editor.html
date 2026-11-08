@@ -224,6 +224,10 @@
                                             </div>
                                             <div class="small text-muted">{{dayRowLine(day, $index)}}</div>
                                         </div>
+                                        <div class="small text-muted day-row-change" ng-repeat="c in row.changes track by c.id">
+                                            {{dayChangeLine(c)}}
+                                            <button type="button" class="btn btn-sm btn-link py-0" ng-click="dropDayChange(row, c)">Put back</button>
+                                        </div>
                                     </div>
                                     <button type="button" class="btn btn-sm btn-outline-primary" ng-click="addDayRow(day)">+ Add row</button>
                                     <button type="button" class="btn btn-sm btn-outline-primary" ng-click="pickItemFor(day, null)">This item...</button>

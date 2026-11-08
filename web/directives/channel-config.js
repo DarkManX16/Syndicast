@@ -8,6 +8,7 @@ const transitionsEditor = require('../../src/transitions-editor');
 const showCatalog = require('../../src/show-catalog');
 const pinTools = require('../../src/pins');
 const keptRows = require('../../src/kept-rows');
+const dayEdits = require('../../src/day-edits');
 const buildCheck = require('../../src/build-check');
 
 module.exports = function ($timeout, $location, dizquetv, resolutionOptions, getShowData, commonProgramTools) {
@@ -1456,6 +1457,23 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 ensureHandEditsKept();
                 program = scope.channel.programs[x];
+                // An edit made inside a special day: Put back takes it off the day's row.
+                if (scope.hasTimeSlots() && ( (typeof(program.specialChange) === 'string') || (typeof(program.specialInsert) === 'string') )) {
+                    scope.lastChange = 'Laying the day out again...';
+                    $timeout();
+                    return scope.dayPutBack(program.specialChange || program.specialInsert).then( (got) => {
+                        scope.lastChange = '';
+                        if (! Array.isArray(got.programs)) {
+                            showError(got.refused);
+                            return;
+                        }
+                        scope.undoPrompt = { title: 'Put back?', text: got.text, go: 'Put it back', apply: () => applyEdit(got) };
+                        $timeout();
+                    }, (err) => {
+                        scope.lastChange = '';
+                        showError( (err && err.message) ? err.message : 'The day could not be laid out again.' );
+                    } );
+                }
                 if (scope.hasTimeSlots() && keptRows.keepsItem(program)) {
                     let got = keptRows.putBack({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
                     if (! Array.isArray(got.programs)) {
@@ -2898,10 +2916,62 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     return false;
                 }
                 scope.channel.programs = got.programs;
+                // An edit inside a special day changed the day's rows too (src/day-edits.js).
+                if ( (typeof(got.schedule) === 'object') && (got.schedule !== null) ) {
+                    scope.channel.scheduleBackup = got.schedule;
+                }
                 updateChannelDuration();
                 scope.lastChange = got.text || '';
                 return true;
             };
+
+            /*
+             * Edits inside a special day (NOTES.md, "Event tools", feature 4): Swap and
+             * Insert on a day's airing put a change on the day's row, the Time Slots
+             * editor lays the day again as Create Lineup would, and only the day is
+             * spliced into the list; Put back takes the change off the same way.
+             */
+            let dayChangeId = () => 'ch_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+            let relayDay = async (schedule) => scope.timeSlots.relayDay( commonProgramTools.slotPool(scope.channel.programs), scope.maxSize,
+                schedule, lineupOnAir, await catalogFor(), scope.channel.blocks, scope.fillerOptions );
+            let relaidWith = async (schedule, dayId, change, undo) => {
+                let before = lineupMs();
+                let day = specialDays.daysOf(schedule).find( (d) => d.id === dayId );
+                let relaid = await relayDay(schedule);
+                let spliced = dayEdits.splice({ lineup: before, relaid: relaid, day: day });
+                if (spliced.refused) {
+                    return { refused: spliced.refused };
+                }
+                let moved = dayEdits.alongAfter({ lineup: before, spliced: spliced, relaid: relaid, now: Date.now(), schedule: schedule,
+                    catalog: scope.channel.programs, id: change.id });
+                let after = { programs: moved.programs, startTime: before.startTime };
+                let text = dayEdits.describe( undo ? { before: before, after: after, day: day, change: change, undo: true }
+                    : { before: before, after: after, day: day, change: change } );
+                if (moved.text && /\.$/.test(text)) {
+                    text = text.slice(0, -1) + moved.text + '.';
+                }
+                return { programs: moved.programs, schedule: schedule, text: text };
+            };
+            let dayEdit = (index) => {
+                let loc = dayEdits.locate({ lineup: lineupMs(), index: index, schedule: scope.channel.scheduleBackup });
+                return async (kind, item) => {
+                    let program = JSON.parse(JSON.stringify(item));
+                    [ 'kept', 'pin', 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'slotPosition', 'shuffleOrder', 'start', 'stop', '$index' ]
+                        .forEach( (k) => delete program[k] );
+                    let change = { id: dayChangeId(), n: loc.n, kind: kind, item: { program: program } };
+                    let schedule = dayEdits.withChange(scope.channel.scheduleBackup, loc.day.id, loc.row, change, change.id);
+                    return relaidWith(schedule, loc.day.id, change, false);
+                };
+            };
+            let dayPutBack = async (id) => {
+                let found = dayEdits.findChange(scope.channel.scheduleBackup, id);
+                if (found === null) {
+                    return { refused: 'That change is no longer on its day: run Create Lineup.' };
+                }
+                return relaidWith(dayEdits.withoutChange(scope.channel.scheduleBackup, id), found.day.id, found.change, true);
+            };
+            scope.dayPutBack = dayPutBack;
+            let dayChanged = (x) => (x != null) && ( (typeof(x.specialChange) === 'string') || (typeof(x.specialInsert) === 'string') );
 
             /*
              * The first open (Ron, Oct 30): a channel whose list still holds pins from
@@ -2951,12 +3021,19 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             let openPlacing = (index, mode) => {
                 ensureHandEditsKept();
                 let program = scope.channel.programs[index];
-                let why = keptRows.whyNot({ row: { program: program, start: program.start }, now: Date.now(), what: mode, schedule: scope.channel.scheduleBackup });
+                let inDay = dayEdits.locate({ lineup: lineupMs(), index: index, schedule: scope.channel.scheduleBackup });
+                let why = (inDay !== null)
+                    ? ( (typeof(inDay.insert) === 'string') ? 'This was put in by hand: Delete takes it out.'
+                        : pinTools.whyNot({ airing: Object.assign({}, program, { start: program.start }), now: Date.now(), what: mode }) )
+                    : keptRows.whyNot({ row: { program: program, start: program.start }, now: Date.now(), what: mode, schedule: scope.channel.scheduleBackup });
                 if (why !== null) {
                     showError(why);
                     return;
                 }
                 scope.swapRequest = { channel: scope.channel, index: index, mode: mode, catalogState: catalogFor };
+                if ( (inDay !== null) && (typeof(inDay.insert) !== 'string') ) {
+                    scope.swapRequest.dayEdit = dayEdit(index);
+                }
                 $timeout();
             };
             scope.startSwap = (index) => openPlacing(index, 'swap');
@@ -2991,13 +3068,15 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
 
             // What a kept row's mark says, and which: a pin for a row kept as it is, a clock for one kept in time.
-            scope.rowKeptTitle = (x) => (x && x.pin)
+            scope.rowKeptTitle = (x) => dayChanged(x)
+                ? ( (typeof(x.specialChange) === 'string') ? 'Swapped in on this special day. Delete puts it back.' : 'Put in on this special day. Delete takes it out.' )
+                : (x && x.pin)
                 ? `Pinned for ${pinTools.dayClock(x.pin.at)}` + (x.pin.was ? `, in place of ${x.pin.was}` : '') + ': from before kept rows, kept where it sits once you answer the list'
                 : keptRows.rowNote(x);
-            scope.rowKeptIcon = (x) => ( (x && x.pin) || keptRows.keepsItem(x) ) ? 'fa-thumbtack' : 'fa-clock';
+            scope.rowKeptIcon = (x) => ( (x && x.pin) || keptRows.keepsItem(x) || dayChanged(x) ) ? 'fa-thumbtack' : 'fa-clock';
             // Kept by hand: not a row a ripple only ran late, whose mark is only for Put back.
-            scope.rowKept = (x) => keptRows.isKept(x);
-            scope.rowDeleteTitle = (x) => (scope.hasTimeSlots() && x && keptRows.keepsItem(x)) ? 'Put back...' : 'Delete...';
+            scope.rowKept = (x) => keptRows.isKept(x) || dayChanged(x);
+            scope.rowDeleteTitle = (x) => (scope.hasTimeSlots() && x && (keptRows.keepsItem(x) || dayChanged(x))) ? 'Put back...' : 'Delete...';
             // The edits still to air that keep a row as it is, worked out again only when the lineup changes.
             let pinListOf = { version: -1, list: [] };
             scope.pinList = () => {

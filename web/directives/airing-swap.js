@@ -239,6 +239,28 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 let option = (label, got) => ({ label: label, got: got, text: got.programs ? got.text : got.refused, refused: ! got.programs });
                 scope.options = [];
                 scope.breaks = [];
+                if (typeof(req.dayEdit) === 'function') {
+                    // Inside a special day (NOTES.md, "Event tools", feature 4): the change goes
+                    // on the day's row and the day is laid again; one choice, one sentence.
+                    scope.state = 'working';
+                    $timeout();
+                    let got;
+                    try {
+                        got = await req.dayEdit(isBefore ? 'before' : (isInsert ? 'after' : 'swap'), p);
+                    } catch (err) {
+                        got = { refused: (err && err.message) ? err.message : 'The day could not be laid out again.' };
+                    }
+                    if (! Array.isArray(got.programs)) {
+                        scope.error = got.refused;
+                        scope.state = 'pick';
+                        $timeout();
+                        return;
+                    }
+                    scope.options.push(option( (isInsert || isBefore) ? 'Insert' : 'Swap', got ));
+                    scope.state = 'choose';
+                    $timeout();
+                    return;
+                }
                 if (isBefore) {
                     scope.options.push(option('Insert', keptRows.insertBefore({ lineup, index, item: p, now, schedule })));
                 } else if (isInsert) {
@@ -281,7 +303,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             };
             scope.apply = (o) => {
                 if (! o.refused) {
-                    scope.onDone({ programs: o.got.programs, text: o.got.text });
+                    scope.onDone({ programs: o.got.programs, text: o.got.text, schedule: o.got.schedule });
                 }
             };
             scope.back = () => {
