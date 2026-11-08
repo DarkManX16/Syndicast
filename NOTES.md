@@ -7254,9 +7254,22 @@ worktree at c91ad93:
   date taken off again. Ron's Kim Possible day rebuilt as "Kim Possible until 7:00pm", the movie,
   one row: Preview this day gave the same episodes at the same times as his 14 rows, in three
   lines. Copy put the Lizzie day on Sun Nov 29, 3:00-7:00pm. Neither change was saved.
-- The workflow checklist (`editor-workflows.js --channel 3`) passed all ten before the review's
-  fixes and again after them, each on its own fresh copy (5:42am, 6:29am); both times the script
-  then hung in `browser.close()` after its last workflow and was stopped.
+- The workflow checklist (`editor-workflows.js --channel 3`) has **eleven** workflows. Before the
+  review's fixes and after them (fresh copies, 5:42am and 6:29am) the first ten passed; both times
+  I stopped the script while the eleventh, `special-day` (2-3 minutes), was still running, having
+  taken it for a hang in `browser.close()` - so those runs never finished `special-day`. **Corrected
+  Nov 8.**
+- **On the merged result** (blocks c4a5279, fresh copy 8:00am): `npm test` 3179/3179; the checklist
+  10 of 11, `special-day` included. Two failures on the first merged run were looked into:
+  `create-lineup` was the script's own check, cutting airing labels at a "|" that the title
+  "Babar | Babar's First Step: Ep. 1" holds (the swap was kept; fixed, 60bfdd4).
+  **`add-delete-create` still fails on fresh copies**: two of the five deleted House of Mouse
+  episodes ("Mickey and the Culture Clash", "House of Genius") never get a never-air entry. It fails
+  the same way on c91ad93, from before event tools, and passed at 6:29am on the same channel file and
+  when run alone on a used copy; not a race (the entries are never added). Unexplained, left for its
+  own session.
+- `browser.close()` does hang sometimes (seen after failures): since b6701f7 the script prints its
+  summary, gives the close 10 s, then kills the browser and exits.
 
 **Not changed, found on the way.** Typing a whole date into an `<input type="date">` with the
 browser tool's "type" does nothing; key presses work. A Mix row added in the editor saves
