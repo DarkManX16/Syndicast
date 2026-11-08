@@ -239,6 +239,15 @@ module.exports = async function () {
             flexBefore ? `${clock(flexBefore.start)} ${flexBefore.program.duration / MIN} min` : 'none');
     }
     {
+        // An until between the day's marks (kept from a quarter-hour day): the run ends
+        // at it, and the next row starts right there.
+        const rows = [ { showId: 'tv.Y', order: 'next', until: 20 * HOUR + 15 * MIN }, item(LONG_MOVIE) ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);
+        const movieAt = inside(res, FRI6, SAT6).find( (a) => a.program.title === 'The Long One' );
+        suite.check('an until of 8:15pm on a half-hour day: the next row starts at 8:15pm, not 8:30pm',
+            movieAt.start === fri(20, 15), line(movieAt));
+    }
+    {
         // Until a time the rows before it have already passed: one go, like any row.
         const rows = [ item(LONG_MOVIE), { showId: 'tv.X', order: 'next', until: 7 * HOUR }, item(SHORT_MOVIE) ];
         const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);

@@ -811,7 +811,11 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
      * it waits for after it instead.
      */
     let backStep = (d) => {
-        let start = (t <= d.from + SLACK) ? t : specialDays.nextMark(t, d.step);
+        // The row after a run that ended at its until time starts right there,
+        // even when that time is not one of the day's marks.
+        let atUntil = (typeof(d.untilEnd) === 'number') && (Math.abs(t - d.untilEnd) <= SLACK);
+        d.untilEnd = null;
+        let start = ( (t <= d.from + SLACK) || atUntil ) ? t : specialDays.nextMark(t, d.step);
         let pinAt = (nextPin < pins.length) ? pins[nextPin].at : Infinity;
         if (start >= d.to - SLACK) {
             pushFlex(Math.min(d.to, pinAt) - t);
@@ -858,6 +862,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         let until = ( (typeof(row.untilAt) === 'number') && (t < row.untilAt - SLACK) ) ? row.untilAt : null;
         if ( (until !== null) && (t + unit.duration > until + SLACK) ) {
             d.k++;
+            d.untilEnd = until;
             let gap = Math.min(until, pinAt, d.to) - t;
             let fill = (gap > FILL_THRESHOLD) ? fillItemsFor(d, gap) : [];
             fill.forEach( (x) => {
@@ -886,6 +891,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         let end = Math.min(specialDays.nextMark(t + unit.duration, d.step), d.to, pinAt, (until !== null) ? until : Infinity);
         if ( (until !== null) && (end >= until - SLACK) ) {
             d.k++;
+            d.untilEnd = until;
         }
         let remaining = end - t;
         let pads = [ makePadded(first) ];

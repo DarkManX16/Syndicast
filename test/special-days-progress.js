@@ -197,6 +197,15 @@ module.exports = async function () {
         const inBreak = await make(laid, sched(ud), fri(10, 25));
         suite.check('...and at 10:25am, in the break between goes with nothing carried, the same',
             sameDay(laid, inBreak, fri(10, 30)) && movieAt(inBreak) === fri(20), titles(inside(inBreak, fri(10, 30), fri(11, 30))).join(', '));
+        const nextRowAt = (now) => {
+            const s = JSON.parse(JSON.stringify(sched(ud)));
+            const progress = slotProgress.planProgress({ programs: laid.programs, startTime: Date.parse(laid.startTime), now,
+                openedSchedule: laid.schedule, schedule: s, pool: pool(), getShowData });
+            return progress.specialDays.sd_t.nextRow;
+        };
+        suite.check('...the planner itself says the row goes on before 8:00pm and moves on after it',
+            nextRowAt(fri(10, 25)) === 0 && nextRowAt(fri(19, 59)) === 0 && nextRowAt(fri(20, 10)) === 1,
+            `${nextRowAt(fri(10, 25))} ${nextRowAt(fri(19, 59))} ${nextRowAt(fri(20, 10))}`);
         const later = await make(laid, sched(ud), fri(22, 10));
         suite.check('...and at 10:10pm, the until time gone by, the day carries on as laid',
             sameDay(laid, later, fri(22, 30)), titles(inside(later, fri(22, 30), fri(23, 30))).join(', '));
