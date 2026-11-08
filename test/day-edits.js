@@ -88,6 +88,12 @@ module.exports = async function () {
         suite.check('withoutChange takes it off, and the row has no changes key left', typeof(back.specialDays[0].slots[0].changes) === 'undefined');
     }
 
+    const undoSaid = {
+        'a same-length swap': 'X S1E3 is back at 7:00am. Nothing else in the day moves.',
+        'a longer swap': 'X S1E3 is back at 7:00am. The rows after it start 30 minutes earlier; X airs one more episode.',
+        'an insert after': 'Promo Clip comes out after X S1E2 at 6:30am. Nothing else in the day moves.',
+        'an insert before': 'Promo Clip comes out before X S1E3 at 7:00am. Nothing else in the day moves.',
+    };
     suite.log('-- the day laid again, spliced in (Keep apart) --');
     for (const [ label, change, expect ] of [
         [ 'a same-length swap', { n: 3, kind: 'swap', item: { program: SAME } }, 'K S1E1 replaces X S1E3 at 7:00am. Nothing else in the day moves.' ],
@@ -105,6 +111,8 @@ module.exports = async function () {
             got.programs.slice(0, got.from).every( (p, i) => p === L.programs[i] ) && got.programs.slice(got.to).every( (p, i) => p === L.programs[got.oldTo + i] ), '');
         const said = dayEdits.describe({ before: L, after: spliced, day: s1.specialDays[0], change: Object.assign({ id: 'ch1' }, change) });
         suite.check(`...and it says "${expect}"`, said === expect, said);
+        const back = dayEdits.describe({ before: spliced, after: L, day: s1.specialDays[0], change: Object.assign({ id: 'ch1' }, change), undo: true });
+        suite.check(`...and its Put back says "${undoSaid[label]}"`, back === undoSaid[label], back);
     }
 
     suite.log('-- an Advance day: the show’s later episodes move along --');

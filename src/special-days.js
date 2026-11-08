@@ -222,13 +222,16 @@ function copyTo(day, date, id) {
     copy.id = id;
     copy.from.date = dateOfCalendarDay(target);
     copy.to.date = dateOfCalendarDay(target + (to - from));
-    if (copy.positions !== 'apart') {
-        (copy.slots || []).forEach( (row) => {
-            if (row != null) {
-                delete row.start;
-            }
-        } );
-    }
+    (copy.slots || []).forEach( (row) => {
+        if (row == null) {
+            return;
+        }
+        if (copy.positions !== 'apart') {
+            delete row.start;
+        }
+        // Edits made inside the day were for that date's airings (Event tools, feature 4).
+        delete row.changes;
+    } );
     return copy;
 }
 

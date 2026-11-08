@@ -207,21 +207,26 @@ const count = (n) => (n < NUMBERS.length) ? NUMBERS[n] : String(n);
  * of each show. "The Short One replaces X S1E3 at 7:00am. The rows after it
  * start 30 minutes later; X airs one fewer episode."
  */
-function describe({ before, after, day, change }) {
+function describe({ before, after, day, change, undo }) {
     let bS = startsOf(before);
     let aS = startsOf(after);
+    // The list holding the change, and the one without it: Put back (undo) goes the other way.
+    let withIt = undo ? before : after;
+    let wS = undo ? bS : aS;
+    let without = undo ? after : before;
+    let oS = undo ? aS : bS;
     let marked = (p) => (p.specialChange === change.id) || (p.specialInsert === change.id);
-    let at = after.programs.findIndex( (p) => isDays(p, day.id) && marked(p) );
+    let at = withIt.programs.findIndex( (p) => isDays(p, day.id) && marked(p) );
     if (at === -1) {
         return '';
     }
-    let item = after.programs[at];
+    let item = withIt.programs[at];
     let k = item.specialRow;
-    // The row's nth airing in the list before the change.
+    // The row's nth airing in the list without the change.
     let nth = -1;
     let seen = 0;
-    for (let i = 0; i < before.programs.length; i++) {
-        if (ownAiring(before.programs[i], day.id, k) && (++seen === change.n)) {
+    for (let i = 0; i < without.programs.length; i++) {
+        if (ownAiring(without.programs[i], day.id, k) && (++seen === change.n)) {
             nth = i;
             break;
         }
@@ -229,16 +234,23 @@ function describe({ before, after, day, change }) {
     let lead;
     let pivot;
     if (change.kind === 'swap') {
-        lead = `${title(item)} replaces ${ (nth !== -1) ? title(before.programs[nth]) : 'its airing' } at ${keptRows.clockAm(aS[at])}`;
-        pivot = (nth !== -1) ? bS[nth] : aS[at];
+        let old = (nth !== -1) ? title(without.programs[nth]) : 'its airing';
+        lead = undo ? `${old} is back at ${keptRows.clockAm( (nth !== -1) ? oS[nth] : wS[at] )}`
+            : `${title(item)} replaces ${old} at ${keptRows.clockAm(wS[at])}`;
+        pivot = (nth !== -1) ? oS[nth] : wS[at];
     } else {
-        let target = after.programs.findIndex( (p, i) => ownAiring(p, day.id, k) && (i !== at)
+        let target = withIt.programs.findIndex( (p, i) => ownAiring(p, day.id, k)
             && ( (change.kind === 'after') ? (i === at - 1) : (i === at + 1) ) );
-        let targetTitle = (target !== -1) ? title(after.programs[target]) : 'its airing';
-        lead = (change.kind === 'after')
-            ? `${title(item)} goes in right after ${targetTitle} at ${keptRows.clockAm(aS[at])}`
-            : `${title(item)} goes in right before ${targetTitle} at ${keptRows.clockAm( (target !== -1) ? aS[target] : aS[at] )}`;
-        pivot = (target !== -1) ? aS[target] : aS[at];
+        let targetTitle = (target !== -1) ? title(withIt.programs[target]) : 'its airing';
+        let targetAt = (target !== -1) ? wS[target] : wS[at];
+        if (undo) {
+            lead = `${title(item)} comes out ${change.kind} ${targetTitle} at ${keptRows.clockAm(targetAt)}`;
+        } else {
+            lead = (change.kind === 'after')
+                ? `${title(item)} goes in right after ${targetTitle} at ${keptRows.clockAm(wS[at])}`
+                : `${title(item)} goes in right before ${targetTitle} at ${keptRows.clockAm(targetAt)}`;
+        }
+        pivot = targetAt;
     }
     let rest = (programs, starts) => programs.map( (p, i) => ({ p, start: starts[i] }) )
         .filter( (x) => isDays(x.p, day.id) && (x.start > pivot) && ! marked(x.p) && (typeof(x.p.specialInsert) === 'undefined') );

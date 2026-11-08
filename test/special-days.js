@@ -318,6 +318,10 @@ module.exports = async () => {
         suite.check('...a longer day keeps its length across months and a clock change',
             week.from.date === '2027-03-07' && week.to.date === '2027-03-10' && week.to.time === 2 * HOUR, JSON.stringify(week.to));
         suite.check('...and a date that is not one gives nothing', sd.copyTo(maam, 'Nov 26', 'x') === null && sd.copyTo(maam, '2026-02-30', 'x') === null);
+        const edited = JSON.parse(JSON.stringify(maam));
+        edited.slots[0].changes = [ { id: 'ch1', n: 3, kind: 'swap', item: { program: { title: 'K', duration: 60000 } } } ];
+        suite.check('...and the edits made inside the day stay behind: they were for that date’s airings',
+            typeof(sd.copyTo(edited, '2026-11-26', 'sd_e').slots[0].changes) === 'undefined' && edited.slots[0].changes.length === 1);
     }
 
     suite.log('timetable');
