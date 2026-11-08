@@ -115,6 +115,25 @@ module.exports = async function () {
         suite.check(`...and its Put back says "${undoSaid[label]}"`, back === undoSaid[label], back);
     }
 
+    suite.log('-- refusals and the day\u2019s end (review, Nov 8) --');
+    {
+        const thirdAt = indexAt(L, fri(7));
+        suite.check('Insert before an airing whose break in front is shorter than the item is refused, in today\u2019s words',
+            dayEdits.beforeFits({ lineup: L, index: thirdAt, item: movie('Long Promo', 30 * MIN) }) === 'Long Promo is longer than the 8:00 break before X S1E3.'
+                && dayEdits.beforeFits({ lineup: L, index: thirdAt, item: CLIP }) === null,
+            String(dayEdits.beforeFits({ lineup: L, index: thirdAt, item: movie('Long Promo', 30 * MIN) })));
+        suite.check('an edit inside a day that has begun is refused, in one line; before it begins, none',
+            dayEdits.whyNot({ day: s0.specialDays[0], now: fri(6, 1) }) === 'Marathon is on the air: edits inside it are made before it begins.'
+                && dayEdits.whyNot({ day: s0.specialDays[0], now: fri(5, 59) }) === null);
+        const lastAt = shows(L).filter( (a) => (a.start >= FRI6) && (a.start < fri(12)) ).length;
+        const s1 = dayEdits.withChange(s0, 'sd_t', 0, { n: lastAt, kind: 'after', item: { program: SHORT } }, 'chE');
+        const R = await make(s1);
+        const got = dayEdits.splice({ lineup: L, relaid: R, day: s1.specialDays[0] });
+        const said = dayEdits.describe({ before: L, after: { programs: got.programs, startTime: L.startTime }, day: s1.specialDays[0], change: { id: 'chE', n: lastAt, kind: 'after' } });
+        suite.check('an insert after the day\u2019s last airing that runs past its end says so',
+            /runs 39:00 past the end of the day/.test(said), said);
+    }
+
     suite.log('-- a Keep apart day touches only itself --');
     {
         const s1 = dayEdits.withChange(s0, 'sd_t', 0, { n: 3, kind: 'swap', item: { program: SAME } }, 'ch1');
@@ -138,6 +157,10 @@ module.exports = async function () {
             sig(out, SAT6 - 18 * HOUR, SAT6 + DAY) === sig(RA, SAT6 - 18 * HOUR, SAT6 + DAY),
             shows(out).filter( (a) => (a.start >= fri(12)) && (a.program.showTitle === 'A') ).slice(0, 2).map( (a) => a.program.title ).join(', ')
                 + ' vs ' + shows(RA).filter( (a) => (a.start >= fri(12)) && (a.program.showTitle === 'A') ).slice(0, 2).map( (a) => a.program.title ).join(', '));
+        suite.check('...and no airing outside the day carries the day\u2019s marks (review, Nov 8)',
+            withStarts(out).every( (a) => ( (a.start >= FRI6) && (a.start < fri(12)) ) || a.program.isOffline
+                || ( (typeof(a.program.specialDay) === 'undefined') && (typeof(a.program.specialRow) === 'undefined') ) ),
+            JSON.stringify(withStarts(out).filter( (a) => (a.start >= fri(12)) && a.program.specialDay ).slice(0, 1).map( (a) => [ a.program.title, a.program.specialDay ] )));
         suite.check('...and says where the episode pushed out lands', /A S1E\d+ airs Fri Oct 9, 12:00pm/.test(moved.text || ''), moved.text);
         const putBack = dayEdits.withoutChange(s1, 'ch1');
         const RB = await make(putBack);

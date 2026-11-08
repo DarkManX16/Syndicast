@@ -312,6 +312,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             out = plainSpecialItem(slot);
         }
         if (out !== null) {
+            // Its number in the day, so a lineup made during the day - which starts at the
+            // program on air - still knows which airing of the row it is (review, Nov 8).
+            out.specialN = n;
             let before = changeAt(slot, n, 'before');
             let after = changeAt(slot, n, 'after');
             before = ( (before !== null) && ! insertsDone.has(before.id) ) ? before : null;

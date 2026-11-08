@@ -2955,6 +2955,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             let dayEdit = (index) => {
                 let loc = dayEdits.locate({ lineup: lineupMs(), index: index, schedule: scope.channel.scheduleBackup });
                 return async (kind, item) => {
+                    if (kind === 'before') {
+                        let tooLong = dayEdits.beforeFits({ lineup: lineupMs(), index: index, item: item });
+                        if (tooLong !== null) {
+                            return { refused: tooLong };
+                        }
+                    }
                     let program = JSON.parse(JSON.stringify(item));
                     [ 'kept', 'pin', 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'slotPosition', 'shuffleOrder', 'start', 'stop', '$index' ]
                         .forEach( (k) => delete program[k] );
@@ -2967,6 +2973,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let found = dayEdits.findChange(scope.channel.scheduleBackup, id);
                 if (found === null) {
                     return { refused: 'That change is no longer on its day: run Create Lineup.' };
+                }
+                let begun = dayEdits.whyNot({ day: found.day, now: Date.now() });
+                if (begun !== null) {
+                    return { refused: begun };
                 }
                 return relaidWith(dayEdits.withoutChange(scope.channel.scheduleBackup, id), found.day.id, found.change, true);
             };
@@ -3024,7 +3034,8 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 let inDay = dayEdits.locate({ lineup: lineupMs(), index: index, schedule: scope.channel.scheduleBackup });
                 let why = (inDay !== null)
                     ? ( (typeof(inDay.insert) === 'string') ? 'This was put in by hand: Delete takes it out.'
-                        : pinTools.whyNot({ airing: Object.assign({}, program, { start: program.start }), now: Date.now(), what: mode }) )
+                        : ( dayEdits.whyNot({ day: inDay.day, now: Date.now() })
+                            || pinTools.whyNot({ airing: Object.assign({}, program, { start: program.start }), now: Date.now(), what: mode }) ) )
                     : keptRows.whyNot({ row: { program: program, start: program.start }, now: Date.now(), what: mode, schedule: scope.channel.scheduleBackup });
                 if (why !== null) {
                     showError(why);

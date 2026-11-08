@@ -174,6 +174,30 @@ module.exports = async function () {
             lines(inside(again).filter( (a) => (a.start >= fri(6, 30)) && (a.start < fri(7, 30)) )).join(' / '));
     }
 
+    {
+        // Review, Nov 8: a lineup made during the day starts at the program on air, so a
+        // second Create Lineup during the day counted the row's airings from there - the
+        // swap aired again at 9:00, then moved to 10:00.
+        const d3 = day({ slots: [ { showId: 'tv.X', order: 'next', changes: [ change(5, 'swap', SAME), change(7, 'after', CLIP) ] } ] });
+        const laid = await make(null, sched(d3), NOW);
+        const first = await make(laid, sched(d3), fri(7, 10));
+        const second = await make(first, sched(d3), fri(8, 10));
+        const third = await make(second, sched(d3), fri(8, 40));
+        // From where each re-made lineup begins (the program on air), against the day as laid.
+        const sameFrom = (res) => {
+            const from = Math.max(fri(8), inside(res)[0].start);
+            return JSON.stringify(lines(inside(res).filter( (a) => a.start >= from )))
+                === JSON.stringify(lines(inside(laid).filter( (a) => a.start >= from )));
+        };
+        suite.check('Create Lineup at 7:10am, again at 8:10am from that list, and at 8:40am from that one: the day as laid each time',
+            sameFrom(first) && sameFrom(second) && sameFrom(third) && inside(second).filter( (a) => a.program.title === 'K S1E1' ).length === 1,
+            lines(inside(third).filter( (a) => (a.start >= fri(8)) && (a.start < fri(10, 30)) )).join(' / '));
+        suite.check('...each airing of a row with changes carries its number in the day',
+            inside(laid).filter( (a) => a.program.showTitle === 'X' || a.program.specialChange ).every( (a) => Number.isInteger(a.program.specialN) )
+                && inside(laid).find( (a) => a.program.specialChange ).program.specialN === 5, '');
+        suite.check('...and a day without changes carries none', inside(plain).every( (a) => typeof(a.program.specialN) === 'undefined' ), '');
+    }
+
     suite.log('-- rows without changes --');
     {
         const empty = await make(null, sched(day({ slots: [ { showId: 'tv.X', order: 'next', changes: [] } ] })), NOW);

@@ -50,6 +50,9 @@ function locate({ lineup, index, schedule }) {
     if (typeof(p.specialInsert) === 'string') {
         return { day: day, row: p.specialRow, insert: p.specialInsert, start: start };
     }
+    if (Number.isInteger(p.specialN)) {
+        return { day: day, row: p.specialRow, n: p.specialN, start: start };
+    }
     let n = 0;
     for (let i = 0; i <= index; i++) {
         if (ownAiring(lineup.programs[i], day.id, p.specialRow)) {
@@ -57,6 +60,25 @@ function locate({ lineup, index, schedule }) {
         }
     }
     return { day: day, row: p.specialRow, n: n, start: start };
+}
+
+/*
+ * Why an edit inside `day` can't be made now, or null. Edits inside a day are
+ * made before it begins (review, Nov 8): once it has, a lineup made during it no
+ * longer holds its first airings, so the list can't say which airing is which.
+ */
+function whyNot({ day, now }) {
+    let w = specialDays.windowOf(day);
+    return ( (w !== null) && (w.from <= now) ) ? `${day.name} is on the air: edits inside it are made before it begins.` : null;
+}
+
+// Insert before: refused when the item is longer than the break in front, in today's words.
+function beforeFits({ lineup, index, item }) {
+    let room = keptRows.breakBefore({ lineup: lineup, index: index });
+    if (item.duration > room) {
+        return `${title(item)} is longer than the ${pins.length(room)} break before ${title(lineup.programs[index])}.`;
+    }
+    return null;
 }
 
 // The schedule, copied, with `change` ({ n, kind, item: { program } }) on the
@@ -177,7 +199,13 @@ function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id }) {
     let now_ = spliced.programs.slice(spliced.from, spliced.to).filter(regular);
     let had = new Set(now_.map(fileKey));
     let has = new Set(before.map(fileKey));
-    let pushed = before.filter( (p) => ! had.has(fileKey(p)) );
+    // An episode moved past the day airs in a regular slot: none of the day's marks (review, Nov 8).
+    let plain = (p) => {
+        let c = Object.assign({}, p);
+        [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN' ].forEach( (k) => delete c[k] );
+        return c;
+    };
+    let pushed = before.filter( (p) => ! had.has(fileKey(p)) ).map(plain);
     let taken = now_.filter( (p) => ! has.has(fileKey(p)) );
     if ( (pushed.length === 0) && (taken.length === 0) ) {
         return { programs: spliced.programs, text: '' };
@@ -300,9 +328,13 @@ function describe({ before, after, day, change, undo }) {
         }
     } );
     let w = specialDays.windowOf(day);
+    // Every airing of the day, the change's own included: it can run past the end itself.
+    let all = (programs, starts) => programs.map( (p, i) => ({ p, start: starts[i] }) ).filter( (x) => isDays(x.p, day.id) );
     let endOf = (list) => list.reduce( (m, x) => Math.max(m, x.start + x.p.duration), 0 );
-    let over = (w !== null) ? endOf(now) - w.to : 0;
-    if ( (w !== null) && (over > 1000) && (endOf(was) <= w.to + 1000) ) {
+    let nowAll = all(after.programs, aS);
+    let wasAll = all(before.programs, bS);
+    let over = (w !== null) ? endOf(nowAll) - w.to : 0;
+    if ( (w !== null) && (over > 1000) && (endOf(wasAll) <= w.to + 1000) ) {
         parts.push(`it runs ${pins.length(over)} past the end of the day`);
     }
     if (parts.length === 0) {
@@ -314,6 +346,8 @@ function describe({ before, after, day, change, undo }) {
 
 module.exports = {
     locate: locate,
+    whyNot: whyNot,
+    beforeFits: beforeFits,
     withChange: withChange,
     withoutChange: withoutChange,
     findChange: findChange,

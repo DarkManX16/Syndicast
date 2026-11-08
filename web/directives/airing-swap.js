@@ -240,6 +240,10 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 scope.options = [];
                 scope.breaks = [];
                 if (typeof(req.dayEdit) === 'function') {
+                    // One at a time: a second click while the day is being laid does nothing.
+                    if (scope.state === 'working') {
+                        return;
+                    }
                     // Inside a special day (NOTES.md, "Event tools", feature 4): the change goes
                     // on the day's row and the day is laid again; one choice, one sentence.
                     scope.state = 'working';

@@ -1065,7 +1065,8 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                     let p = programs[i % programs.length];
                     if ( ! p.isOffline && (p.specialDay === day.id) && (typeof(p.specialRow) === 'number') && (t + p.duration <= upTo + 1000)
                          && (typeof(p.specialInsert) === 'undefined') ) {
-                        counts[p.specialRow] = (counts[p.specialRow] || 0) + 1;
+                        counts[p.specialRow] = Number.isInteger(p.specialN) ? Math.max(counts[p.specialRow] || 0, p.specialN)
+                            : (counts[p.specialRow] || 0) + 1;
                         lastRow = p.specialRow;
                         lastRowStart = t;
                         if ( (typeof(rows[p.specialRow]) === 'object') && (typeof(rows[p.specialRow].item) === 'object') ) {
