@@ -192,6 +192,14 @@
                                                 <label style="margin-bottom: 0;"><input type="checkbox" ng-model="row.holidayOnly" ng-change="holidayChanged()">
                                                     Only its {{day.holiday}} episodes</label>
                                             </div>
+                                            <div class="form-row" ng-if="day.layout !== 'times' && row.showId !== 'flex.'">
+                                                <div class="form-group col-md-4" style="margin-bottom: 4px;">
+                                                    <select class="custom-select custom-select-sm form-control day-row-until" ng-model="row.until"
+                                                        ng-options="o.id as ('Until ' + o.description) for o in dayUntilOptions(day)">
+                                                        <option value="">Until —</option>
+                                                    </select>
+                                                </div>
+                                            </div>
                                             <div class="form-row" ng-show="day.layout === 'times'">
                                                 <div class="form-group col-md-3" ng-show="dayOffsetOptions(day).length > 1" style="margin-bottom: 4px;">
                                                     <select class="custom-select custom-select-sm form-control" ng-model="rowOffsetModel"

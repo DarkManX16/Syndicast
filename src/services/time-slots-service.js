@@ -667,7 +667,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             ? holidayItems[day.id] : {};
         let slotOf = rows.map( (row, k) => {
             let slot = Object.assign( {}, row, {
-                time: -1, special: day.id, specialRow: k, apart: (day.positions === 'apart') ? day.id : undefined } );
+                time: -1, special: day.id, specialRow: k, apart: (day.positions === 'apart') ? day.id : undefined,
+                untilAt: specialDays.untilAt(day, row) } );
             let pool = ( (row.holidayOnly === true) && (typeof(row.showId) === 'string') && Array.isArray(dayHolidays[row.showId]) ) ? dayHolidays[row.showId] : null;
             if ( (pool !== null) && ! ((typeof(row.item) === 'object') && (row.item !== null)) ) {
                 let hs = { showId: row.showId, order: specialDays.holidayOrder(row.order), seasons: row.seasons, apart: 'holiday:' + day.id, pool: pool };
@@ -850,11 +851,29 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             return;
         }
         let unit = unitOf(row, first);
+        // A row that runs until a time (row.untilAt) is the row written out again
+        // and again: each go on its mark, while one finishes by that time. Then the
+        // time left is a break and the next row starts at the until time. Once the
+        // time has passed - the list started again from the top - it is one go.
+        let until = ( (typeof(row.untilAt) === 'number') && (t < row.untilAt - SLACK) ) ? row.untilAt : null;
+        if ( (until !== null) && (t + unit.duration > until + SLACK) ) {
+            d.k++;
+            let gap = Math.min(until, pinAt, d.to) - t;
+            let fill = (gap > FILL_THRESHOLD) ? fillItemsFor(d, gap) : [];
+            fill.forEach( (x) => {
+                pushProgram(x);
+                gap -= x.duration;
+            } );
+            pushFlex(gap);
+            return;
+        }
         if (t + unit.duration > pinAt + SLACK) {
             pushFlex(pinAt - t);
             return;
         }
-        d.k++;
+        if (until === null) {
+            d.k++;
+        }
         advanceSpecial(row);
         if (isItem(row)) {
             d.itemsAired.add(row.specialRow);
@@ -864,7 +883,10 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             takeRest(row, unit, pushProgram);
             return;
         }
-        let end = Math.min(specialDays.nextMark(t + unit.duration, d.step), d.to, pinAt);
+        let end = Math.min(specialDays.nextMark(t + unit.duration, d.step), d.to, pinAt, (until !== null) ? until : Infinity);
+        if ( (until !== null) && (end >= until - SLACK) ) {
+            d.k++;
+        }
         let remaining = end - t;
         let pads = [ makePadded(first) ];
         let split = takeRest(row, unit, (x) => pads.push(makePadded(x))) > 0;
@@ -1033,11 +1055,14 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     } else if (ts > t0) {
         pushFlex( ( (typeof(flexOnAir) !== 'undefined') ? flexOnAir.at : ts ) - t0 );
     }
-    // A Back to back day on air carries on with the row after the program on air's.
+    // A Back to back day on air carries on with the row after the program on air's -
+    // or with that same row, when it runs until a time still to come (row.untilAt).
     if ( (carry !== null) && (typeof(carry.program.specialDay) === 'string') && (typeof(carry.program.specialRow) === 'number') ) {
         let d = laidDays.find( (x) => x.day.id === carry.program.specialDay );
         if (typeof(d) !== 'undefined') {
-            d.k = carry.program.specialRow + 1;
+            let onAirRow = d.slotOf[carry.program.specialRow] || {};
+            let goesOn = (typeof(onAirRow.untilAt) === 'number') && (t < onAirRow.untilAt - SLACK);
+            d.k = carry.program.specialRow + (goesOn ? 0 : 1);
             if ( isItem(d.slotOf[carry.program.specialRow] || {}) ) {
                 d.itemsAired.add(carry.program.specialRow);
             }

@@ -199,6 +199,63 @@ module.exports = async function () {
             d[1].start === fri(6, 30, 5) && d[1].program.showTitle === 'X', d.slice(0, 2).map(line).join(' / '));
     }
 
+    suite.log('-- a row that runs until a time (row.until, Event tools) --');
+    {
+        // Ron's Marathon and a Movie: Lizzie (X) until 8:00pm, then the movie.
+        const rows = [ { showId: 'tv.X', order: 'next', until: 20 * HOUR }, item(LONG_MOVIE) ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);
+        const d = inside(res, FRI6, SAT6);
+        const before8 = d.filter( (a) => a.start < fri(20) );
+        suite.check('until 8:00pm: the show airs on every half hour from 6:00am to 7:30pm, 28 goes',
+            before8.length === 28 && before8.every( (a, k) => (a.program.showTitle === 'X') && (a.start === fri(6) + k * 30 * MIN) ),
+            before8.slice(0, 3).map(line).join(' / ') + ' ... ' + before8.slice(-2).map(line).join(' / '));
+        suite.check('...each go its own episode, in order', before8.every( (a, k) => a.program.title === `X S1E${k + 1}` ), '');
+        const movieAt = d.find( (a) => a.program.title === 'The Long One' );
+        suite.check('...the next row, the movie, starts at 8:00pm', (movieAt !== undefined) && (movieAt.start === fri(20)),
+            movieAt ? line(movieAt) : 'no movie');
+        const after = d.filter( (a) => a.start > fri(20) );
+        suite.check('...after the movie (ends 9:35) the list starts again: past 8:00pm, the row plays a go at a time to the day\'s end',
+            (after[0].start === fri(22)) && after.every( (a) => a.program.showTitle === 'X' ) && (after.length === 16)
+                && (after[after.length - 1].start === sat(5, 30)) && (after[0].program.title === 'X S1E29'),
+            after.slice(0, 2).map(line).join(' / ') + ` ... ${after.length} goes`);
+        suite.check('...no Flex inside the day is 30 minutes or longer', longestFlex(res, FRI6, SAT6) < 30 * MIN,
+            `${longestFlex(res, FRI6, SAT6) / MIN} min`);
+        suite.check('...and outside the day every airing keeps its slot and its show', slotsOutside(res) === slotsOutside(plain), '');
+        suite.check('...it is the same day as 28 rows of the show written out, then the movie',
+            JSON.stringify(d.map(line)) === JSON.stringify(inside(await generate(pool(), withDays(daily(), [ day({ slots:
+                Array.from({ length: 28 }, () => ({ showId: 'tv.X', order: 'next' })).concat([ item(LONG_MOVIE) ]) }) ]), NOW), FRI6, SAT6).map(line)), '');
+    }
+    {
+        // A go that would not finish by the until time doesn't start: the time left is Flex.
+        const rows = [ { showId: 'tv.X', order: 'next', until: 20 * HOUR + 15 * MIN }, item(LONG_MOVIE) ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows, rounding: 'quarter' }) ]), NOW);
+        const d = inside(res, FRI6, SAT6);
+        const lastX = d.filter( (a) => (a.program.showTitle === 'X') && (a.start < fri(20, 15)) ).pop();
+        const movieAt = d.find( (a) => a.program.title === 'The Long One' );
+        suite.check('until 8:15pm on a quarter-hour day: the last go is the one at 7:30pm (8:00 would end 8:22), the movie at 8:15pm',
+            (lastX.start === fri(19, 30)) && (movieAt.start === fri(20, 15)), `${line(lastX)} / ${line(movieAt)}`);
+        const flexBefore = withStarts(res).find( (a) => a.program.isOffline && (a.start >= fri(19, 52)) && (a.start < fri(20, 15)) );
+        suite.check('...Flex from the last go\'s end to 8:15pm', (flexBefore !== undefined) && (flexBefore.start + flexBefore.program.duration === fri(20, 15)),
+            flexBefore ? `${clock(flexBefore.start)} ${flexBefore.program.duration / MIN} min` : 'none');
+    }
+    {
+        // Until a time the rows before it have already passed: one go, like any row.
+        const rows = [ item(LONG_MOVIE), { showId: 'tv.X', order: 'next', until: 7 * HOUR }, item(SHORT_MOVIE) ];
+        const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);
+        const d = inside(res, FRI6, SAT6);
+        suite.check('a row whose until time has passed when it comes up plays one go, and the next row follows',
+            d[0].program.title === 'The Long One' && d[1].start === fri(8) && d[1].program.showTitle === 'X'
+                && d[2].start === fri(8, 30) && d[2].program.title === 'The Short One', d.slice(0, 3).map(line).join(' / '));
+    }
+    {
+        // Set times rows run to the next row's time already; an until there changes nothing.
+        const set = (until) => day({ layout: 'times', slots: [ Object.assign({ showId: 'tv.X', order: 'next', at: 6 * HOUR }, until),
+            { showId: 'tv.A', order: 'next', at: 12 * HOUR } ] });
+        const without = await generate(pool(), withDays(daily(), [ set({}) ]), NOW);
+        const withUntil = await generate(pool(), withDays(daily(), [ set({ until: 9 * HOUR }) ]), NOW);
+        suite.check('on a Set times day an until changes nothing', JSON.stringify(without) === JSON.stringify(withUntil), '');
+    }
+
     suite.log('-- Fill long breaks with (day.fillBreaksWith) --');
     {
         // The Back to back fixture above, unchanged: LONG_MOVIE (95:00) from 7:00 ends

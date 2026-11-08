@@ -121,6 +121,52 @@ function ahead(schedule, now) {
 }
 
 /*
+ * A Back to back row that runs until a time (NOTES.md, "Event tools"): the
+ * instant of its `until` - ms after from.date's midnight, as a Set times row's
+ * `at` - or null for a row without one, a This item row, or a Set times day,
+ * whose rows already run to the next row's time.
+ */
+function isItemRow(row) {
+    return (row != null) && (typeof(row.item) === 'object') && (row.item !== null);
+}
+function untilAt(day, row) {
+    if ( (day == null) || (day.layout === 'times') || (row == null) || (typeof(row.until) !== 'number') || isItemRow(row) ) {
+        return null;
+    }
+    let x = localInstant(day.from && day.from.date, row.until);
+    return (x === null) ? null : x.at;
+}
+
+/*
+ * The Until dropdown's choices: each of the day's own marks (half hours, or
+ * quarter hours) after its start, up to and including its end, as
+ * [{ id, description }] - `id` the ms after from.date's midnight that `until`
+ * stores, `description` the clock time, with the weekday on a day longer than
+ * a day. A time the clock skips that night is left out.
+ */
+const WEEKDAYS = [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ];
+function untilOptions(day) {
+    let w = (day != null) ? windowOf(day) : null;
+    if ( (w === null) || (w.to <= w.from) ) {
+        return [];
+    }
+    let step = stepOf(day);
+    let multi = (w.to - w.from) > DAY;
+    let out = [];
+    for (let off = Math.floor(day.from.time / step) * step + step; ; off += step) {
+        let x = localInstant(day.from.date, off);
+        if ( (x === null) || (x.at > w.to) ) {
+            break;
+        }
+        if (x.gap || (x.at <= w.from)) {
+            continue;
+        }
+        out.push({ id: off, description: (multi ? WEEKDAYS[new Date(x.at).getDay()] + ' ' : '') + clock(x.at) });
+    }
+    return out;
+}
+
+/*
  * A Set times day's rows with their instants, in time order: [{ row, at, gap }].
  * Rows without a time are left out (problems() names them).
  */
@@ -268,6 +314,10 @@ function problems(schedule, blocks) {
             say(day, 'rows', 'A row has no item picked.');
         }
         if (day.layout !== 'times') {
+            // A row running until a time: after the day starts, by the day's end.
+            if (rows.some( (row) => { let u = untilAt(day, row); return (u !== null) && ( (u <= w.from) || (u > w.to) ); } )) {
+                say(day, 'rows', 'A row runs until a time outside the day.');
+            }
             return;
         }
         if (rows.some( (row) => (row == null) || (typeof(row.at) !== 'number') )) {
@@ -425,6 +475,14 @@ function wrapFinder(schedule, regular) {
  * unfinished lap that never got a turn, and the one line when the last item
  * ran past the day's own end. No Flex, no break steps - just the timetable.
  */
+// "Lizzie McGuire, 28 episodes (S1E1–S2E6)": an until row's run as one line.
+function runTitle(run, pins) {
+    let code = (p) => `S${p.season}E${p.episode}`;
+    let numbered = run.every( (p) => Number.isInteger(p.season) && Number.isInteger(p.episode) );
+    let what = numbered ? `${run.length} episodes (${code(run[0])}–${code(run[run.length - 1])})` : `${run.length} airings`;
+    return `${pins.showName(run[0])}, ${what}`;
+}
+
 function timetable({ programs, startTime, day, schedule }) {
     // Required here, not at the top: pins.js reaches back to this module
     // through slot-progress.js, and a top-level require would hand pins.js
@@ -450,7 +508,15 @@ function timetable({ programs, startTime, day, schedule }) {
             break;
         }
         if (! p.isOffline && (p.specialDay === day.id)) {
-            rows.push({ at: start, title: pins.label(p), specialRow: p.specialRow });
+            // A row running until a time is one line for its run (Event tools).
+            let row = (typeof(p.specialRow) === 'number') && Array.isArray(day.slots) ? day.slots[p.specialRow] : null;
+            let u = untilAt(day, row);
+            let last = (rows.length > 0) ? rows[rows.length - 1] : null;
+            if ( (u !== null) && (start < u) && (last !== null) && (last.run !== undefined) && (last.specialRow === p.specialRow) ) {
+                last.run.push(p);
+            } else {
+                rows.push({ at: start, title: pins.label(p), specialRow: p.specialRow, run: ( (u !== null) && (start < u) ) ? [ p ] : undefined });
+            }
             if (end > w.to) {
                 overrunEnd = end;
             }
@@ -481,7 +547,7 @@ function timetable({ programs, startTime, day, schedule }) {
     }
     let overrun = (overrunEnd === null) ? null : { overMs: overrunEnd - w.to, backOnTimeAt: nextMark(overrunEnd, stepOf(day)) };
     return {
-        rows: rows.map( (r) => ({ at: r.at, title: r.title }) ),
+        rows: rows.map( (r) => ({ at: r.at, title: ( (r.run !== undefined) && (r.run.length > 1) ) ? runTitle(r.run, pins) : r.title }) ),
         restarts: restarts,
         never: never,
         overrun: overrun,
@@ -578,6 +644,8 @@ module.exports = {
     dayAt: dayAt,
     ahead: ahead,
     aired: aired,
+    untilAt: untilAt,
+    untilOptions: untilOptions,
     usable: usable,
     rowTimes: rowTimes,
     nextHalfHour: nextHalfHour,

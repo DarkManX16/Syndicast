@@ -17,6 +17,7 @@
 const rounds = require('./shuffle-rounds');
 const multiPart = require('./multi-part');
 const specialDays = require('./special-days');
+const SLACK = require('./constants').SLACK;
 
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
@@ -1074,7 +1075,10 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                     i++;
                 }
             }
-            info[day.id] = { nextRow: (lastRow === null) ? 0 : lastRow + 1, airedItems: airedItems };
+            // A row running until a time that hasn't come yet carries on (Event tools).
+            let lastUntil = (lastRow === null) ? null : specialDays.untilAt(day, rows[lastRow]);
+            let goesOn = (lastUntil !== null) && (upTo < lastUntil - SLACK);
+            info[day.id] = { nextRow: (lastRow === null) ? 0 : (goesOn ? lastRow : lastRow + 1), airedItems: airedItems };
             if (Object.keys(holidayAired).length > 0) {
                 info[day.id].holidayAired = holidayAired;
             }

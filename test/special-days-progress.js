@@ -185,6 +185,23 @@ module.exports = async function () {
             titles(di).join(', ') === 'The Short One, The Long One' && shows(items).find( (a) => a.start >= fri(9) ).start >= SAT6, titles(di).join(', '));
     }
 
+    suite.log('-- a row that runs until a time, during the day --');
+    {
+        const ud = day({ positions: 'advance', slots: [ { showId: 'tv.X', order: 'next', until: 20 * HOUR }, { showId: 'movie.', item: { program: LONG } } ] });
+        const laid = await make(first, sched(ud), NOW + HOUR);
+        const movieAt = (res) => (inside(res, FRI6, SAT6).find( (a) => a.program.title === 'The Long One' ) || {}).start;
+        suite.check('as laid, the movie is at 8:00pm', movieAt(laid) === fri(20), clock(movieAt(laid)));
+        const onAir = await make(laid, sched(ud), fri(10, 10));
+        suite.check('a Create Lineup at 10:10am, a go of the until row on air: the row carries on, the rest of the day unchanged',
+            sameDay(laid, onAir, fri(10, 30)) && movieAt(onAir) === fri(20), titles(inside(onAir, fri(10, 30), fri(11, 30))).join(', '));
+        const inBreak = await make(laid, sched(ud), fri(10, 25));
+        suite.check('...and at 10:25am, in the break between goes with nothing carried, the same',
+            sameDay(laid, inBreak, fri(10, 30)) && movieAt(inBreak) === fri(20), titles(inside(inBreak, fri(10, 30), fri(11, 30))).join(', '));
+        const later = await make(laid, sched(ud), fri(22, 10));
+        suite.check('...and at 10:10pm, the until time gone by, the day carries on as laid',
+            sameDay(laid, later, fri(22, 30)), titles(inside(later, fri(22, 30), fri(23, 30))).join(', '));
+    }
+
     suite.log('-- Fill long breaks with, during the day --');
     {
         // 47:00 at 6:00 leaves 13:00 on air: Z S1E1 fills it. 95:00 at 7:00 ends 8:35:

@@ -1081,6 +1081,18 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 dayOffsetCache = { key: key, list: out };
                 return out;
             };
+            // A Back to back row's Until (NOTES.md, "Event tools"): the day's own
+            // marks. Rebuilt only when the day's window or rounding changes, so
+            // ng-options keeps one array between digests.
+            let untilCache = {};
+            scope.dayUntilOptions = (day) => {
+                let w = specialDays.windowOf(day);
+                let key = (w === null) ? '' : w.from + '-' + w.to + '-' + day.rounding;
+                if ( (typeof(untilCache[day.id]) === 'undefined') || (untilCache[day.id].key !== key) ) {
+                    untilCache[day.id] = { key: key, list: specialDays.untilOptions(day) };
+                }
+                return untilCache[day.id].list;
+            };
             scope.dayRowOffset = (row) => Math.floor( (row.at || 0) / DAY );
             scope.dayRowHour = (row) => Math.floor( ((row.at || 0) % DAY) / HOUR );
             scope.dayRowMinute = (row) => Math.floor( ((row.at || 0) % HOUR) / MIN );
