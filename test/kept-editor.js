@@ -49,13 +49,14 @@ function libraryAdd(src, { timeSlots, insertPoint, programs, selected }) {
 
 // A row's Delete (`scope.removeItem`) on a stand-in page with the real kept-rows and catalog
 // code: what it leaves in the list, what it asks, and what it queues for the Catalog page.
-async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, index, neverAir }) {
+async function deleteOnPage(src, { timeSlots, randomSlots, programs, startTime, index, neverAir, extraScope }) {
     const getShowData = require('../web/services/get-show-data')();
     const scope = {
         hasTimeSlots: () => timeSlots, hasNoTimeSlots: () => ! timeSlots, hasNoRandomSlots: () => ! randomSlots,
         channel: { programs: programs.slice(), startTime: new Date(startTime).toISOString(), scheduleBackup: timeSlots ? { slots: [] } : undefined },
         error: {},
     };
+    Object.assign(scope, extraScope || {});
     const queued = [];
     let applied = 0;
     const page = {
@@ -235,6 +236,16 @@ module.exports = async function () {
                 && (inLineup.said === ''), `${titles(inLineup)}; said "${inLineup.said}"`);
         suite.check('...and Create Lineup leaves it out: never air, for the Catalog page to bring back',
             never(inLineup) === 'Kim Possible 4 deleted/never', never(inLineup));
+
+        // Inside a special day (Event tools, feature 4): Delete goes to the day's own path, which
+        // puts the episode on the never-air list and lays the day again.
+        const dayCalls = [];
+        const inDay = programs.map( (p, i) => (i === 2) ? Object.assign({}, p, { specialDay: 'sd_x', specialRow: 0 }) : p );
+        const dayDel = await deleteOnPage(src, { timeSlots: true, programs: inDay, startTime, index: 2,
+            extraScope: { dayLeaveOut: async (i) => { dayCalls.push(i); } } });
+        suite.check('Time Slots, an airing inside a special day: Delete hands it to the day (never air, the day laid again), not the list',
+            (dayCalls.join() === '2') && (dayDel.programs.length === programs.length) && (dayDel.queued.length === 0),
+            `calls ${dayCalls.join()}; ${dayDel.programs.length} rows; queued ${dayDel.queued.length}`);
 
         const atEnd = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: programs.length - 1 });
         suite.check('Time Slots, an episode added at the end: gone at once, with the first open kept silently and nothing asked',

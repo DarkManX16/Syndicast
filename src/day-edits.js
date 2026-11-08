@@ -188,7 +188,7 @@ function splice({ lineup, relaid, day }) {
  * from it (keptRows.moveAlong). { programs, text }: text the "; X airs ..."
  * the sentence ends with, '' when nothing moved.
  */
-function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id }) {
+function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id, leftOut }) {
     if (spliced.refused) {
         return { programs: lineup.programs, text: '' };
     }
@@ -205,7 +205,9 @@ function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id }) {
         [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN' ].forEach( (k) => delete c[k] );
         return c;
     };
-    let pushed = before.filter( (p) => ! had.has(fileKey(p)) ).map(plain);
+    // An episode left out (Delete: never air) goes nowhere.
+    let gone = new Set( (leftOut || []).map(fileKey) );
+    let pushed = before.filter( (p) => ! had.has(fileKey(p)) && ! gone.has(fileKey(p)) ).map(plain);
     let taken = now_.filter( (p) => ! has.has(fileKey(p)) );
     if ( (pushed.length === 0) && (taken.length === 0) ) {
         return { programs: spliced.programs, text: '' };
@@ -300,6 +302,15 @@ function describe({ before, after, day, change, undo }) {
         }
         pivot = targetAt;
     }
+    return withRest({ before, after, bS, aS, day, pivot, marked, lead });
+}
+
+/*
+ * The lead sentence, then one on the rest of the day: the day's airings after
+ * `pivot`, before and after (the changed or left-out one aside), their starts
+ * and how many of each show, and whether the day now runs past its end.
+ */
+function withRest({ before, after, bS, aS, day, pivot, marked, lead }) {
     let rest = (programs, starts) => programs.map( (p, i) => ({ p, start: starts[i] }) )
         .filter( (x) => isDays(x.p, day.id) && (x.start > pivot) && ! marked(x.p) && (typeof(x.p.specialInsert) === 'undefined') );
     let was = rest(before.programs, bS);
@@ -344,6 +355,21 @@ function describe({ before, after, day, change, undo }) {
     return `${lead}. ${tail.charAt(0).toUpperCase()}${tail.slice(1)}.`;
 }
 
+/*
+ * Delete inside a day (Ron, Nov 8): the episode goes on the never-air list and
+ * the day is laid again without it. "X S1E3 is left out; X S1E4 airs at 7:00am
+ * instead. Nothing else in the day moves." `at` is where the deleted airing
+ * started, `title` its title.
+ */
+function leftOutSentence({ before, after, day, at, title: gone }) {
+    let bS = startsOf(before);
+    let aS = startsOf(after);
+    let i = after.programs.findIndex( (p, k) => isDays(p, day.id) && (aS[k] === at) );
+    let lead = (i !== -1) ? `${gone} is left out; ${title(after.programs[i])} airs at ${keptRows.clockAm(at)} instead`
+        : `${gone} is left out`;
+    return withRest({ before, after, bS, aS, day, pivot: at, marked: () => false, lead });
+}
+
 module.exports = {
     locate: locate,
     whyNot: whyNot,
@@ -354,4 +380,5 @@ module.exports = {
     splice: splice,
     alongAfter: alongAfter,
     describe: describe,
+    leftOutSentence: leftOutSentence,
 };

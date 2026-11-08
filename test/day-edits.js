@@ -40,7 +40,7 @@ function day(extra) {
     }, extra || {});
 }
 const sched = (d) => Object.assign(daily(), { specialDays: [ d ] });
-async function make(schedule) {
+async function make(schedule, poolOf) {
     const RealDate = Date;
     class FrozenDate extends RealDate {
         constructor(...a) { if (a.length === 0) super(NOW); else super(...a); }
@@ -48,7 +48,7 @@ async function make(schedule) {
     }
     global.Date = FrozenDate;
     try {
-        const res = await timeSlotsService(pool(), JSON.parse(JSON.stringify(schedule)));
+        const res = await timeSlotsService( (poolOf || pool)(), JSON.parse(JSON.stringify(schedule)));
         return { programs: res.programs, startTime: Date.parse(res.startTime) };
     } finally {
         global.Date = RealDate;
@@ -132,6 +132,30 @@ module.exports = async function () {
         const said = dayEdits.describe({ before: L, after: { programs: got.programs, startTime: L.startTime }, day: s1.specialDays[0], change: { id: 'chE', n: lastAt, kind: 'after' } });
         suite.check('an insert after the day\u2019s last airing that runs past its end says so',
             /runs 39:00 past the end of the day/.test(said), said);
+    }
+
+    suite.log('-- Delete inside a day: never air, the day laid again without it --');
+    {
+        const without = (title) => () => pool().filter( (p) => p.title !== title );
+        const R = await make(s0, without('X S1E3'));
+        const got = dayEdits.splice({ lineup: L, relaid: R, day: s0.specialDays[0] });
+        const spliced = { programs: got.programs, startTime: L.startTime };
+        suite.check('Keep apart: the list with the day laid again without X S1E3 is what Create Lineup makes',
+            sig(spliced, L.startTime, L.startTime + 3 * DAY) === sig(R, L.startTime, L.startTime + 3 * DAY), '');
+        const said = dayEdits.leftOutSentence({ before: L, after: spliced, day: s0.specialDays[0], at: fri(7), title: 'X S1E3' });
+        suite.check('...and says "X S1E3 is left out; X S1E4 airs at 7:00am instead. Nothing else in the day moves."',
+            said === 'X S1E3 is left out; X S1E4 airs at 7:00am instead. Nothing else in the day moves.', said);
+
+        const adv = sched(day({ positions: 'advance', slots: [ { showId: 'tv.A', order: 'next' } ] }));
+        const LA = await make(adv);
+        const third = shows(LA).find( (a) => a.start === fri(7) ).program.title;
+        const RA = await make(adv, without(third));
+        const gotA = dayEdits.splice({ lineup: LA, relaid: RA, day: adv.specialDays[0] });
+        const deleted = shows(LA).find( (a) => a.start === fri(7) ).program;
+        const moved = dayEdits.alongAfter({ lineup: LA, spliced: gotA, relaid: RA, now: NOW, schedule: adv, catalog: without(third)(), leftOut: [ deleted ] });
+        suite.check(`Advance: deleting ${third} at 7:00am, A\u2019s later airings after the day move up one, as Create Lineup makes them`,
+            sig({ programs: moved.programs, startTime: LA.startTime }, SAT6 - 18 * HOUR, SAT6 + DAY) === sig(RA, SAT6 - 18 * HOUR, SAT6 + DAY)
+                && /later episodes move up one/.test(moved.text), moved.text);
     }
 
     suite.log('-- a Keep apart day touches only itself --');

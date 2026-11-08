@@ -1474,6 +1474,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         showError( (err && err.message) ? err.message : 'The day could not be laid out again.' );
                     } );
                 }
+                // A special day's own airing: never air, and the day laid again without it.
+                if (scope.hasTimeSlots() && (typeof(program.specialDay) === 'string') && (typeof(program.specialRow) === 'number') && ! program.isOffline) {
+                    return scope.dayLeaveOut(x);
+                }
                 if (scope.hasTimeSlots() && keptRows.keepsItem(program)) {
                     let got = keptRows.putBack({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs });
                     if (! Array.isArray(got.programs)) {
@@ -2981,6 +2985,64 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 return relaidWith(dayEdits.withoutChange(scope.channel.scheduleBackup, id), found.day.id, found.change, true);
             };
             scope.dayPutBack = dayPutBack;
+            /*
+             * Delete inside a special day (Ron, Nov 8): as everywhere else on a Time Slots
+             * channel, the episode goes on the never-air list - and the day is laid again
+             * at once without it (the queued entry is in the state the re-lay reads), with
+             * one sentence. A picked item, or an episode set aside for the day's holiday,
+             * is changed in Time Slots instead.
+             */
+            scope.dayLeaveOut = async (index) => {
+                let before = lineupMs();
+                let program = scope.channel.programs[index];
+                let loc = dayEdits.locate({ lineup: before, index: index, schedule: scope.channel.scheduleBackup });
+                if ( (loc === null) || (typeof(loc.insert) === 'string') ) {
+                    showError(keptRows.whyNot({ row: { program: program, start: program.start }, now: Date.now(), what: 'remove', schedule: scope.channel.scheduleBackup })
+                        || "This can't be deleted here.");
+                    return;
+                }
+                let why = dayEdits.whyNot({ day: loc.day, now: Date.now() })
+                    || pinTools.whyNot({ airing: Object.assign({}, program, { start: loc.start }), now: Date.now(), what: 'remove' });
+                if (why !== null) {
+                    showError(why);
+                    return;
+                }
+                let rows = (loc.day.slots || []).filter( (r) => (r !== null) && (typeof(r) === 'object') );
+                let row = rows[loc.row] || {};
+                if ( ( (typeof(row.item) === 'object') && (row.item !== null) ) || ! getShowData(program).hasShow ) {
+                    showError(`This is the day's picked item: remove its row in Time Slots, ${loc.day.name}.`);
+                    return;
+                }
+                let state = await catalogFor();
+                if (showCatalog.isNeverAir(state, program)) {
+                    showError(`${String(program.title).trim()} is set aside for the day's holiday: change its row in Time Slots, ${loc.day.name}.`);
+                    return;
+                }
+                let op = { neverAir: [ showCatalog.neverAirEntry(program, getShowData, 'deleted', 'never', undefined, Date.now()) ] };
+                scope.catalogQueue.push(op);
+                scope.lastChange = 'Laying the day out again...';
+                $timeout();
+                try {
+                    let relaid = await relayDay(scope.channel.scheduleBackup);
+                    let spliced = dayEdits.splice({ lineup: before, relaid: relaid, day: loc.day });
+                    if (spliced.refused) {
+                        throw new Error(spliced.refused);
+                    }
+                    let moved = dayEdits.alongAfter({ lineup: before, spliced: spliced, relaid: relaid, now: Date.now(),
+                        schedule: scope.channel.scheduleBackup, catalog: scope.channel.programs, id: 'leftout', leftOut: [ program ] });
+                    let text = dayEdits.leftOutSentence({ before: before, after: { programs: moved.programs, startTime: before.startTime },
+                        day: loc.day, at: loc.start, title: String(program.title).trim() });
+                    if (moved.text && /\.$/.test(text)) {
+                        text = text.slice(0, -1) + moved.text + '.';
+                    }
+                    applyEdit({ programs: moved.programs, text: text });
+                } catch (err) {
+                    scope.catalogQueue = scope.catalogQueue.filter( (o) => o !== op );
+                    scope.lastChange = '';
+                    showError( (err && err.message) ? err.message : 'The day could not be laid out again.' );
+                }
+                $timeout();
+            };
             let dayChanged = (x) => (x != null) && ( (typeof(x.specialChange) === 'string') || (typeof(x.specialInsert) === 'string') );
 
             /*
