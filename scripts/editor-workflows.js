@@ -910,8 +910,9 @@ function makeRunner(opts, page) {
         },
         'special-day': async () => {
             // Special days (NOTES.md, "Special days"): a day of its own in Time Slots,
-            // a block for the day, This item, Create Lineup, Update Channel - and Delete
-            // refused on one of its airings. Far enough out (40 days) to stay clear of
+            // a block for the day, This item, Create Lineup, Update Channel - and Delete on
+            // one of its airings: never air, the day laid again without it (Event tools,
+            // feature 4, Ron Nov 8), then Cancel so nothing is kept. Far enough out (40 days) to stay clear of
             // the other workflows' near-term kept-row checks; cleaned up after itself.
             const openTimeSlots = async () => {
                 const timeSlotsShowing = await page.evaluate(() => [...document.querySelectorAll('button[title="Time Slots..."]')].some((b) => b.getClientRects().length > 0));
@@ -1011,7 +1012,7 @@ function makeRunner(opts, page) {
                 throw new Check('Create Lineup laid nothing for the special day');
             }
 
-            // Delete refused on one of its airings: jump the list to the day's own start.
+            // Delete on one of its airings: jump the list to the day's own start.
             await openEditor();
             const refusal = await page.evaluate((fromAt) => {
                 const el = document.getElementById('channelConfigProgramList');
@@ -1030,18 +1031,32 @@ function makeRunner(opts, page) {
             if (!row) {
                 throw new Check('no airing in view at the special day\'s start');
             }
+            const rowTextOf = async (k) => (await rowHandle(k)).evaluate((el) => el.textContent.replace(/\s+/g, ' ').trim());
+            const before = await rowTextOf(row.k);
             await click(await (await rowHandle(row.k)).$('button[title="Delete..."]'), `${row.show} at ${row.start}'s Delete`);
-            await sleep(500);
-            const said = await page.evaluate(() => [...document.querySelectorAll('.text-danger.small')]
-                .map((e) => e.textContent.trim()).find((t) => /Change this in Time Slots/.test(t)) || null);
-            if (!said) {
-                throw new Check(`Delete on ${row.show} at ${row.start} (inside the special day) wasn't refused`);
+            // The day is laid again (15-60 s): one sentence, "... is left out; ... airs at ... instead."
+            const settled = await page.waitForFunction(() => {
+                const el = document.querySelector('.programming-head .text-info');
+                const err = [...document.querySelectorAll('.text-danger.small')].map((e) => e.textContent.trim()).find((t) => t.length > 0);
+                return (el && / is left out/.test(el.textContent)) || err;
+            }, { timeout: 180000, polling: 1000 }).catch(() => null);
+            const said = await lastChange();
+            if ( (settled === null) || ! / is left out/.test(said) ) {
+                throw new Check(`Delete on ${row.show} at ${row.start} (inside the special day) didn't leave it out: "${said}"`);
             }
-            const stillThere = (await rowsInView()).some((r) => r.start === row.start && r.show === row.show);
-            if (!stillThere) {
-                throw new Check(`${row.show} at ${row.start} was removed despite the refusal`);
+            if (await modalOpen()) {
+                throw new Check(`Delete inside the special day asked something: "${await modalOpen()}"`);
+            }
+            await sleep(500);
+            const now = (await rowsInView()).find((r) => r.start === row.start && !r.flex);
+            if (now && (await rowTextOf(now.k)) === before) {
+                throw new Check(`${row.show} at ${row.start} still airs after Delete`);
             }
             await closeWith('Cancel');
+            const unchanged = await api(`/api/channel/${opts.channel}`);
+            if (unchanged.programs.length !== laid.programs.length) {
+                throw new Check('Cancel after Delete inside the day still changed the saved list');
+            }
 
             // Clean up: delete the day itself and regenerate, so later runs start clean.
             await openEditor();
@@ -1059,7 +1074,7 @@ function makeRunner(opts, page) {
                 throw new Check('the special day was still there after cleanup');
             }
             return `"Workflow test day" (${showName}) added 40 days out, Create Lineup laid ${tagged.length} airings, saved; `
-                + `Delete on ${row.show} at ${row.start} refused ("${said}"); deleted and regenerated clean`;
+                + `Delete on ${row.show} at ${row.start}: "${said}", nothing asked; Cancel dropped it; deleted and regenerated clean`;
         },
     };
     return workflows;
