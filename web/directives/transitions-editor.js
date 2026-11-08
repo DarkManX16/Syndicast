@@ -187,6 +187,9 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                     timesStart: editor.clockInputOf(step.times && step.times.start),
                     timesEnd: editor.clockInputOf(step.times && step.times.end),
                     timesError: '',
+                    datesFrom: editor.dateInputOf(step.dates && step.dates.from),
+                    datesTo: editor.dateInputOf(step.dates && step.dates.to),
+                    datesError: '',
                     watched: false,
                 };
                 rebuildChoices();
@@ -236,6 +239,9 @@ module.exports = function ($rootScope, $timeout, dizquetv, namesReview) {
                 } else if (field === 'times') {
                     const result = editor.setTimes(step, f.timesStart, f.timesEnd);
                     f.timesError = result.ok ? '' : result.error;
+                } else if (field === 'dates') {
+                    const result = editor.setDates(step, f.datesFrom, f.datesTo);
+                    f.datesError = result.ok ? '' : result.error;
                 }
                 changed();
                 rebuildChoices();

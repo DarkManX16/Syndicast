@@ -30,6 +30,7 @@
 const dayParts = require('./day-parts');
 const showMatch = require('./show-match');
 const clipNames = require('./clip-names');
+const dateRange = require('./date-range');
 
 const SITUATIONS = ['leaving', 'entering', 'betweenEpisodes', 'betweenShows'];
 const KINDS = ['list', 'generated'];
@@ -38,7 +39,7 @@ const KEYED_ON = ['now', 'next', 'later', 'afterNext', 'tomorrow'];
 
 const STEP_DEFAULTS = {
     kind: 'list', match: 'any', keyedOn: 'next', fallbackListId: null, onlyIfNoMatch: null,
-    onlyIfNothingAbove: false, days: null, chance: null, times: null,
+    onlyIfNothingAbove: false, days: null, chance: null, times: null, dates: null,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -977,13 +978,13 @@ function buildPlan(channel, brk, env) {
         return eligible.map( (e) => e.clip );
     };
 
-    // Whether this step is left out before it looks for a clip: a day, chance
-    // or times it cannot honour (a problem), a weekday or time window it is
+    // Whether this step is left out before it looks for a clip: a day, chance,
+    // times or dates it cannot honour (a problem), a weekday or time window it is
     // not inside, or a lost roll. Either way it has found nothing, so a step
     // watching it plays.
     const leftOut = (entry) => {
         const step = entry.step;
-        const bad = daysProblem(step) || chanceProblem(step) || timesProblem(step);
+        const bad = daysProblem(step) || chanceProblem(step) || timesProblem(step) || dateRange.datesProblem(step);
         if (bad !== null) {
             skip(entry, bad, true);
             return true;
@@ -995,6 +996,10 @@ function buildPlan(channel, brk, env) {
         }
         if ( (step.times != null) && (brk.startTime != null) && ! inTimeWindow(step.times, brk.startTime) ) {
             skip(entry, 'outside its time window', false);
+            return true;
+        }
+        if ( (step.dates != null) && (brk.startTime != null) && ! dateRange.inDates(step.dates, brk.startTime) ) {
+            skip(entry, 'outside its dates', false);
             return true;
         }
         if ( (step.chance != null) && (step.chance < 100) ) {
@@ -1200,6 +1205,7 @@ module.exports = {
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,
     timesProblem: timesProblem,
+    datesProblem: dateRange.datesProblem,
     inTimeWindow: inTimeWindow,
     defaultRoll: defaultRoll,
     buildPlan: buildPlan,

@@ -20,6 +20,7 @@
  */
 const transitions = require('./transitions');
 const showMatch = require('./show-match');
+const dateRange = require('./date-range');
 
 /*
  * The seven ways a step can choose its clips, as the form offers them. Each is a
@@ -414,6 +415,85 @@ function timesChipWord(step) {
     return (t.start === t.end) ? 'no time' : `${timeWords(t.start)}–${timeWords(t.end)}`;
 }
 
+/*
+ * "Only on these dates" (NOTES.md, "Event tools"): both fields are set or both
+ * are cleared, as "Only at these times". An <input type="date"> binds a Date at
+ * local midnight, or null/invalid while empty; only its local calendar date is
+ * read. A to before the from would play on no date at all, so it is refused -
+ * the store never holds dates a step could not have meant.
+ */
+function dateOfInput(d) {
+    return ( (d instanceof Date) && ! isNaN(d) ) ? dateRange.localDate(d.getTime()) : null;
+}
+function setDates(step, fromInput, toInput) {
+    const from = dateOfInput(fromInput);
+    const to = dateOfInput(toInput);
+    if ( (from === null) && (to === null) ) {
+        step.dates = null;
+        return { ok: true, error: '' };
+    }
+    if ( (from === null) || (to === null) ) {
+        return { ok: false, error: 'Set both a from and a to date, or clear both to play on any date.' };
+    }
+    if (to < from) {
+        return { ok: false, error: 'The to date is before the from date - that would play on no date at all.' };
+    }
+    step.dates = { from: from, to: to };
+    return { ok: true, error: '' };
+}
+
+// The Date an <input type="date"> should show for a stored YYYY-MM-DD, or null.
+function dateInputOf(text) {
+    if (! dateRange.isDate(text)) {
+        return null;
+    }
+    const [ y, m, d ] = text.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+const MONTH_WORDS = [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ];
+// "Nov 15", or "Nov 15, 2026" with the year.
+function dateWords(text, withYear) {
+    const [ y, m, d ] = text.split('-').map(Number);
+    return `${MONTH_WORDS[m - 1]} ${d}` + (withYear ? `, ${y}` : '');
+}
+// The well-formed dates of a step, or null.
+function wellFormedDates(step) {
+    const r = step.dates;
+    return ( (r != null) && (typeof(r) === 'object') && dateRange.isDate(r.from) && dateRange.isDate(r.to) ) ? r : null;
+}
+// The sentence's clause: "only from Nov 15 to Nov 26", "only on Nov 22", "on no date at all".
+function datesClause(step) {
+    const r = wellFormedDates(step);
+    if (r === null) {
+        return null;
+    }
+    if (r.to < r.from) {
+        return 'on no date at all';
+    }
+    if (r.from === r.to) {
+        return `only on ${dateWords(r.from, false)}`;
+    }
+    const years = r.from.slice(0, 4) !== r.to.slice(0, 4);
+    return `only from ${dateWords(r.from, years)} to ${dateWords(r.to, years)}`;
+}
+// The chip's word: "Nov 15–26", "Nov 28–Dec 3", "Nov 22".
+function datesChipWord(step) {
+    const r = wellFormedDates(step);
+    if (r === null) {
+        return null;
+    }
+    if (r.to < r.from) {
+        return 'no date';
+    }
+    if (r.from === r.to) {
+        return dateWords(r.from, false);
+    }
+    const years = r.from.slice(0, 4) !== r.to.slice(0, 4);
+    const sameMonth = ! years && (r.from.slice(0, 7) === r.to.slice(0, 7));
+    return `${dateWords(r.from, years)}–` + (sameMonth ? String(Number(r.to.slice(8))) : dateWords(r.to, years));
+}
+
 function joinWords(words) {
     if (words.length <= 1) {
         return words.join('');
@@ -490,6 +570,10 @@ function limitClauses(step, sequence, names) {
     } else if ( (step.times != null) && (typeof(step.times) === 'object') && (step.times.start === step.times.end) ) {
         parts.push('at no time at all');
     }
+    const dates = datesClause(step);
+    if (dates !== null) {
+        parts.push(dates);
+    }
     if ( (step.chance != null) && (step.chance < 100) ) {
         parts.push(`about ${step.chance}% of the time`);
     }
@@ -540,6 +624,10 @@ function chipLabel(step, sequence, names) {
         if (cardTimesWord !== null) {
             parts.push(cardTimesWord);
         }
+        const cardDatesWord = datesChipWord(step);
+        if (cardDatesWord !== null) {
+            parts.push(cardDatesWord);
+        }
         if ( (step.chance != null) && (step.chance < 100) ) {
             parts.push(`${step.chance}%`);
         }
@@ -573,6 +661,10 @@ function chipLabel(step, sequence, names) {
     const timesWord = timesChipWord(step);
     if (timesWord !== null) {
         parts.push(timesWord);
+    }
+    const datesWord = datesChipWord(step);
+    if (datesWord !== null) {
+        parts.push(datesWord);
     }
     if ( (step.chance != null) && (step.chance < 100) ) {
         parts.push(`${step.chance}%`);
@@ -619,6 +711,10 @@ function problemsOf(step, sequence, names) {
     const times = transitions.timesProblem(step);
     if (times !== null) {
         problems.push(times.charAt(0).toUpperCase() + times.slice(1) + '.');
+    }
+    const dates = transitions.datesProblem(step);
+    if (dates !== null) {
+        problems.push(dates.charAt(0).toUpperCase() + dates.slice(1) + '.');
     }
     return problems;
 }
@@ -799,8 +895,10 @@ function flexTag(channel, index, entryStart, names) {
     const weekday = new Date(brk.startTime).getDay();
     const label = (e) => ( isSupported(e.step) && ! hasNoTemplate(e.step)
         && (transitions.daysProblem(e.step) === null) && (transitions.timesProblem(e.step) === null)
+        && (transitions.datesProblem(e.step) === null)
         && ( (e.step.days == null) || e.step.days.includes(weekday) )
-        && ( (e.step.times == null) || transitions.inTimeWindow(e.step.times, brk.startTime) ) ) ? tagLabel(e.step, brk, names) : null;
+        && ( (e.step.times == null) || transitions.inTimeWindow(e.step.times, brk.startTime) )
+        && ( (e.step.dates == null) || dateRange.inDates(e.step.dates, brk.startTime) ) ) ? tagLabel(e.step, brk, names) : null;
     const before = first ? assembled.out.map(label).filter( (l) => l !== null ) : [];
     const after = last ? assembled.in.map(label).filter( (l) => l !== null ) : [];
     if ( (before.length === 0) && (after.length === 0) ) {
@@ -1051,6 +1149,8 @@ module.exports = {
     parseChance: parseChance,
     setChance: setChance,
     setTimes: setTimes,
+    setDates: setDates,
+    dateInputOf: dateInputOf,
     clockInputOf: clockInputOf,
     describeStep: describeStep,
     stepListName: stepListName,

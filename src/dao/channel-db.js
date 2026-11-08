@@ -413,6 +413,10 @@ function warnAboutTransitions(json) {
                         if (badTimes !== null) {
                             complain(`${stepLabel}: ${badTimes}, so it will be skipped.`);
                         }
+                        const badDates = transitions.datesProblem(step);
+                        if (badDates !== null) {
+                            complain(`${stepLabel}: ${badDates}, so it will be skipped.`);
+                        }
                         // The sequence a marked step watches within is this
                         // situation, out and in together, so that is what it is
                         // checked against.

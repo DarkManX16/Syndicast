@@ -44,7 +44,7 @@ function clip(title, seconds, extra) {
 }
 function step(id, extra) {
     return Object.assign({ id, kind: 'list', listId: 'wbrb', match: 'any', keyedOn: 'next',
-        fallbackListId: null, onlyIfNoMatch: null, onlyIfNothingAbove: false, days: null, chance: null, times: null }, extra || {});
+        fallbackListId: null, onlyIfNoMatch: null, onlyIfNothingAbove: false, days: null, chance: null, times: null, dates: null }, extra || {});
 }
 
 const LISTS = {
@@ -120,9 +120,9 @@ module.exports = async function run() {
         const s = editor.newStep(draft);
         suite.check('a new step asks for a clip for the show coming up, no list chosen',
             s.kind === 'list' && s.match === 'show' && s.keyedOn === 'next' && s.listId === ''
-            && s.fallbackListId === null && s.onlyIfNoMatch === null && s.onlyIfNothingAbove === false && s.days === null && s.chance === null && s.times === null);
+            && s.fallbackListId === null && s.onlyIfNoMatch === null && s.onlyIfNothingAbove === false && s.days === null && s.chance === null && s.times === null && s.dates === null);
         suite.check('... and carries every field a stored step carries',
-            same(Object.keys(s).sort(), ['chance', 'days', 'fallbackListId', 'id', 'keyedOn', 'kind', 'listId', 'match', 'onlyIfNoMatch', 'onlyIfNothingAbove', 'times']));
+            same(Object.keys(s).sort(), ['chance', 'dates', 'days', 'fallbackListId', 'id', 'keyedOn', 'kind', 'listId', 'match', 'onlyIfNoMatch', 'onlyIfNothingAbove', 'times']));
         const ids = new Set();
         for (let i = 0; i < 200; i++) {
             const n = editor.newStep(draft);
@@ -204,6 +204,30 @@ module.exports = async function run() {
         const sameR = editor.setTimes(sameT, new Date(2020, 0, 1, 2, 0), new Date(2020, 0, 1, 2, 0));
         suite.check('the same start and end is refused with a reason, and stores nothing',
             ! sameR.ok && sameR.error.length > 0 && sameT.times === null);
+
+        // -- dates: the "only on these dates" fields hold Date objects at local
+        // midnight, the way an <input type="date"> binds them.
+        const clearedD = step('d', { dates: { from: '2026-11-15', to: '2026-11-26' } });
+        suite.check('two empty date inputs clear dates', editor.setDates(clearedD, null, null).ok && clearedD.dates === null);
+        const setD = step('d');
+        const setDR = editor.setDates(setD, new Date(2026, 10, 15), new Date(2026, 10, 26));
+        suite.check('setting a from and a to stores local calendar dates',
+            setDR.ok && same(setD.dates, { from: '2026-11-15', to: '2026-11-26' }) && transitions.datesProblem(setD) === null, JSON.stringify(setD.dates));
+        const oneD = step('d');
+        suite.check('one day alone (from equal to to) is fine',
+            editor.setDates(oneD, new Date(2026, 10, 22), new Date(2026, 10, 22)).ok && same(oneD.dates, { from: '2026-11-22', to: '2026-11-22' }));
+        const halfD = step('d', { dates: { from: '2026-11-15', to: '2026-11-26' } });
+        const halfDR = editor.setDates(halfD, new Date(2026, 10, 16), null);
+        suite.check('only one of the two dates set is refused with a reason, and leaves the step as it was',
+            ! halfDR.ok && halfDR.error.length > 0 && same(halfD.dates, { from: '2026-11-15', to: '2026-11-26' }));
+        const backD = step('d');
+        const backDR = editor.setDates(backD, new Date(2026, 10, 26), new Date(2026, 10, 15));
+        suite.check('a to before the from is refused with a reason, and stores nothing',
+            ! backDR.ok && backDR.error.length > 0 && backD.dates === null);
+        const shown = editor.dateInputOf('2026-11-15');
+        suite.check('a stored date shows in the input as that local day',
+            (shown instanceof Date) && shown.getFullYear() === 2026 && shown.getMonth() === 10 && shown.getDate() === 15
+            && editor.dateInputOf(undefined) === null && editor.dateInputOf('soon') === null);
     }
 
     // ---- "only when" -----------------------------------------------------------
@@ -324,6 +348,14 @@ module.exports = async function run() {
             sentence(step('s', { times: { start: 0, end: 6 * HOUR } })).includes('only in breaks starting between 12:00am and 6:00am'));
         suite.check('a start equal to its end reads plainly as never',
             sentence(step('s', { times: { start: HOUR, end: HOUR } })).includes('at no time at all'));
+        suite.check('dates read as a range',
+            sentence(step('s', { dates: { from: '2026-11-15', to: '2026-11-26' } })).includes('only from Nov 15 to Nov 26'));
+        suite.check('one date reads as that date',
+            sentence(step('s', { dates: { from: '2026-11-22', to: '2026-11-22' } })).includes('only on Nov 22'));
+        suite.check('a range across a new year names the years',
+            sentence(step('s', { dates: { from: '2026-12-20', to: '2027-01-02' } })).includes('only from Dec 20, 2026 to Jan 2, 2027'));
+        suite.check('dates ending before they start read plainly as never',
+            sentence(step('s', { dates: { from: '2026-11-26', to: '2026-11-15' } })).includes('on no date at all'));
         const watched = step('w', { listId: 'upnext' });
         const marked = step('m', { listId: 'btts', onlyIfNoMatch: 'w' });
         suite.check('a marked step names the step it watches',
@@ -389,6 +421,14 @@ module.exports = async function run() {
             editor.chipLabel(step('s', { times: { start: 14 * HOUR + 45 * MIN, end: 15 * HOUR } }), [], names).endsWith('2:45pm–3:00pm'));
         suite.check('a start equal to its end shows on the chip as "no time"',
             editor.chipLabel(step('s', { times: { start: HOUR, end: HOUR } }), [], names).endsWith('no time'));
+        suite.check('dates show on the chip, one month once',
+            editor.chipLabel(step('s', { dates: { from: '2026-11-15', to: '2026-11-26' } }), [], names).endsWith('Nov 15–26'));
+        suite.check('dates across two months name both',
+            editor.chipLabel(step('s', { dates: { from: '2026-11-28', to: '2026-12-03' } }), [], names).endsWith('Nov 28–Dec 3'));
+        suite.check('one date shows alone',
+            editor.chipLabel(step('s', { dates: { from: '2026-11-22', to: '2026-11-22' } }), [], names).endsWith('Nov 22'));
+        suite.check('a generated card step shows its dates on the chip too',
+            editor.chipLabel(card('c', { dates: { from: '2026-11-15', to: '2026-11-26' } }), [nt], names).includes('Nov 15–26'));
         suite.check('a generated card step\'s chip shows its time window too',
             editor.chipLabel(card('c', { times: { start: 0, end: HOUR } }), [nt], names).includes('12:00am–1:00am'));
         suite.check('a mark shows on the chip',
@@ -415,6 +455,9 @@ module.exports = async function run() {
         suite.check('a bad chance in a stored step is a problem', p(step('s', { chance: 0 })).length === 1);
         suite.check('a times with equal start and end in a stored step is a problem', p(step('s', { times: { start: HOUR, end: HOUR } })).length === 1);
         suite.check('a malformed times in a stored step is a problem', p(step('s', { times: { start: HOUR } })).length === 1);
+        suite.check('dates ending before they start in a stored step are a problem',
+            p(step('s', { dates: { from: '2026-11-26', to: '2026-11-15' } })).length === 1);
+        suite.check('malformed dates in a stored step are a problem', p(step('s', { dates: { from: '2026-11-26' } })).length === 1);
         suite.check('a step of a kind the editor does not know has none to report', p(step('s', { kind: 'video', listId: '' })).length === 0);
         suite.check('a card step with no template is a problem', p(card('s', { templateId: '' })).length === 1);
         suite.check('a card step whose template was deleted is a problem', p(card('s', { templateId: 'gone' })).length === 1);
@@ -527,6 +570,14 @@ module.exports = async function run() {
         narrowTime.blocks[0].transitions.betweenShows.in[0].times = { start: 21 * HOUR, end: 22 * HOUR };
         suite.check('... and one whose window covers it stays in',
             editor.flexTag(narrowTime, 6, starts[6], names).text === 'Up Next · Gamma / (Generic)');
+
+        const dated = fixtureChannel();
+        dated.blocks[0].transitions.betweenShows.in[0].dates = { from: '2026-11-15', to: '2026-11-26' };
+        suite.check('a step whose dates do not cover this break is left out of the tag (break C is on Oct 2)',
+            editor.flexTag(dated, 6, starts[6], names).text === '(Generic)');
+        dated.blocks[0].transitions.betweenShows.in[0].dates = { from: '2026-10-01', to: '2026-10-02' };
+        suite.check('... and one whose dates cover it stays in',
+            editor.flexTag(dated, 6, starts[6], names).text === 'Up Next · Gamma / (Generic)');
 
         const keyed = fixtureChannel();
         keyed.blocks[0].transitions.betweenShows.in = [
