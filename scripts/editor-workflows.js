@@ -232,7 +232,8 @@ function makeRunner(opts, page) {
         for (let k = 0; t < now + days * DAY && k < 3 * channel.programs.length; k++) {
             const p = channel.programs[k % channel.programs.length];
             if (t + p.duration > now) {
-                out.push(`${t}|${p.isOffline ? 'Flex' : (p.showTitle || '') + ' ' + p.title}|${p.duration}|${p.kept ? JSON.stringify(p.kept) : ''}`);
+                // Tab-separated: a title can hold a "|" ("Babar | Babar's First Step: Ep. 1").
+                out.push(`${t}\t${p.isOffline ? 'Flex' : (p.showTitle || '') + ' ' + p.title}\t${p.duration}\t${p.kept ? JSON.stringify(p.kept) : ''}`);
             }
             t += p.duration;
             if (total <= 0) break;
@@ -554,7 +555,7 @@ function makeRunner(opts, page) {
             if (listed.length !== 5 || added.some((e) => e.how !== 'deleted' || gone.indexOf(e.title) === -1)) {
                 throw new Check(`of the 5 deleted (${gone.join(', ')}), ${listed.length} are on the never-air list; added: ${added.map((e) => e.title).join(', ')}`);
             }
-            const back = airings(after, 21).filter((a) => gone.some((t) => a.split('|')[1].endsWith(` ${t}`)));
+            const back = airings(after, 21).filter((a) => gone.some((t) => a.split('\t')[1].endsWith(` ${t}`)));
             if (back.length > 0) {
                 throw new Check(`${back.length} deleted episodes air in the next 3 weeks, e.g. ${back[0]}`);
             }
@@ -855,7 +856,7 @@ function makeRunner(opts, page) {
             if (lost.length > 0) {
                 throw new Check(`${lost.length} kept rows moved or went: ${lost[0]}`);
             }
-            const kept = keptAfter.find((a) => a.split('|')[1].endsWith(` ${swappedIn}`));
+            const kept = keptAfter.find((a) => a.split('\t')[1].endsWith(` ${swappedIn}`));
             if (!kept) {
                 throw new Check(`the swap (${swappedIn}, at ${swap.row.start}) isn't kept after Create Lineup and Update Channel`);
             }
