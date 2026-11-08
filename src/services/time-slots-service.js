@@ -272,7 +272,63 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         copy.specialRow = slot.specialRow;
         return copy;
     };
+    /*
+     * Edits inside a special day (NOTES.md, "Event tools", feature 4): a row's
+     * `changes`, each to its nth airing in the day - `rowCounts` counts what the
+     * row has aired so far (from the planner's `counts` on a re-make). A swap airs
+     * its item in place of the nth and moves nothing on, so the row's next airing
+     * has the episode it pushed out; an insert before or after travels with the
+     * nth (insertsOf, read by makePadded and pushProgram). A row without changes
+     * takes exactly the old path.
+     */
+    let rowCounts = new Map();
+    let insertsOf = new WeakMap();
+    // Inserts already laid - the one on air, carried, or the one after it.
+    let insertsDone = new Set();
+    let changeAt = (slot, n, kind) => Array.isArray(slot.changes)
+        ? (slot.changes.find( (c) => (c != null) && (c.n === n) && (c.kind === kind) && (typeof(c.item) === 'object') && (c.item !== null)
+            && (typeof(c.item.program) === 'object') && (c.item.program !== null) ) || null)
+        : null;
+    let changedCopy = (program, slot, mark, id) => {
+        let copy = specialCopy(program, slot);
+        delete copy.slotPosition;
+        delete copy.shuffleOrder;
+        delete copy.kept;
+        delete copy.pin;
+        copy[mark] = id;
+        return copy;
+    };
     function specialItem(slot) {
+        if (! Array.isArray(slot.changes) || (slot.changes.length === 0) ) {
+            return plainSpecialItem(slot);
+        }
+        let n = (rowCounts.get(slot) || 0) + 1;
+        let swap = changeAt(slot, n, 'swap');
+        let out;
+        if (swap !== null) {
+            out = ( (typeof(slot.item) === 'object') && (slot.item !== null) && (itemState.get(slot) === occurrenceStart) )
+                ? null : changedCopy(swap.item.program, slot, 'specialChange', swap.id);
+        } else {
+            out = plainSpecialItem(slot);
+        }
+        if (out !== null) {
+            // Its number in the day, so a lineup made during the day - which starts at the
+            // program on air - still knows which airing of the row it is (review, Nov 8).
+            out.specialN = n;
+            let before = changeAt(slot, n, 'before');
+            let after = changeAt(slot, n, 'after');
+            before = ( (before !== null) && ! insertsDone.has(before.id) ) ? before : null;
+            after = ( (after !== null) && ! insertsDone.has(after.id) ) ? after : null;
+            if ( (before !== null) || (after !== null) ) {
+                insertsOf.set(out, {
+                    before: (before !== null) ? changedCopy(before.item.program, slot, 'specialInsert', before.id) : null,
+                    after: (after !== null) ? changedCopy(after.item.program, slot, 'specialInsert', after.id) : null,
+                });
+            }
+        }
+        return out;
+    }
+    function plainSpecialItem(slot) {
         if ( (typeof(slot.item) === 'object') && (slot.item !== null) ) {
             if ( (typeof(slot.item.program) !== 'object') || (slot.item.program === null) || (itemState.get(slot) === occurrenceStart) ) {
                 return null;
@@ -297,6 +353,16 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         return ( (next === null) || (typeof(next) === 'undefined') ) ? null : specialCopy(next, slot);
     }
     function advanceSpecial(slot) {
+        if (Array.isArray(slot.changes) && (slot.changes.length > 0)) {
+            let n = (rowCounts.get(slot) || 0) + 1;
+            rowCounts.set(slot, n);
+            if (changeAt(slot, n, 'swap') !== null) {
+                if ( (typeof(slot.item) === 'object') && (slot.item !== null) ) {
+                    itemState.set(slot, occurrenceStart);
+                }
+                return;
+            }
+        }
         if ( (typeof(slot.item) === 'object') && (slot.item !== null) ) {
             itemState.set(slot, occurrenceStart);
         } else if ( (typeof(slot.holiday) === 'object') && ! holidayDone(slot.holiday) ) {
@@ -416,7 +482,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     }
 
     function makePadded(item) {
-        let x = item.duration;
+        let inserts = insertsOf.get(item);
+        let x = item.duration + ( (inserts && inserts.after) ? inserts.after.duration : 0 );
         let m = x % schedule.pad;
         let f = 0;
         if ( (m > constants.SLACK) && (schedule.pad - m > constants.SLACK) ) {
@@ -425,7 +492,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         return {
             item: item,
             pad: f,
-            totalDuration: item.duration + f,
+            totalDuration: x + f,
         }
 
     }
@@ -585,6 +652,27 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     // The last airing a special day placed, for the run-late after its end.
     let lastSpecial = null;
     let pushProgram = (item) => {
+        let inserts = ( (typeof(item) === 'object') && (item !== null) ) ? insertsOf.get(item) : undefined;
+        if (typeof(inserts) !== 'undefined') {
+            insertsOf.delete(item);
+            if (inserts.before !== null) {
+                // In the break in front of it, which shrinks; with no room there it goes first.
+                let last = (p.length > 0) ? p[p.length - 1] : null;
+                if ( (last !== null) && last.isOffline && (last.type !== 'redirect') && ! last.pin && (last.duration >= inserts.before.duration) ) {
+                    last.duration -= inserts.before.duration;
+                    t -= inserts.before.duration;
+                    if (last.duration === 0) {
+                        p.pop();
+                    }
+                }
+                pushProgram(inserts.before);
+            }
+            pushProgram(item);
+            if (inserts.after !== null) {
+                pushProgram(inserts.after);
+            }
+            return;
+        }
         if ( item.isOffline && (item.type !== 'redirect') ) {
             pushFlex(item.duration);
         } else {
@@ -689,6 +777,13 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         }
         let k = ( (typeof(at) === 'object') && (at !== null) && Number.isInteger(at.nextRow) ) ? at.nextRow : 0;
         let itemsAired = new Set( ( (typeof(at) === 'object') && (at !== null) && Array.isArray(at.airedItems) ) ? at.airedItems : [] );
+        if ( (typeof(at) === 'object') && (at !== null) && (typeof(at.counts) === 'object') && (at.counts !== null) ) {
+            slotOf.forEach( (slot, k) => {
+                if (Number.isInteger(at.counts[k])) {
+                    rowCounts.set(slot, at.counts[k]);
+                }
+            } );
+        }
         // An until run under way when the lineup is remade (planner: inRun).
         let runK = ( (typeof(at) === 'object') && (at !== null) && (at.inRun === true) ) ? k : null;
         return { day: day, from: w.from, to: w.to, slotOf: slotOf, timed: timed, k: k, runK: runK, itemsAired: itemsAired,
@@ -1082,6 +1177,17 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     if ( (carry !== null) && (typeof(carry.program.specialDay) === 'string') && (typeof(carry.program.specialRow) === 'number') ) {
         let d = laidDays.find( (x) => x.day.id === carry.program.specialDay );
         if (typeof(d) !== 'undefined') {
+            // An edit's insert on air is laid already; one after the airing on air comes next.
+            let carriedSlot = d.slotOf[carry.program.specialRow];
+            if (typeof(carry.program.specialInsert) === 'string') {
+                insertsDone.add(carry.program.specialInsert);
+            } else if (typeof(carriedSlot) !== 'undefined') {
+                let after = changeAt(carriedSlot, rowCounts.get(carriedSlot) || 0, 'after');
+                if ( (after !== null) && ! insertsDone.has(after.id) ) {
+                    insertsDone.add(after.id);
+                    pushProgram(changedCopy(after.item.program, carriedSlot, 'specialInsert', after.id));
+                }
+            }
             let onAirRow = d.slotOf[carry.program.specialRow] || {};
             // A go of a run (it began before the until time) leaves the run under way.
             let goesOn = (typeof(onAirRow.untilAt) === 'number') && (carry.start < onAirRow.untilAt - SLACK);

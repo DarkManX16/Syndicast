@@ -507,6 +507,48 @@ function rippleOut({ lineup, at, was, into, pushed, id, now, schedule }) {
     };
 }
 
+/*
+ * After a special day laid again (src/day-edits.js; NOTES.md, "Event tools",
+ * feature 4): episodes the day no longer airs (`pushed`, in order) go to their
+ * position's next airings after row `after`, each later one moving along, and
+ * for each { key, count } of `pulled` - episodes the day now airs that were a
+ * later airing's - that position's later airings move up `count`, the last
+ * taking the next in `catalog`. Laid out as rippleOut lays out, run late marked
+ * by `id`. { programs, text }: "; X airs Fri Oct 9, 12:00pm" and the like.
+ */
+function moveAlong({ lineup, after, pushed, pulled, catalog, now, schedule, id }) {
+    let programs = lineup.programs;
+    let contents = new Map();
+    let starts = startsOf(lineup);
+    let end = endOf(lineup, starts, now);
+    let out = pushed.map(contentOf).filter( (c) => positionOf(c) !== null );
+    out.slice().reverse().forEach( (c) => pushAlong(programs, contents, after, c, end) );
+    let up = [];
+    (pulled || []).forEach( ({ key, count }) => {
+        for (let n = 0; n < count; n++) {
+            let head = chainOf(programs, after, key, end)[0];
+            if ( (typeof(head) === 'undefined')
+                 || ! pullBack(programs, contents, head, key, (last) => episodeAfter(key, last, Array.isArray(catalog) ? catalog : programs), end) ) {
+                break;
+            }
+            if (up.indexOf(key) === -1) {
+                up.push(key);
+            }
+        }
+    } );
+    let changes = [];
+    contents.forEach( (c, i) => changes.push({ index: i, start: starts[i], was: contentOf(programs[i]), now: c }) );
+    let landedAt = new Map();
+    contents.forEach( (c, i) => { if (out.indexOf(c) !== -1) { landedAt.set(c, i); } } );
+    followRepeats({ programs, starts, contents, changes, schedule, end });
+    let laid = layout({ lineup, contents, targets: new Map(), id, kind: 'late', now, watch: new Set(landedAt.values()) });
+    let landed = out.map( (c) => ({ content: c, start: landedAt.has(c) ? laid.startOf.get(landedAt.get(c)) : null }) );
+    let shows = up.map( (key) => JSON.parse(key)[0].replace(/^(tv|custom)\./, '') );
+    let text = sayLanded(landed)
+        + ( (shows.length === 0) ? '' : `; ${shows.map( (s) => possessive(s) ).join(' and ')} later episodes move up one` );
+    return { programs: laid.programs, text: text, late: laid.late };
+}
+
 // What an edit records of the airing it pushes out, for Put back: its label
 // when it moves along (it comes back from its next airing), else itself.
 function recordOut(edit, program) {
@@ -1600,6 +1642,7 @@ module.exports = {
     rowNote: rowNote,
     move: move,
     putBack: putBack,
+    moveAlong: moveAlong,
     keptAhead: keptAhead,
     sayKept: sayKept,
     clearWrong: clearWrong,

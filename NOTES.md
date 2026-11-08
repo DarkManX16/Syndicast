@@ -7254,13 +7254,106 @@ worktree at c91ad93:
   date taken off again. Ron's Kim Possible day rebuilt as "Kim Possible until 7:00pm", the movie,
   one row: Preview this day gave the same episodes at the same times as his 14 rows, in three
   lines. Copy put the Lizzie day on Sun Nov 29, 3:00-7:00pm. Neither change was saved.
-- The workflow checklist (`editor-workflows.js --channel 3`) passed all ten before the review's
-  fixes and again after them, each on its own fresh copy (5:42am, 6:29am); both times the script
-  then hung in `browser.close()` after its last workflow and was stopped.
+- The workflow checklist (`editor-workflows.js --channel 3`) has **eleven** workflows. Before the
+  review's fixes and after them (fresh copies, 5:42am and 6:29am) the first ten passed; both times
+  I stopped the script while the eleventh, `special-day` (2-3 minutes), was still running, having
+  taken it for a hang in `browser.close()` - so those runs never finished `special-day`. **Corrected
+  Nov 8.**
+- **On the merged result** (blocks c4a5279, fresh copy 8:00am): `npm test` 3179/3179; the checklist
+  10 of 11, `special-day` included. Two failures on the first merged run were looked into:
+  `create-lineup` was the script's own check, cutting airing labels at a "|" that the title
+  "Babar | Babar's First Step: Ep. 1" holds (the swap was kept; fixed, 60bfdd4).
+  **`add-delete-create` still fails on fresh copies**: two of the five deleted House of Mouse
+  episodes ("Mickey and the Culture Clash", "House of Genius") never get a never-air entry. It fails
+  the same way on c91ad93, from before event tools, and passed at 6:29am on the same channel file and
+  when run alone on a used copy; not a race (the entries are never added). Unexplained, left for its
+  own session.
+- `browser.close()` does hang sometimes (seen after failures): since b6701f7 the script prints its
+  summary, gives the close 10 s, then kills the browser and exits.
 
 **Not changed, found on the way.** Typing a whole date into an `<input type="date">` with the
 browser tool's "type" does nothing; key presses work. A Mix row added in the editor saves
 `cooldown: null` until the editor is reopened (pre-existing, noted before).
+
+**Feature 4, Swap and Insert inside a special day, built Nov 8, 2026 (Opus 5.5)** on
+`special-day-edits` from `blocks` at c4a5279. Drags into, out of and inside a day stay refused.
+
+- **Saved on the row.** `slots[k].changes: [{ id, n, kind: 'swap' | 'before' | 'after', item: {
+  program } }]`, each a change to row k's nth airing in the day (an insert is no airing of the
+  row). The generator honours it in `specialItem` / `advanceSpecial` (one gateway for Back to back
+  and Set times rows): a swap airs its item and moves nothing on, so the row's next airing has the
+  episode swapped out; an insert travels with the nth airing (`insertsOf`, read by `makePadded`
+  and `pushProgram`) - before it in the break in front, which shrinks; after it, right after. Their
+  airings carry `specialChange` / `specialInsert`. The planner counts each row's airings
+  (`counts`, only on a day with changes) so a re-make during the day lays the same day; the carry
+  lays an insert after the airing on air and never lays twice an insert on air. A row without
+  changes takes exactly the old path.
+- **In the list.** Swap, Insert after and Insert before on a day's airing open the same dialog. The
+  change goes on a copy of the schedule, the Time Slots editor lays the channel again unseen
+  (`relayDay`: Create Lineup's own run, as a preview, with the catalogs it already read), and
+  `src/day-edits.js` splices only the day into the list - from the end of the last regular
+  program before it to the first program after it that starts at one instant in both lists. On an
+  Advance day the show's later episodes move along after it (`keptRows.moveAlong`); a Keep-apart
+  day touches only itself. One sentence before it applies: "Picture Day replaces The Untitled Stan
+  Jansen Project at 4:00pm; it airs at 4:30pm instead. Nothing else in the day moves." / "I've Got
+  Rhythmic goes in right after Mom's Best Friend at 5:21:41pm. The rows after it start 30 minutes
+  later; Lizzie McGuire airs one fewer episode." The changed airing carries the pin; its Delete is
+  Put back, which lays the day again without it ("... is back at 4:00pm, and the airings after it
+  go back an episode."). Time Slots lists each change under its row ("4:00pm: Picture Day
+  instead") with Put back. Copy to another date leaves the changes behind.
+- **Tests, failing first:** `test/special-day-edits-generator.js` (swaps the same length and
+  longer, inserts after short and long, before, Set times, re-makes at five moments),
+  `test/day-edits.js` (locate, the change on the schedule, the splice equal to a full Create Lineup
+  for each kind, every sentence and its Put back's, an Advance day moving along and Put back giving
+  the list back exactly, a Keep-apart day moving nothing).
+- **On a preview** (port 18190, a copy taken 8:32am Nov 8), Ron's Lizzie day, Nov 22: a swap at
+  4:00 and an insert after the 5:00 airing, 14-32 seconds each to lay the day again; saved with
+  Update Channel (both on the row, the list as shown); Time Slots listed both; Create Lineup laid
+  the day exactly as the list had it; Put back of each, saved, gave back exactly the original day
+  and no `changes` key.
+- **The review (a fresh agent, Nov 8) found two serious bugs and two smaller ones**, each fixed with
+  a test that failed first and mutation-checked:
+  1. A lineup made during the day starts at the program on air, so a second Create Lineup during
+     the day counted the row's airings from there: a swap aired twice (8:00 and 9:00). Each airing
+     of a row with changes now carries its number in the day (`specialN`), read by the planner and
+     `locate`; and edits inside a day are made **before it begins** - after that, Swap, Insert and
+     Put back say "Marathon and a Movie: Lizzie McGuire is on the air: edits inside it are made
+     before it begins." (they were refused before anyway, with a misleading "run Create Lineup").
+  2. On an Advance day, episodes moved along after the day carried the day's marks into regular
+     slots, which misled later edits and the sentence; they lose them now.
+  3. Insert before is refused when the break in front is shorter, in today's words.
+  4. A change running past the day's end now says so.
+  Also: a second click while the day is laid does nothing. Left as they are: an insert's length is
+  not in the fit checks against an until time or a kept row (it runs over, and the rows after move
+  later); Put back in the Time Slots list takes the change off the row and the day is laid again
+  at Create Lineup, as every other row edit there; a change stores the whole program, as a This item
+  row does.
+- **Create Lineup on channels 1-3**, the code before (c4a5279) against this branch: identical,
+  program for program and saved schedule for schedule, channel 3 with its three days - on a copy
+  taken 8:44am, and again after the review's fixes on one taken 10:11am.
+- **The checklist** passed all eleven before the review's fixes (copy 8:44am) and again after them
+  (copy 10:11am).
+- **Ron's answers, Nov 8:** (1) Delete inside a day is never air, as everywhere else on a Time
+  Slots channel - built below. (2) A change is to "the row's nth airing", so an insert stays at its
+  place in the day when the episodes around it change (after a swap's Put back, the insert after
+  the 5:00 airing follows Gordo's Video instead of Mom's Best Friend, still at 5:21pm): right, an
+  insert belongs to its time slot. (3) 15-35 seconds per edit, while the day is laid again, is fine
+  for now.
+- **Delete inside a day, built Nov 8** (d90c229): the episode goes on the never-air list - queued, as
+  every Delete's is, and already in the catalog state the re-lay reads - and the day is laid again at
+  once without it and spliced in; nothing is asked, one sentence after: "Gordo's Video is left out;
+  Rumors airs at 5:00pm instead. Nothing else in the day moves." On an Advance day the show's later
+  episodes move up one (the left-out episode is never pushed along). A picked item ("remove its row
+  in Time Slots"), an episode already set aside for the day's holiday ("change its row in Time
+  Slots"), and a day on the air are refused in one line; a failed re-lay takes the queued entry back
+  off. Tests failing first: `test/day-edits.js` (Keep apart and Advance, against a full Create Lineup
+  with the episode left out) and `test/kept-editor.js` (Delete on a day's airing goes to the day).
+  On the preview, Ron's Lizzie day: Delete on Gordo's Video, 43 seconds, saved: the day as
+  described, and the entry on the never-air list, "deleted, never".
+- **add-delete-create on fresh copies (asked Nov 8): not holiday entries.** "Mickey and the Culture
+  Clash" (S4E9, .../177340) and "House of Genius" (S4E8, .../177275) have no never-air entry of any
+  kind, by file key (what Delete checks), so Delete should have added them; the script was left
+  alone. Cause still unknown; later fresh-copy runs passed.
 
 ### Chapter and segment detector, and stage 6 midrolls
 

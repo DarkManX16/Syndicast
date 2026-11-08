@@ -63,6 +63,8 @@ const suites = [
     './insert-before',
     './special-days',
     './special-days-generator',
+    './special-day-edits-generator',
+    './day-edits',
     './special-days-progress',
     './special-days-block',
     './special-days-preview',

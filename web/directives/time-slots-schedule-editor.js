@@ -1092,6 +1092,45 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 dayOffsetCache = { key: key, list: out };
                 return out;
             };
+            /*
+             * Edits made inside a special day from the list (NOTES.md, "Event tools",
+             * feature 4): one line each under its row - "10:00am: Kim Possible S1E3
+             * instead" - with Put back, which takes it off the row; Create Lineup lays
+             * the day without it. Where each airs is read from the lineup once.
+             */
+            let changeStarts = null;
+            let changeStartsOf = () => {
+                if (changeStarts === null) {
+                    changeStarts = new Map();
+                    let onAir = (typeof(scope.lineup) === 'function') ? scope.lineup() : null;
+                    if ( (onAir !== null) && Array.isArray(onAir.programs) ) {
+                        let t = new Date(onAir.startTime).getTime();
+                        onAir.programs.forEach( (p) => {
+                            let id = (typeof(p.specialChange) === 'string') ? p.specialChange : p.specialInsert;
+                            if (typeof(id) === 'string') {
+                                changeStarts.set(id, t);
+                            }
+                            t += p.duration;
+                        } );
+                    }
+                }
+                return changeStarts;
+            };
+            const ORDINALS = [ '', '1st', '2nd', '3rd' ];
+            scope.dayChangeLine = (c) => {
+                let what = (c && c.item && c.item.program) ? String(c.item.program.title).trim() : 'an item';
+                let how = (c.kind === 'swap') ? 'instead' : ( (c.kind === 'after') ? 'right after it' : 'right before it' );
+                let at = changeStartsOf().get(c.id);
+                let when = (typeof(at) === 'number') ? specialDays.clockOfInstant(at)
+                    : `Its ${ORDINALS[c.n] || (c.n + 'th')} airing`;
+                return `${when}: ${what} ${how}`;
+            };
+            scope.dropDayChange = (row, c) => {
+                row.changes = (row.changes || []).filter( (x) => x !== c );
+                if (row.changes.length === 0) {
+                    delete row.changes;
+                }
+            };
             // A Back to back row's Until (NOTES.md, "Event tools"): the day's own
             // marks. Rebuilt only when the day's window or rounding changes, so
             // ng-options keeps one array between digests.
@@ -1381,6 +1420,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 scope.droppedStarts = [];
                 scope.startsStale();
                 scope.lineup = lineup;
+                changeStarts = null;
                 //The schedule the lineup on air was made from, as it was saved,
                 //for reading places by slot and for each slot's old place.
                 scope.openedSchedule = (typeof(backup) === 'undefined') ? null : JSON.parse( JSON.stringify(backup) );
@@ -1454,8 +1494,23 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
             }
 
+            /*
+             * A special day laid again for an edit inside it (NOTES.md, "Event tools",
+             * feature 4): the same run Create Lineup makes, as a preview, from `backup`
+             * - the schedule with the change on the day's row - with the dialog
+             * unseen and the catalogs this editor already read. Only the day is taken
+             * from it (src/day-edits.js splice); nothing is saved here.
+             */
+            let relayDay = async (programs, limit, backup, lineup, catalogState, blocks, fillerOptions) => {
+                prepare(programs, limit, backup, false, null, lineup, catalogState, true, blocks, fillerOptions);
+                scope.visible = false;
+                let res = await doIt(false, undefined, undefined, true);
+                return { programs: res.programs, startTime: new Date(res.startTime).getTime() };
+            };
+
             scope.linker( {
                 startDialog: startDialog,
+                relayDay: relayDay,
             } );
 
             scope.finished = async (cancel, fromInstant) => {

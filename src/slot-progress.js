@@ -1047,6 +1047,9 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
             let upTo = (typeof(placesFrom) === 'number') ? Math.max(now, placesFrom) : now;
             let lastRow = null;
             let lastRowStart = null;
+            // How many of its own airings each row has had (an insert is none): a
+            // change is to a row's nth airing (Event tools, feature 4).
+            let counts = {};
             let airedItems = [];
             let holidayAired = {};
             let total = cycleLength(programs);
@@ -1060,7 +1063,10 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                 }
                 for (let n = 0; (n < programs.length) && (t < upTo); n++) {
                     let p = programs[i % programs.length];
-                    if ( ! p.isOffline && (p.specialDay === day.id) && (typeof(p.specialRow) === 'number') && (t + p.duration <= upTo + 1000) ) {
+                    if ( ! p.isOffline && (p.specialDay === day.id) && (typeof(p.specialRow) === 'number') && (t + p.duration <= upTo + 1000)
+                         && (typeof(p.specialInsert) === 'undefined') ) {
+                        counts[p.specialRow] = Number.isInteger(p.specialN) ? Math.max(counts[p.specialRow] || 0, p.specialN)
+                            : (counts[p.specialRow] || 0) + 1;
                         lastRow = p.specialRow;
                         lastRowStart = t;
                         if ( (typeof(rows[p.specialRow]) === 'object') && (typeof(rows[p.specialRow].item) === 'object') ) {
@@ -1084,6 +1090,9 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
             info[day.id] = { nextRow: (lastRow === null) ? 0 : (goesOn ? lastRow : lastRow + 1), airedItems: airedItems };
             if (goesOn) {
                 info[day.id].inRun = true;
+            }
+            if (rows.some( (row) => Array.isArray(row.changes) && (row.changes.length > 0) )) {
+                info[day.id].counts = counts;
             }
             if (Object.keys(holidayAired).length > 0) {
                 info[day.id].holidayAired = holidayAired;
