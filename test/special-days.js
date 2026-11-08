@@ -403,6 +403,11 @@ module.exports = async () => {
         const ttFill = sd.timetable({ programs: withFill, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} });
         suite.check('...a long break filled inside the run stays inside its one line',
             ttFill.rows[0].title === 'L, 3 episodes (S1E1–S2E1)' && ttFill.rows[1].title === 'The Movie', JSON.stringify(ttFill.rows.map( (r) => r.title )));
+        const shuffled = programs.map( (p) => p );
+        shuffled[2] = episode('L', 4, 3, 22 * MIN, 0);
+        suite.check('...a run not in episode order (a Shuffle row) gives only how many, not a range that is not one',
+            sd.timetable({ programs: shuffled, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} }).rows[0].title === 'L, 3 episodes',
+            sd.timetable({ programs: shuffled, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} }).rows[0].title);
         const withNull = Object.assign({}, ttDay, { slots: [ null ].concat(ttDay.slots) });
         suite.check('...and a null row in the day does not move which row is which',
             sd.timetable({ programs, startTime: local(2027, 1, 1, 6, 0), day: withNull, schedule: {} }).rows[0].title === 'L, 3 episodes (S1E1–S2E1)', '');

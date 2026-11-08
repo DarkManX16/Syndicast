@@ -541,7 +541,11 @@ function wrapFinder(schedule, regular) {
 function runTitle(run, pins) {
     let code = (p) => `S${p.season}E${p.episode}`;
     let numbered = run.every( (p) => Number.isInteger(p.season) && Number.isInteger(p.episode) );
-    let what = numbered ? `${run.length} episodes (${code(run[0])}–${code(run[run.length - 1])})` : `${run.length} airings`;
+    // A range only when the run airs in episode order; a Shuffle's first and last aren't one.
+    let inOrder = numbered && run.every( (p, i) => (i === 0) || (p.season > run[i - 1].season)
+        || ( (p.season === run[i - 1].season) && (p.episode > run[i - 1].episode) ) );
+    let what = ! numbered ? `${run.length} airings`
+        : inOrder ? `${run.length} episodes (${code(run[0])}–${code(run[run.length - 1])})` : `${run.length} episodes`;
     return `${pins.showName(run[0])}, ${what}`;
 }
 
