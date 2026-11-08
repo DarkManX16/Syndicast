@@ -89,6 +89,7 @@ const suites = [
     './break-scan-governor',
     './break-scan-service',
     './io-priority',
+    './close-browser',
 ];
 
 (async () => {

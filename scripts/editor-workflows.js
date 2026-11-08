@@ -1112,8 +1112,12 @@ function makeRunner(opts, page) {
             console.log(`        page errors: ${errors.slice(0, 3).join(' | ')}`);
         }
     }
-    await browser.close();
     const ran = names.length - skipped;
     console.log(`${ran - failed}/${ran} workflows passed${skipped ? `, ${skipped} skipped` : ''}.`);
-    process.exitCode = failed === 0 ? 0 : 1;
+    // browser.close() can hang after the last workflow; give it 10 s, then kill it.
+    const closed = await require('./lib/close-browser')(browser, 10000);
+    if (closed !== 'closed') {
+        console.log(`        the browser did not close in 10 s (${closed})`);
+    }
+    process.exit(failed === 0 ? 0 : 1);
 })();
