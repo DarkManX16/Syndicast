@@ -718,6 +718,7 @@ module.exports = {
     ahead: ahead,
     aired: aired,
     untilAt: untilAt,
+    daysOf: daysOf,
     untilOptions: untilOptions,
     copyTo: copyTo,
     usable: usable,
