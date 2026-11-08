@@ -12,8 +12,9 @@
  *
  *   <old-repo-root>  a checkout (or worktree) of the code to compare against;
  *                    the code being compared is the one this script sits in.
- *   --control        also runs the NEW code with one step on every channel's
- *                    first day-part changed to a narrow time window, to prove
+ *   --control        also runs the NEW code with a narrow-times step added to
+ *                    one channel's first day-part, and with every step of one
+ *                    channel dated to a range long over (Event tools), to prove
  *                    the comparison can see a real difference when there is one.
  *
  * READ-ONLY. Point it at a COPY of the data folder, not the live one.
@@ -133,6 +134,25 @@ if (args.control) {
             }
         }
         console.log(`channel ${channel.number}, with a narrow-times step added to betweenShows.out: ${controlDiffer} of ${a.length} breaks differ `
+            + '(must be > 0, or the comparison proves nothing).');
+    }
+}
+
+// The same for "only on these dates" (Event tools): every step the channel
+// already has, dated to a range long over, so the new code leaves each out.
+if (args.control) {
+    const target = channels.find( ({ json }) => newE.transitions.hasSteps(json) );
+    if (target) {
+        const channel = JSON.parse(JSON.stringify(target.json));
+        [].concat(channel.dayParts || [], channel.blocks || []).forEach( (context) => {
+            Object.values(context.transitions || {}).forEach( (situation) => {
+                [].concat(situation.out || [], situation.in || []).forEach( (step) => { step.dates = { from: '2000-01-01', to: '2000-01-02' }; } );
+            } );
+        } );
+        const a = run(oldE, target.json, args.weeks, env);
+        const c = run(newE, channel, args.weeks, env);
+        const differ = a.filter( (x, i) => x !== c[i] ).length;
+        console.log(`channel ${channel.number}, every step dated to a range long over: ${differ} of ${a.length} breaks differ `
             + '(must be > 0, or the comparison proves nothing).');
     }
 }

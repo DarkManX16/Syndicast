@@ -1,6 +1,6 @@
 <div>
-    <div class="form-row" ng-repeat="x in mix">
-        <div class='form-group col-md-5'>
+    <div class="form-row" ng-repeat-start="x in mix" ng-style="datesPassed(x) ? {opacity: 0.55} : {}">
+        <div class='form-group col-md-4'>
             <label ng-if="$index==0" for="fillerselect{{uid}}-{{$index}}">List</label>
             <select
                 id="fillerselect{{uid}}-{{$index}}" class="custom-select form-control"
@@ -8,6 +8,14 @@
                 ng-change="refresh()"
                 >
             </select>
+            <small ng-if="datesWord(x)" class="mix-dates-word" ng-class="{'text-muted': datesPassed(x)}">{{datesWord(x)}}</small>
+        </div>
+        <div class='form-group col-md-1' >
+            <label ng-if="$index==0" for="dates{{uid}}-{{$index}}">Dates</label>
+            <button id='dates{{uid}}-{{$index}}' type="button" class='btn btn-link form-control' ng-if="x.id !== 'none'"
+                ng-click='toggleDates(x)' title="Only on these dates">
+                <i class='fa fa-calendar-alt' ng-class="{'text-info': x.dates}"></i>
+            </button>
         </div>
         <div class='form-group col-md-2' ng-if="x.id !== 'none'" >
             <label ng-if="$index==0" for="cooldown{{uid}}-{{$index}}">Cooldown (minutes)</label>
@@ -41,5 +49,16 @@
                 <i class='text-danger fa fa-trash-alt'></i>
             </button>
         </div>
+    </div>
+    <div class="form-row mix-dates-form" ng-repeat-end ng-if="datesForm.row === x" style="margin-bottom: 8px;">
+        <div class="col-auto"><label class="small" style="margin: 6px 0 0 0;">Only on these dates <span class="text-muted">(blank = any date)</span></label></div>
+        <div class="col-auto">
+            <input type="date" class="form-control form-control-sm" ng-model="datesForm.from" ng-change="datesChanged()">
+        </div>
+        <div class="col-auto" style="padding-top: 4px;">to</div>
+        <div class="col-auto">
+            <input type="date" class="form-control form-control-sm" ng-model="datesForm.to" ng-change="datesChanged()">
+        </div>
+        <div class="col-12"><small class="text-danger" ng-if="datesForm.error">{{datesForm.error}}</small></div>
     </div>
 </div>

@@ -10,6 +10,7 @@ const buildCheck = require('../../src/build-check');
 const poolSeasons = require('../../src/pool-seasons');
 const catalogKeep = require('../../src/catalog-keep');
 const specialDays = require('../../src/special-days');
+const dateRange = require('../../src/date-range');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
@@ -940,12 +941,22 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     scope.editingDay = null;
                 }
             };
+            // Copy to another date (NOTES.md, "Event tools"): Copy asks for one date,
+            // and the copy lands there (special-days.js's copyTo).
+            scope.copying = null;
             scope.copySpecialDay = (day) => {
-                let copy = JSON.parse(JSON.stringify(day));
-                copy.id = newSpecialDayId();
-                copy.name = day.name + ' (copy)';
+                scope.copying = ( (scope.copying !== null) && (scope.copying.day === day) ) ? null : { day: day, date: null };
+            };
+            scope.finishCopy = () => {
+                let c = scope.copying;
+                let ok = (c !== null) && (c.date instanceof Date) && ! isNaN(c.date);
+                let copy = ok ? specialDays.copyTo(c.day, dateRange.localDate(c.date.getTime()), newSpecialDayId()) : null;
+                if (copy === null) {
+                    return;
+                }
                 scope.schedule.specialDays.push(copy);
-                scope.editSpecialDay(copy);
+                scope.copying = null;
+                scope.editingDay = copy;
             };
             scope.dayAired = (day) => specialDays.aired(day, Date.now());
             scope.dayWindowLabel = (day) => {
@@ -1080,6 +1091,27 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 }
                 dayOffsetCache = { key: key, list: out };
                 return out;
+            };
+            // A Back to back row's Until (NOTES.md, "Event tools"): the day's own
+            // marks. Rebuilt only when the day's window or rounding changes, so
+            // ng-options keeps one array between digests.
+            // A row whose until is not one of the marks gets its own list with it in.
+            let untilCache = {};
+            scope.dayUntilOptions = (day, row) => {
+                let w = specialDays.windowOf(day);
+                let own = ( (typeof(row.until) === 'number') && ! specialDays.untilOptions(day).some( (o) => o.id === row.until ) ) ? row.until : null;
+                let key = ( (w === null) ? '' : w.from + '-' + w.to + '-' + day.rounding ) + '|' + own;
+                let cacheKey = day.id + '|' + own;
+                if ( (typeof(untilCache[cacheKey]) === 'undefined') || (untilCache[cacheKey].key !== key) ) {
+                    untilCache[cacheKey] = { key: key, list: specialDays.untilOptions(day, own) };
+                }
+                return untilCache[cacheKey].list;
+            };
+            // Cleared, the row saves as it was before Until existed.
+            scope.untilChanged = (row) => {
+                if ( (row.until === null) || (typeof(row.until) === 'undefined') ) {
+                    delete row.until;
+                }
             };
             scope.dayRowOffset = (row) => Math.floor( (row.at || 0) / DAY );
             scope.dayRowHour = (row) => Math.floor( ((row.at || 0) % DAY) / HOUR );

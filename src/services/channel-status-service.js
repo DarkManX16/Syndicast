@@ -109,7 +109,8 @@ async function getNowPlaying(channel, fillerDB, now) {
         let mixEntries = ( (context !== null) && Array.isArray(context.fillerCollections) )
             ? context.fillerCollections
             : channel.fillerCollections;
-        let mix = await resolveMix(mixEntries, fillerDB);
+        // Only the lists really in play: a Mix entry dated off this break is not.
+        let mix = await resolveMix(dayParts.mixOn(mixEntries, dayParts.breakStartOf(now, obj)), fillerDB);
         return {
             state: 'break',
             elapsedMs: obj.timeElapsed,

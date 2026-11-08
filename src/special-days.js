@@ -121,6 +121,118 @@ function ahead(schedule, now) {
 }
 
 /*
+ * A Back to back row that runs until a time (NOTES.md, "Event tools"): the
+ * instant of its `until` - ms after from.date's midnight, as a Set times row's
+ * `at` - or null for a row without one, a This item row, or a Set times day,
+ * whose rows already run to the next row's time.
+ */
+function isItemRow(row) {
+    return (row != null) && (typeof(row.item) === 'object') && (row.item !== null);
+}
+function untilAt(day, row) {
+    if ( (day == null) || (day.layout === 'times') || (row == null) || (typeof(row.until) !== 'number') || isItemRow(row)
+         || (row.showId === 'flex.') ) {
+        return null;
+    }
+    let x = localInstant(day.from && day.from.date, row.until);
+    let w = windowOf(day);
+    if ( (x === null) || (w === null) ) {
+        return null;
+    }
+    // Left outside the day by a change to the day's times (review, Nov 8): at or
+    // before its start it is no until at all, a go like any row; after its end it
+    // runs to the end. Neither stops the day.
+    if (x.at <= w.from) {
+        return null;
+    }
+    return Math.min(x.at, w.to);
+}
+
+/*
+ * The Until dropdown's choices: each of the day's own marks (half hours, or
+ * quarter hours) after its start, up to and including its end, as
+ * [{ id, description }] - `id` the ms after from.date's midnight that `until`
+ * stores, `description` the clock time, with the weekday on a day longer than
+ * a day. A time the clock skips that night is left out.
+ */
+const WEEKDAYS = [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ];
+function untilOptions(day, current) {
+    let w = (day != null) ? windowOf(day) : null;
+    if ( (w === null) || (w.to <= w.from) ) {
+        return [];
+    }
+    let step = stepOf(day);
+    let multi = (w.to - w.from) > DAY;
+    let out = [];
+    for (let off = Math.floor(day.from.time / step) * step + step; ; off += step) {
+        let x = localInstant(day.from.date, off);
+        if ( (x === null) || (x.at > w.to) ) {
+            break;
+        }
+        if (x.gap || (x.at <= w.from)) {
+            continue;
+        }
+        out.push({ id: off, description: (multi ? WEEKDAYS[new Date(x.at).getDay()] + ' ' : '') + clock(x.at) });
+    }
+    // A row's own until that is not one of the marks (the day's times or rounding
+    // changed since) still shows as itself, in its place, rather than blank.
+    if ( (typeof(current) === 'number') && ! out.some( (o) => o.id === current ) ) {
+        let x = localInstant(day.from.date, current);
+        if (x !== null) {
+            out.push({ id: current, description: (multi ? WEEKDAYS[new Date(x.at).getDay()] + ' ' : '') + clock(x.at) });
+            out.sort( (a, b) => a.id - b.id );
+        }
+    }
+    return out;
+}
+
+/*
+ * Copy to another date (NOTES.md, "Event tools"): a copy of `day` starting on
+ * `date` (YYYY-MM-DD) at the same clock time, ending as many calendar days
+ * later as the original, with id `id` and everything else as it was - name,
+ * block, settings, rows. A row's `at` and `until` are counted from the day's
+ * own first date, so they move with it. An Advance day's episode starts are
+ * left behind: each was a jump on the old date, and copied it would air the
+ * same episodes again. A Keep-apart day's starts are its own places, so they
+ * stay. Null when `date` is not a date.
+ */
+function calendarDay(text) {
+    let m = (typeof(text) === 'string') ? DATE.exec(text) : null;
+    if (m === null) {
+        return null;
+    }
+    let u = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    let back = new Date(u);
+    if ( (back.getUTCFullYear() !== Number(m[1])) || (back.getUTCMonth() !== Number(m[2]) - 1) || (back.getUTCDate() !== Number(m[3])) ) {
+        return null;
+    }
+    return u / DAY;
+}
+function dateOfCalendarDay(n) {
+    return new Date(n * DAY).toISOString().slice(0, 10);
+}
+function copyTo(day, date, id) {
+    let target = calendarDay(date);
+    let from = calendarDay(day && day.from && day.from.date);
+    let to = calendarDay(day && day.to && day.to.date);
+    if ( (target === null) || (from === null) || (to === null) ) {
+        return null;
+    }
+    let copy = JSON.parse(JSON.stringify(day));
+    copy.id = id;
+    copy.from.date = dateOfCalendarDay(target);
+    copy.to.date = dateOfCalendarDay(target + (to - from));
+    if (copy.positions !== 'apart') {
+        (copy.slots || []).forEach( (row) => {
+            if (row != null) {
+                delete row.start;
+            }
+        } );
+    }
+    return copy;
+}
+
+/*
  * A Set times day's rows with their instants, in time order: [{ row, at, gap }].
  * Rows without a time are left out (problems() names them).
  */
@@ -425,6 +537,18 @@ function wrapFinder(schedule, regular) {
  * unfinished lap that never got a turn, and the one line when the last item
  * ran past the day's own end. No Flex, no break steps - just the timetable.
  */
+// "Lizzie McGuire, 28 episodes (S1E1–S2E6)": an until row's run as one line.
+function runTitle(run, pins) {
+    let code = (p) => `S${p.season}E${p.episode}`;
+    let numbered = run.every( (p) => Number.isInteger(p.season) && Number.isInteger(p.episode) );
+    // A range only when the run airs in episode order; a Shuffle's first and last aren't one.
+    let inOrder = numbered && run.every( (p, i) => (i === 0) || (p.season > run[i - 1].season)
+        || ( (p.season === run[i - 1].season) && (p.episode > run[i - 1].episode) ) );
+    let what = ! numbered ? `${run.length} airings`
+        : inOrder ? `${run.length} episodes (${code(run[0])}–${code(run[run.length - 1])})` : `${run.length} episodes`;
+    return `${pins.showName(run[0])}, ${what}`;
+}
+
 function timetable({ programs, startTime, day, schedule }) {
     // Required here, not at the top: pins.js reaches back to this module
     // through slot-progress.js, and a top-level require would hand pins.js
@@ -438,6 +562,7 @@ function timetable({ programs, startTime, day, schedule }) {
     let t = startTime;
     let rows = [];
     let overrunEnd = null;
+    let dayRows = Array.isArray(day.slots) ? day.slots.filter( (r) => (r !== null) && (typeof(r) === 'object') ) : [];
     for (let i = 0; (i < programs.length) && (t < w.to + DAY); i++) {
         let p = programs[i];
         let start = t;
@@ -450,7 +575,21 @@ function timetable({ programs, startTime, day, schedule }) {
             break;
         }
         if (! p.isOffline && (p.specialDay === day.id)) {
-            rows.push({ at: start, title: pins.label(p), specialRow: p.specialRow });
+            // A row running until a time is one line for its run (Event tools). Its
+            // specialRow counts the day's rows as the generator does, nulls left out;
+            // a long break's fill inside the run stays inside its line.
+            let row = (typeof(p.specialRow) === 'number') ? dayRows[p.specialRow] : null;
+            let u = untilAt(day, row);
+            let last = (rows.length > 0) ? rows[rows.length - 1] : null;
+            let open = (last !== null) && (last.run !== undefined);
+            if ( open && (p.specialRow === 'fill') && (start < last.runUntil) ) {
+                continue;
+            }
+            if ( (u !== null) && (start < u) && open && (last.specialRow === p.specialRow) ) {
+                last.run.push(p);
+            } else {
+                rows.push({ at: start, title: pins.label(p), specialRow: p.specialRow, run: ( (u !== null) && (start < u) ) ? [ p ] : undefined, runUntil: u });
+            }
             if (end > w.to) {
                 overrunEnd = end;
             }
@@ -481,7 +620,7 @@ function timetable({ programs, startTime, day, schedule }) {
     }
     let overrun = (overrunEnd === null) ? null : { overMs: overrunEnd - w.to, backOnTimeAt: nextMark(overrunEnd, stepOf(day)) };
     return {
-        rows: rows.map( (r) => ({ at: r.at, title: r.title }) ),
+        rows: rows.map( (r) => ({ at: r.at, title: ( (r.run !== undefined) && (r.run.length > 1) ) ? runTitle(r.run, pins) : r.title }) ),
         restarts: restarts,
         never: never,
         overrun: overrun,
@@ -578,6 +717,9 @@ module.exports = {
     dayAt: dayAt,
     ahead: ahead,
     aired: aired,
+    untilAt: untilAt,
+    untilOptions: untilOptions,
+    copyTo: copyTo,
     usable: usable,
     rowTimes: rowTimes,
     nextHalfHour: nextHalfHour,

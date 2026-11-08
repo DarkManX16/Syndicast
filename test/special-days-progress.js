@@ -185,6 +185,41 @@ module.exports = async function () {
             titles(di).join(', ') === 'The Short One, The Long One' && shows(items).find( (a) => a.start >= fri(9) ).start >= SAT6, titles(di).join(', '));
     }
 
+    suite.log('-- a row that runs until a time, during the day --');
+    {
+        const ud = day({ positions: 'advance', slots: [ { showId: 'tv.X', order: 'next', until: 20 * HOUR }, { showId: 'movie.', item: { program: LONG } } ] });
+        const laid = await make(first, sched(ud), NOW + HOUR);
+        const movieAt = (res) => (inside(res, FRI6, SAT6).find( (a) => a.program.title === 'The Long One' ) || {}).start;
+        suite.check('as laid, the movie is at 8:00pm', movieAt(laid) === fri(20), clock(movieAt(laid)));
+        const onAir = await make(laid, sched(ud), fri(10, 10));
+        suite.check('a Create Lineup at 10:10am, a go of the until row on air: the row carries on, the rest of the day unchanged',
+            sameDay(laid, onAir, fri(10, 30)) && movieAt(onAir) === fri(20), titles(inside(onAir, fri(10, 30), fri(11, 30))).join(', '));
+        const inBreak = await make(laid, sched(ud), fri(10, 25));
+        suite.check('...and at 10:25am, in the break between goes with nothing carried, the same',
+            sameDay(laid, inBreak, fri(10, 30)) && movieAt(inBreak) === fri(20), titles(inside(inBreak, fri(10, 30), fri(11, 30))).join(', '));
+        const nextRowAt = (now) => {
+            const s = JSON.parse(JSON.stringify(sched(ud)));
+            const progress = slotProgress.planProgress({ programs: laid.programs, startTime: Date.parse(laid.startTime), now,
+                openedSchedule: laid.schedule, schedule: s, pool: pool(), getShowData });
+            return JSON.stringify(progress.specialDays.sd_t);
+        };
+        suite.check('...the planner itself says the run is under way during it, and after a go of the list’s second time round, the next row',
+            nextRowAt(fri(10, 25)) === '{"nextRow":0,"airedItems":[],"inRun":true}' && nextRowAt(fri(22, 40)) === '{"nextRow":1,"airedItems":[1]}',
+            `${nextRowAt(fri(10, 25))} ${nextRowAt(fri(22, 40))}`);
+        // Review, Nov 8: in the last half hour, the run's last go started, a re-make
+        // gave the run one more go at 8:00 and moved the movie to 8:30.
+        for (const [ label, when ] of [ [ '7:35pm, the last go on air', fri(19, 35) ], [ '7:55pm, in the break after it', fri(19, 55) ],
+            [ '7:25pm, the go before it on air', fri(19, 25) ] ]) {
+            const remade = await make(laid, sched(ud), when);
+            suite.check(`a Create Lineup at ${label}: the movie stays at 8:00pm, the rest of the day as laid`,
+                movieAt(remade) === fri(20) && sameDay(laid, remade, fri(20)),
+                titles(inside(remade, fri(19, 30), fri(21))).join(', '));
+        }
+        const later = await make(laid, sched(ud), fri(22, 10));
+        suite.check('...and at 10:10pm, the until time gone by, the day carries on as laid',
+            sameDay(laid, later, fri(22, 30)), titles(inside(later, fri(22, 30), fri(23, 30))).join(', '));
+    }
+
     suite.log('-- Fill long breaks with, during the day --');
     {
         // 47:00 at 6:00 leaves 13:00 on air: Z S1E1 fills it. 95:00 at 7:00 ends 8:35:

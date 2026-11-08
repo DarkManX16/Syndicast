@@ -18,6 +18,7 @@
  */
 
 const specialDays = require('./special-days');
+const dateRange = require('./date-range');
 
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
@@ -615,6 +616,62 @@ function resolveCollections(channel, t0, obj) {
 }
 
 /*
+ * Dates on a Mix entry (NOTES.md, "Event tools"): an entry with
+ * `dates: { from, to }` is in its mix only for a break that starts on one of
+ * those dates (src/date-range.js); one whose dates cannot be honoured is left
+ * out, as a step with bad dates is skipped. A mix with no dated entry comes
+ * back as the very same array, so a channel that sets no dates gives the
+ * picker exactly the input it always had.
+ */
+function hasDates(entry) {
+    return (entry != null) && (typeof(entry.dates) !== 'undefined') && (entry.dates !== null);
+}
+function datedIn(entry, instant) {
+    return (dateRange.datesProblem(entry) === null) && dateRange.inDates(entry.dates, instant);
+}
+function mixOn(entries, instant) {
+    if (! Array.isArray(entries) || ! entries.some(hasDates) ) {
+        return entries;
+    }
+    return entries.filter( (e) => ! hasDates(e) || datedIn(e, instant) );
+}
+
+/*
+ * The same for the channel's own Flex tab, when no day-part or block mix
+ * applies and the picker runs on `fillers` (the loaded lists) directly: a
+ * list whose Flex-tab entry is dated outside `instant` is left out of them.
+ * Without a dated entry, `fillers` comes back as the same array.
+ */
+function channelMixOn(channel, fillers, instant) {
+    let own = Array.isArray(channel.fillerCollections) ? channel.fillerCollections : [];
+    if (! own.some(hasDates) ) {
+        return fillers;
+    }
+    let out = new Set(own.filter( (e) => hasDates(e) && ! datedIn(e, instant) ).map( (e) => e.id ));
+    return fillers.filter( (f) => ! out.has(f.id) );
+}
+
+// A Mix entry as saved, from the mix editor's row (cooldown back in ms from
+// the editor's minutes): what "Convert to day-parts" copies, dates included.
+function copyMixEntry(f) {
+    let out = {
+        id: f.id,
+        weight: f.weight,
+        cooldown: (typeof(f.cooldownMinutes) === 'number') ? (f.cooldownMinutes * 60 * 1000) : f.cooldown,
+    };
+    if (hasDates(f)) {
+        out.dates = { from: f.dates.from, to: f.dates.to };
+    }
+    return out;
+}
+
+// The instant the break being filled began: obj is what
+// getCurrentProgramAndTimeElapsed returned for it (see findNextProgram).
+function breakStartOf(t0, obj) {
+    return t0 + (obj.startsIn || 0) - (obj.timeElapsed || 0);
+}
+
+/*
  * Every filler list the channel can reach, deduplicated by id. video.js loads
  * content for all of them so that createLineup, which is synchronous, can pick
  * a mix without having to go to the filler DB itself.
@@ -705,6 +762,10 @@ module.exports = {
     resolveContext: resolveContext,
     resolveBreakContext: resolveBreakContext,
     resolveMixContext: resolveMixContext,
+    mixOn: mixOn,
+    channelMixOn: channelMixOn,
+    breakStartOf: breakStartOf,
+    copyMixEntry: copyMixEntry,
     resolveCollections: resolveCollections,
     weeklySegments: weeklySegments,
     airingSpans: airingSpans,

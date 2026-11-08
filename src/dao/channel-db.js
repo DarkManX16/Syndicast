@@ -123,6 +123,35 @@ function warnAboutCommercialsFrom(label, context, complain) {
  * by the resolver, which is the conservative answer; guessing what was meant
  * would silently play the wrong filler for hours.
  */
+/*
+ * Dates on a Mix entry (NOTES.md, "Event tools"): one that cannot be honoured
+ * leaves its list out of that mix on every date, so say so. Warn-only, for the
+ * Flex tab's mix and every day-part's and block's.
+ */
+function warnAboutMixDates(json) {
+    const complain = (message) => {
+        console.error(`Channel ${json.number}: ${message}`);
+    };
+    const check = (entries, where) => {
+        if (! Array.isArray(entries)) {
+            return;
+        }
+        entries.forEach( (entry) => {
+            const bad = (entry != null) ? transitions.datesProblem(entry) : null;
+            if (bad !== null) {
+                complain(`the mix of ${where} has list ${entry.id} with ${bad}, so it is left out of that mix.`);
+            }
+        } );
+    };
+    check(json.fillerCollections, 'the Flex tab');
+    [ ['dayParts', 'day-part'], ['blocks', 'block'] ].forEach( ([key, word]) => {
+        if (Array.isArray(json[key])) {
+            json[key].forEach( (c, i) => check( (c != null) ? c.fillerCollections : null,
+                `${word} ${i}` + ( (c != null) && c.name ? ` ("${c.name}")` : '' ) ) );
+        }
+    } );
+}
+
 function warnAboutDayParts(json) {
     if (typeof(json.dayParts) === 'undefined') {
         return;
@@ -413,6 +442,10 @@ function warnAboutTransitions(json) {
                         if (badTimes !== null) {
                             complain(`${stepLabel}: ${badTimes}, so it will be skipped.`);
                         }
+                        const badDates = transitions.datesProblem(step);
+                        if (badDates !== null) {
+                            complain(`${stepLabel}: ${badDates}, so it will be skipped.`);
+                        }
                         // The sequence a marked step watches within is this
                         // situation, out and in together, so that is what it is
                         // checked against.
@@ -534,6 +567,7 @@ class ChannelDB {
         warnAboutBlocks(json);
         warnAboutSpecialDays(json);
         warnAboutTransitions(json);
+        warnAboutMixDates(json);
         warnAboutAspect(json);
     }
 

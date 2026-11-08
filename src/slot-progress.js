@@ -17,6 +17,7 @@
 const rounds = require('./shuffle-rounds');
 const multiPart = require('./multi-part');
 const specialDays = require('./special-days');
+const SLACK = require('./constants').SLACK;
 
 const MINUTE = 60 * 1000;
 const DAY = 24 * 60 * MINUTE;
@@ -1045,6 +1046,7 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
             // program on air, which is carried and counts as aired).
             let upTo = (typeof(placesFrom) === 'number') ? Math.max(now, placesFrom) : now;
             let lastRow = null;
+            let lastRowStart = null;
             let airedItems = [];
             let holidayAired = {};
             let total = cycleLength(programs);
@@ -1060,6 +1062,7 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                     let p = programs[i % programs.length];
                     if ( ! p.isOffline && (p.specialDay === day.id) && (typeof(p.specialRow) === 'number') && (t + p.duration <= upTo + 1000) ) {
                         lastRow = p.specialRow;
+                        lastRowStart = t;
                         if ( (typeof(rows[p.specialRow]) === 'object') && (typeof(rows[p.specialRow].item) === 'object') ) {
                             airedItems.push(p.specialRow);
                         }
@@ -1074,7 +1077,14 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                     i++;
                 }
             }
-            info[day.id] = { nextRow: (lastRow === null) ? 0 : lastRow + 1, airedItems: airedItems };
+            // A go of a row running until a time - it began before that time - leaves
+            // the run under way (Event tools); the generator ends it at the until time.
+            let lastUntil = (lastRow === null) ? null : specialDays.untilAt(day, rows[lastRow]);
+            let goesOn = (lastUntil !== null) && (lastRowStart < lastUntil - SLACK);
+            info[day.id] = { nextRow: (lastRow === null) ? 0 : (goesOn ? lastRow : lastRow + 1), airedItems: airedItems };
+            if (goesOn) {
+                info[day.id].inRun = true;
+            }
             if (Object.keys(holidayAired).length > 0) {
                 info[day.id].holidayAired = holidayAired;
             }

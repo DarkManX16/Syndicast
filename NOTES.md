@@ -1654,6 +1654,9 @@ for the full spec, stages and acceptance tests.
       plays its show's set-aside episodes first. Preview this day, the Schedule
       tab's week chooser and the transitions Preview's From date came with it. See
       "Special days" under Known issues and [docs/special-days-plan.md](docs/special-days-plan.md).*
+- [ ] Event tools: date ranges on Mix entries and steps, "until" rows, Copy to a date, and
+      Swap, Insert and Delete inside a special day - *designed Nov 8, 2026 (Opus 5.5) with Ron;
+      see "Event tools" under Known issues.*
 - [ ] Save time-slot editing progress without generating a lineup
 
       `channel.scheduleBackup` already round-trips the schedule -
@@ -7125,6 +7128,139 @@ first; 6 in `test/kept-editor.js`, 5 of which failed on the old code). `node scr
 --only insert-before` on a copy of `.dizquetv-dev` (taken Fri Nov 6, 9:15pm Central), channel 1: the
 Insert before button, a clip chosen from Looney Tunes, a real drag, Put back each, then Create Lineup
 with a clip in front of an airing.
+
+### Event tools: dates, "until" rows, copy to a date, and edits inside a special day
+
+Designed Nov 8, 2026 (Opus 5.5) from Ron's brief and agreed the same day. Ron is setting up three
+events on channel 3: a House of Mouse marathon (Wed Nov 18) and two Marathon and a Movie days (Sun
+Nov 22, Thu Nov 26). Features 1-3 are wanted merged before Sun Nov 15; feature 4 comes after them,
+on its own branch. Built on `event-tools` from `blocks` at c91ad93.
+
+**Ron's decisions, Nov 8.** The design below as proposed; a copied Advance day drops its episode
+starts; Preview this day shows an "until" row's run as one line.
+
+#### 1. Dates on a Mix entry and on a transition step
+
+- A Mix entry or a step can be limited to a date range, both ends included, judged by the date the
+  break *starts* on (the same rule as a step's days). Unset or null is every date, as before.
+  Saved as `dates: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }`, local calendar dates. Both or
+  neither; `to` before `from` is a problem, warned at save and skipped, like a bad `times`.
+- **Mix:** each Mix row gets one calendar button; set dates show on the row ("Nov 15 – Nov 26"),
+  and From and To date boxes open under it. Outside its dates an entry is not in the mix, so the
+  others share its weight. Once the dates have passed the row is greyed; it stays until deleted.
+  Ron's "MAAM Promos" in the Bounce Era day-parts' Mix: Nov 15-26, then stops by itself.
+- **Step:** "Only on these dates" (From, To) under "Only at these times", both or neither. The
+  sentence ends "only from Nov 15 to Nov 26", the chip says "Nov 15–26". A step outside its dates
+  has found nothing, so a step watching it plays - as days and times. The Flex tag leaves it out.
+- A channel that sets no dates takes exactly the old path: the mix filter hands back the same array
+  when no entry has dates.
+
+#### 2. A row that runs "until" a time (Back to back days)
+
+- A show row on a Back to back day has one **Until** dropdown, blank by default (one go, as now),
+  offering the day's own marks (each :00 and :30, or quarter hour on a quarter-hour day). Saved as
+  `until`, ms after `from.date`'s midnight, the same units as a Set times row's `at`. Set times days
+  don't show it; their rows already run to the next row's time. This item rows don't have it.
+- "Lizzie McGuire until 8:00pm" is the row written out again and again: each go starts on its mark,
+  with its own Flex, as a run of identical rows would. A go starts only if its item ends by the
+  until time (within SLACK); the time left is Flex (or "Fill long breaks with"), and the next row
+  starts at the until time.
+- When the list starts again from the top and the until time has passed, the row plays one go like
+  any other row. On Nov 22: Lizzie 6:00am to 8:00pm, the movie at 8:00pm, then (the movie having
+  aired, a picked item airs once a day) Lizzie again in single goes to the day's end.
+- A re-make during the day carries on with an until row still before its time, instead of moving
+  to the next row (`specialDaysPlan`'s `nextRow`).
+- Preview this day shows an until row's run as one line: "6:00am Lizzie McGuire, 28 episodes
+  (S1E1–S2E6)".
+
+#### 3. Copy to another date
+
+- Copy asks for one date. The copy has the same clock times, rows, block and settings, a new id and
+  the same name (the dates tell them apart), from and to moved by the same number of days. A Set
+  times row's `at` and an until row's `until` are relative to the day, so they move with it.
+- On an Advance day, each row's episode start is dropped: it was a jump on that date, and copied it
+  would re-air the same episodes. A Keep-apart day keeps its starts (its own positions, new id).
+- Hand edits inside the day (feature 4) are not copied.
+
+#### 4. Swap, Insert and Delete inside a special day (after 1-3)
+
+- Each edit is saved on the day's row it touched, as a change to one airing of that row (its nth go
+  in the day). The editor lays the day out again with the generator Create Lineup uses and replaces
+  only that day's airings in the list; nothing outside the day is rebuilt. Create Lineup makes the
+  same day.
+- **Swap**: the same dialog, without Run late / Take the next row inside a day - the day's own
+  layout decides. One sentence says what it does to the rest of the day ("The rows after it start
+  30 minutes later; Lizzie McGuire fits one fewer episode before 8:00pm." / "Nothing else in the day
+  moves.").
+- **Insert before**: in the break in front of the airing, refused when it doesn't fit, as today.
+  **Insert after**: in the break after it; longer, and the rest of the day moves later. **Delete**:
+  the airing doesn't air; Back to back rows after it move up, Set times leaves Flex. Never air and
+  Holiday work as today, re-laying the day without the episode.
+- On an Advance day, an episode that no longer fits in the day airs at the show's next regular
+  airing, said as Swap says it. A Keep-apart day touches only itself.
+- **Put back** removes the change and re-lays the day, so it comes back exactly. Each change shows as
+  one line under its row in Time Slots ("10:00am: Kim Possible S1E3 instead"), with Put back there
+  too, since a deleted airing leaves no row to click. Drags into, out of and inside a day stay
+  refused.
+
+#### Build record
+
+**Features 1-3 built Nov 8, 2026 (Opus 5.5)** on `event-tools` from `blocks` at c91ad93; not
+merged until Ron confirms. Suite 3061 at the start, 3175 at the end. Feature 4 is not built.
+
+- **Dates.** `src/date-range.js` holds the rule for both (`datesProblem`, `inDates`,
+  `localDate`, `passed`). Steps: `leftOut` in `buildPlan` ("outside its dates"), the save-time
+  warning, and in the editor the sentence ("only from Nov 15 to Nov 26"), the chip ("Nov 15–26"),
+  the problems list, the Flex tag and "Only on these dates" in the form. Mix: `dayParts.mixOn`
+  (a day-part's or block's mix) and `channelMixOn` (the Flex tab's), judged at
+  `breakStartOf(t0, obj)` - the break's start, not the moment a clip is drawn, so a break starting
+  11:56pm on Nov 26 still draws MAAM Promos after midnight. The channel page's break mix and
+  Convert to day-parts (`copyMixEntry`) read them too; every other writer passes the whole entry
+  through. The Mix row's calendar button keeps its open form on the scope, never on the row.
+- **Until.** `specialDays.untilAt` (null on a Set times day, a This item row or a Flex row; an
+  until at or before the day's start is none, one after its end is the end); `backStep` repeats the
+  row while a go fits, then Flex (or the day's fill) to the until time, and the next row starts
+  there even when it is not a mark (`d.untilEnd`). **Every writer of the row index `d.k`** took
+  the rule: `backStep`, the carry ("the row after the program on air's") and the planner's
+  `nextRow`. Preview this day groups a run: "Kim Possible, 12 episodes" (a range, "(S1E1–S2E6)",
+  only when the run is in episode order).
+- **Copy.** `specialDays.copyTo(day, date, id)`; Copy opens one date box and a Copy button under
+  the day's line.
+
+**The review (a fresh agent, Nov 8) found one real bug**, fixed with tests that failed first: a
+Create Lineup in the last half hour of a run - its last go on air, or the break after it - gave the
+run one more go and moved the next row 30 minutes (Nov 22's movie to 8:30); so did a kept row
+inside the run. "Still running" had been read off the clock; it is now "a run under way" (`d.runK`,
+the planner's `inRun`, the carry's go start), and a run under way ends at its until time. Also from
+the review: an until left outside the day by a change to the day's times took the whole day off
+the air (now clamped, not a problem); the dropdown showed blank for an until between marks (it now
+shows it); clearing Until leaves no key; Preview counted rows with nulls in and split a run around
+a long break's fill.
+
+**Proof on copies of `.dizquetv-dev`** (taken Sun Nov 8, 5:42am and 6:18am Central), old code a
+worktree at c91ad93:
+- Filler picks, `scripts/compare-mix-engine.js` (new): every break of channels 1-3 for 8 weeks
+  from Nov 9, twice each (a quarter in, and a tune-in), through the old and new `createLineup` with
+  the same seeded random numbers - 18,206 picks, 0 differ. Control, the first list of every mix
+  dated to a range long over: 18,182 differ.
+- Break plans, `scripts/compare-times-engine.js --control`: 9,103 breaks, 0 differ; controls 871
+  (times) and 3,427 (every step of channel 1 dated to a range long over).
+- Create Lineup, `progress-check --save` from each checkout at the same moment: channels 1-3
+  identical program for program (39,999, 35,154 and 37,381 entries; channel 3 with Ron's three
+  special days), before the review's fixes and again after.
+- On a preview (port 18190, the 6:18am copy): MAAM Promos added to Bounce Era (Thur)'s Mix and
+  dated Nov 15-26 with the calendar button and real keys, a step dated, Update Channel saved
+  exactly that (every step of a touched card gains `"dates": null`, as `times` did); the step's
+  date taken off again. Ron's Kim Possible day rebuilt as "Kim Possible until 7:00pm", the movie,
+  one row: Preview this day gave the same episodes at the same times as his 14 rows, in three
+  lines. Copy put the Lizzie day on Sun Nov 29, 3:00-7:00pm. Neither change was saved.
+- The workflow checklist (`editor-workflows.js --channel 3`) passed all ten before the review's
+  fixes and again after them, each on its own fresh copy (5:42am, 6:29am); both times the script
+  then hung in `browser.close()` after its last workflow and was stopped.
+
+**Not changed, found on the way.** Typing a whole date into an `<input type="date">` with the
+browser tool's "type" does nothing; key presses work. A Mix row added in the editor saves
+`cooldown: null` until the editor is reopened (pre-existing, noted before).
 
 ### Chapter and segment detector, and stage 6 midrolls
 

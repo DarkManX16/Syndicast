@@ -225,6 +225,20 @@
                         </div>
                         <small class="text-danger" ng-if="form.timesError">{{form.timesError}}</small>
                     </div>
+
+                    <div class="form-group">
+                        <label class="small d-block">Only on these dates <span class="text-muted">(blank = any date; the date is the one the break starts on)</span></label>
+                        <div class="form-row align-items-center">
+                            <div class="col-auto">
+                                <input type="date" class="form-control form-control-sm" ng-model="form.datesFrom" ng-change="formChanged('dates')">
+                            </div>
+                            <div class="col-auto">to</div>
+                            <div class="col-auto">
+                                <input type="date" class="form-control form-control-sm" ng-model="form.datesTo" ng-change="formChanged('dates')">
+                            </div>
+                        </div>
+                        <small class="text-danger" ng-if="form.datesError">{{form.datesError}}</small>
+                    </div>
                 </div>
 
                 <div class="tr-form-buttons">

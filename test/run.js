@@ -10,6 +10,7 @@ const suites = [
     './blocks-guide',
     './blocks-schedule-view',
     './break-mix-source',
+    './mix-dates',
     './transitions',
     './transitions-editor',
     './show-match',
@@ -88,6 +89,7 @@ const suites = [
     './break-scan-governor',
     './break-scan-service',
     './io-priority',
+    './close-browser',
 ];
 
 (async () => {

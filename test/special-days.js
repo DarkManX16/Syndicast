@@ -136,6 +136,32 @@ module.exports = async () => {
     suite.check('problems: Set times, a row with no time',
         JSON.stringify(one(timesDay([ { showId: 'tv.A', at: 6 * HOUR }, { showId: 'tv.B' } ]))) === '["A row has no time."]', '');
     suite.check('problems: Back to back rows need no time', one(newYears({ slots: [ { showId: 'tv.A' }, { showId: 'tv.B' } ] })).length === 0, '');
+    {
+        const backDay = (until, extra) => Object.assign(newYears({ blockId: null, layout: 'back', slots: [ { showId: 'tv.X', order: 'next', until: until } ] }), extra || {});
+        const w = sd.windowOf(backDay(0));
+        const offset = (t) => t - (w.from - backDay(0).from.time);   // ms after from.date's midnight
+        suite.check('problems: an until inside the day is fine', texts({ specialDays: [ backDay(offset(w.from) + 14 * HOUR) ] }).length === 0,
+            texts({ specialDays: [ backDay(offset(w.from) + 14 * HOUR) ] }).join(' / '));
+        suite.check('problems: an until at or before the day starts stops nothing: the row is one go',
+            texts({ specialDays: [ backDay(offset(w.from)) ] }).length === 0
+                && sd.untilAt(backDay(offset(w.from)), backDay(offset(w.from)).slots[0]) === null);
+        suite.check('problems: an until after the day ends stops nothing: the row runs to the end of the day',
+            texts({ specialDays: [ backDay(offset(w.to) + 30 * MIN) ] }).length === 0
+                && sd.untilAt(backDay(offset(w.to) + 30 * MIN), backDay(offset(w.to) + 30 * MIN).slots[0]) === w.to);
+        suite.check('untilAt: a Flex row has no until', sd.untilAt(backDay(0), { showId: 'flex.', until: offset(w.from) + HOUR }) === null);
+        const kept = sd.untilOptions(newYears({ from: { date: '2027-01-01', time: 6 * HOUR }, to: { date: '2027-01-02', time: 6 * HOUR } }), 20 * HOUR + 15 * MIN);
+        suite.check('untilOptions: a row whose until is not one of the marks still shows it, in time order',
+            kept.length === 49 && kept.some( (o) => (o.id === 20 * HOUR + 15 * MIN) && (o.description === '8:15pm') )
+                && kept.every( (o, i) => (i === 0) || (kept[i - 1].id < o.id) ), String(kept.length));
+        suite.check('problems: an until right at the end of the day is fine', texts({ specialDays: [ backDay(offset(w.to)) ] }).length === 0);
+        suite.check('problems: a Set times day ignores until', texts({ specialDays: [ backDay(offset(w.to) + HOUR, { layout: 'times',
+            slots: [ { showId: 'tv.X', order: 'next', at: newYears().from.time, until: 99 * HOUR } ] }) ] }).length === 0);
+        suite.check('untilAt: the instant of a Back to back row until, null without one or on a Set times day',
+            sd.untilAt(backDay(offset(w.from) + HOUR), backDay(offset(w.from) + HOUR).slots[0]) === w.from + HOUR
+                && sd.untilAt(backDay(0), { showId: 'tv.X' }) === null
+                && sd.untilAt(Object.assign(backDay(0), { layout: 'times' }), { showId: 'tv.X', until: HOUR }) === null
+                && sd.untilAt(backDay(0), { showId: 'movie.', item: { program: {} }, until: HOUR }) === null);
+    }
     suite.check('problems: each names its field', JSON.stringify(sd.problems({ specialDays: [ newYears({ blockId: 'bl_gone', slots: [] }) ] }, ch.blocks)
         .map( (p) => [ p.dayId, p.field ] )) === '[["sd_ny","block"],["sd_ny","rows"]]', '');
 
@@ -265,6 +291,35 @@ module.exports = async () => {
     // separately. A - B - A again (Back to back's rows starting over), the
     // second A running past the day's own 7:15 end, B's second turn in that
     // final lap never came.
+    suite.log('Copy to another date (Event tools)');
+    {
+        const maam = {
+            id: 'sd_maam', name: 'Marathon and a Movie', from: { date: '2026-11-22', time: 6 * HOUR }, to: { date: '2026-11-23', time: 6 * HOUR },
+            blockId: 'bl_bounce', positions: 'advance', layout: 'back', rounding: 'half', fillBreaksWith: null, holiday: 'Thanksgiving',
+            slots: [ { showId: 'tv.Lizzie McGuire', order: 'next', until: 20 * HOUR, start: { key: 'srv|/e/1', order: 1 } },
+                { showId: 'custom.Movies', item: { program: { title: 'The Movie', duration: 90 * MIN } } } ],
+        };
+        const before = JSON.stringify(maam);
+        const copy = sd.copyTo(maam, '2026-11-26', 'sd_new');
+        suite.check('copyTo: the copy starts on the chosen date, at the same clock time, and ends as many days later',
+            JSON.stringify(copy.from) === '{"date":"2026-11-26","time":21600000}' && JSON.stringify(copy.to) === '{"date":"2026-11-27","time":21600000}',
+            JSON.stringify([ copy.from, copy.to ]));
+        suite.check('...with the new id and the same name, block, settings and rows',
+            copy.id === 'sd_new' && copy.name === 'Marathon and a Movie' && copy.blockId === 'bl_bounce' && copy.holiday === 'Thanksgiving'
+                && copy.layout === 'back' && copy.slots.length === 2 && copy.slots[0].until === 20 * HOUR && copy.slots[1].item.program.title === 'The Movie', '');
+        suite.check('...an Advance day drops its episode starts: each was a jump on the old date',
+            typeof(copy.slots[0].start) === 'undefined', JSON.stringify(copy.slots[0]));
+        suite.check('...the original is untouched, and shares nothing with the copy',
+            JSON.stringify(maam) === before && copy.slots[0] !== maam.slots[0] && copy.slots[1].item !== maam.slots[1].item, '');
+        const apart = sd.copyTo(Object.assign({}, maam, { positions: 'apart' }), '2026-11-26', 'sd_new2');
+        suite.check('...a Keep-apart day keeps its starts: they are the copy\'s own places',
+            JSON.stringify(apart.slots[0].start) === JSON.stringify(maam.slots[0].start), '');
+        const week = sd.copyTo(Object.assign({}, maam, { to: { date: '2026-11-25', time: 2 * HOUR } }), '2027-03-07', 'sd_w');
+        suite.check('...a longer day keeps its length across months and a clock change',
+            week.from.date === '2027-03-07' && week.to.date === '2027-03-10' && week.to.time === 2 * HOUR, JSON.stringify(week.to));
+        suite.check('...and a date that is not one gives nothing', sd.copyTo(maam, 'Nov 26', 'x') === null && sd.copyTo(maam, '2026-02-30', 'x') === null);
+    }
+
     suite.log('timetable');
     {
         const episode = (show, n, title, duration, specialRow) => ({
@@ -316,6 +371,62 @@ module.exports = async () => {
         const tt = sd.timetable({ programs, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} });
         suite.check('a day that ends exactly on time: no restart, nothing left out, no overrun line',
             (tt.restarts.length === 0) && (tt.never.length === 0) && (tt.overrun === null), JSON.stringify(tt));
+    }
+    {
+        // Event tools: a row that runs until a time is one line for its run, not one
+        // per episode; past its until time, the list started again, a go is its own line.
+        const episode = (show, season, n, duration, specialRow) => ({
+            type: 'episode', showTitle: show, title: `${show} ${season}x${n}`, season: season, episode: n, duration: duration,
+            specialDay: 'sd_tt', specialRow: specialRow,
+        });
+        const movieItem = { type: 'movie', title: 'The Movie', duration: 30 * MIN, specialDay: 'sd_tt', specialRow: 1 };
+        const ttDay = Object.assign({}, newYears({
+            id: 'sd_tt', from: { date: '2027-01-01', time: 6 * HOUR }, to: { date: '2027-01-01', time: 9 * HOUR },
+            slots: [ { showId: 'tv.L', order: 'next', until: 7 * HOUR + 30 * MIN }, { showId: 'movie.', item: { program: movieItem } } ],
+        }));
+        const flex8 = { duration: 8 * MIN, isOffline: true };
+        const programs = [
+            episode('L', 1, 1, 22 * MIN, 0), flex8, episode('L', 1, 2, 22 * MIN, 0), flex8, episode('L', 2, 1, 22 * MIN, 0), flex8,
+            movieItem,
+            episode('L', 2, 2, 22 * MIN, 0), flex8, episode('L', 2, 3, 22 * MIN, 0), flex8,
+        ];
+        const tt = sd.timetable({ programs, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} });
+        suite.check('an until row\u2019s run is one line: show, how many episodes, first and last',
+            JSON.stringify(tt.rows.map( (r) => r.title )) === '["L, 3 episodes (S1E1–S2E1)","The Movie","L S02E02 L 2x2","L S02E03 L 2x3"]',
+            JSON.stringify(tt.rows.map( (r) => r.title )));
+        suite.check('...at the run\u2019s start', tt.rows[0].at === local(2027, 1, 1, 6, 0) && tt.rows[1].at === local(2027, 1, 1, 7, 30), '');
+        suite.check('...and the list starting again is still a thin rule', JSON.stringify(tt.restarts) === JSON.stringify([ local(2027, 1, 1, 8, 0) ]),
+            JSON.stringify(tt.restarts));
+        const fill = { type: 'episode', showTitle: 'F', title: 'F 1x1', season: 1, episode: 1, duration: 5 * MIN, specialDay: 'sd_tt', specialRow: 'fill' };
+        const withFill = programs.slice(0, 2).concat([ fill ], programs.slice(2));
+        withFill[1] = { duration: 3 * MIN, isOffline: true };
+        const ttFill = sd.timetable({ programs: withFill, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} });
+        suite.check('...a long break filled inside the run stays inside its one line',
+            ttFill.rows[0].title === 'L, 3 episodes (S1E1–S2E1)' && ttFill.rows[1].title === 'The Movie', JSON.stringify(ttFill.rows.map( (r) => r.title )));
+        const shuffled = programs.map( (p) => p );
+        shuffled[2] = episode('L', 4, 3, 22 * MIN, 0);
+        suite.check('...a run not in episode order (a Shuffle row) gives only how many, not a range that is not one',
+            sd.timetable({ programs: shuffled, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} }).rows[0].title === 'L, 3 episodes',
+            sd.timetable({ programs: shuffled, startTime: local(2027, 1, 1, 6, 0), day: ttDay, schedule: {} }).rows[0].title);
+        const withNull = Object.assign({}, ttDay, { slots: [ null ].concat(ttDay.slots) });
+        suite.check('...and a null row in the day does not move which row is which',
+            sd.timetable({ programs, startTime: local(2027, 1, 1, 6, 0), day: withNull, schedule: {} }).rows[0].title === 'L, 3 episodes (S1E1–S2E1)', '');
+    }
+    {
+        // The Until dropdown: the day's own marks after its start, to its end.
+        const half = sd.untilOptions(newYears({ from: { date: '2027-01-01', time: 6 * HOUR }, to: { date: '2027-01-02', time: 6 * HOUR } }));
+        suite.check('untilOptions: every half hour after the start up to the end, 48 of them, labelled by the clock',
+            half.length === 48 && half[0].id === 6 * HOUR + 30 * MIN && half[0].description === '6:30am'
+                && half[27].id === 20 * HOUR && half[27].description === '8:00pm'
+                && half[47].id === 30 * HOUR && half[47].description === '6:00am',
+            JSON.stringify(half.slice(0, 2)) + ' ... ' + JSON.stringify(half.slice(-1)));
+        const quarter = sd.untilOptions(newYears({ rounding: 'quarter', from: { date: '2027-01-01', time: 18 * HOUR }, to: { date: '2027-01-01', time: 20 * HOUR } }));
+        suite.check('untilOptions: a quarter-hour day offers quarter hours',
+            quarter.map( (o) => o.description ).join(',') === '6:15pm,6:30pm,6:45pm,7:00pm,7:15pm,7:30pm,7:45pm,8:00pm', quarter.map( (o) => o.description ).join(','));
+        const long = sd.untilOptions(newYears({ from: { date: '2027-01-01', time: 22 * HOUR }, to: { date: '2027-01-03', time: 2 * HOUR } }));
+        suite.check('untilOptions: a day longer than a day names the weekday',
+            long[0].description === 'Fri 10:30pm' && long[long.length - 1].description === 'Sun 2:00am', `${long[0].description} ... ${long[long.length - 1].description}`);
+        suite.check('untilOptions: a day without a proper window offers nothing', sd.untilOptions({}).length === 0);
     }
     suite.check('timetable on a day with no proper window answers empty, not throws',
         JSON.stringify(sd.timetable({ programs: [], startTime: 0, day: {}, schedule: {} })) === '{"rows":[],"restarts":[],"never":[],"overrun":null}', '');

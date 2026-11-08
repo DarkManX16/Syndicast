@@ -1196,6 +1196,48 @@ module.exports = async function run() {
             suite.check('a step wrong on time but right on day still skips (both gates apply)', both.out.length === 0);
         }
 
+        // -- dates: a step limited to a date range (Event tools, NOTES.md); the
+        // break starts Fri Oct 2, 2026 20:30, local, as everywhere above
+        {
+            const lists = { U: [clipOf('Up Beta', 10, ['tv.Beta'])], W: [clipOf('WBRB', 5)] };
+            const on = (dates) => planFor([S('up', 'U', { match: 'show', dates: dates })], [], lists);
+            suite.check('a step with no dates plays on any date, and so does null',
+                titles(on(undefined).out) === 'Up Beta' && titles(on(null).out) === 'Up Beta');
+            suite.check('a range covering Oct 2 plays',
+                titles(on({ from: '2026-09-30', to: '2026-10-05' }).out) === 'Up Beta');
+            suite.check('both ends are included: a range of Oct 2 alone plays',
+                titles(on({ from: '2026-10-02', to: '2026-10-02' }).out) === 'Up Beta');
+            const after = on({ from: '2026-10-03', to: '2026-10-10' });
+            suite.check('a range starting the day after skips the step, and that is not a problem',
+                after.out.length === 0 && after.notes.length === 0 && after.skipped[0].problem === false
+                && /date/.test(after.skipped[0].reason));
+            suite.check('a range that ended the day before skips the step',
+                on({ from: '2026-09-01', to: '2026-10-01' }).out.length === 0);
+            suite.check('dates that are not a well-formed {from, to} are a problem and skip the step',
+                [ {}, { from: '2026-10-01' }, { to: '2026-10-05' }, { from: '2026-10-05', to: '2026-10-01' },
+                    { from: '2026-13-01', to: '2026-13-02' }, { from: '2026-02-30', to: '2026-03-01' },
+                    { from: '2026-10-1', to: '2026-10-05' }, { from: 20261001, to: 20261005 }, '2026-10-02', [] ]
+                    .every( (bad) => { const p = on(bad); return p.out.length === 0 && p.notes.length === 1; }));
+            const gated = (dates) => planFor([S('up', 'U', { match: 'show', dates: dates })], [S('b', 'W', { onlyIfNoMatch: 'up' })], lists);
+            suite.check('a step watching a step skipped for its dates plays',
+                titles(gated({ from: '2026-11-15', to: '2026-11-26' }).in) === 'WBRB');
+            const both = planFor([S('up', 'U', { match: 'show', days: [5], dates: { from: '2026-11-15', to: '2026-11-26' } })], [], lists);
+            suite.check('a step right on day but outside its dates still skips (both gates apply)', both.out.length === 0);
+
+            // the date is the one the break starts on: 23:50 on Fri Oct 2 is an Oct 2 break
+            const late = [episode('Alpha', 1, 30), flex(20), episode('Beta', 1, 30)];
+            const lateChannel = Object.assign(channelWith({ out: [S('up', 'U', { match: 'show' })], in: [] }), {
+                programs: late, duration: 80 * MIN, startTime: new Date(at('2026-10-02T23:20:00')).toISOString() });
+            const lateBrk = transitions.findBreak(lateChannel, 1, at('2026-10-02T23:50:00'));
+            const planAt2350 = (dates) => {
+                lateChannel.dayParts[0].transitions.betweenShows.out[0].dates = dates;
+                return transitions.buildPlan(lateChannel, lateBrk, env(lists));
+            };
+            suite.check('a break starting 23:50 on Oct 2 is an Oct 2 break, though it ends on Oct 3',
+                planAt2350({ from: '2026-10-02', to: '2026-10-02' }).out.length === 1
+                && planAt2350({ from: '2026-10-03', to: '2026-10-03' }).out.length === 0);
+        }
+
         // -- lists whose clips feature shows
         {
             const T0 = { }; // no play times
@@ -1301,6 +1343,14 @@ module.exports = async function run() {
             warnings({ times: {} }).length === 1 && warnings({ times: { start: 0 } }).length === 1
             && warnings({ times: { start: -1, end: 10 } }).length === 1 && warnings({ times: { start: 0, end: 24 * HOUR } }).length === 1);
         suite.check('a step wrong in all three ways is warned about three times', warnings({ days: [], chance: 0, times: {} }).length === 3);
+        suite.check('dates that are fine, or absent, or null, are not warned about',
+            warnings({ dates: { from: '2026-11-15', to: '2026-11-26' } }).length === 0 && warnings({ dates: null }).length === 0);
+        suite.check('dates ending before they start are warned about, and say so',
+            warnings({ dates: { from: '2026-11-26', to: '2026-11-15' } }).length === 1
+            && /before/.test(warnings({ dates: { from: '2026-11-26', to: '2026-11-15' } })[0]));
+        suite.check('dates that are not a well-formed {from, to} are warned about',
+            warnings({ dates: {} }).length === 1 && warnings({ dates: { from: '2026-11-15' } }).length === 1
+            && warnings({ dates: { from: 'Nov 15', to: 'Nov 26' } }).length === 1);
     }
 
     // ---- defaults: the new fields are off unless set -------------------------
@@ -1317,6 +1367,11 @@ module.exports = async function run() {
         const setTimes = transitions.normalizeTransitions({ transitions: { betweenShows: {
             out: [{ id: 'a', times: { start: 0, end: 6 * HOUR } }], in: [] } } }).betweenShows.out[0];
         suite.check('a step that sets times keeps it', JSON.stringify(setTimes.times) === JSON.stringify({ start: 0, end: 6 * HOUR }));
+        suite.check('a step saved before dates existed reads with it off, and reading wrote nothing',
+            read.dates === null && typeof channel.dayParts[0].transitions.betweenShows.out[0].dates === 'undefined');
+        const setDates = transitions.normalizeTransitions({ transitions: { betweenShows: {
+            out: [{ id: 'a', dates: { from: '2026-11-15', to: '2026-11-26' } }], in: [] } } }).betweenShows.out[0];
+        suite.check('a step that sets dates keeps it', JSON.stringify(setDates.dates) === JSON.stringify({ from: '2026-11-15', to: '2026-11-26' }));
     }
 
     // ---- what playback asks before it builds any plan (step 4) -------------
