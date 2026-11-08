@@ -167,6 +167,52 @@ function untilOptions(day) {
 }
 
 /*
+ * Copy to another date (NOTES.md, "Event tools"): a copy of `day` starting on
+ * `date` (YYYY-MM-DD) at the same clock time, ending as many calendar days
+ * later as the original, with id `id` and everything else as it was - name,
+ * block, settings, rows. A row's `at` and `until` are counted from the day's
+ * own first date, so they move with it. An Advance day's episode starts are
+ * left behind: each was a jump on the old date, and copied it would air the
+ * same episodes again. A Keep-apart day's starts are its own places, so they
+ * stay. Null when `date` is not a date.
+ */
+function calendarDay(text) {
+    let m = (typeof(text) === 'string') ? DATE.exec(text) : null;
+    if (m === null) {
+        return null;
+    }
+    let u = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    let back = new Date(u);
+    if ( (back.getUTCFullYear() !== Number(m[1])) || (back.getUTCMonth() !== Number(m[2]) - 1) || (back.getUTCDate() !== Number(m[3])) ) {
+        return null;
+    }
+    return u / DAY;
+}
+function dateOfCalendarDay(n) {
+    return new Date(n * DAY).toISOString().slice(0, 10);
+}
+function copyTo(day, date, id) {
+    let target = calendarDay(date);
+    let from = calendarDay(day && day.from && day.from.date);
+    let to = calendarDay(day && day.to && day.to.date);
+    if ( (target === null) || (from === null) || (to === null) ) {
+        return null;
+    }
+    let copy = JSON.parse(JSON.stringify(day));
+    copy.id = id;
+    copy.from.date = dateOfCalendarDay(target);
+    copy.to.date = dateOfCalendarDay(target + (to - from));
+    if (copy.positions !== 'apart') {
+        (copy.slots || []).forEach( (row) => {
+            if (row != null) {
+                delete row.start;
+            }
+        } );
+    }
+    return copy;
+}
+
+/*
  * A Set times day's rows with their instants, in time order: [{ row, at, gap }].
  * Rows without a time are left out (problems() names them).
  */
@@ -646,6 +692,7 @@ module.exports = {
     aired: aired,
     untilAt: untilAt,
     untilOptions: untilOptions,
+    copyTo: copyTo,
     usable: usable,
     rowTimes: rowTimes,
     nextHalfHour: nextHalfHour,

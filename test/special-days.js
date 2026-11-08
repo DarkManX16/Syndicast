@@ -284,6 +284,35 @@ module.exports = async () => {
     // separately. A - B - A again (Back to back's rows starting over), the
     // second A running past the day's own 7:15 end, B's second turn in that
     // final lap never came.
+    suite.log('Copy to another date (Event tools)');
+    {
+        const maam = {
+            id: 'sd_maam', name: 'Marathon and a Movie', from: { date: '2026-11-22', time: 6 * HOUR }, to: { date: '2026-11-23', time: 6 * HOUR },
+            blockId: 'bl_bounce', positions: 'advance', layout: 'back', rounding: 'half', fillBreaksWith: null, holiday: 'Thanksgiving',
+            slots: [ { showId: 'tv.Lizzie McGuire', order: 'next', until: 20 * HOUR, start: { key: 'srv|/e/1', order: 1 } },
+                { showId: 'custom.Movies', item: { program: { title: 'The Movie', duration: 90 * MIN } } } ],
+        };
+        const before = JSON.stringify(maam);
+        const copy = sd.copyTo(maam, '2026-11-26', 'sd_new');
+        suite.check('copyTo: the copy starts on the chosen date, at the same clock time, and ends as many days later',
+            JSON.stringify(copy.from) === '{"date":"2026-11-26","time":21600000}' && JSON.stringify(copy.to) === '{"date":"2026-11-27","time":21600000}',
+            JSON.stringify([ copy.from, copy.to ]));
+        suite.check('...with the new id and the same name, block, settings and rows',
+            copy.id === 'sd_new' && copy.name === 'Marathon and a Movie' && copy.blockId === 'bl_bounce' && copy.holiday === 'Thanksgiving'
+                && copy.layout === 'back' && copy.slots.length === 2 && copy.slots[0].until === 20 * HOUR && copy.slots[1].item.program.title === 'The Movie', '');
+        suite.check('...an Advance day drops its episode starts: each was a jump on the old date',
+            typeof(copy.slots[0].start) === 'undefined', JSON.stringify(copy.slots[0]));
+        suite.check('...the original is untouched, and shares nothing with the copy',
+            JSON.stringify(maam) === before && copy.slots[0] !== maam.slots[0] && copy.slots[1].item !== maam.slots[1].item, '');
+        const apart = sd.copyTo(Object.assign({}, maam, { positions: 'apart' }), '2026-11-26', 'sd_new2');
+        suite.check('...a Keep-apart day keeps its starts: they are the copy\'s own places',
+            JSON.stringify(apart.slots[0].start) === JSON.stringify(maam.slots[0].start), '');
+        const week = sd.copyTo(Object.assign({}, maam, { to: { date: '2026-11-25', time: 2 * HOUR } }), '2027-03-07', 'sd_w');
+        suite.check('...a longer day keeps its length across months and a clock change',
+            week.from.date === '2027-03-07' && week.to.date === '2027-03-10' && week.to.time === 2 * HOUR, JSON.stringify(week.to));
+        suite.check('...and a date that is not one gives nothing', sd.copyTo(maam, 'Nov 26', 'x') === null && sd.copyTo(maam, '2026-02-30', 'x') === null);
+    }
+
     suite.log('timetable');
     {
         const episode = (show, n, title, duration, specialRow) => ({

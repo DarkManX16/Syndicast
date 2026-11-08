@@ -72,6 +72,11 @@
                                 <button type="button" class="btn btn-sm btn-link text-danger py-0" ng-click="deleteSpecialDay(day)">Delete</button>
                             </div>
                             <div class="small text-muted" ng-show="dayKeptNote(day)" style="margin-bottom: 4px;">{{dayKeptNote(day)}}</div>
+                            <div class="form-inline day-copy-to" ng-if="copying.day === day" style="margin: 2px 0 8px 0;">
+                                <label class="small" style="margin-right: 6px;">Copy to</label>
+                                <input type="date" class="form-control form-control-sm" ng-model="copying.date">
+                                <button type="button" class="btn btn-sm btn-primary" style="margin-left: 6px;" ng-disabled="!copying.date" ng-click="finishCopy()">Copy</button>
+                            </div>
 
                             <div class="card" style="margin: 2px 0 10px 0;" ng-if="editingDay === day">
                                 <div class="card-body py-2 px-3">

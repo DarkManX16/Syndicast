@@ -10,6 +10,7 @@ const buildCheck = require('../../src/build-check');
 const poolSeasons = require('../../src/pool-seasons');
 const catalogKeep = require('../../src/catalog-keep');
 const specialDays = require('../../src/special-days');
+const dateRange = require('../../src/date-range');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
@@ -940,12 +941,22 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     scope.editingDay = null;
                 }
             };
+            // Copy to another date (NOTES.md, "Event tools"): Copy asks for one date,
+            // and the copy lands there (special-days.js's copyTo).
+            scope.copying = null;
             scope.copySpecialDay = (day) => {
-                let copy = JSON.parse(JSON.stringify(day));
-                copy.id = newSpecialDayId();
-                copy.name = day.name + ' (copy)';
+                scope.copying = ( (scope.copying !== null) && (scope.copying.day === day) ) ? null : { day: day, date: null };
+            };
+            scope.finishCopy = () => {
+                let c = scope.copying;
+                let ok = (c !== null) && (c.date instanceof Date) && ! isNaN(c.date);
+                let copy = ok ? specialDays.copyTo(c.day, dateRange.localDate(c.date.getTime()), newSpecialDayId()) : null;
+                if (copy === null) {
+                    return;
+                }
                 scope.schedule.specialDays.push(copy);
-                scope.editSpecialDay(copy);
+                scope.copying = null;
+                scope.editingDay = copy;
             };
             scope.dayAired = (day) => specialDays.aired(day, Date.now());
             scope.dayWindowLabel = (day) => {
