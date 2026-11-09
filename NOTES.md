@@ -7350,6 +7350,9 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
   with the episode left out) and `test/kept-editor.js` (Delete on a day's airing goes to the day).
   On the preview, Ron's Lizzie day: Delete on Gordo's Video, 43 seconds, saved: the day as
   described, and the entry on the never-air list, "deleted, never".
+- **Merged into `blocks` Nov 8** (f61c93a) and pushed. On the merged result, a fresh copy taken
+  5:54pm: `npm test` 3231/3231, the checklist 11 of 11 - its `special-day` workflow now checks Delete
+  inside a day leaves the episode out (it checked the old refusal, and failed until changed).
 - **add-delete-create on fresh copies (asked Nov 8): not holiday entries.** "Mickey and the Culture
   Clash" (S4E9, .../177340) and "House of Genius" (S4E8, .../177275) have no never-air entry of any
   kind, by file key (what Delete checks), so Delete should have added them; the script was left
