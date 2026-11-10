@@ -3507,11 +3507,26 @@ Everything else unticked stays in the roadmap as it is.
 
 ### The break scanner skips E: until its health is checked
 
-E: (the Toshiba) logged read/write retries in early November 2026, so the
-break scanner is kept off it (`"skipDrives": ["E:"]` in
-`<data>/break-scanner.json`, set Nov 7, 2026). Live streams still play from E:
-as before; only the scanner's reads are held back, and E:'s files wait
-unscanned. Once the drive checks out, turn it back on while Syndicast is
+E: (the Toshiba) logged read/write retries in early November 2026, and on
+Nov 7 Windows logged "the file system structure on volume E: cannot be
+corrected" and marked the volume "Spot Fix Needed". The break scanner is kept
+off it (`"skipDrives": ["E:"]` in `<data>/break-scanner.json`, set Nov 7, set
+again Nov 10). Live streams still play from E: as before; only the scanner's
+reads are held back, and E:'s files wait unscanned.
+
+**To check the scanner's progress, use this read-only GET, never a PUT:**
+
+```powershell
+$s = Invoke-RestMethod http://localhost:18000/api/breaks/scanner; '{0} | week {1} of {2} scanned | library {3} of {4} | skipping: {5}' -f $s.reason, $s.counts.week.scanned, $s.counts.week.files, $s.counts.library.scanned, $s.counts.library.files, ($(if ($s.skipDrives.Count) { $s.skipDrives -join ', ' } else { 'nothing' }))
+```
+
+A `PUT` to `/api/breaks/scanner` changes the scanner's settings, however it is
+used: `{"skipDrives":[]}` turns E: back on, and an empty body resumes a paused
+scanner. From Nov 8 to Nov 9 progress was checked with a PUT sending
+`skipDrives: []`, which put E: back in the queue 14 times and scanned 542 of
+its files before anyone noticed.
+
+Once the drive checks out, and only then, turn it back on while Syndicast is
 running:
 
 ```powershell
