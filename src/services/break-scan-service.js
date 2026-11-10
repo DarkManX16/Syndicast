@@ -474,7 +474,7 @@ class BreakScanService {
     }
 
     async probe(entry, ffmpegPath) {
-        const args = [ '-v', 'error', '-show_entries', 'format=duration', '-show_chapters', '-of', 'json', entry.path ];
+        const args = [ '-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-show_chapters', '-of', 'json', entry.path ];
         const { stdout } = await breakScan.runPiece(ffprobeOf(ffmpegPath), args, {
             run: (cmd, a) => this.run(cmd, a),
             beforeChunk: () => this.beforeChunk(entry),
@@ -489,7 +489,9 @@ class BreakScanService {
             e: Number(c.end_time),
             t: (c.tags && c.tags.title) || '',
         }) );
-        return { durationS, chapters };
+        // false only when ffprobe listed the streams and none is audio
+        const hasAudio = Array.isArray(parsed.streams) ? parsed.streams.some( (s) => s.codec_type === 'audio' ) : undefined;
+        return { durationS, chapters, hasAudio };
     }
 
     async scanOne(entry) {
@@ -513,9 +515,9 @@ class BreakScanService {
             }
             const ffmpegPath = (this.options.getFfmpegSettings() || {}).ffmpegPath || 'ffmpeg';
             try {
-                const { durationS, chapters } = await this.probe(entry, ffmpegPath);
+                const { durationS, chapters, hasAudio } = await this.probe(entry, ffmpegPath);
                 const result = await breakScan.scanFile(
-                    { path: entry.path, durationS, title: entry.title, chapters },
+                    { path: entry.path, durationS, title: entry.title, chapters, hasAudio },
                     {
                         ffmpegPath,
                         run: (cmd, args) => this.run(cmd, args),

@@ -56,7 +56,12 @@ function rig(folder, options = {}) {
             state.now += state.runMs;
             call.endedAt = state.now;
             if (cmd === 'ffprobe') {
-                return { code: 0, stdout: JSON.stringify( { format: { duration: String(state.durationS || 1500) }, chapters: [] } ), stderr: '' };
+                const streams = state.noAudio ? [ { codec_type: 'video' } ] : [ { codec_type: 'video' }, { codec_type: 'audio' } ];
+                return { code: 0, stdout: JSON.stringify( { streams, format: { duration: String(state.durationS || 1500) }, chapters: state.chapters || [] } ), stderr: '' };
+            }
+            if (state.noAudio && args.join(' ').includes('-map 0:a:0')) {
+                // what ffmpeg 7.1 said for Kong S01E06, a file with no audio stream (Nov 9, 2026)
+                return { code: 4294967274, stderr: 'Stream map \'0:a:0\' matches no streams.\nTo ignore this, add a trailing \'?\' to the map.\nError parsing options for output file -.\nError opening output files: Invalid argument\n' };
             }
             if (state.fail) {
                 return { code: 1, stderr: 'Invalid data found when processing input' };
@@ -258,6 +263,33 @@ module.exports = async () => {
             const gone = await s.scanOne( { path: 'G:\\missing.mkv', key: 'tv.Gone', title: 'Gone', drive: 'G:', ratingKey: '1' } );
             suite.check('a file that cannot be found is recorded the same way, with no ffmpeg run',
                 (gone === 'failed') && (st.calls.length === 2) && (store.loadShow(path.join(f, 'breaks'), 'tv.Gone').files['G:\\missing.mkv'].error.retryAt === st.now + DAY));
+        }
+
+        // ---- a file with no audio stream (Kong S01E06, found by the real scanner Nov 9) ----------
+        {
+            const f = path.join(tmp, 'no-audio');
+            fs.mkdirSync(f);
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            st.noAudio = true;
+            st.durationS = 1331;
+            st.chapters = [ { start_time: '0.000', end_time: '640.500', tags: { title: 'Part 1' } }, { start_time: '640.500', end_time: '1331.000', tags: { title: 'Part 2' } } ];
+            const entry = s.queue.find( (e) => e.path === 'F:\\Cheers\\s01e01.mkv' );
+            const result = await s.scanOne(entry);
+            const record = store.loadShow(path.join(f, 'breaks'), 'tv.Cheers').files[entry.path];
+            suite.check('a file with no audio stream is scanned, not failed and retried every day',
+                (result === 'scanned') && (record.error === null), `${result} ${record.error && record.error.message}`);
+            suite.check('...with no silence pass run on its missing audio',
+                ! st.calls.some( (c) => c.args.join(' ').includes('silencedetect') ), st.calls.map( (c) => c.cmd ).join(','));
+            suite.check('...its record says it has no audio, and keeps what its chapters offer',
+                (record.noAudio === true) && (record.points.length === 1) && (JSON.stringify(record.points[0].sources) === '["chapter"]'), JSON.stringify(record.points));
+            st.noAudio = false;
+            st.chapters = [];
+            const other = await s.scanOne(s.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' ));
+            const otherRecord = store.loadShow(path.join(f, 'breaks'), 'tv.Happy Days').files['G:\\HD\\s01e01.mkv'];
+            suite.check('a file with audio is scanned as before, and its record has no noAudio field',
+                (other === 'scanned') && st.calls.some( (c) => c.args.join(' ').includes('silencedetect') ) && ! ('noAudio' in otherRecord));
         }
 
         // ---- a boot that runs out of file handles ----------------------------------------------
