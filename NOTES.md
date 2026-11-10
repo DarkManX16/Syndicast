@@ -7494,6 +7494,91 @@ followed by no Flex at all (14-22% of the 35-60-minute items on channels 1 and
 4. **The scanner measures its effect on live streams and backs off by itself**,
    pausing or slowing whenever streams are playing, on top of idle priority.
 
+#### Step 1 build record: the detector and the store (merged Oct 27, b2c0430)
+
+`src/break-detect.js` (pure: silences, blacks and chapters in, points out),
+`src/break-scan.js` (the ffmpeg runs: audio in 5-minute pieces, black only in
+the windows around silences, idle priority, one thread) and
+`src/breaks-store.js` (`<data>/breaks/<show key>.json`, the fingerprint, one
+record per path), with tests on fixture intervals, Batman's scene fades and a
+ripper's 5-minute chapters among them.
+
+- **Proof** (real ffmpeg on the Oct 15 sample's 46 files, read-only): 219
+  points, no scan errors, 2,343 s against the prototype's 4,078 s. The two
+  stalls the step aimed at (I Love Lucy's long audio read, Samurai Jack's
+  minutes-long silences) ran 30-52 times faster, most files 2-5 times. The
+  points matched the spec's own examples (Family Guy "Death Is a Bitch" near
+  5:30 and 15:48), and Batman's two act breaks (9:38, 15:46) came through with
+  the scene fades the show pattern is meant to leave out.
+- **Found during the proof:** the store named each file after the raw show key.
+  A `?` in a title threw and stopped the batch (Are You Afraid of the Dark?);
+  a `:` threw nothing at all - NTFS wrote the JSON into an alternate data
+  stream of a truncated `tv.Batman`. Keys are now percent-encoded before they
+  touch a path, with a test.
+- **Found later, by the real scanner** (Nov 9-10): a file with no audio stream
+  (Kong S01E06) failed the silence pass's `-map 0:a:0` and would be retried
+  every day - fixed on `midrolls-step3` (9bfb795), not merged yet; and the
+  black at a file's very first second is labelled `opening` in 45% of files,
+  so the real break after the opening titles is labelled `act` - step 3's
+  first idea below.
+
+#### Step 2 build record: the pace meter and the background scanner (merged Nov 7, c91ad93)
+
+- **The pace meter** (`src/pace-meter.js`): every item ffmpeg Syndicast runs
+  reports its progress on a fourth pipe (`-progress pipe:3`), never touching
+  the stream; pace is media time over wall time across 10 s, ignoring an
+  item's first 3 s. An item whose output is backing up because its viewer is
+  slow or gone is marked held and ignored.
+- **The scanner** (`src/services/break-scan-service.js`, its modes in
+  `src/break-scan-governor.js`): this week's files soonest first, then the
+  rest by next airing; Normal, Gentle (rests twice as long as it ran, keeps
+  off a drive a viewer is reading), Paused (a channel below 0.99 for 10 s,
+  counted across its items, or CPU above 85% for 30 s; 10 minutes, doubling
+  within the hour) and Off by hand. Every ffmpeg and ffprobe runs at idle CPU
+  and Very Low disk priority (`src/io-priority.js`, one PowerShell helper);
+  `skipDrives` keeps it off a drive. The store and the hand switch are read
+  at the first queue build, retried, because a boot can run out of file
+  handles. `GET /api/breaks/scanner` is its status; a `PUT` changes its
+  settings (see "The break scanner skips E:" in Known issues).
+- **Approved by Ron Nov 7**, against the spec's first wording: the 10-second
+  count is per channel, across its items (a break of 6-15 s bumpers starved a
+  stream for 80 s without any one item reaching 10 s); held items are
+  ignored; Very Low disk priority and the drive skip were added before merging.
+- **Proof** (a copy taken Nov 7, 7:02am; a scratch server on 18097; viewers
+  counted from their audio packets against wall time): a stream's bytes
+  identical with and without the meter (four 30 s runs under h264_nvenc, all
+  19,571,740 bytes, one SHA-256); viewers at 0.9988-1.000 with the scanner
+  off, 0.9993-1.000 in Gentle (its ffmpeg busy exactly 33% of the time) and
+  0.9992-1.0001 inside an item in forced Normal; a deliberate CPU load paused
+  it 10.2 s after the first low reading, and it resumed Gentle exactly 10
+  minutes later; a restart scanned the interrupted file first, from its start,
+  and redid none of the 88 earlier records. Very Low disk priority: 80 of 81
+  runs already Very Low when first seen, 236 lowered, none failed. 3,061
+  tests and the 11 editor workflows passed on the merged result.
+- **Live since 18000's restart on Nov 8.** By Nov 9 evening: 1,024 of 27,195
+  files, 400 of the week's 1,148, about 300-550 a day; one pause in two and a
+  half days (channel 1 at 0.985). G: had 0 of 9,550 files scanned and F: 41
+  of 10,724: the drive rule never reads a drive a viewer is on, and channel 1
+  plays from G: and channel 2 from F: nearly all day. E: was scanned again
+  because progress was being checked with a `PUT` that cleared `skipDrives`;
+  all six scan errors were on E: (four Hannah Montana files gone with their
+  folder, the no-audio Kong episode, a 1080p Teacher's Pet past 15 minutes).
+- **Measured Nov 10 for step 3**, read-only against 18000's viewers and its own
+  pace meter (a GET each second), with a guard that stopped my ffmpeg if a
+  viewer on the same drive fell below 0.99:
+  - *Reading a drive a viewer is on, at idle CPU and Very Low disk priority:*
+    six files, three on G: and three on F:, 1,461 MB in 212 ffmpeg runs, every
+    one lowered. The lowest same-drive viewer reading during them was 0.9896
+    (G:, which stopped one scan by the guard) and 0.9972 (F:); with nothing
+    of mine or the scanner's running, the same G: item read 0.9893-0.9898
+    three times and the F: item 0.9611 once. Nothing measured set my reads
+    apart from that background. 18000's own scanner ran in none of the 738
+    seconds polled: every file it wanted was on G:, F: or the skipped E:.
+  - *An episode read right after it aired:* Space Ghost Coast to Coast (G:,
+    146 MB) 44% from the disk, Coach (F:, 196 MB) 63%, each scanned within
+    seconds of its live ffmpeg ending, having played from start to end. Windows
+    kept about half of each in memory, not most of it.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time
