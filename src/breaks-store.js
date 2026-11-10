@@ -134,6 +134,9 @@ function recordFor(breaksDir, key, file, scanResult, now = Date.now) {
         noBreaks: false,
         error: null,
     };
+    if (scanResult.noAudio === true) {
+        record.noAudio = true;   // no audio stream: only its chapters can offer a point
+    }
     show.files[file.path] = record;
     saveShow(breaksDir, key, show);
     return record;

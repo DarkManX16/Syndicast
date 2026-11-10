@@ -91,6 +91,21 @@ module.exports = async () => {
             (typeof result.timings.silenceMs === 'number') && (result.timings.nWindows === 1) && (result.timings.nSilenceGroups === 1));
     })();
 
+    // ---- scanFile on a file with no audio stream: no ffmpeg at all, chapters only ---------
+    await (async () => {
+        const state = { calls: [] };
+        const run = fakeRunner(state);
+        const file = { path: '/show/silent.mp4', durationS: 1331, title: 'Dragon Fire', hasAudio: false, chapters: [ { s: 0, e: 640.5, t: 'Part 1' }, { s: 640.5, e: 1331, t: 'Part 2' } ] };
+        const result = await scan.scanFile(file, { run });
+        suite.check('a file with no audio runs no ffmpeg: there is no sound to find silences in',
+            state.calls.length === 0, state.calls.length);
+        suite.check('...says so, and keeps a chapter-only point',
+            (result.noAudio === true) && (result.points.length === 1) && (JSON.stringify(result.points[0].sources) === '["chapter"]'), JSON.stringify(result.points));
+        const withAudio = await scan.scanFile( { path: '/show/ep.mkv', durationS: 600, title: 'Pilot', chapters: [] }, { run: fakeRunner( { calls: [] } ) } );
+        suite.check('a file with audio has no noAudio in its result',
+            ! ('noAudio' in withAudio));
+    })();
+
     // beforeChunk runs once per chunk and per window, letting a caller pause between them
     await (async () => {
         let hooks = 0;

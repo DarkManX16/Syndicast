@@ -56,7 +56,12 @@ function rig(folder, options = {}) {
             state.now += state.runMs;
             call.endedAt = state.now;
             if (cmd === 'ffprobe') {
-                return { code: 0, stdout: JSON.stringify( { format: { duration: String(state.durationS || 1500) }, chapters: [] } ), stderr: '' };
+                const streams = state.noAudio ? [ { codec_type: 'video' } ] : [ { codec_type: 'video' }, { codec_type: 'audio' } ];
+                return { code: 0, stdout: JSON.stringify( { streams, format: { duration: String(state.durationS || 1500) }, chapters: state.chapters || [] } ), stderr: '' };
+            }
+            if (state.noAudio && args.join(' ').includes('-map 0:a:0')) {
+                // what ffmpeg 7.1 said for Kong S01E06, a file with no audio stream (Nov 9, 2026)
+                return { code: 4294967274, stderr: 'Stream map \'0:a:0\' matches no streams.\nTo ignore this, add a trailing \'?\' to the map.\nError parsing options for output file -.\nError opening output files: Invalid argument\n' };
             }
             if (state.fail) {
                 return { code: 1, stderr: 'Invalid data found when processing input' };
@@ -151,13 +156,47 @@ module.exports = async () => {
         // ---- the drive rule -------------------------------------------------------------
         restarted.state.live = [ { id: 1, channel: 2, title: 'Long', drive: 'H:', pace: 1.0 } ];
         restarted.service.tick();
-        suite.check('in Gentle a file on a drive a live stream is reading waits; another drive goes first',
+        suite.check('in Gentle a file on a drive no viewer is on goes first',
             (restarted.service.governor.mode() === 'gentle') && (restarted.service.pickNext('gentle').path === 'G:\\HD\\s01e01.mkv'));
         restarted.service.queue = restarted.service.queue.filter( (e) => e.drive === 'H:' );
-        suite.check('...and when every file left is on that drive, nothing is picked',
-            restarted.service.pickNext('gentle') === null);
+        suite.check('...and when every file left is on a drive a viewer is on, the first of them is read anyway, at Very Low (Nov 10)',
+            (restarted.service.pickNext('gentle') !== null) && (restarted.service.pickNext('gentle').path === 'H:\\long.mkv'));
         suite.check('in Normal there is no drive rule',
             restarted.service.pickNext('normal').path === 'H:\\long.mkv');
+
+        // ---- a viewer starting on the drive of the file being scanned ---------------------
+        {
+            const f = path.join(tmp, 'busy-mid');
+            fs.mkdirSync(f);
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            st.durationS = 900;
+            st.live = [ { id: 3, channel: 3, title: 'Elsewhere', drive: 'D:', pace: 1.0 } ];   // Gentle from the start
+            s.tick();
+            let waited = 0;
+            const sleep = s.sleep;
+            s.sleep = async (ms) => {
+                if (s.current && (s.current.step === 'waiting for its drive')) {
+                    waited++;
+                    if (waited > 5) {
+                        st.live = [ st.live[0] ];   // the viewer leaves, so the old rule cannot hang the test
+                        s.tick();
+                    }
+                }
+                return sleep(ms);
+            };
+            st.during = async (call) => {
+                if (call.args.join(' ').includes('silencedetect') && (call.args[call.args.indexOf('-ss') + 1] === '0.000')) {
+                    st.live = [ st.live[0], { id: 8, channel: 1, title: 'Happy Days', drive: 'G:', pace: 1.0 } ];
+                    s.tick();
+                }
+                return null;
+            };
+            const result = await s.scanOne(s.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' ));
+            suite.check('a viewer starting on the drive mid-file does not stop the scan: it carries on at Very Low',
+                (result === 'scanned') && (waited === 0) && (silenceStarts(st).join(',') === '0.000,300.000,600.000'), `${result}, waited ${waited}, ${silenceStarts(st).join(',')}`);
+        }
 
         // ---- a pause in the middle of a file --------------------------------------------
         {
@@ -194,6 +233,9 @@ module.exports = async () => {
             s.tick();
             suite.check('...with the pause and the resume in the log',
                 s.governor.log.some( (e) => /^Paused for 10 min: channel 2's Cheers fell to 0\.970$/.test(e.text) ) && s.governor.log.some( (e) => e.text === 'Resumed Gentle after the pause' ));
+            const pauseEntry = s.governor.log.find( (e) => e.kind === 'pause' );
+            suite.check('...the pause entry says which drive the slow item was on and which the scanner was reading',
+                (pauseEntry.drive === 'F:') && (pauseEntry.scanningDrive === 'G:'), JSON.stringify(pauseEntry));
 
             // Gentle's rest: with Cheers still playing, each run is followed by twice its length.
             const gaps = [];
@@ -258,6 +300,33 @@ module.exports = async () => {
             const gone = await s.scanOne( { path: 'G:\\missing.mkv', key: 'tv.Gone', title: 'Gone', drive: 'G:', ratingKey: '1' } );
             suite.check('a file that cannot be found is recorded the same way, with no ffmpeg run',
                 (gone === 'failed') && (st.calls.length === 2) && (store.loadShow(path.join(f, 'breaks'), 'tv.Gone').files['G:\\missing.mkv'].error.retryAt === st.now + DAY));
+        }
+
+        // ---- a file with no audio stream (Kong S01E06, found by the real scanner Nov 9) ----------
+        {
+            const f = path.join(tmp, 'no-audio');
+            fs.mkdirSync(f);
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            st.noAudio = true;
+            st.durationS = 1331;
+            st.chapters = [ { start_time: '0.000', end_time: '640.500', tags: { title: 'Part 1' } }, { start_time: '640.500', end_time: '1331.000', tags: { title: 'Part 2' } } ];
+            const entry = s.queue.find( (e) => e.path === 'F:\\Cheers\\s01e01.mkv' );
+            const result = await s.scanOne(entry);
+            const record = store.loadShow(path.join(f, 'breaks'), 'tv.Cheers').files[entry.path];
+            suite.check('a file with no audio stream is scanned, not failed and retried every day',
+                (result === 'scanned') && (record.error === null), `${result} ${record.error && record.error.message}`);
+            suite.check('...with no silence pass run on its missing audio',
+                ! st.calls.some( (c) => c.args.join(' ').includes('silencedetect') ), st.calls.map( (c) => c.cmd ).join(','));
+            suite.check('...its record says it has no audio, and keeps what its chapters offer',
+                (record.noAudio === true) && (record.points.length === 1) && (JSON.stringify(record.points[0].sources) === '["chapter"]'), JSON.stringify(record.points));
+            st.noAudio = false;
+            st.chapters = [];
+            const other = await s.scanOne(s.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' ));
+            const otherRecord = store.loadShow(path.join(f, 'breaks'), 'tv.Happy Days').files['G:\\HD\\s01e01.mkv'];
+            suite.check('a file with audio is scanned as before, and its record has no noAudio field',
+                (other === 'scanned') && st.calls.some( (c) => c.args.join(' ').includes('silencedetect') ) && ! ('noAudio' in otherRecord));
         }
 
         // ---- a boot that runs out of file handles ----------------------------------------------

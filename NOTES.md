@@ -7517,7 +7517,9 @@ ripper's 5-minute chapters among them.
   touch a path, with a test.
 - **Found later, by the real scanner** (Nov 9-10): a file with no audio stream
   (Kong S01E06) failed the silence pass's `-map 0:a:0` and would be retried
-  every day - fixed on `midrolls-step3` (9bfb795), not merged yet; and the
+  every day - fixed Nov 10 (9bfb795): a file whose streams include no audio
+  skips the silence pass and keeps what its chapters offer, its record marked
+  `noAudio: true`; and the
   black at a file's very first second is labelled `opening` in 45% of files,
   so the real break after the opening titles is labelled `act` - step 3's
   first idea below.
@@ -7578,6 +7580,15 @@ ripper's 5-minute chapters among them.
     146 MB) 44% from the disk, Coach (F:, 196 MB) 63%, each scanned within
     seconds of its live ffmpeg ending, having played from start to end. Windows
     kept about half of each in memory, not most of it.
+- **Changed Nov 10, with Ron's OK (71ca275):** Gentle reads a drive a viewer is
+  on last instead of never - a free drive's file first, and when every file
+  left is on a busy drive, one of those at Very Low disk priority; a viewer
+  starting on the drive mid-file no longer stops it. The 10-second pause still
+  guards the viewers, and each pause's log entry now carries `drive` (the slow
+  item's) and `scanningDrive` (the scanner's), so the first day on 18000 can
+  tell a same-drive slowdown from background noise. Scanning an episode right
+  after it airs was not built: half of it comes from the disk anyway, and with
+  busy drives readable there is nothing left for it to unblock.
 
 ### Random Slots' Create Lineup restarts the program on air
 

@@ -72,15 +72,17 @@ class ScanGovernor {
         this.lastMode = null;
     }
 
-    addLog(kind, text) {
-        this.log.push( { at: this.now(), kind, text } );
+    addLog(kind, text, extra = {}) {
+        this.log.push(Object.assign( { at: this.now(), kind, text }, extra ));
         if (this.log.length > LOG_KEEP) {
             this.log.shift();
         }
     }
 
-    setWorking(working) {
+    // drive: the drive the scanner is reading while it works, kept on a pause's log entry.
+    setWorking(working, drive = null) {
         this.working = working;
+        this.scanningDrive = working ? drive : null;
     }
 
     setManualPaused(paused) {
@@ -111,7 +113,12 @@ class ScanGovernor {
         return this.now() < this.pausedUntil;
     }
 
-    pause(reason) {
+    /*
+     * extra: what the log entry keeps besides its text - for a slow item, the
+     * drive it was playing from and the drive the scanner was reading, so a
+     * pause on the scanner's own drive can be told from one elsewhere.
+     */
+    pause(reason, extra = {}) {
         const now = this.now();
         // "within the hour" of the last pause ending; from its start, a wait
         // past 80 minutes could never be followed by a doubled one.
@@ -123,7 +130,7 @@ class ScanGovernor {
         this.lastPauseAt = now;
         this.lastWaitMs = wait;
         this.resumeGentle = true;
-        this.addLog('pause', `Paused for ${minutesText(wait)}: ${reason}`);
+        this.addLog('pause', `Paused for ${minutesText(wait)}: ${reason}`, extra);
     }
 
     /*
@@ -198,10 +205,10 @@ class ScanGovernor {
         if (this.working && ! this.manualPaused && ! this.isPaused()) {
             const slow = Array.from(this.belowSince.values()).find( (run) => now - run.since >= PACE_LOW_FOR_MS );
             if (slow != null) {
-                this.pause(`${itemName(slow.item)} fell to ${slow.item.pace.toFixed(3)}`);
+                this.pause(`${itemName(slow.item)} fell to ${slow.item.pace.toFixed(3)}`, { drive: slow.item.drive || null, scanningDrive: this.scanningDrive || null });
                 pauseNow = true;
             } else if (this.cpuHighForLong()) {
-                this.pause(`the PC's CPU stayed above ${Math.round(CPU_PAUSE * 100)}% for ${CPU_PAUSE_FOR_MS / 1000} s`);
+                this.pause(`the PC's CPU stayed above ${Math.round(CPU_PAUSE * 100)}% for ${CPU_PAUSE_FOR_MS / 1000} s`, { scanningDrive: this.scanningDrive || null });
                 pauseNow = true;
             }
         }

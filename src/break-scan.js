@@ -149,14 +149,19 @@ async function scanBlackWindows(file, windows, options = {}) {
 }
 
 /*
- * file: { path, durationS, title, chapters } - chapters as read elsewhere
- * (ffprobe or Plex's copy of them); this module does not read them itself.
+ * file: { path, durationS, title, chapters, hasAudio? } - chapters as read
+ * elsewhere (ffprobe or Plex's copy of them); this module does not read them
+ * itself. hasAudio false (ffprobe found no audio stream) skips the silence
+ * pass, which would fail on the missing stream; with no silences there are no
+ * black windows either, so only the chapters can offer a point.
  * Returns { points, timings: { silenceMs, blackMs, nSilenceGroups, nWindows } },
- * the shape breaks-store.js's recordFor expects for `points`.
+ * plus noAudio: true for such a file; the shape breaks-store.js's recordFor
+ * expects.
  */
 async function scanFile(file, options = {}) {
     const t0 = Date.now();
-    const silence = await scanSilence(file.path, file.durationS, options);
+    const noAudio = (file.hasAudio === false);
+    const silence = noAudio ? [] : await scanSilence(file.path, file.durationS, options);
     const t1 = Date.now();
     const groups = breakDetect.mergeSilences(breakDetect.significantSilences(silence));
     const windows = breakDetect.windowsForSilences(groups, { duration: file.durationS });
@@ -169,7 +174,7 @@ async function scanFile(file, options = {}) {
         black,
         chapters: file.chapters || [],
     } );
-    return {
+    const result = {
         points,
         timings: {
             silenceMs: t1 - t0,
@@ -178,6 +183,10 @@ async function scanFile(file, options = {}) {
             nWindows: windows.length,
         },
     };
+    if (noAudio) {
+        result.noAudio = true;
+    }
+    return result;
 }
 
 module.exports = {
