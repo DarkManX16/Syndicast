@@ -62,18 +62,16 @@ below says what we do and why. **Syndicast innovates.**
   itself, and the lineup's-end guard against the old "Keep them" bug).
   After the script, look at the preview yourself as well: it checks what each
   workflow saves, not how the page reads.
-- Before building, read the current plan (the 1.0 list, the roadmap and the
-  feature's plan). Then think about the experience for Ron and his viewers, and
-  think outside the box: propose ideas beyond the brief that would make it
-  simpler or better, using any tool available. Propose them before building
-  them. Ideas must remove clutter, not add it (keep it simple). Never break what
-  already works: the full suite and the workflow checklist must pass, and
-  existing behaviour stays the same unless Ron approves a change. Ron added this
-  Nov 7, 2026.
-- Look at the entire design plan we have up to now and will have later. Then
-  innovate: think about the user experience and think outside the box. Use any
-  tool you have. Don't break anything or clutter the site. Ron added this
-  Nov 7, 2026.
+- **Read the whole plan, then innovate.** Before building, read the entire
+  design plan, what is built and what is still to come: the 1.0 list, the
+  roadmap and the feature's plan. Then think about the experience for Ron and
+  his viewers, and think outside the box: propose ideas beyond the brief that
+  would make it simpler or better, using any tool available. Propose them
+  before building them. Ideas must remove clutter, not add it (keep it simple;
+  don't clutter the site). Never break what already works: the full suite and
+  the workflow checklist must pass, and existing behaviour stays the same
+  unless Ron approves a change. Ron added this Nov 7, 2026 as two rules and
+  asked for them to be one on Nov 9.
 
 ## Feature roadmap
 
