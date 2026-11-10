@@ -156,13 +156,47 @@ module.exports = async () => {
         // ---- the drive rule -------------------------------------------------------------
         restarted.state.live = [ { id: 1, channel: 2, title: 'Long', drive: 'H:', pace: 1.0 } ];
         restarted.service.tick();
-        suite.check('in Gentle a file on a drive a live stream is reading waits; another drive goes first',
+        suite.check('in Gentle a file on a drive no viewer is on goes first',
             (restarted.service.governor.mode() === 'gentle') && (restarted.service.pickNext('gentle').path === 'G:\\HD\\s01e01.mkv'));
         restarted.service.queue = restarted.service.queue.filter( (e) => e.drive === 'H:' );
-        suite.check('...and when every file left is on that drive, nothing is picked',
-            restarted.service.pickNext('gentle') === null);
+        suite.check('...and when every file left is on a drive a viewer is on, the first of them is read anyway, at Very Low (Nov 10)',
+            (restarted.service.pickNext('gentle') !== null) && (restarted.service.pickNext('gentle').path === 'H:\\long.mkv'));
         suite.check('in Normal there is no drive rule',
             restarted.service.pickNext('normal').path === 'H:\\long.mkv');
+
+        // ---- a viewer starting on the drive of the file being scanned ---------------------
+        {
+            const f = path.join(tmp, 'busy-mid');
+            fs.mkdirSync(f);
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            st.durationS = 900;
+            st.live = [ { id: 3, channel: 3, title: 'Elsewhere', drive: 'D:', pace: 1.0 } ];   // Gentle from the start
+            s.tick();
+            let waited = 0;
+            const sleep = s.sleep;
+            s.sleep = async (ms) => {
+                if (s.current && (s.current.step === 'waiting for its drive')) {
+                    waited++;
+                    if (waited > 5) {
+                        st.live = [ st.live[0] ];   // the viewer leaves, so the old rule cannot hang the test
+                        s.tick();
+                    }
+                }
+                return sleep(ms);
+            };
+            st.during = async (call) => {
+                if (call.args.join(' ').includes('silencedetect') && (call.args[call.args.indexOf('-ss') + 1] === '0.000')) {
+                    st.live = [ st.live[0], { id: 8, channel: 1, title: 'Happy Days', drive: 'G:', pace: 1.0 } ];
+                    s.tick();
+                }
+                return null;
+            };
+            const result = await s.scanOne(s.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' ));
+            suite.check('a viewer starting on the drive mid-file does not stop the scan: it carries on at Very Low',
+                (result === 'scanned') && (waited === 0) && (silenceStarts(st).join(',') === '0.000,300.000,600.000'), `${result}, waited ${waited}, ${silenceStarts(st).join(',')}`);
+        }
 
         // ---- a pause in the middle of a file --------------------------------------------
         {
@@ -199,6 +233,9 @@ module.exports = async () => {
             s.tick();
             suite.check('...with the pause and the resume in the log',
                 s.governor.log.some( (e) => /^Paused for 10 min: channel 2's Cheers fell to 0\.970$/.test(e.text) ) && s.governor.log.some( (e) => e.text === 'Resumed Gentle after the pause' ));
+            const pauseEntry = s.governor.log.find( (e) => e.kind === 'pause' );
+            suite.check('...the pause entry says which drive the slow item was on and which the scanner was reading',
+                (pauseEntry.drive === 'F:') && (pauseEntry.scanningDrive === 'G:'), JSON.stringify(pauseEntry));
 
             // Gentle's rest: with Cheers still playing, each run is followed by twice its length.
             const gaps = [];

@@ -15,8 +15,11 @@
  *   modes    break-scan-governor.js, fed every 2 s from the pace meter and the
  *            PC's CPU. A pause stops the running ffmpeg at once; that piece
  *            runs again from its start when the pause ends.
- *   drives   in Gentle, a file on a drive a live stream is reading waits; a
- *            file on another drive goes first. A drive Ron skips ("E:") is
+ *   drives   in Gentle, a file on a drive no live stream is reading goes first;
+ *            when every file left is on such a drive, it is read anyway, at
+ *            Very Low disk priority, the pace check still watching (measured
+ *            Nov 10: no slower for the viewers than their usual blips; before,
+ *            G: and F: went unscanned for days). A drive Ron skips ("E:") is
  *            not read at all until he turns it back on.
  *   limits   a file whose ffmpeg runs add up to 15 minutes is stopped and tried
  *            again a day later, as is one that fails.
@@ -127,7 +130,6 @@ class BreakScanService {
         this.lastRunMs = 0;
         this.fileRunMs = 0;
         this.restUntil = null;
-        this.waitingForDrive = false;
         this.timers = [];
         this.stopping = false;
         this.worker = null;
@@ -372,8 +374,9 @@ class BreakScanService {
         if (mode !== 'gentle') {
             return this.queue[0] || null;
         }
+        // a drive no viewer is on first; failing that, a busy one, at Very Low
         const busy = this.governor.busyDrives();
-        return this.queue.find( (e) => ! busy.has(e.drive) ) || null;
+        return this.queue.find( (e) => ! busy.has(e.drive) ) || this.queue[0] || null;
     }
 
     async workLoop() {
@@ -385,13 +388,9 @@ class BreakScanService {
             }
             const entry = this.pickNext(mode);
             if (entry === null) {
-                if (this.queue.length > 0) {
-                    this.noteDriveWait(true);
-                }
-                await this.sleep( (this.queue.length > 0) ? TICK_MS : IDLE_POLL_MS );
+                await this.sleep(IDLE_POLL_MS);
                 continue;
             }
-            this.noteDriveWait(false);
             this.queue = this.queue.filter( (e) => e !== entry );
             try {
                 await this.scanOne(entry);
@@ -402,14 +401,7 @@ class BreakScanService {
         }
     }
 
-    noteDriveWait(waiting) {
-        if (waiting && ! this.waitingForDrive) {
-            this.governor.addLog('drive', 'Waiting: every file left is on a drive a live stream is reading');
-        }
-        this.waitingForDrive = waiting;
-    }
-
-    // Before each piece: wait out a pause, rest in Gentle, keep off busy drives.
+    // Before each piece: wait out a pause, rest in Gentle.
     async beforeChunk(entry) {
         for (;;) {
             if (this.stopping) {
@@ -427,11 +419,6 @@ class BreakScanService {
                 await this.sleep(Math.min(1000, this.restUntil - this.now()));
                 continue;
             }
-            if ( (mode === 'gentle') && (entry.drive != null) && this.governor.busyDrives().has(entry.drive) ) {
-                this.current.step = 'waiting for its drive';
-                await this.sleep(TICK_MS);
-                continue;
-            }
             if (this.fileRunMs >= this.fileLimitMs) {
                 throw Object.assign(new Error(`stopped after ${Math.round(this.fileLimitMs / 60000)} minutes of scanning`), { timeLimit: true });
             }
@@ -446,7 +433,7 @@ class BreakScanService {
         this.abortReason = null;
         const limit = setTimeout( () => this.abort('limit'), Math.max(0, this.fileLimitMs - this.fileRunMs) );
         const started = this.now();
-        this.governor.setWorking(true);
+        this.governor.setWorking(true, this.current ? this.current.drive : null);
         let result;
         try {
             result = await this.baseRunner(cmd, args, { signal: this.controller.signal, onSpawn: (pid) => this.disk.lower(pid) });

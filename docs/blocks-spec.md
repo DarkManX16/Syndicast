@@ -1190,8 +1190,12 @@ and 10 seconds after a channel is saved, it queues what needs scanning.
     under 70%: one file after another.
   - *Gentle*, whenever any stream is playing: after each ffmpeg run the scanner
     rests twice as long as it ran (about a third of one core at most), and it
-    does not read from a drive a live stream is reading right now, taking
-    another drive's file first, or waiting.
+    takes a file on a drive no live stream is reading first. When every file
+    left is on a drive a viewer is on, it reads one anyway, at Very Low disk
+    priority, the Paused rule below still watching (changed with Ron's OK on
+    Nov 10: measured, reading those drives slowed no viewer beyond their usual
+    blips, and waiting had left G: and F: unscanned for days). Each pause's log
+    entry records the slow item's drive and the drive the scanner was reading.
   - *Paused*, as soon as a channel's pace stays below 0.99 for 10 seconds
     while the scanner is working, counted across that channel's items (a break
     of 6-second bumpers is one low stretch, not several short ones; approved by
