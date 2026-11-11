@@ -18,6 +18,16 @@ below says what we do and why. **Syndicast innovates.**
   against the real `.dizquetv-dev` while the other one is live. Start a
   worktree preview by hand instead, on a spare port, with `-d` pointing at a
   copy of `.dizquetv-dev`.
+- **Pause the break scanner on every scratch server.** A server started on a
+  copy of `.dizquetv-dev` runs its own break scanner. It sees none of 18000's
+  viewers, so it scans in Normal mode at full speed, reading the same real
+  drives they play from. Before starting one, write
+  `{"paused":true,"skipDrives":["E:"]}` to the copy's `break-scanner.json`, and
+  check that `GET /api/breaks/scanner` says "Paused by hand" before running
+  anything against it. Only a proof about the scanner itself runs it, and then
+  in Gentle (`BREAK_SCAN_FORCE_MODE=gentle`) with a guard watching 18000's
+  paces. Ron added this Nov 11, 2026, after two scratch servers' scanners
+  dipped 18000's viewers to 0.856 on Nov 10.
 - **Keep it simple.** No walls of text: at most one short line per change. Show a
   change in the list itself rather than describing it, and never add a message Ron
   didn't ask for. Ron added this Oct 30, 2026, after the kept-rows editor answered
