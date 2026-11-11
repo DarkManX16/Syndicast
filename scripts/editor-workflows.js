@@ -172,14 +172,22 @@ function makeRunner(opts, page) {
             .filter((x) => !/^\d+ - /.test(x));
         return t.length > 0 ? t.join(' / ') : null;
     });
-    // What the Time Slots dialog says about kept rows: at most one short line, or it fails.
+    // What the Time Slots dialog says about kept rows: at most one short line of its own, or it
+    // fails. A special day's row has its own line for the kept rows inside that day (Special days,
+    // Oct 31); those are not the dialog's line, so they aren't counted, but each must still be short.
     const dialogNotes = async () => {
-        const notes = await page.evaluate(() => [...document.querySelectorAll('.modal-body .small, .modal-body .alert')]
+        const all = await page.evaluate(() => [...document.querySelectorAll('.modal-body .small, .modal-body .alert')]
             .filter((el) => el.getClientRects().length > 0)
-            .map((el) => el.textContent.replace(/\s+/g, ' ').trim())
-            .filter((x, i, all) => x && all.indexOf(x) === i && /kept|keeps|stays where|stay where|runs .* longer|will push/i.test(x)));
-        if (notes.length > 1 || notes.some((x) => x.length > 100 || /runs .* longer|will push|kept in time/i.test(x))) {
+            .map((el) => ({ text: el.textContent.replace(/\s+/g, ' ').trim(), day: el.closest('[ng-repeat^="day in schedule.specialDays"]') !== null }))
+            .filter((x) => x.text && /kept|keeps|stays where|stay where|runs .* longer|will push/i.test(x.text)));
+        const notes = all.filter((x) => !x.day).map((x) => x.text).filter((x, i, a) => a.indexOf(x) === i);
+        const dayNotes = all.filter((x) => x.day).map((x) => x.text);
+        const wordy = (x) => x.length > 100 || /runs .* longer|will push|kept in time/i.test(x);
+        if (notes.length > 1 || notes.some(wordy)) {
             throw new Check(`the Time Slots dialog says more than one short line about kept rows: ${notes.map((x) => `"${x.slice(0, 120)}"`).join(' ')}`);
+        }
+        if (dayNotes.some(wordy)) {
+            throw new Check(`a special day's kept-rows line isn't one short line: ${dayNotes.filter(wordy).map((x) => `"${x.slice(0, 120)}"`).join(' ')}`);
         }
         return notes;
     };
