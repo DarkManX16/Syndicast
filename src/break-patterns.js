@@ -27,6 +27,12 @@ const LENGTH_TOLERANCE = 1.15;      // a running-length group spans at most 15%
 const STRONG = 0.6;                 // a mid-episode point counted by "N breaks an episode"
 const EDGE_S = 120;                 // midrolls never come within 2 minutes of either end
 const OPENING_WINDOW_S = detectConstants.OPENING_WINDOW_S;
+// A half-hour show's cold open and titles can run past 3:00: Hannah Montana's break
+// after the title card falls at 2:16-4:42 (frames, Nov 12). A running-length group of
+// 20 minutes or more, at least half of whose episodes have their first point between
+// 3:00 and 5:00, reads that point as its opening. Shorts never do.
+const LONG_OPENING_WINDOW_S = 300;
+const LONG_OPENING_MIN_MS = 20 * 60000;
 
 function clock(s) {
     const t = Math.round(s);
@@ -44,10 +50,10 @@ function usable(record) {
  * opening (any other `opening` becomes an act). Each keeps `index`, its place in
  * record.points, so an approval lands on the stored point.
  */
-function effectivePoints(record) {
+function effectivePoints(record, windowS = OPENING_WINDOW_S) {
     const pts = (record.points || []).map( (p, index) => Object.assign( {}, p, { index } ) )
         .filter( (p) => p.at >= FILE_START_S );
-    const candidates = pts.filter( (p) => ( (p.kind === 'opening') || (p.kind === 'act') ) && (p.at <= OPENING_WINDOW_S) );
+    const candidates = pts.filter( (p) => ( (p.kind === 'opening') || (p.kind === 'act') ) && (p.at <= windowS) );
     const opening = candidates.length ? candidates.reduce( (a, b) => (b.at < a.at ? b : a) ) : null;
     return pts.map( (p) => {
         if (p === opening) {
@@ -61,12 +67,28 @@ function effectivePoints(record) {
 }
 
 // Mid-episode points a midroll could use, and the strong ones among them.
-function midPoints(record) {
+function midPoints(record, windowS = OPENING_WINDOW_S) {
     const d = record.durationMs / 1000;
-    return effectivePoints(record).filter( (p) => ( (p.kind === 'act') || (p.kind === 'story') ) && (p.at >= EDGE_S) && (p.at <= d - EDGE_S) );
+    return effectivePoints(record, windowS).filter( (p) => ( (p.kind === 'act') || (p.kind === 'story') ) && (p.at >= EDGE_S) && (p.at <= d - EDGE_S) );
 }
-function strongMid(record) {
-    return midPoints(record).filter( (p) => (p.black != null) && (p.strength >= STRONG) );
+function strongMid(record, windowS = OPENING_WINDOW_S) {
+    return midPoints(record, windowS).filter( (p) => (p.black != null) && (p.strength >= STRONG) );
+}
+
+// The opening window for one running-length group (see LONG_OPENING_WINDOW_S).
+function openingWindow(files) {
+    if ( (files.length < MIN_EPISODES) || files.some( ([, r]) => r.durationMs < LONG_OPENING_MIN_MS ) ) {
+        return OPENING_WINDOW_S;
+    }
+    const late = files.filter( ([, r]) => {
+        const first = (r.points || []).filter( (p) => (p.at >= FILE_START_S) && (p.kind !== 'credits') ).sort( (a, b) => a.at - b.at )[0];
+        return (first != null) && (first.at > OPENING_WINDOW_S) && (first.at <= LONG_OPENING_WINDOW_S);
+    } ).length;
+    return (late >= need(files.length)) ? LONG_OPENING_WINDOW_S : OPENING_WINDOW_S;
+}
+
+function openingOf(record, windowS) {
+    return effectivePoints(record, windowS).find( (p) => p.kind === 'opening' ) || null;
 }
 
 /*
@@ -93,10 +115,10 @@ function need(n) {
 }
 
 // The plan's positions: opening, act and story points within 45 s, in enough episodes.
-function positionGroups(files) {
+function positionGroups(files, windowS = OPENING_WINDOW_S) {
     const vals = [];
     for (const [path, rec] of files) {
-        for (const p of effectivePoints(rec)) {
+        for (const p of effectivePoints(rec, windowS)) {
             if (p.kind !== 'credits') {
                 vals.push( { at: p.at, kind: p.kind, path } );
             }
@@ -130,10 +152,10 @@ function positionGroups(files) {
 }
 
 // "N breaks an episode": the commonest number of strong mid-episode points, if enough episodes have it.
-function countPattern(files) {
+function countPattern(files, windowS = OPENING_WINDOW_S) {
     const tally = {};
     for (const [, rec] of files) {
-        const n = strongMid(rec).length;
+        const n = strongMid(rec, windowS).length;
         tally[n] = (tally[n] || 0) + 1;
     }
     const best = Object.keys(tally).map(Number).filter( (n) => n > 0 ).sort( (a, b) => (tally[b] - tally[a]) || (b - a) )[0];
@@ -154,16 +176,21 @@ function nearest(points, at) {
     return best;
 }
 
-// Does one record fit one group's pattern? (positions all present, count exact)
+// Does one record fit one group's pattern? (positions all present, an opening where
+// each episode's own is approved, count exact)
 function fits(pattern, record) {
-    const pts = effectivePoints(record).filter( (p) => p.kind !== 'credits' );
+    const w = pattern.openingWindowS || OPENING_WINDOW_S;
+    const pts = effectivePoints(record, w).filter( (p) => p.kind !== 'credits' );
     for (const pos of pattern.positions) {
         if (nearest(pts, pos.at) === null) {
             return false;
         }
     }
+    if ( (pattern.openingEach != null) && (openingOf(record, w) === null) ) {
+        return false;
+    }
     if (pattern.count !== null) {
-        return strongMid(record).length === pattern.count;
+        return strongMid(record, w).length === pattern.count;
     }
     return true;
 }
@@ -178,12 +205,22 @@ function groupPattern(group) {
     if (files.length < MIN_EPISODES) {
         return null;
     }
-    const positions = positionGroups(files);
+    const w = openingWindow(files);
+    const positions = positionGroups(files, w);
     const openings = positions.filter( (p) => p.kind === 'opening' );
     const acts = positions.filter( (p) => p.kind !== 'opening' );
-    const count = countPattern(files);
-    const byPosition = { minMs: group.minMs, maxMs: group.maxMs, episodes: files.length, positions, count: null, countEpisodes: 0 };
-    const byCount = count ? { minMs: group.minMs, maxMs: group.maxMs, episodes: files.length, positions: openings, count: count.n, countEpisodes: count.episodes } : null;
+    const count = countPattern(files, w);
+    // An opening that moves from episode to episode (no position group): each episode's own.
+    let openingEach = null;
+    if (openings.length === 0) {
+        const ats = files.map( ([, r]) => openingOf(r, w) ).filter( (p) => p !== null ).map( (p) => p.at ).sort( (a, b) => a - b );
+        if (ats.length >= need(files.length)) {
+            openingEach = { from: ats[0], to: ats[ats.length - 1], episodes: ats.length };
+        }
+    }
+    const common = { minMs: group.minMs, maxMs: group.maxMs, episodes: files.length, openingWindowS: w, openingEach };
+    const byPosition = Object.assign( {}, common, { positions, count: null, countEpisodes: 0 } );
+    const byCount = count ? Object.assign( {}, common, { positions: openings, count: count.n, countEpisodes: count.episodes } ) : null;
     const fitting = (p) => files.filter( ([, r]) => fits(p, r) ).length;
     let chosen = null;
     if ( (acts.length > 0) && (byCount === null) ) {
@@ -239,6 +276,9 @@ function patternLine(name, show, total = null) {
             return `${label}${ (g.episodes < MIN_EPISODES) ? 'too few to tell' : 'no pattern' }`;
         }
         const parts = p.positions.map( (pos) => `${pos.kind} near ${clock(pos.at)} (${Math.round(100 * pos.episodes / g.episodes)}%)` );
+        if (p.openingEach != null) {
+            parts.unshift(`opening at ${clock(p.openingEach.from)}-${clock(p.openingEach.to)} (${p.openingEach.episodes} of ${g.episodes})`);
+        }
         if (p.count !== null) {
             parts.push(`${p.count} break${ (p.count === 1) ? '' : 's' } an episode at different times (${p.countEpisodes} of ${g.episodes})`);
         }
@@ -275,15 +315,23 @@ function applyToRecord(approved, record) {
         return { fits: false, approved: 0 };
     }
     let count = 0;
-    const pts = effectivePoints(record).filter( (p) => p.kind !== 'credits' );
+    const w = g.openingWindowS || OPENING_WINDOW_S;
+    const pts = effectivePoints(record, w).filter( (p) => p.kind !== 'credits' );
     for (const pos of g.positions) {
         const p = nearest(pts, pos.at);
         if (p !== null) {
             count += approvePoint(record, p, pos.kind);
         }
     }
-    if ( (g.count !== null) && (strongMid(record).length === g.count) ) {
-        for (const p of strongMid(record)) {
+    if (g.openingEach != null) {
+        const o = openingOf(record, w);
+        if (o !== null) {
+            count += approvePoint(record, o, 'opening');
+        }
+    }
+    const strong = strongMid(record, w);
+    if ( (g.count !== null) && (strong.length === g.count) ) {
+        for (const p of strong) {
             count += approvePoint(record, p, p.kind);
         }
     }
@@ -303,6 +351,8 @@ function approve(show, now) {
         minMs: g.minMs, maxMs: g.maxMs,
         positions: g.pattern.positions.map( (p) => ({ at: p.at, kind: p.kind }) ),
         count: g.pattern.count,
+        openingWindowS: g.pattern.openingWindowS,
+        openingEach: g.pattern.openingEach,
     }) );
     show.pattern = { approvedAt: now, groups };
     let n = 0;
@@ -368,11 +418,12 @@ function outliers(show, isMovie = false) {
         if (rec.noAudio === true) {
             reasons.push('no audio track, so only its chapters can offer a break');
         }
-        const pts = effectivePoints(rec).filter( (p) => p.kind !== 'credits' );
+        const g = groupFor(pattern, rec);
+        const w = (g && g.openingWindowS) || OPENING_WINDOW_S;
+        const pts = effectivePoints(rec, w).filter( (p) => p.kind !== 'credits' );
         if (pts.length === 0) {
             reasons.push('no breaks found');
         }
-        const g = groupFor(pattern, rec);
         if (g === null) {
             const size = sizes.find( (s) => s.files.some( ([p]) => p === path ) );
             if (size && (size.files.length < MIN_EPISODES)) {
@@ -386,8 +437,11 @@ function outliers(show, isMovie = false) {
                     reasons.push(`no ${pos.kind} near ${clock(pos.at)}`);
                 }
             }
+            if ( (g.openingEach != null) && (openingOf(rec, w) === null) ) {
+                reasons.push('no opening found');
+            }
             if (g.count !== null) {
-                const k = strongMid(rec).length;
+                const k = strongMid(rec, w).length;
                 if (k !== g.count) {
                     reasons.push(`${k} strong break${ (k === 1) ? '' : 's' }, not ${g.count}`);
                 }
@@ -407,7 +461,7 @@ function outliers(show, isMovie = false) {
 }
 
 module.exports = {
-    effectivePoints, midPoints, strongMid, lengthGroups, positionGroups, countPattern, groupPattern,
+    effectivePoints, midPoints, strongMid, openingWindow, lengthGroups, positionGroups, countPattern, groupPattern,
     showPatterns, patternLine, approve, withdraw, applyApproved, outliers, fits, clock,
-    constants: { SPAN_S, MIN_EPISODES, LENGTH_TOLERANCE, STRONG, EDGE_S },
+    constants: { SPAN_S, MIN_EPISODES, LENGTH_TOLERANCE, STRONG, EDGE_S, LONG_OPENING_WINDOW_S, LONG_OPENING_MIN_MS },
 };

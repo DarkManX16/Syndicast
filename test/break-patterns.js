@@ -122,6 +122,39 @@ module.exports = async () => {
             patterns.outliers(s).length === 0, JSON.stringify(patterns.outliers(s)));
     }
 
+    // ---- Hannah Montana: a cold open and titles that end anywhere from 2:16 to 4:42 ----------
+    // As the frames showed (Nov 12): the point after the title card is the opening in every
+    // episode, and each episode has one act break, at 9-13 minutes.
+    {
+        const files = {};
+        const opens = [ 136, 170, 189, 220, 245, 282 ];
+        const acts = [ 590, 660, 728, 700, 770, 800 ];
+        opens.forEach( (o, i) => {
+            files[`E:\\Hannah\\e${i + 1}.mkv`] = rec(22.9, [ pt(o, 'act', 0.85), pt(acts[i], 'act', 0.85), pt(1340, 'credits', 0.85) ]);
+        } );
+        const s = show(files);
+        const line = patterns.patternLine('Hannah Montana', s, 98);
+        suite.check('Hannah Montana\'s line: an opening that moves, and one break an episode',
+            line === 'Hannah Montana, 6 of 98 episodes scanned: opening at 2:16-4:42 (6 of 6), 1 break an episode at different times (6 of 6)', line);
+        patterns.approve(s, 1000);
+        const e6 = s.files['E:\\Hannah\\e6.mkv'];
+        suite.check('...approving it stores the break after the titles as the opening even past 3:00, so it never airs with "opening: false"',
+            approvedAts(e6) === 'opening@282 act@800', approvedAts(e6));
+        suite.check('...and every episode fits',
+            patterns.outliers(s).length === 0, JSON.stringify(patterns.outliers(s)));
+    }
+    {
+        // a 7-minute short whose one point falls at 3-5 minutes keeps it as an act: no titles that long
+        const files = {};
+        for (let i = 0; i < 4; i++) {
+            files[`G:\\Shorts\\s${i + 1}.mkv`] = rec(7, [ pt(200 + i * 20, 'act', 0.85) ]);
+        }
+        const eff = patterns.effectivePoints(files['G:\\Shorts\\s2.mkv']);
+        const g = patterns.showPatterns(show(files)).groups[0].pattern;
+        suite.check('a short\'s point between 3 and 5 minutes is not taken for an opening',
+            (eff[0].kind === 'act') && ! /opening/.test(patterns.patternLine('Tom and Jerry', show(files))), patterns.patternLine('Tom and Jerry', show(files)) + ' ' + JSON.stringify(g));
+    }
+
     // ---- Batman: the two strongest are the long fades -----------------------------------
     {
         const s = batman();

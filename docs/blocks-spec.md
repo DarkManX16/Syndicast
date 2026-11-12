@@ -1166,6 +1166,16 @@ The main way to approve is **one click per show**.
   scanned before it did are read the same way from their stored points, so
   the break after the titles is the opening and "opening: false" keeps it off
   air without a rescan. Approval stores the kind it was read as.
+- **An opening past 3:00.** A half-hour show's cold open and titles can run
+  longer: Hannah Montana's break after the title card falls anywhere from
+  2:16 to 4:42 (seen in the frames, Nov 12), and read as an act it would have
+  aired in 8 of 14 episodes with "opening: false". A running-length group of
+  20 minutes or more, at least half of whose episodes have their first point
+  between 3:00 and 5:00, reads that point as its opening; shorts never do.
+  Where the opening's time moves too much for a position, the line says so -
+  *"Hannah Montana, 14 episodes scanned: opening at 2:16-4:42 (14 of 14), 1
+  break an episode at different times (14 of 14)"* - and approval approves
+  each episode's own.
 - **Approve the pattern.** In every scanned episode, the point closest to each
   pattern position (within 45 s) is approved, and for "N breaks an episode",
   the N strong mid-episode points of every episode that has exactly N;
