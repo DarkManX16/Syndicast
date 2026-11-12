@@ -152,5 +152,20 @@ module.exports = async () => {
             points.every( (p) => p.keyframe === null));
     })();
 
+    // ---- the file's own fade-in is not the opening (step 3, Nov 11) ------------------
+    // Gargoyles, as the real scanner found it: black from the very first frame,
+    // then the break after the titles at 1:02, two acts, and the credits.
+    (() => {
+        const silence = [ [0, 1.04], [62.1, 62.85], [390.3, 391.5], [805.2, 806.3], [1364.8, 1370.0] ];
+        const black = [ [0, 1.27], [62.23, 63.2], [389.5, 392.5], [804.5, 806.5], [1364.3, 1370.0] ];
+        const points = detect.detectBreaks( { duration: 1371, title: 'Awakening', silence, black, chapters: [] } );
+        suite.check('black and silence in the first 10 s (the file fading in) is not a point',
+            ! points.some( (p) => p.at < 10 ), JSON.stringify(points.map( (p) => p.at )));
+        suite.check('...so the break after the titles is the opening, not an act',
+            (points.length > 0) && (points[0].kind === 'opening') && (Math.round(points[0].at) === 63), JSON.stringify(points.map( (p) => `${p.kind}@${Math.round(p.at)}` )));
+        suite.check('...and the two mid-episode breaks are acts',
+            (points.length === 4) && (points[1].kind === 'act') && (points[2].kind === 'act') && (points[3].kind === 'credits'));
+    })();
+
     return suite;
 };

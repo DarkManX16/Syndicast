@@ -278,5 +278,17 @@ module.exports = async () => {
             (paused !== null) && /CPU stayed above 85%/.test(g.pauseReason), `${paused} ${g.pauseReason}`);
     }
 
+    // ---- how a long wait reads (Nov 10's log said "1.3333333333333333 h") ------------
+    {
+        const { g, state } = rig();
+        for (let i = 0; i < 5; i++) {
+            g.pause('channel 1\'s item fell to 0.980');
+            state.now = g.pausedUntil + 1000;
+        }
+        const waits = g.log.filter( (e) => e.kind === 'pause' ).map( (e) => e.text.replace(/: .*$/, '') );
+        suite.check('waits read in whole hours and minutes: 10 min, 20 min, 40 min, 1 h 20 min, 2 h',
+            JSON.stringify(waits) === JSON.stringify([ 'Paused for 10 min', 'Paused for 20 min', 'Paused for 40 min', 'Paused for 1 h 20 min', 'Paused for 2 h' ]), JSON.stringify(waits));
+    }
+
     return suite;
 };

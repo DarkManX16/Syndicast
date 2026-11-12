@@ -24,6 +24,12 @@ const SCENE_LIST_CHAPTERS = 8;
 const RIPPER_MINUTE_TOL_S = 2;
 const RIPPER_SPACING_TOL_S = 5;
 const CHAPTER_ONLY_STRENGTH = 0.15;
+// A point this close to the start is the file fading in (or a logo), never the end
+// of an opening: on the real store (Nov 11, 2026), 2,083 points fell in the first
+// 10 s - 85% on black from the very first frame - against 46 in the next 10 s, and
+// in 312 files the fade-in had taken the `opening` kind from the break after the
+// titles, leaving that break an `act` that "opening: false" could not keep off air.
+const FILE_START_S = 10;
 
 // -- reading ffmpeg's own text --------------------------------------------------
 
@@ -247,6 +253,7 @@ function detectBreaks({ duration, title, silence = [], black = [], chapters = []
     const groups = mergeSilences(significantSilences(silence));
     let points = pointsFromBlack(groups, black);
     points = correlateChapters(points, chapters, duration);
+    points = points.filter( (p) => p.at >= FILE_START_S );
     points.sort( (a, b) => a.at - b.at );
     points = classifyKinds(points, duration, title);
     return points.map( (p) => ( {
@@ -272,5 +279,7 @@ module.exports = {
         MIN_SILENCE_S, MERGE_GAP_S, LONG_SILENCE_S, WINDOW_PAD_S, TOUCH_S,
         OPENING_WINDOW_S, CREDITS_WINDOW_S, CHAPTER_NEAR_S, SCENE_LIST_CHAPTERS,
         RIPPER_MINUTE_TOL_S, RIPPER_SPACING_TOL_S, CHAPTER_ONLY_STRENGTH,
+        FILE_START_S,
     },
+    FILE_START_S,
 };
