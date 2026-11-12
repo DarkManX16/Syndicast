@@ -1140,18 +1140,47 @@ The main way to approve is **one click per show**.
   the start, within 45 s of each other). A group present in at least half the
   scanned episodes, and in at least three, is part of the pattern, shown as a
   line: *"Happy Days, 98 of 104 episodes scanned: opening near 1:14 (95%), act
-  near 11:46 (91%), act near 23:00 (88%)."* When a show's seasons break at
-  different places (an hour-long season, a later format), the pattern is shown
-  per season.
+  near 11:46 (91%), act near 23:00 (88%)."*
+- **"N breaks an episode"** (DarkManX16, Nov 10). Many shows' breaks move from
+  episode to episode while their number stays the same: on the real store
+  (Nov 9), only 18 of 48 shows with eight or more episodes scanned had a
+  pattern by position that could air, while Hannah Montana had two strong
+  breaks in 14 of 14 episodes, Gargoyles two in 9 of 9 and Rupert one in 12 of
+  12, at different times. So a show is also offered *"N breaks an episode at
+  different times"*: each episode's N strongest mid-episode points (act or
+  story, at least 2 minutes from either end, strength 0.6 or more), when at
+  least half its episodes, and at least three, have exactly N. Whichever of
+  the two fits more episodes is offered (by position on a tie); an opening
+  found by position stays in the pattern either way. Batman's act breaks are
+  its two long fades, the strongest points it has, so the count leaves its
+  scene fades out. Line: *"Gargoyles, 9 of 78 episodes scanned: opening near
+  1:03 (100%), 2 breaks an episode at different times (9 of 9)."*
+- **Groups by running length, not season** (DarkManX16, Nov 10). The records hold each
+  file's length and not its season, and the difference that matters is the
+  length: Adventures of the Gummi Bears runs 10.6-21.8 minutes. Episodes
+  within 15% of each other's length form a group with its own pattern, each
+  named in the line ("11-minute episodes (4): ..."); a group of fewer than
+  three has none.
+- **Kinds read past the fade-in** (DarkManX16, Nov 10). Points in a file's first 10 s
+  are the file fading in, never a break: the detector drops them, and files
+  scanned before it did are read the same way from their stored points, so
+  the break after the titles is the opening and "opening: false" keeps it off
+  air without a rescan. Approval stores the kind it was read as.
 - **Approve the pattern.** In every scanned episode, the point closest to each
-  pattern position (within 45 s) is approved, `approvedBy: 'pattern'`.
-  Episodes scanned later that fit the approved pattern are approved as they
-  arrive; those that do not join the list below. DarkManX16 can withdraw a show's
-  pattern approval, which returns its pattern-approved points to `found`.
-- **The outliers, listed for DarkManX16 to check:** episodes missing a pattern point;
-  chapter-only points; episodes with no points at all; found points that fit no
-  pattern group, collapsed per episode (Batman's scene fades land here and are
-  never approved by the pattern); and every TV-made movie's points.
+  pattern position (within 45 s) is approved, and for "N breaks an episode",
+  the N strong mid-episode points of every episode that has exactly N;
+  `approvedBy: 'pattern'`. Only `found` points change: DarkManX16's own approvals,
+  rejections and hand points stay his. Episodes scanned later, and files that
+  changed and were scanned again, are approved as they arrive; those that do
+  not fit join the list below. DarkManX16 can withdraw a show's pattern approval,
+  which returns its pattern-approved points to `found`.
+- **The outliers, listed for DarkManX16 to check:** episodes missing a pattern point,
+  or with a different number of strong breaks; episodes of a length with too
+  few episodes for a pattern, or with no pattern; chapter-only points; files
+  with no audio; episodes with no points at all; and every TV-made movie's
+  points. **Stray points in an episode that fits are not listed** (DarkManX16, Nov
+  10): they are never approved, so they never air, and listing them would have
+  put most episodes on the list (768 strays across 52 shows on Nov 9).
 - **For each point on the list:** the frame before and after it, a few seconds
   of playback across it, and approve, reject, nudge (by frames or a typed
   mm:ss), change its kind, add a break, or mark the episode as having none.

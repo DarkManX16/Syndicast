@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const breakPatterns = require('./break-patterns');
 
 const CURRENT_SCANNER_VERSION = 1;
 
@@ -138,8 +139,11 @@ function recordFor(breaksDir, key, file, scanResult, now = Date.now) {
         record.noAudio = true;   // no audio stream: only its chapters can offer a point
     }
     show.files[file.path] = record;
+    // A show whose pattern DarkManX16 approved approves each episode as it arrives
+    // (and a file that changed, as it is scanned again).
+    breakPatterns.applyApproved(show, file.path);
     saveShow(breaksDir, key, show);
-    return record;
+    return show.files[file.path];
 }
 
 // The last failure, and when to try again (docs/blocks-spec.md, "The store").
