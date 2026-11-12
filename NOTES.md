@@ -7380,6 +7380,27 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
   Clash" (S4E9, .../177340) and "House of Genius" (S4E8, .../177275) have no never-air entry of any
   kind, by file key (what Delete checks), so Delete should have added them; the script was left
   alone. Cause still unknown; later fresh-copy runs passed.
+- **add-delete-create, Nov 11-12: deleted episodes still air** (recorded at Ron's request for the
+  Delete investigation; no cause claimed). Channel 3, fresh copies, the same five House of Mouse
+  deletes. The three that fail are the files the added show holds: House of Turkey `.../177277`,
+  Mickey and the Culture Clash `.../177340` and House of Genius `.../177275` (the Nov 8 pair). The
+  real data's never-air list already has Clarabelle's Christmas List and House Ghost by the show's
+  files, but House of Turkey only by an older file, `.../54121` (Oct 18); the script matches by
+  title, so it counts House of Turkey as listed.
+  - Nov 11, 6:34am (`checklist-day-notes` on blocks f995ef8): 3 of the 5 air in the next 3 weeks,
+    e.g. "House of Turkey" on Thu Nov 12 at 3:40pm, on a row carrying Ron's swap (made Nov 9,
+    5:31am, replacing "Unplugged Club"; shifted twice and moved after), not inside a special day.
+    Whether Delete added entries that run wasn't recorded, and that copy is gone.
+  - Nov 12, copy taken 7:23am (blocks plus the same-drive pause and the checklist fix): Delete added
+    **no** entry for any of the five - the Nov 8 symptom - and the three air with none. The copy is
+    kept at `C:\Users\ronpr\AppData\Local\Temp\claude\2c0506e9cdb9bad1\f1398e3c-e764-41bc-9bf4-5e4b8ca28db0\scratchpad\cl-data-used-nov12`
+    (a temp folder; it may not last).
+  - Nov 12, copy taken 7:36am, same code: Delete **did** add all three (7:38am, `how: deleted`), and
+    all three air anyway: House of Turkey at Thu Nov 12 3:40pm on the same swap row; Mickey (2:30pm)
+    and House of Genius (4:00pm) on Thu Nov 19, inside Ron's "Celebrate Mickey: House of Mouse
+    Marathon" (1-9pm), on rows with no kept edit.
+  - So two things to explain: Delete sometimes adds nothing, and a never-air file still airs on a
+    kept swap row and inside a marathon day.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
@@ -7599,6 +7620,12 @@ ripper's 5-minute chapters among them.
   tell a same-drive slowdown from background noise. Scanning an episode right
   after it airs was not built: half of it comes from the disk anyway, and with
   busy drives readable there is nothing left for it to unblock.
+- **Changed Nov 12, Ron's decision (merged on its own, ahead of step 3):** a
+  channel's 10 seconds below 0.99 count only while the scanner is on a file
+  from that channel's drive, through the rests between that file's runs; the
+  CPU pause is unchanged. The first day on 18000 had 14 pauses (5.2 h), none
+  same-drive, and viewers on the scanner's drive no slower than with it idle
+  (4.9% of readings below 0.99, against 6.1%).
 
 ### Random Slots' Create Lineup restarts the program on air
 
