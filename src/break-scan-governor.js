@@ -79,10 +79,17 @@ class ScanGovernor {
         }
     }
 
-    // drive: the drive the scanner is reading while it works, kept on a pause's log entry.
+    /*
+     * drive: the drive of the file being scanned. It is kept through the rests
+     * between that file's runs and cleared by fileDone(): a viewer's slowdown
+     * counts only while the scanner is on a file from that viewer's drive (Ron,
+     * Nov 12), and the pause's log entry names it.
+     */
     setWorking(working, drive = null) {
         this.working = working;
-        this.scanningDrive = working ? drive : null;
+        if (working) {
+            this.scanningDrive = drive;
+        }
     }
 
     setManualPaused(paused) {
@@ -153,6 +160,12 @@ class ScanGovernor {
          * starved stream slow for 80 s. A low reading on any of the channel's
          * items carries the count on, a healthy one ends it, and the seconds
          * at an item's start with no reading yet leave it as it is.
+         *
+         * Only an item on the drive of the file being scanned counts (Ron, Nov
+         * 12): on 18000's first day on Very Low disk priority, 14 pauses came
+         * from viewers slow on other drives and none from the scanner's own,
+         * and viewers on its drive were no slower than with it idle. An item
+         * on another drive ends the count, since the scanner is not reading it.
          */
         const channels = new Map();
         for (const item of this.live) {
@@ -161,6 +174,10 @@ class ScanGovernor {
             // held back by its reader (a slow viewer, or none left): its pace
             // says nothing about what the scanner does to it
             if ( (item.held === true) || (item.pace == null) ) {
+                continue;
+            }
+            if ( (this.scanningDrive == null) || (item.drive !== this.scanningDrive) ) {
+                c.healthy = true;
                 continue;
             }
             if (item.pace < PACE_FLOOR) {
@@ -230,6 +247,7 @@ class ScanGovernor {
 
     // The scanner finished a file, so a pause's "resume Gentle" has done its job.
     fileDone() {
+        this.scanningDrive = null;
         if (! this.isPaused()) {
             this.resumeGentle = false;
         }

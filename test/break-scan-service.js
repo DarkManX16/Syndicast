@@ -208,17 +208,30 @@ module.exports = async () => {
             st.durationS = 900;
             let lowFrom = null;
             let abortedAt = null;
+            let otherDriveStopped = null;
             st.during = async (call, opts) => {
                 const ss = call.args[call.args.indexOf('-ss') + 1];
+                if ( (otherDriveStopped === null) && call.args.join(' ').includes('silencedetect') && (ss === '0.000') ) {
+                    // a viewer slow on F: while the scanner reads this G: file: not the scanner's doing (Nov 12)
+                    st.live = [ { id: 6, channel: 2, title: 'Cheers', drive: 'F:', pace: 0.97 } ];
+                    for (let k = 0; (k < 15) && ! opts.signal.aborted; k++) {
+                        st.now += 2000;
+                        s.tick();
+                    }
+                    otherDriveStopped = opts.signal.aborted;
+                    st.live = [ { id: 6, channel: 2, title: 'Cheers', drive: 'F:', pace: 1.0 } ];
+                    s.tick();
+                    return null;
+                }
                 if ( (lowFrom === null) && call.args.join(' ').includes('silencedetect') && (ss === '300.000') ) {
-                    st.live = [ { id: 7, channel: 2, title: 'Cheers', drive: 'F:', pace: 0.97 } ];
+                    st.live = [ { id: 7, channel: 1, title: 'Happy Days', drive: 'G:', pace: 0.97 } ];
                     lowFrom = st.now;
-                    while (! opts.signal.aborted) {
+                    for (let k = 0; (k < 60) && ! opts.signal.aborted; k++) {
                         st.now += 2000;
                         s.tick();
                     }
                     abortedAt = st.now;
-                    st.live = [ { id: 7, channel: 2, title: 'Cheers', drive: 'F:', pace: 1.0 } ];
+                    st.live = [ { id: 7, channel: 1, title: 'Happy Days', drive: 'G:', pace: 1.0 } ];
                     return { code: null, stderr: '', aborted: true };
                 }
                 return null;
@@ -226,18 +239,20 @@ module.exports = async () => {
             const entry = s.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' );
             const result = await s.scanOne(entry);
             const pieces = silenceStarts(st);
-            suite.check('a live item below 0.99 stops the scanner\'s ffmpeg once it has been low for 10 s',
+            suite.check('a viewer slow on another drive for 30 s does not stop the scanner\'s ffmpeg',
+                otherDriveStopped === false, otherDriveStopped);
+            suite.check('a viewer below 0.99 on the drive being read stops the scanner\'s ffmpeg once it has been low for 10 s',
                 (abortedAt - lowFrom) === 12000, abortedAt - lowFrom);   // first low reading at the first 2 s tick
             suite.check('...the stopped piece runs again from its start after the 10-minute wait, and the file is saved',
                 (result === 'scanned') && (pieces.join(',') === '0.000,300.000,300.000,600.000') && (st.calls[3].startedAt - abortedAt >= 10 * MIN), pieces.join(','));
             s.tick();
             suite.check('...with the pause and the resume in the log',
-                s.governor.log.some( (e) => /^Paused for 10 min: channel 2's Cheers fell to 0\.970$/.test(e.text) ) && s.governor.log.some( (e) => e.text === 'Resumed Gentle after the pause' ));
-            const pauseEntry = s.governor.log.find( (e) => e.kind === 'pause' );
-            suite.check('...the pause entry says which drive the slow item was on and which the scanner was reading',
-                (pauseEntry.drive === 'F:') && (pauseEntry.scanningDrive === 'G:'), JSON.stringify(pauseEntry));
+                s.governor.log.some( (e) => /^Paused for 10 min: channel 1's Happy Days fell to 0\.970$/.test(e.text) ) && s.governor.log.some( (e) => e.text === 'Resumed Gentle after the pause' ));
+            const pauseEntries = s.governor.log.filter( (e) => e.kind === 'pause' );
+            suite.check('...one pause only, and its entry names the slow item\'s drive and the drive being read',
+                (pauseEntries.length === 1) && (pauseEntries[0].drive === 'G:') && (pauseEntries[0].scanningDrive === 'G:'), JSON.stringify(pauseEntries));
 
-            // Gentle's rest: with Cheers still playing, each run is followed by twice its length.
+            // Gentle's rest: with Happy Days still playing, each run is followed by twice its length.
             const gaps = [];
             for (let i = 4; i < st.calls.length; i++) {
                 gaps.push(st.calls[i].startedAt - st.calls[i - 1].endedAt);
