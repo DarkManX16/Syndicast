@@ -1200,7 +1200,11 @@ and 10 seconds after a channel is saved, it queues what needs scanning.
     while the scanner is working, counted across that channel's items (a break
     of 6-second bumpers is one low stretch, not several short ones; approved by
     Ron Nov 7), ignoring an item held back by a slow or departed viewer, whose
-    output simply is not being read, or the whole PC's CPU stays above 85% for 30
+    output simply is not being read, and counting only while the scanner is on
+    a file from that item's own drive (Ron, Nov 12: on 18000's first day, 14
+    pauses, 5.2 hours, all came from viewers slow on other drives, none from
+    the scanner's own, and viewers on its drive were no slower than with it
+    idle), or the whole PC's CPU stays above 85% for 30
     seconds (the other streaming server's load counts here, since its streams
     cannot be measured directly): the scanner stops its own ffmpeg at once
     (a piece is at most 5 minutes of audio or a few seconds of picture, so
