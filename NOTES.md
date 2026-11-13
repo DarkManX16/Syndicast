@@ -8636,6 +8636,11 @@ it. Built on `never-air-everywhere` (Fable 5.2), not merged.
 - **Guarded by** `test/channel-catalog.js` (three races), `test/delete-still-airs.js`,
   `test/kept-editor.js` (the sentence, a leftover mark, the failed save), `test/show-catalog.js`
   (the match), `test/special-day-edits-generator.js` (the pool). Suite 3304/3304.
+- **The checklist, on the final code** (a fresh copy taken Nov 13 4:38am, its scanner paused, port
+  18270): 11 of 11. `add-delete-create` deleted the same five House of Mouse episodes: two said
+  "Your swap of it on Nov 19 at 2:30pm still airs; Put back that swap to remove it too." (and
+  4:00pm), none of the five was left anywhere else in the lineup, 2 entries added and 3 already
+  there - House of Turkey now counted through its old file's entry.
 
 ### One unreadable file crashed the server
 
