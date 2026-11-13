@@ -542,14 +542,14 @@ function makeRunner(opts, page) {
                 // Delete's one sentence: a swap or insert of the episode Ron placed himself still
                 // airs, and is named; nothing is said otherwise (Ron, Nov 12).
                 const program = before.programs.find((p) => !p.isOffline && p.showTitle === opts.show && p.title === title);
-                const mine = program ? keptRows.handPlacedAhead({ lineup: { programs: before.programs, startTime: new Date(before.startTime).getTime() },
-                    program, now: Date.now(), schedule: before.scheduleBackup }) : [];
-                const expected = keptRows.stillAirs(mine);
+                const placed = program ? keptRows.handPlacedAhead({ lineup: { programs: before.programs, startTime: new Date(before.startTime).getTime() },
+                    program, now: Date.now(), schedule: before.scheduleBackup, same: require('../src/show-catalog').sameEpisode(program) }) : [];
+                const expected = keptRows.stillAirs(placed);
                 const heard = await lastChange();
                 if (heard !== expected) {
                     throw new Check(`Delete on "${title}" said "${heard}", not "${expected}"`);
                 }
-                handPlaced += mine.length;
+                handPlaced += placed.length;
                 if (expected) {
                     sentences.push(expected);
                 }
