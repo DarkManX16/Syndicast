@@ -511,6 +511,9 @@ function makeRunner(opts, page) {
             const { n } = await addShowAtEnd();
             const rowText = (k) => rowHandle(k).then((h) => h.evaluate((el) => el.textContent.replace(/\s+/g, ' ').trim()));
             const gone = [];
+            const sentences = [];
+            let handPlaced = 0;
+            const keptRows = require('../src/kept-rows');
             for (let i = 0; i < 5; i++) {
                 await page.evaluate(() => document.getElementById('channelConfigProgramList').scrollTo(0, 1e9));
                 await sleep(800);
@@ -534,9 +537,24 @@ function makeRunner(opts, page) {
                 if (still) {
                     throw new Check(`"${text.slice(0, 60)}" is still in the list after Delete`);
                 }
-                gone.push((/ E\d+ (.*?) [\d:]+$/.exec(text) || [])[1] || text);
+                const title = (/ E\d+ (.*?) [\d:]+$/.exec(text) || [])[1] || text;
+                gone.push(title);
+                // Delete's one sentence: a swap or insert of the episode Ron placed himself still
+                // airs, and is named; nothing is said otherwise (Ron, Nov 12).
+                const program = before.programs.find((p) => !p.isOffline && p.showTitle === opts.show && p.title === title);
+                const mine = program ? keptRows.handPlacedAhead({ lineup: { programs: before.programs, startTime: new Date(before.startTime).getTime() },
+                    program, now: Date.now(), schedule: before.scheduleBackup }) : [];
+                const expected = keptRows.stillAirs(mine);
+                const heard = await lastChange();
+                if (heard !== expected) {
+                    throw new Check(`Delete on "${title}" said "${heard}", not "${expected}"`);
+                }
+                handPlaced += mine.length;
+                if (expected) {
+                    sentences.push(expected);
+                }
             }
-            const said = await lastChange();
+            const said = sentences.join(' / ');
             const timeSlotsShowing = await page.evaluate(() => [...document.querySelectorAll('button[title="Time Slots..."]')].some((b) => b.getClientRects().length > 0));
             if (!timeSlotsShowing) {
                 await clickText('button[ng-click="toggleTools()"]', /Tools/, 'Tools');
@@ -563,16 +581,37 @@ function makeRunner(opts, page) {
             if (listed.length !== 5 || added.some((e) => e.how !== 'deleted' || gone.indexOf(e.title) === -1)) {
                 throw new Check(`of the 5 deleted (${gone.join(', ')}), ${listed.length} are on the never-air list; added: ${added.map((e) => e.title).join(', ')}`);
             }
-            const back = airings(after, 21).filter((a) => gone.some((t) => a.split('\t')[1].endsWith(` ${t}`)));
+            // None of the five airs again - anywhere on the channel, to the lineup's end - except
+            // where Ron placed that very airing himself (his swaps and inserts, in the list or
+            // inside a special day, and a day's picked item), which Delete named above.
+            const back = [];
+            let stay = 0;
+            let t = new Date(after.startTime).getTime();
+            for (const p of after.programs) {
+                const start = t;
+                t += p.duration;
+                if (p.isOffline || start + p.duration <= Date.now() || p.showTitle !== opts.show || gone.indexOf(p.title) === -1) {
+                    continue;
+                }
+                if (keptRows.handPlaced(p, after.scheduleBackup) !== null) {
+                    stay++;
+                } else {
+                    back.push(`${new Date(start).toLocaleString()} ${p.title}`);
+                }
+            }
             if (back.length > 0) {
-                throw new Check(`${back.length} deleted episodes air in the next 3 weeks, e.g. ${back[0]}`);
+                throw new Check(`${back.length} airings of deleted episodes are still in the lineup, e.g. ${back[0]}`);
+            }
+            if (stay !== handPlaced) {
+                throw new Check(`Delete named ${handPlaced} of Ron's own swaps and inserts still ahead, but ${stay} air`);
             }
             if (keptCount(after) > keptCount(before)) {
                 throw new Check(`kept rows went from ${keptCount(before)} to ${keptCount(after)}`);
             }
             return `${n} episodes of ${opts.show} added; 5 deleted, each gone from the list at once with nothing asked (${gone.join('; ')})`
                 + `${said ? `, said "${said}"` : ', nothing said'}; the Time Slots dialog said ${notes.length === 0 ? 'nothing about kept rows' : `"${notes[0]}"`}; `
-                + `Create Lineup and Update Channel saved ${after.programs.length} entries, none of the 5 in the next 3 weeks; all 5 on the never-air list (${added.length} added, ${5 - added.length} already there, left as they were); kept rows ${keptCount(before)} -> ${keptCount(after)}`;
+                + `Create Lineup and Update Channel saved ${after.programs.length} entries, none of the 5 anywhere in the lineup`
+                + `${stay ? ` but the ${stay} Ron placed by hand` : ''}; all 5 on the never-air list (${added.length} added, ${5 - added.length} already there, left as they were); kept rows ${keptCount(before)} -> ${keptCount(after)}`;
         },
         'swap-drag-put-back': async () => {
             await openEditor();
