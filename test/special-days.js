@@ -262,7 +262,7 @@ module.exports = async () => {
     suite.check('saving: specialDays that isn\'t a list is warned about once',
         JSON.stringify(warnings(Object.assign( {}, ch.schedule, { specialDays: 'x' } ))) === '["Channel 1: scheduleBackup.specialDays was saved as string rather than an array. It will be ignored."]', '');
 
-    // A block that exists only for a special day (Ron, Nov 5): its own bumpers, no
+    // A block that exists only for a special day (DarkManX16, Nov 5): its own bumpers, no
     // weekly airings of its own - not a mistake to warn about.
     const blocksAirless = (airings) => ch.blocks.concat([ { id: 'bl_fullcycle', name: 'Toonami: Full Cycle', airings: airings } ]);
     const airingsWarnings = (blocks, scheduleBackup) => {

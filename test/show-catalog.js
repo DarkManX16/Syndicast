@@ -130,7 +130,7 @@ module.exports = async function () {
             JSON.stringify({ shown: shown['tv.Wings'].length, unshown: unshown['tv.Wings'].length }));
     }
     {
-        // The Catalog page rebuilds its rows after every save; what Ron ticked on other shows survives.
+        // The Catalog page rebuilds its rows after every save; what DarkManX16 ticked on other shows survives.
         const state = catalog.emptyState();
         const before = catalog.reviewList({ lineupPool, catalogs, state, getShowData });
         const wingsRow = before.find((r) => r.showId === 'tv.Wings');
@@ -195,14 +195,14 @@ module.exports = async function () {
         suite.check('...and not inside other words',
             ['Eastern Promise', 'Cupidity', 'Santana', 'Pilgrimage Road'].map(catalog.holidayOf).every((h) => h === null));
         suite.check('...curly apostrophes too', catalog.holidayOf('Mother’s Day') === "Mother's Day");
-        // Titles from Ron's own review lists that the first words missed (final review, Oct 10).
+        // Titles from DarkManX16's own review lists that the first words missed (final review, Oct 10).
         const missed = { 'Turkey Jerky': 'Thanksgiving', "Ed, Edd n Eddy's Jingle Jingle Jangle": 'Christmas', 'Road to the North Pole': 'Christmas',
             'The Futurama Holiday Spectacular': 'Christmas', 'Deck the Halls': 'Christmas', 'Deck the Malls': 'Christmas', 'For Whom the Jingle Bell Tolls': 'Christmas',
             'Home for the Holidays': 'Christmas', 'A Rugrats Kwanzaa': 'Kwanzaa', 'Seven Days of Kwanzaa': 'Kwanzaa', 'A London Carol': 'Christmas',
             "It's the Great Pumpkin, Juniper Lee": 'Halloween', 'Night of The Day of the Dead': 'Halloween', 'Labor Day': 'Labor Day',
             'The Turkey Who Came to Dinner': 'Thanksgiving', 'Krampus Night': 'Christmas', 'Passover Story': 'Passover', 'Memorial Day': 'Memorial Day' };
         const got = Object.keys(missed).filter((t) => catalog.holidayOf(t) !== missed[t]).map((t) => `${t} -> ${catalog.holidayOf(t)}`);
-        suite.check('...and the words Ron\'s lists use', got.length === 0, got.join('; '));
+        suite.check('...and the words DarkManX16\'s lists use', got.length === 0, got.join('; '));
         suite.check('...still not inside other words', ['Elfman Returns', 'Carolina Blues', 'Laborious', 'Deckhand'].map(catalog.holidayOf).every((h) => h === null));
         const xmasLong = episode('Doug', 1, 9, { title: "Doug's Christmas Story", duration: 44 * MIN });
         const long = episode('Doug', 1, 10, { title: 'Doug Takes the Case', duration: 31 * MIN + 20 * 1000 });
@@ -228,7 +228,7 @@ module.exports = async function () {
 
     suite.log('-- a replaced or second file of a listed episode --');
     {
-        // Ron, Nov 12-13, 2026: the list is keyed by file, so a replaced or renamed file, or a
+        // DarkManX16, Nov 12-13, 2026: the list is keyed by file, so a replaced or renamed file, or a
         // second copy in the library, brought a deleted episode back (House of Turkey). The same
         // show, the same title, and the file's own name carrying that title is the same episode.
         // Plex titles alone are not enough: three of his files carry another episode's title.

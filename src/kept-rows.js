@@ -222,7 +222,7 @@ function sayLate(overrun, late) {
 }
 
 /*
- * Episodes move along (Ron's rule 5). An episode an edit pushes out airs at
+ * Episodes move along (DarkManX16's rule 5). An episode an edit pushes out airs at
  * its position's next airing, and each later airing of the position takes the
  * episode of the one before, to the end of the lineup the generator made;
  * Put back runs it the other way. That end is pins.loopEnd: after its days of
@@ -571,7 +571,7 @@ function sayLanded(landed) {
 }
 // " He's Too Sexy for His Fat runs 4:00 long at Tue Nov 3, 12:30am, back on time at 1:00am."
 // Only in the coming week: a night further off is laid out again by Create
-// Lineup before it airs (Ron, Oct 29).
+// Lineup before it airs (DarkManX16, Oct 29).
 const SAID_AHEAD = 7 * DAY;
 function sayRunsLong(found, now) {
     let late = found.filter( (x) => x.start < now + SAID_AHEAD );
@@ -735,7 +735,7 @@ function breakBefore({ lineup, index }) {
 
 /*
  * The item right before the airing at `index`, after the break in front of it
- * (Ron, Nov 6): that break shrinks by the item's length and nothing else
+ * (DarkManX16, Nov 6): that break shrinks by the item's length and nothing else
  * moves. Refused when there is no break, when it is shorter than the item, or
  * when the item would have to begin in the past. Put back gives the break its
  * length again.
@@ -828,7 +828,7 @@ function insertMany({ lineup, index, items, now, schedule }) {
 /*
  * Delete on a Time Slots channel of a plain Flex row, or of an episode (any
  * row nothing keeps as it is): it leaves the list at once, as before kept
- * rows - nothing kept, nothing moved along (Ron, Oct 30). The gap it leaves
+ * rows - nothing kept, nothing moved along (DarkManX16, Oct 30). The gap it leaves
  * closes only up to the next kept row still ahead: the rows between move that
  * much earlier, same as an ordinary delete; a Flex of its length goes back in
  * right before the kept row, merged into the break already there when one is,
@@ -883,9 +883,9 @@ function deleteRow({ lineup, index, now, schedule }) {
 
 /*
  * A deleted episode never airs again on the channel - regular slots, special
- * days, kept rows - except where Ron placed that very airing himself: a swap
+ * days, kept rows - except where DarkManX16 placed that very airing himself: a swap
  * or an insert in the list, one inside a special day, or a day's picked item
- * (Ron, Nov 12, 2026). Those stay, and Delete's one sentence names them.
+ * (DarkManX16, Nov 12, 2026). Those stay, and Delete's one sentence names them.
  * handPlaced says which of these a row is, or null: a row only dragged, a
  * day row's own pick of the rotation, and a mark left on a regular airing
  * are not his placement of the episode.
@@ -924,7 +924,7 @@ function handPlaced(program, schedule) {
 
 const sameFile = (program) => (p) => rounds.fileKey(p) === rounds.fileKey(program);
 
-// Ron's placements of `program`'s episode still to air: [ { at, kind, day } ],
+// DarkManX16's placements of `program`'s episode still to air: [ { at, kind, day } ],
 // in the list's order. `same(p)` says whether a row airs it - by file, unless
 // the caller knows better.
 function handPlacedAhead({ lineup, program, now, schedule, same }) {
@@ -1120,7 +1120,7 @@ function move({ lineup, from, to, now, sure, schedule }) {
         return {};
     }
     if (kt === kf + 1) {
-        // Dropped right after its own break, in front of the airing after it (Ron, Nov 6):
+        // Dropped right after its own break, in front of the airing after it (DarkManX16, Nov 6):
         // the row moves past the break and sits against that airing; nothing else moves.
         // Anywhere in or before its break it is already there.
         if ( (to !== rows[kt].index) || (rf.flex <= 0) ) {
@@ -1442,7 +1442,7 @@ function putBack({ lineup, index, now, schedule, catalog }) {
 }
 
 /*
- * The first open of a channel (Ron, Oct 29): what this list holds that was
+ * The first open of a channel (DarkManX16, Oct 29): what this list holds that was
  * edited by hand, before pins become kept rows. Read over one loop of the
  * list from `now`, each entry at its next airing:
  *
@@ -1643,7 +1643,7 @@ function applyFirstOpen({ programs, startTime, now, schedule, getShowData }) {
  *   [ { at, program, kept: true, key?, orNothing? } ]
  *
  * `neverAir(program)`, optional, says an episode is on the channel's never-air
- * list (Ron, Nov 12, 2026). His swap or insert of one airs as it is
+ * list (DarkManX16, Nov 12, 2026). His swap or insert of one airs as it is
  * (handPlaced); a row he only dragged keeps its time and airs its position's
  * next episode instead, and one with no position is let go.
  */
@@ -1673,7 +1673,7 @@ function keptAhead({ programs, startTime, now, neverAir }) {
 }
 
 /*
- * The Time Slots dialog's one line (Ron, Oct 30): your own swaps, inserts and
+ * The Time Slots dialog's one line (DarkManX16, Oct 30): your own swaps, inserts and
  * dragged rows that Create Lineup keeps, and nothing when there are none - rows
  * kept in time only moved with them, and aren't counted. `rows`, keptAhead's
  * answer. "Your 2 swaps and 1 insert stay where they are."
@@ -1697,7 +1697,7 @@ function sayKept(rows) {
 }
 
 /*
- * Takes off the marks no edit of Ron's still to air accounts for (Ron, Oct 30:
+ * Takes off the marks no edit of DarkManX16's still to air accounts for (DarkManX16, Oct 30:
  * only real swaps, inserts and drags are kept). Nothing moves; only marks come
  * off:
  *   - every mark on a row Create Lineup lets go anyway: aired, or past the

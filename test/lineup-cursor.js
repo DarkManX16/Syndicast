@@ -49,7 +49,7 @@ function startOf(channel, index) {
     return at;
 }
 
-// Filler clips of 10-60s, the spread of Ron's CN Powerhouse list.
+// Filler clips of 10-60s, the spread of DarkManX16's CN Powerhouse list.
 const FILL = [];
 [10, 15, 15, 20, 20, 30, 30, 30, 30, 30, 45, 60].forEach((s, i) => {
     for (let v = 0; v < 3; v++) FILL.push({ title: `Fill#${i}.${v}`, key: `/f/${i}.${v}`, duration: s * SEC + v * 137, serverKey: 'srv' });

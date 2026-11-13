@@ -2,7 +2,7 @@
 
 ## Design principle
 
-Every feature is built around how Ron programs his channels, with Syndicast's
+Every feature is built around how DarkManX16 programs his channels, with Syndicast's
 own identity. Ideas are never copied, and the docs and the code describe our
 designs on their own terms, without naming other programs. Any roadmap line
 below says what we do and why. **Syndicast innovates.**
@@ -26,18 +26,18 @@ below says what we do and why. **Syndicast innovates.**
   check that `GET /api/breaks/scanner` says "Paused by hand" before running
   anything against it. Only a proof about the scanner itself runs it, and then
   in Gentle (`BREAK_SCAN_FORCE_MODE=gentle`) with a guard watching 18000's
-  paces. Ron added this Nov 11, 2026, after two scratch servers' scanners
+  paces. DarkManX16 added this Nov 11, 2026, after two scratch servers' scanners
   dipped 18000's viewers to 0.856 on Nov 10.
 - **Keep it simple.** No walls of text: at most one short line per change. Show a
-  change in the list itself rather than describing it, and never add a message Ron
-  didn't ask for. Ron added this Oct 30, 2026, after the kept-rows editor answered
+  change in the list itself rather than describing it, and never add a message DarkManX16
+  didn't ask for. DarkManX16 added this Oct 30, 2026, after the kept-rows editor answered
   everyday edits with prompts, kept marks and lines of "runs longer: will push".
 - **Workflows that must keep working.** Every session that changes the editor -
   the channel editor, Swap and Insert, the library dialog, Time Slots, the filler
   editor, their templates, `style.css`, or what the page bundles from `src/`
   (`kept-rows.js`, `pins.js`, `slot-progress.js`) - runs this whole list with
   real clicks on a preview on a copy of `.dizquetv-dev` before merging, and its
-  report says what each one did. Ron added this Oct 30, 2026, after the kept-rows
+  report says what each one did. DarkManX16 added this Oct 30, 2026, after the kept-rows
   merge left Cancel and Update Channel unclickable and sent library adds into the
   lineup; Resolved has both.
   1. Opening and closing a channel editor with Cancel, and with Update Channel.
@@ -50,9 +50,9 @@ below says what we do and why. **Syndicast innovates.**
   6. Time Slots and Create Lineup.
   7. Filler list editing.
   8. Adding a show at the end of the list, deleting five of its episodes (each
-     gone from the list at once), then Create Lineup (added by Ron Oct 30).
+     gone from the list at once), then Create Lineup (added by DarkManX16 Oct 30).
   9. Insert before, and a clip dropped between a Flex and the airing after it
-     (added by Ron Nov 6): `--only insert-before`.
+     (added by DarkManX16 Nov 6): `--only insert-before`.
 
   `node scripts/editor-workflows.js --url http://localhost:<port> --channel 3`
   does all nine against a running preview, from a fresh page each, clicking
@@ -74,13 +74,13 @@ below says what we do and why. **Syndicast innovates.**
   workflow saves, not how the page reads.
 - **Read the whole plan, then innovate.** Before building, read the entire
   design plan, what is built and what is still to come: the 1.0 list, the
-  roadmap and the feature's plan. Then think about the experience for Ron and
+  roadmap and the feature's plan. Then think about the experience for DarkManX16 and
   his viewers, and think outside the box: propose ideas beyond the brief that
   would make it simpler or better, using any tool available. Propose them
   before building them. Ideas must remove clutter, not add it (keep it simple;
   don't clutter the site). Never break what already works: the full suite and
   the workflow checklist must pass, and existing behaviour stays the same
-  unless Ron approves a change. Ron added this Nov 7, 2026 as two rules and
+  unless DarkManX16 approves a change. DarkManX16 added this Nov 7, 2026 as two rules and
   asked for them to be one on Nov 9.
 
 ## Feature roadmap
@@ -381,7 +381,7 @@ for the full spec, stages and acceptance tests.
       Real-data check, `node scripts/transitions-week.js <channel.json>` on a
       copy: channel 1, week of Oct 18, reads 442 breaks, **117 / 297 / 28**.
       The spec said 113 / 301 / 28 and that was right for the Oct 1 file (the
-      Oct 1 backup reproduces it exactly); Ron then moved day-part and block
+      Oct 1 backup reproduces it exactly); DarkManX16 then moved day-part and block
       boundaries, which moves 26 of the same 442 breaks between situations.
       Only the split moves; the total and the 281 pairs depend on the lineup
       alone. Re-measure after any boundary edit before quoting the numbers.
@@ -418,7 +418,7 @@ for the full spec, stages and acceptance tests.
       would each name the wrong show everywhere. A word is not learned if it
       is a number, already means a show, is part of a show title, is a
       structural word, is under three letters, or appears in a clip naming a
-      different show. Simulated on Ron's lists: one SGC2C fix learns `sgc2c`
+      different show. Simulated on DarkManX16's lists: one SGC2C fix learns `sgc2c`
       and names all 7 SGC2C clips; one DBZ fix learns `dbz` and `piccolo` and
       names 31 more Toonami clips plus a toy ad. It is not airtight: a fix on
       "Grim Advs" learns `advs`, a generic abbreviation that also names three
@@ -428,7 +428,7 @@ for the full spec, stages and acceptance tests.
       that would be learned and let them be unticked before anything is
       saved; `learnAliases` only returns candidates.
 
-      **Follow-up, Oct 2, 2026: the Nick at Nite Up Next lists.** Ron moved
+      **Follow-up, Oct 2, 2026: the Nick at Nite Up Next lists.** DarkManX16 moved
       his Up Next bumpers and promos into their own lists (Nick at Nite Up
       Next Bumpers 21 clips, Up Next (Back 2 Back) 10, Up Next Promos 3). The
       dev data has no Nick at Nite lineup (its "NICK Picks" channel is one
@@ -499,11 +499,11 @@ for the full spec, stages and acceptance tests.
       the next show's own episodes) is the second. Only a `pair` step reads two
       names as now then; a step keyed on now never plays one. The spec's own
       "Now/Then (Grim / Foster's)" row needed this, since that clip plays before
-      Grim. On Ron's real lists, with a stand-in lineup of the real show titles
+      Grim. On DarkManX16's real lists, with a stand-in lineup of the real show titles
       (below), "Up Next Bumper (All in the family-The Jeffersons)" plays before
       All in the Family when The Jeffersons follows and not when Cheers does.
       (2) *`onlyIfNoMatch` names a step; it does not mean "any step found
-      nothing".* Ron's sequences put a Next Promos step before the Up Next
+      nothing".* DarkManX16's sequences put a Next Promos step before the Up Next
       bumper and most shows have no promo, so "any" would play WBRB and BTTS even
       when the Up Next bumper played. A clip from the watched step's fallback
       list counts as a match. The mutation that turns it back into "any" fails
@@ -572,7 +572,7 @@ for the full spec, stages and acceptance tests.
       of the other steps in the same row, not free text.
 
       **Step 4 built Oct 3, 2026 (Sonnet 5.5), on branch `stage5-step4`: playing
-      plans through the lineup cursor. Confirmed in TiviMate by Ron on 910, 911,
+      plans through the lineup cursor. Confirmed in TiviMate by DarkManX16 on 910, 911,
       912 and 913: every bumper once and whole, every show from its start, and a
       tune-in 8s before a break's end gave NEXT - SGC2C then the show.** 614 to
       662 tests.
@@ -632,7 +632,7 @@ for the full spec, stages and acceptance tests.
       Preview channels 910 to 913: real episodes of ATHF, Space Ghost, Home
       Movies and The Venture Bros. (910), I Love Lucy, The Brady Bunch, The
       Wonder Years and Full House from Plex (911), and stage 4's compressed and
-      5-8s-bumper channels (912, 913). **On Ron's Nick channel a WBRB clip
+      5-8s-bumper channels (912, 913). **On DarkManX16's Nick channel a WBRB clip
       names the show coming back after the break**, so the Nick at Nite
       sequence keys WBRB, like BTTS, on the next show, both only when Up Next
       finds nothing; this settles the step 3 question about keying WBRB on now.
@@ -640,7 +640,7 @@ for the full spec, stages and acceptance tests.
       `placeByClock` and the shared plan, nothing more.
 
       **Step 3b built Oct 3, 2026 (Sonnet 5.5), on branch `stage5-step3b`: days,
-      chance and lists whose clips feature shows.** Three options so Ron can
+      chance and lists whose clips feature shows.** Three options so DarkManX16 can
       lay breaks out freely, each off by default: nothing saved changes, and the
       existing 662 tests passed untouched before any new one was added. 662 to
       724 tests.
@@ -790,7 +790,7 @@ for the full spec, stages and acceptance tests.
         `channel-config.js` and runs it with only a `scope`, so a call from inside it to
         a helper declared elsewhere in the directive broke that test (and would have
         broken the function there); it now only bumps `scope.flexTagVersion`.
-      - **A friendlier pass, after Ron tried it (Oct 4).** The logic was right but too
+      - **A friendlier pass, after DarkManX16 tried it (Oct 4).** The logic was right but too
         technical to set up comfortably, so four things changed and nothing was taken away.
         (1) *Plain labels:* the left of each row is captioned "Before the commercials" and
         the right "After the commercials, right before the show", the middle reads
@@ -823,7 +823,7 @@ for the full spec, stages and acceptance tests.
         quick setup built the two steps, an empty step vanished on Done and on a tab
         switch, copying to a day-part and a block updated both (the open day-part live) and
         left Miguzi alone, and a save wrote `transitions` to exactly those three contexts.
-      - **Up Next lists that were not found in the preview (Oct 4), and the fixes.** Ron
+      - **Up Next lists that were not found in the preview (Oct 4), and the fixes.** DarkManX16
         saw clips he knew were in his lists missing from the preview. Investigated before
         anything was changed, on a copy, against the three lists he named (42 clips),
         then fixed. The causes, with clips affected: 18 were named correctly (only 9 of
@@ -841,7 +841,7 @@ for the full spec, stages and acceptance tests.
         elsewhere"; with those clips out of the comparison it learns "foster"); **(b) the
         preview showed only the first fitting clip in list order**, so 9 correctly named
         clips never showed, among them Camp Lazlo's solo "YES! Era NEXT" bumpers, 7th and
-        8th of 9 clips that fit. Nothing was saved on any card of the copy, so Ron's own
+        8th of 9 clips that fit. Nothing was saved on any card of the copy, so DarkManX16's own
         steps were not visible; the check put one "for the show coming up" step on every
         context.
       - **Built as five commits.** The four matcher fixes, each its own commit:
@@ -871,7 +871,7 @@ for the full spec, stages and acceptance tests.
       - **The preview change.** `buildPlan` returns `fits` on each step that plays, the
         titles of every clip that fitted the tier it chose from, the chosen one first (a clip
         already used in the plan is not in it). The preview lists them under the step.
-      - **Hyphens, several shows and abbreviations (Oct 4, after Ron's Miguzi look).** Three
+      - **Hyphens, several shows and abbreviations (Oct 4, after DarkManX16's Miguzi look).** Three
         more changes, each its own commit, then rows from the real titles. (1) *Hyphens:*
         "Miguzi - Next Bumper (TMNT-Teen Titans)" is two shows; a hyphen inside one pair of
         brackets cuts it into pieces and the never-half-read rule now runs over any number
@@ -895,7 +895,7 @@ for the full spec, stages and acceptance tests.
         initials are counted with and without a leading "The" and a subtitle's initials make
         an abbreviation ambiguous (never a meaning of their own): TAS names nothing, and neither
         does KND (80 clips, Codename: Kids Next Door), left to the review screen.
-      - **Ron's Miguzi bumpers, as the data has them.** The three-show bumper is titled
+      - **DarkManX16's Miguzi bumpers, as the data has them.** The three-show bumper is titled
         "(TMNT-Static-Teen Titans)", with "Static", not "Static Shock". "Static" alone is not
         Static Shock, so the clip is unresolved until "static" is taught as an alias, which is
         step 6's job; in the preview copy the alias was added by hand to show Sunday. The
@@ -984,7 +984,7 @@ for the full spec, stages and acceptance tests.
         live channel plays nothing until the lists named in the overview are reviewed.
 
       **Movies and seasons in clip names, built Oct 6, 2026 (Sonnet 5.5), on branch
-      `names-movies-seasons`.** Ron's ask: "DragonBall Z Movie Cooler's Revenge Intro" plays before
+      `names-movies-seasons`.** DarkManX16's ask: "DragonBall Z Movie Cooler's Revenge Intro" plays before
       that movie and not before a DBZ episode; Toonami's saga intros and Up Next promos play only
       before their season; the most specific clip wins. Full rules are in the spec's "Movies,
       seasons and specials" and "The most specific clip wins". 1,133 to 1,253 tests.
@@ -999,7 +999,7 @@ for the full spec, stages and acceptance tests.
       - **What Plex and the data said.** Plex titles the DBZ seasons "Season 1" to "Season 9"; the sagas
         are only in the folder names ("03. The FRIEZA Saga (Eps. 075-107)"), so those are offered as
         hints, never as nicknames on their own. Specials are season 0 ("Bardock - The Father of Goku" is
-        S0E16). All four DBZ movies Ron has clips for are in Plex's "Y. Toonami Movies" library but on no
+        S0E16). All four DBZ movies DarkManX16 has clips for are in Plex's "Y. Toonami Movies" library but on no
         channel yet. No movie on any dev channel is outside a custom show, and 1,054 of the 1,374 distinct
         movie items are under 15 minutes (Looney Tunes shorts, My Gym Partner's a Monkey), which is why a
         movie is offered only at **40 minutes or more**. A movie in a custom show is keyed by its own title,
@@ -1012,7 +1012,7 @@ for the full spec, stages and acceptance tests.
         special. Teaching "frieza saga" (the real flow, in the browser) named the clip it came from and
         suggested 5 more across lists.
       - **Decisions.** (1) Specific clips from the step's list *and* its fallback list come before show
-        clips (Ron's call: the most specific clip wins), so the Bardock intro in "Dragon Ball Z Movie Intro"
+        clips (DarkManX16's call: the most specific clip wins), so the Bardock intro in "Dragon Ball Z Movie Intro"
         beats a plain DBZ intro in the main list. (2) A special needs its show named in the clip as well
         (without that, "The Musical Time Machine" named a Brak Show special). (3) A season from "Season N"
         and a special are less certain, so "accept all" skips them; a movie by subtitle and a taught
@@ -1051,7 +1051,7 @@ for the full spec, stages and acceptance tests.
         `checkNickname` would refuse it anyway) is covered only by its message.
 
       **Several seasons in one name, Oct 7, 2026 (Sonnet 5.5), on branch `names-seasons-anyof`.**
-      Ron's ask: Justice League Unlimited is seasons 3 to 5 of Justice League in his Plex, so
+      DarkManX16's ask: Justice League Unlimited is seasons 3 to 5 of Justice League in his Plex, so
       "Toonami - Justice League Unlimited Short Intro" should play before any episode of seasons 3, 4
       or 5, picked as several seasons in the picker and taught as a nickname ("justice league
       unlimited"). The first of four commits on the branch (the others: "any one of" several shows,
@@ -1064,7 +1064,7 @@ for the full spec, stages and acceptance tests.
         one stored form, `seasonsLabel` the words). Names saved before read and play as they did.
       - **The nickname holds the show's own title.** A phrase is looked for only in what the titles
         left, and "justice league unlimited" starts with the title "Justice League", which takes those
-        words first and leaves "unlimited": the phrase could never match, which is why Ron had taught
+        words first and leaves "unlimited": the phrase could never match, which is why DarkManX16 had taught
         the one word "unlimited" (as season 3) instead. Nicknames for seasons whose phrase contains a
         title of their own show are now looked for in the whole title first (`ownTitleNicknames`).
         No other nickname can hold a title of its show, so nothing taught before reads differently.
@@ -1081,13 +1081,13 @@ for the full spec, stages and acceptance tests.
         situation of every day-part and block, build the same plans: **0 differ**. The control
         (every saved show narrowed to one season) differs on 2,702, so the comparison can see a
         change. Test file: `test/names-seasons-anyof.js`, mutation-checked.
-      - **Ron's data.** His "unlimited" nickname (season 3 only) still works and the new phrase wins
+      - **DarkManX16's data.** His "unlimited" nickname (season 3 only) still works and the new phrase wins
         where both are in a title. "Toonami - Justice League Unlimited Short Intro (4K HD)" is saved
         as season 3 only and stays so until it is re-picked as seasons 3 to 5; a nickname never
         rewrites a saved name.
 
       **"Any one of" several shows in a name, Oct 7, 2026 (Sonnet 5.5), same branch.** The second
-      commit. Ron's Disney Channel Wand IDs show an actor, not a show ("Emily Osment Wand ID",
+      commit. DarkManX16's Disney Channel Wand IDs show an actor, not a show ("Emily Osment Wand ID",
       "Christy Carlson Romano Wand ID"), and an actor can stand for more than one show (Christy
       Carlson Romano: Even Stevens and Kim Possible). A name may now be `{ anyOf: [show, show, ...] }`
       (`clipNames.anyOfName` makes the stored form): two to eight different shows or custom shows, in
@@ -1125,11 +1125,11 @@ for the full spec, stages and acceptance tests.
         scripts. Tests in `test/names-seasons-anyof.js`, mutation-checked.
       - **The Wand ID clips are not in the dev copy** (no title with "Wand" in any of the 100 lists), so
         the check used the nearest real titles ("Express Yourself (Christy Romano)", the Kim Possible
-        and Even Stevens promos) and stand-ins named like Ron's.
+        and Even Stevens promos) and stand-ins named like DarkManX16's.
 
       **The Nicknames page, Oct 7, 2026 (Sonnet 5.5), same branch.** The fourth commit. Until now
       a nickname could be taught on the review screen and never changed: "unlimited" (taught as
-      season 3 of Justice League as a stand-in) could not be removed, and Ron will teach many more.
+      season 3 of Justice League as a stand-in) could not be removed, and DarkManX16 will teach many more.
       A "Nicknames" button on the Filler Lists page opens `#!/nicknames`: every nickname with what it
       means in words, how many clips have it in their title ("In titles") and whether a show it
       means is no longer on any channel, searchable, with Edit and Delete.
@@ -1165,7 +1165,7 @@ for the full spec, stages and acceptance tests.
         `propose` and the checks, which read through `load`.
 
       **Movies, seasons and specials inside "any one of", Oct 8, 2026 (Sonnet 5.5), on branch
-      `names-anyof-mixed`.** Ron's ask: many Disney Channel Wand IDs stand for a star who was in a show
+      `names-anyof-mixed`.** DarkManX16's ask: many Disney Channel Wand IDs stand for a star who was in a show
       and in one particular DCOM (A.J. Trauth: Even Stevens, and one movie). Until now an any-of could
       hold only shows and custom shows, so the only way to say "or that movie" was the whole DCOM custom
       show, which made the ID play before every DCOM. An any-of member may now be any single name: a
@@ -1198,7 +1198,7 @@ for the full spec, stages and acceptance tests.
         fresh copy of the dev data (9,602 clips in 104 lists, 49 nicknames): 0 proposals differ, and channel
         1's 3,520 breaks over 8 weeks with `show`, `pair` and `any` steps from the 42 lists that carry
         saved names: 0 plans differ. The control (every saved show narrowed to one season) differs on 2,702.
-      - **Ron's data.** The 8 Wand IDs that name the DCOM custom shows whole (A.J. Trauth, Kirsten Storms,
+      - **DarkManX16's data.** The 8 Wand IDs that name the DCOM custom shows whole (A.J. Trauth, Kirsten Storms,
         Tahj Mowry, Spencer Breslin, Mickey Mouse, Rutt & Tuke, the Epic Mickey ident, Basketball) are
         untouched and read as before; narrowing them to a movie is a pick in the picker.
       - **Checked by hand** on a scratch server (port 18170) on a copy of `.dizquetv-dev`, in the browser: the
@@ -1219,14 +1219,14 @@ for the full spec, stages and acceptance tests.
         `test/names-seasons-anyof.js` changed because they said a movie or a season was refused in an any-of
         or named "shows" in a message. 1,477 to 1,545 tests.
 
-      **A series of a custom show as a name, Oct 14, 2026 (Sonnet 5.5), on branch `names-series`.** Ron's
+      **A series of a custom show as a name, Oct 14, 2026 (Sonnet 5.5), on branch `names-series`.** DarkManX16's
       ask: several of his custom shows join series ("G Gundam/Gundam Wing/Gundam SEED+Destiny" holds Mobile
       Fighter G Gundam, Mobile Suit Gundam Wing and the two SEED series; "Mobile Suit Gundam Series" holds
       seven), and a clip belongs to one. In "Toonami Show Intros" "G Gundam Intro" must play only before G
       Gundam and "Gundam Wing Intro [1]" only before Wing, but both were saved as the whole custom show; in
       "Toonami AcTN Show Intros" "Mobile Suit Gundam Intro", "Gundam 0080 Intro" and "Gundam 0083 Intro" were
       suggested as the whole "Mobile Suit Gundam Series". Full rules are in the spec's "A series of a custom
-      show". Ron decided, after a plan with a sketch and a check on a copy: (1) a series name fits that
+      show". DarkManX16 decided, after a plan with a sketch and a check on a copy: (1) a series name fits that
       series' episodes inside the custom show **and wherever the same show airs on its own**, the way a movie
       name fits the movie wherever it airs (my first plan had it inside the custom show only); (2) a series
       found by a title its custom show answers to as well is less certain, and "accept all" skips it; (3) a
@@ -1277,7 +1277,7 @@ for the full spec, stages and acceptance tests.
         refused "g gundam": it already means the whole custom show), the Nicknames page (edit "gundam wing" to
         the series: it says one unsaved clip would read differently and 8 keep their saved names), and the hint
         on the two saved Wing clips, used and saved for one.
-      - **Ron's data.** Nothing was edited. The five saved clips stay as the whole custom show, and the six
+      - **DarkManX16's data.** Nothing was edited. The five saved clips stay as the whole custom show, and the six
         Gundam nicknames ("g gundam", "gundam seed", "gundam wing", "gundam 0080", "gundam 0083", "gundam
         08th") still mean whole custom shows, so "Gundam 0080 Intro" and "Gundam 0083 Intro" are still
         suggested as the whole "Mobile Suit Gundam Series" until each nickname is edited on the Nicknames page
@@ -1309,11 +1309,11 @@ for the full spec, stages and acceptance tests.
         last suite was episode-start-model) and did not repeat in the three later full runs that passed, cause not found. Not
         automated: the screens' clicking (checked by hand as above).
 
-      **Step 7 built Oct 7, 2026 (Sonnet 5.5), confirmed in TiviMate by Ron on Oct 8: end to end on
+      **Step 7 built Oct 7, 2026 (Sonnet 5.5), confirmed in TiviMate by DarkManX16 on Oct 8: end to end on
       channel 1.** Nothing was changed: this step is a check, run on a snapshot of `.dizquetv-dev`
-      taken Oct 7 at 7:29 PM Central (Ron saved Wand ID names and nicknames while it ran, so the
+      taken Oct 7 at 7:29 PM Central (DarkManX16 saved Wand ID names and nicknames while it ran, so the
       first snapshot was thrown away and every number below was re-run on the second). 1,477 tests
-      pass on `blocks` before it. Ron watched breaks from the watch list in TiviMate and they played
+      pass on `blocks` before it. DarkManX16 watched breaks from the watch list in TiviMate and they played
       as listed; which ones he watched was not recorded.
 
       - **Method (ad hoc, not kept).** A viewer walked through the real `video.js` router, with the
@@ -1363,7 +1363,7 @@ for the full spec, stages and acceptance tests.
         day-part, an actor's ID played before their show (or any of an any-of's shows) 4,494 times
         with 0 wrong by an independent check, season-specific IDs stayed on their seasons, and the
         rest filled in. (4) Two viewers: above.
-      - **Left for Ron, nothing changed:** steps for Adult Swim (Sun.) and Powerhouse Era, the "feature
+      - **Left for DarkManX16, nothing changed:** steps for Adult Swim (Sun.) and Powerhouse Era, the "feature
         shows" setting on Toonami Show Intros, the Justice League intro as seasons 3 to 5, the missing
         CCF and Miguzi clips, and wiring the Wand IDs.
       - **The preview.** A detached worktree of `blocks` and a copy of the data under
@@ -1393,7 +1393,7 @@ for the full spec, stages and acceptance tests.
         2026 8:12:36 PM found the movie opening Sat Oct 17 at 7:00 PM ("Scooby-Doo"), and Sat Oct
         17's break found Sat Oct 24's ("Scooby-Doo 2: Monsters Unleashed") - both in under 1ms,
         884 and 883 scan steps respectively, over the real 39,999-program lineup.
-      - **Ron's real "Cartoon Theatre Next Time" list (12 clips), checked against the real
+      - **DarkManX16's real "Cartoon Theatre Next Time" list (12 clips), checked against the real
         matcher.** 1 already has saved names that will fire correctly ("...on Zombie Island" to
         `movie.Scooby-Doo on Zombie Island`, and that movie is genuinely in the lineup). 9 propose
         nothing - not a bug: those movies (Balto, A Man Called Flintstone, An American Tail III,
@@ -1439,8 +1439,8 @@ for the full spec, stages and acceptance tests.
       **Step 9 built Oct 9, 2026 (Sonnet 5), on branch `next-time-cards`: generated cards, the
       first piece of the Generated Up Next bumpers roadmap item.** When step 8's real "Next Time"
       clip has none for next week's movie, a card Syndicast renders itself stands in: a lively
-      stretch of the movie with its title and when it airs over the picture, then Ron's real
-      marquee ending. Designed from Ron's 12 real "Cartoon Theatre Next Time" clips (all ~15s, the
+      stretch of the movie with its title and when it airs over the picture, then DarkManX16's real
+      marquee ending. Designed from DarkManX16's 12 real "Cartoon Theatre Next Time" clips (all ~15s, the
       same marquee ending in all 12 and reusable, no shared music bed across them - measured by
       cross-correlating their audio, which barely matched). Seven new modules
       (`src/card-templates.js`, `src/card-moment.js`, `src/card-render.js`,
@@ -1492,7 +1492,7 @@ for the full spec, stages and acceptance tests.
         the first attempt): exactly one break differed in each of three one-week windows -
         Oct 10's, correctly gaining the new steps as "not rendered yet" before any card existed;
         Oct 17's, the same; and Oct 24's (the week already covered by the spec's Oct 18 snapshot),
-        where Ron's real "...on Zombie Island" clip actually matched the movie that leaving-break
+        where DarkManX16's real "...on Zombie Island" clip actually matched the movie that leaving-break
         opens into next and played, and the card step correctly stayed out
         ("only plays if \"...\" finds no clip, and it did"). Every other break, on all three
         channels, every week checked: unchanged.
@@ -1502,10 +1502,10 @@ for the full spec, stages and acceptance tests.
         previews), the `next-time-cards` branch's own worktree (`.claude/worktrees/next-time-cards`,
         branched from `blocks`), port 18190, started through `Win32_Process.Create` so it outlives
         the session. A "Cartoon Theatre Next Time" template was saved through the real Cards page,
-        with Ron's real ending
+        with DarkManX16's real ending
         clip and closing-music bed. `.dizquetv-dev` itself was never touched.
       - **A scratch channel (905), where a card airs every 20 minutes, not weekly.** Two real
-        movies none of Ron's 12 real clips name (The Pagemaster, The Iron Giant), each in its own
+        movies none of DarkManX16's 12 real clips name (The Pagemaster, The Iron Giant), each in its own
         short block, so every cycle wants the generated card, never a real clip. Deliberately
         bounded: a `later`-keyed card whose next airing is only minutes away bakes the exact clock
         time into its when-text ("TODAY · 12:40AM"), so every occurrence is its own card, unlike
@@ -1572,7 +1572,7 @@ for the full spec, stages and acceptance tests.
         `test/transitions-editor.js`. Editor wording in `src/transitions-editor.js` (`WHICH`) and
         the hint under the radio list in `web/public/templates/transitions-editor.html`.
       - **Not done:** channel 3's saved steps still use the workbook's workaround (promos naming
-        tonight's movie); moving them to the new choices is Ron's edit in the editor. Generated
+        tonight's movie); moving them to the new choices is DarkManX16's edit in the editor. Generated
         cards for the new choices (their `want` carries `keyedOn`, so the renderer and the card
         service would need a look first).
 
@@ -1635,7 +1635,7 @@ for the full spec, stages and acceptance tests.
       Episodes left out as "Holiday: I'll place it myself" (see "Full
       catalogs, and a never-air list" under Known issues) place themselves in
       their holiday's season, with the same date logic as date-aware promos,
-      instead of Ron placing them by hand each year. Added Oct 10, 2026.
+      instead of DarkManX16 placing them by hand each year. Added Oct 10, 2026.
 
 ### Scheduling
 
@@ -1650,7 +1650,7 @@ for the full spec, stages and acceptance tests.
       full catalog (Play Next: start at it; Shuffle and Rerun: air it next),
       once. It replaces Start from season in Time Slots.*
 - [x] Special days: a date's own Time Slots and a block for the day, for
-      marathons and movie days - *designed Oct 28-29, 2026 (Opus 5.5) with Ron's
+      marathons and movie days - *designed Oct 28-29, 2026 (Opus 5.5) with DarkManX16's
       decisions, **built Oct 31 - Nov 6, 2026 (Sonnet 5)**, merged into `blocks` Nov 5
       (steps 1-7) and Nov 6 (holiday rows). A special day replaces the regular schedule
       for its hours only, survives regenerations until it has aired, can name a block
@@ -1663,7 +1663,7 @@ for the full spec, stages and acceptance tests.
       tab's week chooser and the transitions Preview's From date came with it. See
       "Special days" under Known issues and [docs/special-days-plan.md](docs/special-days-plan.md).*
 - [ ] Event tools: date ranges on Mix entries and steps, "until" rows, Copy to a date, and
-      Swap, Insert and Delete inside a special day - *designed Nov 8, 2026 (Opus 5.5) with Ron;
+      Swap, Insert and Delete inside a special day - *designed Nov 8, 2026 (Opus 5.5) with DarkManX16;
       see "Event tools" under Known issues.*
 - [ ] Save time-slot editing progress without generating a lineup
 
@@ -1691,7 +1691,7 @@ for the full spec, stages and acceptance tests.
 - [ ] Chapter and segment detector, to split episodes and insert bumpers between segments
       - *designed Oct 15-26, 2026 (Opus 5.5), not built: black frames with
       silence, chapters as a second opinion, a background scanner that backs
-      off from live streams, and Ron approving by show pattern. See Stage 6 in
+      off from live streams, and DarkManX16 approving by show pattern. See Stage 6 in
       the spec and "Chapter and segment detector, and stage 6 midrolls" under
       Known issues.*
 - [x] Per-position stored progress, so every slot or range continues where it
@@ -1724,7 +1724,7 @@ for the full spec, stages and acceptance tests.
       list" under Known issues.*
 
 All six were designed together on Oct 9, 2026 and built Oct 9-10 on the
-`stored-progress` branch, which waits for Ron to merge it into `blocks` - see
+`stored-progress` branch, which waits for DarkManX16 to merge it into `blocks` - see
 "Per-position stored progress, and the shuffles built on it" under Known
 issues for the design, the measurements behind it and the build record, and
 [docs/stored-progress-plan.md](docs/stored-progress-plan.md) for the build
@@ -1746,7 +1746,7 @@ on shows.
 - [x] Fix NVIDIA / h264_nvenc encoder issues
 
       **Investigated Sep 28 - Oct 1, 2026 (Opus 5.5); built Oct 1 (Sonnet
-      5.5), see "Built" at the end of this entry.** On Ron's RTX 3060 (driver
+      5.5), see "Built" at the end of this entry.** On DarkManX16's RTX 3060 (driver
       616.56, ffmpeg 7.1 gyan full build, the dev path) with `videoEncoder`
       set to `h264_nvenc` and everything else as in `.dizquetv-dev`.
 
@@ -1920,11 +1920,11 @@ on shows.
       **Built Oct 1, 2026 (Sonnet 5.5): four commits, each its own, on branch
       `nvenc` and merged into `blocks`.** All four of the list above, in that
       order, except that 3 became "always encode". GPU scaling and cuda decode
-      were left out, as 5 said. Test count 269 -> 312. Ron's channels use
+      were left out, as 5 said. Test count 269 -> 312. DarkManX16's channels use
       mpeg2video, and those 32 recorded commands (item, screens, watermark,
       fit and mark, audio only, concat) are byte-identical across all four
       commits. Every other number below is from the real `src/ffmpeg.js` and
-      real ffmpeg on Ron's files.
+      real ffmpeg on DarkManX16's files.
 
       1. *8-bit (58cd9ad).* `-pix_fmt yuv420p` whenever the encoder name
          contains "264", once (the screens already carried it). Samurai Jack
@@ -1938,7 +1938,7 @@ on shows.
       3. *Always encode (a42a9c6).* Under h264_nvenc **and libx264** nothing
          is copied any more; mpeg2video still copies what is already MPEG-2,
          and "normalize video codec" off still copies. **A libx264 channel
-         therefore stops copying H.264 too**, at the cost of that CPU. Ron
+         therefore stops copying H.264 too**, at the cost of that CPU. DarkManX16
          chose this without the TiviMate comparison, "for the smoothest
          playback" and "one uniform stream" for TV-box players. The evidence,
          from two scratch servers streamed over the LAN (copy as today against
@@ -2005,7 +2005,7 @@ on shows.
          with nothing faked.
 
       **Not tested:** TiviMate and a real TV box on the always-encode stream
-      (skipped by Ron's decision), and PotPlayer. An NVENC death after data
+      (skipped by DarkManX16's decision), and PotPlayer. An NVENC death after data
       has gone out still ends in the error screen, as before.
 
       **Two traps found on the way.** (1) A scratch server on a copy of the
@@ -2447,9 +2447,9 @@ on shows.
       encoding at full speed and the concat restart fixed. The layer is how
       `/stream` chooses each item: from the wall clock, with no memory of
       what this stream just played. Not fixed yet; the fix below waits on
-      Ron's OK.**
+      DarkManX16's OK.**
 
-      **Reproduced, with Ron's own clips.** Channel 1 itself opens with the
+      **Reproduced, with DarkManX16's own clips.** Channel 1 itself opens with the
       pattern: ATHF, "[as] SGC2C NEXT promo" (15.0s), a 184s Flex, "[As]
       NEXT - SGC2C [2003]" (10.0s), Space Ghost; then later "[As] NEXT - Home
       Movies (2001) (2)" (15.1s), a 418s Flex, "[As] NEXT - Home Movies
@@ -2464,7 +2464,7 @@ on shows.
         two promos of about a minute standing in for the shows), 25
         minutes, 10 breaks: the 10s item after the break played twice after
         2 of them, once after the other 8.
-      - *Ron's 5-8s bumpers* ("CN City Bumper (2)" 5.1s, "AcTN - Bumps Now!"
+      - *DarkManX16's 5-8s bumpers* ("CN City Bumper (2)" 5.1s, "AcTN - Bumps Now!"
         8.1s, "[Adult Swim] Bumper - Collective Building" 7.5s) on both sides
         of a 60s and a 45s break, 20 minutes, 10 breaks: every one played
         once - all ten breaks happened to end late.
@@ -2540,7 +2540,7 @@ on shows.
         item; every repeat above was two separate requests, each a fresh
         decision.
       - *The black-frame interlude* (`between=1`, 420ms): **switched off on
-        Ron's channels** (`disablePreludes: true`), so `/stream` serves every
+        DarkManX16's channels** (`disablePreludes: true`), so `/stream` serves every
         `between=1` entry as an ordinary item. With preludes on it would add
         about half a second of lag per item, untracked by the lineup, which
         makes skips a little likelier and repeats a little rarer. It can't
@@ -2572,13 +2572,13 @@ on shows.
         screen for at most 60s instead.
       - `takeResumeHint`, `wereThereTooManyAttempts` (the throttler), the
         redirect loop and the on-demand resume: only after a save, within a
-        second of the same item, or on channels Ron doesn't have.
+        second of the same item, or on channels DarkManX16 doesn't have.
       - `dayParts.findNextProgram`: which mix, not which item - see the
         look-ahead below.
 
       **How often.** The real `getCurrentProgramAndTimeElapsed` and
       `createLineup`, unmodified, driven through 2,000 breaks of each
-      length with Ron's CCN mix, 0-3s late into the break and 0.3s between
+      length with DarkManX16's CCN mix, 0-3s late into the break and 0.3s between
       clips, as measured. The share of breaks after which a short item
       plays:
 
@@ -2668,7 +2668,7 @@ on shows.
       tool call and runs until stopped by its pid.
 
       **Built Oct 1, 2026 (Opus 5.5), on branch `stage4`, three commits as
-      proposed. Confirmed in TiviMate by Ron: on 900, 903 and 905 every bumper played once and every show started from its beginning.** 312
+      proposed. Confirmed in TiviMate by DarkManX16: on 900, 903 and 905 every bumper played once and every show started from its beginning.** 312
       tests -> 364.
       1. *The look-ahead (62262f8)*, first, since the cursor needs the same
          number: `getCurrentProgramAndTimeElapsed` also returns `startsIn`,
@@ -2697,7 +2697,7 @@ on shows.
            local now.
          **Known limitation: `/m3u8`** (the HLS "fast" playlist) mints no stream
          id, so it still picks every item from the clock and can still repeat
-         or skip a very short item next to Flex. Ron's channels use `/video`.
+         or skip a very short item next to Flex. DarkManX16's channels use `/video`.
          Fixing it means a stream id on that playlist's entries, which a
          player that fetches them as separate segments may not keep to one
          viewer; not attempted.
@@ -2747,7 +2747,7 @@ on shows.
       under Known issues.*
 - [x] Program rows show the episode title, with a slot-fit gauge
 
-      A slot-fit gauge built around how Ron schedules, in place of a plain
+      A slot-fit gauge built around how DarkManX16 schedules, in place of a plain
       duration bar, since what matters when building a lineup isn't a program's raw
       length but how much of a real broadcast slot it leaves for breaks. Ships
       in the custom show editor - `web/directives/program-list-row.js`, one
@@ -2841,7 +2841,7 @@ on shows.
       1900x900 window.
 
       **The channel programming list follow-up shipped once, then was pulled
-      back out - it broke scrolling on Ron's real window, not just the
+      back out - it broke scrolling on DarkManX16's real window, not just the
       shared-checkout incident's window (see Resolved below for that separate
       incident).** It briefly reused the row with two extra modes -
       show-start-time (the program's absolute scheduled time, not a
@@ -2852,7 +2852,7 @@ on shows.
       delete-triggered full recompute took ~126ms, five tab-switch cycles all
       rendered correctly, and sustained real scrolling a week into channel
       1's real 40,000-program lineup showed no stuck window. None of that
-      reproduced Ron's report - a stuck 6-row list that wouldn't scroll
+      reproduced DarkManX16's report - a stuck 6-row list that wouldn't scroll
       further, on his real window (~1900x900).
 
       **Root cause found and verified.** Flex and redirect rows rendered
@@ -2890,7 +2890,7 @@ on shows.
       already was in the lineup (scroll starting position) - both of which
       differ between a 1900x900 real window mid-lineup and this test
       environment's narrower one starting from the top. That difference is
-      the leading explanation for why this reproduced on Ron's machine and
+      the leading explanation for why this reproduced on DarkManX16's machine and
       not here, though it wasn't reproduced directly - see below.
 
       **The other two things asked to check, answered as far as they can be
@@ -2905,33 +2905,33 @@ on shows.
         window also means each scroll tick advances through relatively more
         rows for the same wheel movement, so it would reach the point where
         the row-height drift matters *sooner* - consistent with, though not
-        proof of, this being where Ron's session sat. Could not be read
-        directly - it lives in Ron's own browser's `localStorage` for his
+        proof of, this being where DarkManX16's session sat. Could not be read
+        directly - it lives in DarkManX16's own browser's `localStorage` for his
         real server's origin, not anything captured in a log or a file.
       - Window size: confirmed real (not scaled) 1900x900 renders and
         scrolls both the custom show editor and filler lists correctly here.
         Not tested at that exact size against the programming list's
         show-start-time/break-after-mode variant specifically, since it was
-        reverted before that combination could be tried under Ron's
+        reverted before that combination could be tried under DarkManX16's
         conditions - see below.
 
       **Reverted back to the pre-session rows** (05ac006's `vs-repeat="options"`,
       the single-line `.program-row` markup, `dateForGuide`, and the matching
       `div.programming-programs div.list-group-item` CSS with no override) in
-      a fresh worktree, immediately, per Ron's instruction to restore a
+      a fresh worktree, immediately, per DarkManX16's instruction to restore a
       working list before anything else. Custom shows and filler lists were
       untouched by this - `program-list-row.js` and its CSS stay in the
       tree, just no longer wired into the channel programming list. Verified
       after reverting: both the custom show editor and filler lists still
       scroll correctly at a real 1900x900 window.
 
-      **Not retrying the programming list until it can be tested under Ron's
+      **Not retrying the programming list until it can be tested under DarkManX16's
       actual conditions**, per instruction. The fix itself is narrow once
       found - reserve real height for an empty gauge label, most simply by
       giving `.plr-gauge-label` (or `.plr-gauge`) a `min-height` matching a
       populated label's own line height, so every row is uniformly 66px
       regardless of whether that row has a gauge to show - but confirming it
-      actually stays smooth on Ron's window, not just here, is the real gate
+      actually stays smooth on DarkManX16's window, not just here, is the real gate
       before it goes back in.
 
       **Retried Sep 28, 2026 (Sonnet 5), in a fresh worktree
@@ -3017,7 +3017,7 @@ on shows.
       **Live-verified** on a copy of `.dizquetv-dev`, a fresh port (never
       18000, never the live folder - this session's copy lives in Claude's
       own scratchpad directory, outside the repo), against channel 1's real
-      40,001-program lineup, at a real 1900x900 window (Ron's own, per the
+      40,001-program lineup, at a real 1900x900 window (DarkManX16's own, per the
       note above) and, for the width-collapse bug specifically, an 800x450
       one that reproduced and then confirmed the fix. `el.scrollTop` driven
       by script from 0% to 100% of a `1,040,026`px scroll height landed on
@@ -3030,7 +3030,7 @@ on shows.
       rendering and height directly, then discarded (Cancel, never saved).
       A real `Update Channel` save round-tripped 40,001 programs with
       `$breakAfterMs` and `$index` both absent from the written file
-      afterward. Not yet confirmed: Ron scrolling it himself, a week ahead,
+      afterward. Not yet confirmed: DarkManX16 scrolling it himself, a week ahead,
       on his own window - the actual gate, same as last time, before this
       merges.
 
@@ -3082,7 +3082,7 @@ on shows.
       buttons visible with the names ellipsised. Not exercised from here:
       drag to reorder (browser automation can't drive native HTML5 drag and
       drop; `dnd-draggable` is on the same row element, as in the
-      programming list). **Confirmed by Ron in his own browser before this
+      programming list). **Confirmed by DarkManX16 in his own browser before this
       merged:** one-line rows, the gauge, scrolling to the bottom of both
       lists, drag to reorder, and a narrow window all right.
 - [x] Flex adjusts itself when lineup items are added, swapped or deleted.
@@ -3095,14 +3095,14 @@ on shows.
       after it grow or shrink so the next show still starts on time.
       Deleting an item turns its time into Flex so everything after stays on
       time. Adding an item takes its time from the Flex after where it's
-      inserted. When there isn't room, Ron chooses: take over the slot it
+      inserted. When there isn't room, DarkManX16 chooses: take over the slot it
       runs into (that show's episode airs at its next slot), run late (the
       shows after it start the moment it ends, and their breaks shorten until
       the schedule is back on time), or pick something else - and, for an
       insert, a break where it fits.
 
-      *Changed Oct 11, 2026 (Ron).* This line first had the following shows
-      move later to the next clean start time (:00 or :30). On Ron's channels
+      *Changed Oct 11, 2026 (DarkManX16).* This line first had the following shows
+      move later to the next clean start time (:00 or :30). On DarkManX16's channels
       every half hour is a slot and no break in four weeks reaches 30 minutes,
       so shows moved later would never get back on time. See "Swaps, inserts
       and Flex that keeps time" under Known issues.
@@ -3130,7 +3130,7 @@ on shows.
       trash icon beside each channel's name (`web/public/views/channels.html`),
       and a careful session clicked it by mistake while testing (a native
       confirmation caught it). It needs a label or tooltip, and probably some
-      distance from the name Ron clicks to edit. Added Oct 11, 2026.
+      distance from the name DarkManX16 clicks to edit. Added Oct 11, 2026.
 - [x] Channel detail page: now playing with progress, total runtime, program count,
       stream mode and transcode config, plus a library browsable by type - movies,
       shows, artists, music videos, other - with durations and artwork
@@ -3315,7 +3315,7 @@ be built:
       and measured on the real server path with Claude minimized and
       the other streaming server *running*: three `/video` streams at 0.98-1.00x realtime,
       including every short clip in a whole break. Confirmed Sep 28, 2026 on
-      Ron's real client - the manual test this was left unticked for.
+      DarkManX16's real client - the manual test this was left unticked for.
 - [x] Fix NVIDIA / h264_nvenc encoder issues (Opus 5.5 investigates, Sonnet 5
       builds). Built Oct 1, 2026: 8-bit for every H.264 encoder, the channel's
       bitrate for nvenc, every source encoded under an H.264 encoder, and a
@@ -3411,19 +3411,19 @@ be built:
       and the shuffles built on it" under Known issues, and
       [docs/stored-progress-plan.md](docs/stored-progress-plan.md) for the
       build order. **Built Oct 9-10, 2026** on the `stored-progress` branch,
-      all seven steps, each proven on copies of Ron's data; merged into
-      `blocks` when Ron says. Channels saved before it carry over on their
+      all seven steps, each proven on copies of DarkManX16's data; merged into
+      `blocks` when DarkManX16 says. Channels saved before it carry over on their
       first regeneration, with nothing to migrate.
 - [x] Full catalogs and the never-air list: every slot draws on its show's or
-      custom show's whole episode list once reviewed, and episodes Ron left
+      custom show's whole episode list once reviewed, and episodes DarkManX16 left
       out - holidays he places himself, and ones never to air - stay out
       (Opus 5.5). **Built Oct 10, 2026** on the `full-catalog` branch, on top
-      of `stored-progress`, so the two merge together when Ron says. See "Full catalogs, and a never-air list"
+      of `stored-progress`, so the two merge together when DarkManX16 says. See "Full catalogs, and a never-air list"
       under Known issues and [docs/full-catalog-plan.md](docs/full-catalog-plan.md).
 - [x] Episode start: start a show or custom show at a specific episode, not
       just a season (Opus 5.5 designs, Sonnet 5.5 builds). **Built Oct 10,
       2026** on the `episode-start` branch, on top of `blocks` (which holds
-      stored progress and full catalogs); merged when Ron says. See its
+      stored progress and full catalogs); merged when DarkManX16 says. See its
       Scheduling roadmap line above and "Episode start" under Known issues.
 - [x] Swap out episodes of a show, and plug library items in anywhere
       (including individual items from a custom show), and Flex adjusts
@@ -3437,24 +3437,24 @@ be built:
 - [x] What you see is what airs: hand edits kept in the list - swaps in
       place, drags that stay, nothing rebuilt over a hand edit (Opus 5.5
       designs and builds the core, Sonnet 5.5 the editor). **Designed Oct 29,
-      2026** with Ron's decisions; **built Oct 29** in six steps, each proved
+      2026** with DarkManX16's decisions; **built Oct 29** in six steps, each proved
       on copies of the real data, in [docs/list-lineup-plan.md](docs/list-lineup-plan.md);
-      Ron tried the editor himself on the preview, a real drag included.
+      DarkManX16 tried the editor himself on the preview, a real drag included.
       Ahead of Special days, whose plan then reads "kept row" for "pin". See
       "What you see is what airs" under Known issues.
 - [x] Special days, for marathons and movie days (Opus 5.5 designs, Sonnet 5
-      builds). **Designed Oct 28-29, 2026**, with Ron's decisions; put on the
+      builds). **Designed Oct 28-29, 2026**, with DarkManX16's decisions; put on the
       must list ahead of midrolls step 2 because it has a date - channel 1's
       all-day Toonami marathon on Fri Jan 1, 2027 - and because it changes the
       Time Slots generator, stored progress and block resolution, which 1.0
       should ship already proven. **Built and merged Nov 5-6, 2026**, proved live on a
-      clock-shifted copy and checked additive on all three channels. Ron builds
+      clock-shifted copy and checked additive on all three channels. DarkManX16 builds
       the real days on his channels. See "Special days" under Known issues and
       [docs/special-days-plan.md](docs/special-days-plan.md).
 - [ ] Chapter and segment detector, then Stage 6 midrolls (Opus 5.5 designs,
       Sonnet 5 builds). See the Scheduling and Blocks system roadmap lines
       above and Stage 6 in [docs/blocks-spec.md](docs/blocks-spec.md).
-      **Designed Oct 15-26, 2026**, with Ron's decisions; eight build steps,
+      **Designed Oct 15-26, 2026**, with DarkManX16's decisions; eight build steps,
       each proved on copies of the real data, in the spec's Stage 6 "Build
       order". See "Chapter and segment detector, and stage 6 midrolls" under
       Known issues.
@@ -3692,14 +3692,14 @@ when they differ - or when the server reports neither, an older build. See
 
 ### Per-position stored progress, and the shuffles built on it
 
-Designed Oct 9, 2026 (Opus 5.5) and agreed with Ron the same day; **all
+Designed Oct 9, 2026 (Opus 5.5) and agreed with DarkManX16 the same day; **all
 seven steps built Oct 9-10, on the `stored-progress` branch, unmerged until
-Ron says** - Play Next continues from stored progress, Shuffle plays rounds
+DarkManX16 says** - Play Next continues from stored progress, Shuffle plays rounds
 kept by episode, with season settings and multi-part stories, Rerun replays
 only what its show's Play Next has aired, Repeat a slot re-airs a chosen
 earlier slot, and Ordered shuffle interleaves a custom show's series; every
 step's proof re-run on the final code (step 7), and the final review's fixes
-in, with Ron's rule for narrowing one slot of a shared Shuffle (Oct 10). "Full
+in, with DarkManX16's rule for narrowing one slot of a shared Shuffle (Oct 10). "Full
 catalogs, and a never-air list", the next entry, is designed and being built on
 its own branch. See "Build record" at the end of
 this entry, and the build plan in
@@ -3736,7 +3736,7 @@ into S3E3, S3E4, S3E2 - which is why season settings were Play Next only. It
 also has two writers nobody meant: Play Next's candidates are copies of the
 previous lineup's programs, numbers included, so Play Next airings carry stale
 Shuffle numbers (channel 2's Hey Arnold, Wed Nov 11 6:30pm, Play Next S2E9,
-carries pick 4); and replacing an airing by hand drops it (Ron replaced Hey
+carries pick 4); and replacing an airing by hand drops it (DarkManX16 replaced Hey
 Arnold's Fri Oct 9 4pm S3E19, pick 0, with S5E5 at 3:52am that day).
 
 *Season start* is a one-time seek: set in the season panel, part of
@@ -3833,12 +3833,12 @@ from the lineup it has loaded. In order, the first that applies:
    exactly as the saved lineup would have aired it.
 3. **Its record in the schedule**, for a position that has no airing ahead - a
    range taken out at an earlier run and now put back.
-4. **The slot's old place** (Ron's decision): a position nobody used before
+4. **The slot's old place** (DarkManX16's decision): a position nobody used before
    takes the place of the position the same slot - same time, same show -
    belonged to in the schedule the lineup was made from, moved forward to the
    nearest episode the new range allows; for the shuffle family the rest of the
    old round, with what the new range excludes taken out - but only when no
-   slot still plays the old position; otherwise a round of its own (Ron, Oct
+   slot still plays the old position; otherwise a round of its own (DarkManX16, Oct
    10: two positions finishing one round air the same episodes days apart). If its slots came
    from several old positions, the one airing first from now wins. Not across
    a change of mode.
@@ -3885,7 +3885,7 @@ that item's preview of the first airing comes from.
 
 #### Shuffle, Rerun, Repeat a slot and Ordered shuffle
 
-How Ron programs them now: on channels 2 and 3, 23 shows run a Play Next strip
+How DarkManX16 programs them now: on channels 2 and 3, 23 shows run a Play Next strip
 on weekdays and a Shuffle at the weekend; several custom shows join series
 (Tom & Jerry 4, Yogi Bear 4, Gundam 8, Spider-Man 3); and "Double Dare Series
 (Shuffle)" was shuffled by hand into its custom-show order and plays as Play
@@ -3913,7 +3913,7 @@ Next.
   day or another day of the week. On channel 3, That's So Raven airs Thursday
   to Sunday; Saturday's 6:30pm slot repeats Thursday's 6:30pm and Sunday's
   5:00pm repeats Friday's 6:00pm, and 9pm's episode again at 1am is the same
-  option with a slot from the same day. (Ron's change of Oct 9 to the Encore
+  option with a slot from the same day. (DarkManX16's change of Oct 9 to the Encore
   first proposed, which looked back one day only; Rerun stays the option that
   replays any episode Play Next has already aired.) The slot names its source
   (`repeatOf`, the source slot's time) and takes its show; it airs the
@@ -4005,7 +4005,7 @@ The editor reaches both through browserify, as the channel detail page already
 does with `src/channel-library.js`, so the editor and the generators can't
 disagree.
 
-#### Fallbacks, as Ron decided them on Oct 9
+#### Fallbacks, as DarkManX16 decided them on Oct 9
 
 - A Rerun whose show's Play Next hasn't aired anything yet plays as a Shuffle
   over its range, and the editor shows why under the slot. A whole slot of
@@ -4046,7 +4046,7 @@ channel 1.
   the tool gives NOTES' numbers exactly - Fri 10am channel 1 138/138, Sep 29
   45/50, channel 2 159/164, channel 3 147/155; Mon 10am channel 3 137/155 -
   and every airing over three weeks matches a position (3,449 of 3,450 at
-  Friday; the one left is Ron's hand-placed Hey Arnold S05E05, which a
+  Friday; the one left is DarkManX16's hand-placed Hey Arnold S05E05, which a
   position rightly ignores).
 - **Every position continues exactly**, at Fri 10am, Sat 11pm and Mon 10am:
   channel 1 138/138, channel 2 164/164, channel 3 155/155, Sep 29's channel 1
@@ -4137,7 +4137,7 @@ Central.
   the slot's range, passing over any story not every part of which the show's
   Play Next has aired - asked afresh at each pick from the live Play Next
   positions and the records of ones no longer in the schedule. With nothing of
-  its range aired, or no Play Next at all, it plays as a Shuffle (Ron's
+  its range aired, or no Play Next at all, it plays as a Shuffle (DarkManX16's
   fallback), and the editor says why under the slot. The Time Slots editor
   offers Rerun, with season settings.
 - **Two defects found and fixed while building it.** The round hash first
@@ -4279,7 +4279,7 @@ written at 4:18am), so the copy is current - and on Sep 29's channel 1. Suite
   Stevens 24 -> 63, 0 violations. Regenerated Jan 11 from that output: 155/155,
   and 141 Play Next and Rerun positions identical airing for airing (13,369
   airings) to where the October lineup's last ten days begin, which are flex
-  - Ron's own lineups of Oct 9, made by blocks, end the same way, in 4 to 10
+  - DarkManX16's own lineups of Oct 9, made by blocks, end the same way, in 4 to 10
   days of flex.
 - **Step 5.** That's So Raven: Sat Oct 10 repeats Thursday's "Mother Dearest",
   from the lineup on air, and Sun Oct 11 Friday's "Test of Friendship"; 103 of
@@ -4305,7 +4305,7 @@ suite 1867/1867.
   Friday, Saturday and Sunday. Now each run keeps what it read for the shows
   Repeats repeat (`repeatHistory`, `progress.history`). On the copy, That's
   So Raven regenerated at 10am, 10:30 and 11am Friday: Saturday repeats
-  "Mother Dearest" every time, 0 mismatches. Live on the preview, Ron's
+  "Mother Dearest" every time, 0 mismatches. Live on the preview, DarkManX16's
   channel 3 with the two weekend Repeats, Create Lineup and Update Channel
   twice at 12:46 and 12:47am Saturday: the first run kept Thursday's and
   Friday's airings, and the second, both sources now before the last run,
@@ -4326,14 +4326,14 @@ suite 1867/1867.
   One walk now serves every position: 22, 26 and 47 ms. The January Rerun
   regeneration is identical program for program (37,253) and record for
   record, and every position on the four copies still continues exactly.
-- **Narrowing one slot of a shared Shuffle** was the fourth - Ron's to decide,
+- **Narrowing one slot of a shared Shuffle** was the fourth - DarkManX16's to decide,
   decided and built Oct 10; see the next section.
 - **At merge, rebuild the bundle and restart the server together.** An old
   server's generator has no case for the Rerun, Repeat and Ordered shuffle
   slots a new editor sends - it picks nothing and Create Lineup fails with an
   error (found by the review, checked in blocks' code) - and a server keeps the
   code it started with (see "A long-running server keeps serving the build it started
-  with"). The server on port 18000 is Ron's to restart.
+  with"). The server on port 18000 is DarkManX16's to restart.
 
 #### Narrowing one slot of a shared Shuffle
 
@@ -4350,7 +4350,7 @@ its own, so it doesn't see it. Play Next does the same - both ranges step
 through the same episodes from the same place - which is what two ranges of
 one show sharing seasons already do, but a Shuffle is meant to look random.
 
-**Ron's rule, Oct 10, built:** a narrowed Shuffle or Rerun slot inherits the
+**DarkManX16's rule, Oct 10, built:** a narrowed Shuffle or Rerun slot inherits the
 old round only when no slot still plays the old position; when the old one
 carries on, the new one starts a round of its own. Play Next is unchanged.
 Tested ("narrowing one slot of a shared Shuffle starts a round of its own",
@@ -4364,8 +4364,8 @@ weekend slots narrowed together still carry the rest of the old round (63 of
 
 ### Full catalogs, and a never-air list
 
-Designed Oct 10, 2026 (Opus 5.5) from Ron's brief and his decisions the same
-day; **built the same day** on the `full-catalog` branch, unmerged until Ron
+Designed Oct 10, 2026 (Opus 5.5) from DarkManX16's brief and his decisions the same
+day; **built the same day** on the `full-catalog` branch, unmerged until DarkManX16
 says - see "Build record" at the end of this entry. Replaces "A regeneration only draws from what the
 lineup on air holds", whose finding is the first section below. Branch
 `full-catalog`, from `stored-progress`, so the two merge together; build plan
@@ -4431,7 +4431,7 @@ Series 45/223, Naruto 45/219, Beyblade 51/154, Phineas and Ferb 51/140. Also:
   the lineups air 11, 6 and 0 of them - ThunderCats 5 of 6, Pete & Pete 3 of 5,
   The Brak Show 2 of 4, and a few others keep theirs.
 
-#### What Ron decided, Oct 10
+#### What DarkManX16 decided, Oct 10
 
 1. Episodes he removed by hand must never come back.
 2. A per-channel **never-air list** of episodes; the full catalog always
@@ -4510,19 +4510,21 @@ saying why:
 - **longer than the limit** - 30 minutes to start, set on the page - marked
   Never air.
 
-An unticked episode keeps a reason Ron can switch - "Holiday: I'll place it
+An unticked episode keeps a reason DarkManX16 can switch - "Holiday: I'll place it
 myself" (with its holiday, which he can change) or "Never air". Saving marks
 the show reviewed: ticked episodes join, unticked ones go on the list with
 their reasons. Nothing is saved before that click.
 A show with nothing to add isn't listed.
 
 **The never-air list** is per channel, one entry per file (`server|key`, the
-key stored progress already uses), so an episode stays out of that channel's
+key stored progress already uses; since Nov 13, 2026 another file of the same
+episode counts as listed too - Resolved, "Deleted episodes kept coming
+back"), so an episode stays out of that channel's
 rotation through any show - Plex or custom - until restored on the Catalog
 page. Each entry has its reason - `holiday` (with the holiday) or `never` -
 and keeps the show, season, episode, title, length, when, and how it got
 there (review, deleted, new in Plex). Holiday episodes are only out of the
-rotation: Ron still places them by hand, and a slot or tool he uses to do it
+rotation: DarkManX16 still places them by hand, and a slot or tool he uses to do it
 is untouched by the list. It binds everything that picks an
 episode: the pool for every slot (movie slots too), a Repeat - whose source
 aired an episode since marked never-air plays the Rerun fallback - and Rerun.
@@ -4580,7 +4582,7 @@ there, can switch reason, and has **Restore**. A restored episode of a
 reviewed show joins at the next Create Lineup; of an unreviewed one, when the
 show is reviewed or the library adds it again.
 
-**What it does to Ron's channels:** nothing until a show is reviewed. Then,
+**What it does to DarkManX16's channels:** nothing until a show is reviewed. Then,
 for that show, Play Next carries on from its place through the whole show -
 Double Dare past item 52, Married... with Children past S4E8 and round to
 Season 1 at the end - and Shuffle rounds take in every episode: one that falls
@@ -4634,7 +4636,7 @@ review lists, the pool for a run, what's new, and applying ops.
   Lineup gives the same lineup it gives now, program for program.
 - The server's generators and the channel file's other fields.
 - Movie slots still draw on the lineup's movies - there is no movie catalog -
-  less the never-air list. None of Ron's channels has one.
+  less the never-air list. None of DarkManX16's channels has one.
 - The Library tab still shows the lineup; the Program menu still lists the
   channel's shows.
 - Swapping episodes, plugging library items in anywhere and Flex adjusting
@@ -4654,7 +4656,7 @@ custom shows, filler, aliases), with a fresh Plex snapshot taken then. Suite
   `catalog`, the Time Slots dialog's reading and notes, the delete prompt, the
   Catalog page, and `scripts/catalog-snapshot.js` and `progress-check
   --catalog` for proofs. Random Slots draws on the same pool without Time
-  Slots' notes - no channel of Ron's uses it.
+  Slots' notes - no channel of DarkManX16's uses it.
 - **The catalogs.** Every show on channels 1-3 read, 0 errors; all 26,436
   lineup episodes found in them, field for field equal but for 68 titles Plex
   has since renamed and 5 channel 3 Recess episodes whose files Plex has
@@ -4699,27 +4701,27 @@ custom shows, filler, aliases), with a fresh Plex snapshot taken then. Suite
   rose, saved the review, listed the holidays under Christmas and Valentine's,
   and restored an episode that the next run then drew on.
 - **Found:** Married... with Children's lineup held S2E1-S4E8 except S2E13 "You
-  Better Watch Out", its Christmas episode - almost certainly one Ron deleted.
+  Better Watch Out", its Christmas episode - almost certainly one DarkManX16 deleted.
   No holiday word is in the title, so the review won't pre-untick it: an
   episode like this is the review's reason for being.
 - **The final review** (Opus 5.5, fresh) found four things that would have
-  cost Ron decisions he had made, all fixed with a test that failed first,
+  cost DarkManX16 decisions he had made, all fixed with a test that failed first,
   suite 1914/1914: renumbering a channel dropped its catalog (it now moves with
   the channel); a catalog read had no time limit, so a sleeping Plex could hold
   Create Lineup for minutes (15 s a request, 90 s a read, and an unreachable
   server fails its other shows at once); the holiday words missed real ones in
-  Ron's lists - Deck the Halls, Talking Turkey, Home for the Holidays, Kwanzaa,
+  DarkManX16's lists - Deck the Halls, Talking Turkey, Home for the Holidays, Kwanzaa,
   the Great Pumpkin, Labor Day (added; a bare "holiday" means Christmas only
   when nothing named matches, and a few titles like "A Roman Holiday" now start
   unticked); and the Catalog page undid unsaved ticks whenever anything was
   saved (open rows and touched episodes now carry over). Also fixed: a re-roll
   marked newcomers it never named as seen, and a short Plex read could mark a
   show complete.
-- **Before the merge** (Ron, Oct 10), three of the deferred items, each with a
+- **Before the merge** (DarkManX16, Oct 10), three of the deferred items, each with a
   test that failed first, suite 1919/1919: if the slot editors can't read a
   channel's catalog state, Create Lineup draws on the lineup alone, saves no
   catalog changes and says why, and an automatic "complete" review can never
-  replace one Ron made; a channel's saves and catalog ops run one at a time,
+  replace one DarkManX16 made; a channel's saves and catalog ops run one at a time,
   and only a catalog op writes `channel.catalog`, so no save from an older
   copy - the channel page, the filler or on-demand services, a Plex server
   change - can undo an op, and no op can undo a save; and a custom-show id must
@@ -4729,7 +4731,7 @@ custom shows, filler, aliases), with a fresh Plex snapshot taken then. Suite
 ### Full catalogs: smaller things left for later
 
 Found by the final review of full catalogs (Oct 10, 2026) and left for later -
-none loses a decision Ron made. The three that could were fixed before the
+none loses a decision DarkManX16 made. The three that could were fixed before the
 merge: an unreadable catalog state now saves nothing, a channel's saves and
 catalog ops run one at a time, and custom-show ids are checked.
 
@@ -4766,16 +4768,16 @@ catalog ops run one at a time, and custom-show ids are checked.
 
 ### Episode start
 
-Designed Oct 10, 2026 (Opus 5.5) from Ron's brief and **built the same day**
+Designed Oct 10, 2026 (Opus 5.5) from DarkManX16's brief and **built the same day**
 (Sonnet 5.5) on the `episode-start` branch, from `blocks` at 57334c6 - which
-already holds stored progress and full catalogs - unmerged until Ron says. Build
+already holds stored progress and full catalogs - unmerged until DarkManX16 says. Build
 plan in [docs/episode-start-plan.md](docs/episode-start-plan.md); see "Build
 record" at the end of this entry.
 
 #### What it is
 
 With stored progress, every position (one show, one order, one season range)
-has a place: the episode it plays next. Episode start lets Ron set that place
+has a place: the episode it plays next. Episode start lets DarkManX16 set that place
 himself in the Time Slots editor, **once**: Create Lineup jumps the position
 there and it carries on normally from wherever the new lineup leaves it. His
 examples: the "no Season 2" Johnny Bravo range started at S01E34 instead of
@@ -4783,7 +4785,7 @@ sharing the all-seasons strip's place (Sep 29's channel 1 had the no-S2 and
 no-S3 ranges both at S01E34, airing the same Season 1 episodes days apart);
 a newly added show's weekday strip started at a chosen episode.
 
-#### What Ron decided, Oct 10
+#### What DarkManX16 decided, Oct 10
 
 1. Shuffle and Rerun get "Air next" as well as Play Next.
 2. "Start from season" folds into the new panel (Time Slots; Random Slots keeps
@@ -4963,7 +4965,7 @@ that day's 3am backup. Suite 1919 at the start, 2009/2009 at the end.
 redesigned as of Oct 29, 2026: see "What you see is what airs: hand edits kept in the
 list" below. What is measured and decided here still stands otherwise.*
 
-Designed Oct 11, 2026 (Opus 5.5) from Ron's brief and agreed the same day, with
+Designed Oct 11, 2026 (Opus 5.5) from DarkManX16's brief and agreed the same day, with
 his decisions below; built on the `swaps` branch, from `blocks` at edeb025.
 Build plan in [docs/swaps-plan.md](docs/swaps-plan.md). Covers two roadmap
 lines under Library management, "Swap out episodes of a show, and plug library
@@ -4990,14 +4992,14 @@ catalog snapshot taken then (`scripts/catalog-snapshot.js`).
   seconds. Clicking a row edits its details; there is no swap.
 - **Create Lineup drops every hand edit.** The generator builds from the slots
   and the pool alone, which is how channel 1's NEXT promos went
-  (docs/blocks-spec.md). Nothing ahead in Ron's three lineups was placed by
+  (docs/blocks-spec.md). Nothing ahead in DarkManX16's three lineups was placed by
   hand: regenerated on today's code (edeb025, as on 18000), channels 1 and 2
   match their saved lineups airing for airing for 310 days, and channel 3
   until Apr 3, 2027, where the weekend Shuffles of The Proud Family, Lizzie
   McGuire, Even Stevens and Kim Possible finish their carried rounds and start
   their own (98 airings). A regeneration takes under a second in Node.
 - **A hand-placed episode throws stored progress off in a lineup without
-  labels.** None of Ron's three lineups has labels yet - all were made before
+  labels.** None of DarkManX16's three lineups has labels yet - all were made before
   stored progress and not regenerated since - so places are read by slot
   (`placeOf`): an airing counts for the slot it starts in when it is that
   slot's show. On a copy of channel 2, "Arnold's Christmas" (Hey Arnold! S0E7,
@@ -5022,7 +5024,7 @@ catalog snapshot taken then (`scripts/catalog-snapshot.js`).
   week), shows moved later "to the next clean start time (:00 or :30)", as the
   Flex line first had it, would never get back on time.
 
-#### What Ron decided, Oct 11
+#### What DarkManX16 decided, Oct 11
 
 1. An episode a swap or insert pushes out isn't skipped: it airs at its show's
    next slot, and every later airing of the show moves one along.
@@ -5052,7 +5054,7 @@ from the lineup on air - airings with a `pin` that ends after now - and sends
 them with the schedule; the generator places them. One that has aired goes
 with the old lineup.
 
-**The program on air is left alone** (Ron, Oct 11, at the Halloween checkpoint;
+**The program on air is left alone** (DarkManX16, Oct 11, at the Halloween checkpoint;
 built as Task 4b). Every re-lay - and Create Lineup, which takes the same path -
 keeps the program on air, or the one whose break is on air, exactly where it is
 (`carry`, from `src/pins.js` `carryAt`), counts it as aired (`planProgress`'s
@@ -5119,7 +5121,7 @@ schedule:
 - **Go to** a date and time - the list is 35,000-40,000 rows.
 - **Swap…** and **Insert after…** on every airing. The picker offers the slot's
   show's whole catalog from Plex, specials included, with likely holiday
-  episodes marked (show-catalog's holiday words) - none of Ron's shows is
+  episodes marked (show-catalog's holiday words) - none of DarkManX16's shows is
   reviewed yet, so this is where "Arnold's Christmas" is today; the Catalog
   page's holiday episodes; any custom show's items; any show on the channel;
   one item from the Plex library.
@@ -5202,7 +5204,7 @@ was back on time, what was dropped), and the breaks a length fits into.
   its Up Next.
 - Random Slots, and channels without a Time Slots schedule: the tools aren't
   offered, and delete and the library insert work as now. Random Slots' Create
-  Lineup doesn't keep pins; none of Ron's channels uses it.
+  Lineup doesn't keep pins; none of DarkManX16's channels uses it.
 - The library's insert, drag to reorder and the programming tools work as now;
   what they change is still dropped at the next Create Lineup - and now at the
   next swap, which says so first.
@@ -5243,7 +5245,7 @@ at the start, 2061 at the end. Steps 5-8 go on on the branch.
   4:30", "There's Something about Rene airs Sun Nov 1, 4:30pm, and The Proud
   Family's later airings move one along"; saved, 155 of 155 continue. Channel 1's
   'Twas the Fight Before Christmas showed both choices as designed; Run late
-  saved; undo restored the slot. Ron tried the Halloween swap himself and it read
+  saved; undo restored the slot. DarkManX16 tried the Halloween swap himself and it read
   right. A re-lay takes 6.5-12.8 s in the browser, two or three per pick.
 - **Found live and fixed:** the Swap code first sat in the channel page's pre-link,
   out of reach of its catalog state; the dialog passed the new pin in the wrong
@@ -5253,14 +5255,14 @@ at the start, 2061 at the end. Steps 5-8 go on on the branch.
 - **The checkpoint review** (Opus 5.5, fresh): with fixes. Fixed, each with a test
   that failed first: undo now works out and says what it does before it applies;
   re-lays run one at a time and nothing that saves or changes the lineup runs
-  meanwhile (one could otherwise save a schedule Ron cancelled); the cut-off for
+  meanwhile (one could otherwise save a schedule DarkManX16 cancelled); the cut-off for
   "placed by hand" follows a lineup's real end, its longest Flex (on Oct 28 the
   old one named 377 of channel 3's airings); a re-lay without the new pin is never
   applied. Found while fixing: a show moving along within a night read as late;
   and two re-lays seconds apart could count different programs as on air -
   re-lays compared with each other are now planned as of one moment. The review's
   point that every re-lay restarted the program on air became Task 4b.
-- **Left for later** (none affects Ron's channels today): the 1:30am fit check on
+- **Left for later** (none affects DarkManX16's channels today): the 1:30am fit check on
   the fall-back night overstates the space; running late turns a redirect slot
   into Flex; Run late is offered when lateness is below the overrun; a pin more
   than 10 s after a slot's start lets the slot's own episode go first; Swap is
@@ -5271,14 +5273,14 @@ at the start, 2061 at the end. Steps 5-8 go on on the branch.
 
 **Steps 4c-8, Oct 12, 2026** (`swaps`, 16cb81b..). Proofs on copies of
 `.dizquetv-dev` taken Mon Oct 12 at 6:18am Central (channels, custom shows,
-filler, aliases; identical when taken), including Ron's own Catalog review and
+filler, aliases; identical when taken), including DarkManX16's own Catalog review and
 his channel 1 save of that morning; the Plex snapshot is the Oct 11 one. Suite
 2114 at the end.
 
 - **Task 4c, the build check.** `/api/code-build` and `/api/version` report
   `codeRunning` and `codeOnDisk`; on the preview a temporary file under `src`
   made Swap and Create Lineup refuse with the message, and removing it made
-  them work again without a restart. Ron's server on 18000, restarted at 4:27am
+  them work again without a restart. DarkManX16's server on 18000, restarted at 4:27am
   at `ad32c74`, predates the check and reports neither, so it will say
   "restart" until it is restarted once on a build with it.
 - **Task 5, Insert.** Channel 3, Thu Dec 24: "The Night Before Christmas (1933)"
@@ -5317,8 +5319,8 @@ his channel 1 save of that morning; the Plex snapshot is the Oct 11 one. Suite
   a refusal; the build check now asks again once before refusing, gives up on a
   server that doesn't answer in 8 s, asks a light route (not `/api/version`,
   which runs ffmpeg) once per re-lay; a carry with no length is ignored.
-- **Left for later**, none affecting Ron's channels today: after a carry,
-  `schedule.lateness` (0 is the editor's default; Ron's channels use a day) still
+- **Left for later**, none affecting DarkManX16's channels today: after a carry,
+  `schedule.lateness` (0 is the editor's default; DarkManX16's channels use a day) still
   turns the second half of a two-halves slot into Flex; the Time Slots dialog's
   "right away" for a slot under way doesn't say the program on air finishes
   first; the checkpoint's deferred minors above; the dialog's new code
@@ -5327,7 +5329,7 @@ his channel 1 save of that morning; the Plex snapshot is the Oct 11 one. Suite
   directive-level test harness.
 
 **Deleting while the list holds items placed by hand, Oct 16, 2026**
-(`delete-handplaced`, from `blocks` at ea15189). Ron re-added House of Mouse to
+(`delete-handplaced`, from `blocks` at ea15189). DarkManX16 re-added House of Mouse to
 channel 3 from the library and deleted one of its episodes: the delete prompt
 read "This also drops what was placed in the list by hand:" and then every
 airing, hundreds, with no way off the screen.
@@ -5343,7 +5345,7 @@ airing, hundreds, with no way off the screen.
   identical to the live files when compared at the end): House of Mouse is 12 episodes in
   Plex today, added at the scroll position, one delete: the prompt named the other
   11. Run in Node with 212 episodes, `relayEffects` returns 212 `dropped`. How
-  many Ron added is in his unsaved editor, so not checkable. The saved channel 3
+  many DarkManX16 added is in his unsaved editor, so not checkable. The saved channel 3
   is clean: 1 airing in the next 400 days reads as hand-placed (Tick-Tick-Tick,
   Oct 22 2027, the lineup's far seam, which the re-lay's own cut-off ignores).
 - **What else was wrong, found while measuring.** Channel 1 has no labels (made
@@ -5412,10 +5414,10 @@ would be lost, in the prompts that already ask first.
   delete-by-re-lay confirm all name them, and a delete's "no prompt when nothing is
   dropped" shortcut no longer skips them. Refusing a swap on such a list, or
   carrying the added items across a re-lay, were the alternatives: refusing blocks
-  a swap Ron may want anyway, and carrying them would silently change where they
+  a swap DarkManX16 may want anyway, and carrying them would silently change where they
   air (the list's end moves with the re-lay); naming is what the same prompts
   already do for a clip placed inside the window. Not built, but the next step if
-  Ron would rather the added items survive: append them after the re-lay's end Flex.
+  DarkManX16 would rather the added items survive: append them after the re-lay's end Flex.
 - **How they are found** (`addedAtEnd`, from the list alone). The editor rotates the
   list to start at now, so the end Flex is mid-array: after it come the loop's seam
   (an airing or two off the slots, e.g. channel 3's Tick-Tick-Tick), then the
@@ -5480,7 +5482,7 @@ episodes worked (it reads the editor's cached catalog state, not the server).
   reason.
 
 **A pin's choice through every re-lay, and Swap made fast, Oct 24, 2026**
-(`swap-pin-choices`, from `blocks` at 8c1ec5d). Ron pinned CryBaby Lane (1:24:34)
+(`swap-pin-choices`, from `blocks` at 8c1ec5d). DarkManX16 pinned CryBaby Lane (1:24:34)
 on channel 2 at Sat Oct 24 6:00pm with Take over, then swapped All That at 7:30 for
 Are You Afraid of the Dark? S3E1 (24:23): the dialog said it fit with Drake & Josh at
 8:30, but its "re-making also changes" line had The Amanda Show back at 7:25; applied,
@@ -5532,7 +5534,7 @@ Romeo! was gone. And a swap took about 25 seconds with the page frozen.
   per session, ended on close, data handed over in slices; the chosen lineup comes back
   only when applied. Undo makes both its re-lays from one plan (`relay`'s `pinSets`).
   Create Lineup still runs on the server. `throttle` resolves at once outside Node.
-- **After, the same preview** (Ron's machine busy, Plex reads 10-57 s through the
+- **After, the same preview** (DarkManX16's machine busy, Plex reads 10-57 s through the
   evening): a first Swap in an editor session 13-22 s, nearly all of it Plex, longest
   freeze 0.9 s; later ones 6.4-12 s, longest freeze 0.3 s, most of it the fresh
   worker's first re-lay (2.7-4.7 s; 0.35 s in Node); a pick 2.4-3.1 s with no freeze,
@@ -5544,18 +5546,18 @@ Romeo! was gone. And a swap took about 25 seconds with the page frozen.
   on a preview whose page, worker and server ran as of 6:20pm (a clock-shift harness
   in the session's scratchpad, never in the repo), on a copy taken Oct 24 8:43pm
   Central with channel 2 rebuilt from the 3am backup plus the CryBaby Lane pin, re-laid
-  as of 5:49pm (airing for airing the evening Ron had): the swap reads "It fits: 5:37
+  as of 5:49pm (airing for airing the evening DarkManX16 had): the swap reads "It fits: 5:37
   of Flex after it, and Romeo! starts at 8:00", applies with the movie still taking
   over to 7:30, and undo restores All That; a 1:20:47 movie for Romeo! names Drake &
   Josh's and Just Jordan's lost slots at the top for each choice.
 - **Left for later.** The effects lines under each choice list far-off ripples (an
   airing a few minutes later in May-Oct 2027) and long "back on time" lists - as
-  before this change. Ron's live channel 2, saved at 7:26pm, has Are You Afraid of the
+  before this change. DarkManX16's live channel 2, saved at 7:26pm, has Are You Afraid of the
   Dark? from 7:30pm to past midnight, unpinned, in other shows' slots: not from Swap
   as far as the code goes, not investigated.
 
 **A pin moved by hand in the list, said before a re-lay puts it back, Oct 29, 2026**
-(`swap-pin-moved`, from `blocks` at a0a3da1). Ron, on channel 1, swapped Family Guy at
+(`swap-pin-moved`, from `blocks` at a0a3da1). DarkManX16, on channel 1, swapped Family Guy at
 Fri Oct 30 1:00am for Robot Chicken's "Happy Russian Deathdog Dolloween 2 U". Before,
 his pinned Venture Bros. special "A Very Venture Halloween" was at 12:00am, then
 Futurama 12:30, Family Guy 1:00 ... Sealab 2:30-3:30. After, the special was gone from
@@ -5563,7 +5565,7 @@ Futurama 12:30, Family Guy 1:00 ... Sealab 2:30-3:30. After, the special was gon
 the swap losing his pin and shifting the night.
 
 - **Measured on a copy taken Oct 29 at 1:10am Central** (channel 1 saved 12:48am, unchanged
-  since). The special's pin is `at` **Fri 3:30am**, the Venture Bros. slot: Ron swapped
+  since). The special's pin is `at` **Fri 3:30am**, the Venture Bros. slot: DarkManX16 swapped
   "Guess Who's Coming to State Dinner?" there at 12:28am (`was`, `slotShow`). The schedule
   is Fri 12:00 Futurama, 12:30 Family Guy, 1:00 Robot Chicken, 1:30 Aqua Teen, 2:00 Space
   Ghost, 2:30 Sealab, 3:00 Home Movies, 3:30 Venture Bros.
@@ -5572,7 +5574,7 @@ the swap losing his pin and shifting the night.
   special and its 7:30 of Flex sit at 12:00am, and the seven shows between are each 30
   minutes late, back on time at 4:00 (Harvey Birdman). That is two rows moved in the list,
   after the 12:28am re-lay and before the 12:48am save - every Flex length is the
-  re-lay's own. The file doesn't say which action moved them; Ron's drag log (the
+  re-lay's own. The file doesn't say which action moved them; DarkManX16's drag log (the
   footer's "Drag log", kept in his browser) would.
 - **Channel 2, the same twice.** Cheers "Bar Wars V: The Final Judgement", pinned at Wed
   Oct 28 12:00:09am to Fri 5:30am (the Cheers slot), was saved 3.5 minutes later at 2:30am
@@ -5581,7 +5583,7 @@ the swap losing his pin and shifting the night.
   We Will Go", pinned to Wed 1:00am, sat at 2:30am, the three pins after it each 30
   minutes earlier - the Halloween pins put in another order. Channel 3 has no pins ahead.
 - **Ruled out: the swap losing the pin.** Re-laid with the new pin as of 12:55am, the result
-  is Ron's after screenshot airing for airing, and the special is at **3:30am**, its pinned
+  is DarkManX16's after screenshot airing for airing, and the special is at **3:30am**, its pinned
   time; 17 pins, the 16 before plus the new one. Nothing shifted early: every show is back
   in its own slot.
 - **What was wrong: nothing said so.** `relayEffects` skips pinned airings, and
@@ -5604,7 +5606,7 @@ the swap losing his pin and shifting the night.
   on pushes a pin to the moment it ends, never Flex does - or past its time) and shows it
   with the notes above Create Lineup. Regenerate (the redo button) still shows no dialog,
   so it says nothing, as with everything else it drops.
-- **A drag re-pins** (Ron, Oct 29: he dragged those rows on purpose). On a Time Slots
+- **A drag re-pins** (DarkManX16, Oct 29: he dragged those rows on purpose). On a Time Slots
   channel, a pinned airing dropped elsewhere in the list (not a pinned Flex) isn't moved
   there: once the drag is over, `pins.dropSpot` reads where it landed - before an airing, a
   swap of it, at its slot's start when it starts there; before a Flex, an insert in the
@@ -5618,7 +5620,7 @@ the swap losing his pin and shifting the night.
   plain words, as Swap refuses; one that would run into another pin is refused by the
   dialog's clash check. Pins dragged before this change keep their old time until dragged
   again.
-- **Pinned where it sits, and said while picking** (Ron, Oct 29, after 18000 ran the
+- **Pinned where it sits, and said while picking** (DarkManX16, Oct 29, after 18000 ran the
   above: Swap on Family Guy at Fri 1:00am still listed Robot Chicken episodes). His list
   was still the hand-moved one, the special at 12:00am pinned to 3:30am, so every row after
   it was 30 minutes off its slot: 1:00am is Robot Chicken's slot, and "This show" is the
@@ -5633,14 +5635,14 @@ the swap losing his pin and shifting the night.
   warnings, and when a pin is out of place, "To keep a pin where it sits in the list, drag
   it onto its own row: it is pinned there." Proof: one check in `test/pins.js`, failing
   first (both drops returned nothing); 2590 pass. On a preview of a copy taken Oct 29 4:16am
-  Central (channel 1 as Ron saved it at 12:48am): Swap on Family Guy at 1:00am showed the
+  Central (channel 1 as DarkManX16 saved it at 12:48am): Swap on Family Guy at 1:00am showed the
   three red lines over Robot Chicken's episodes; the special dropped on its own row pinned at
   12:00am, Family Guy 12:30 ... Home Movies 3:00, Venture Bros.' own episode at 3:30, 16
   pins; Swap on Family Guy at 12:30 then listed Family Guy episodes with no red lines.
-- **"This show" is the airing's own show** (Ron, Oct 29: "I should be able to get their
+- **"This show" is the airing's own show** (DarkManX16, Oct 29: "I should be able to get their
   respective episodes to swap regardless of what timeslot it's in"). `pins.swapShow`: the
   airing's TV or custom show wherever it sits; the slot's only for a movie or Flex. The red
-  line still says when the airing isn't its slot's show. Ron had swapped the Venture Bros.
+  line still says when the airing isn't its slot's show. DarkManX16 had swapped the Venture Bros.
   episode, dragged it to 12:00am and probably saved before swapping others. Two checks,
   failing first; 2592 pass. On the same preview: Futurama at 12:30am and Family Guy at
   1:00am, still off their slots, list Futurama's and Family Guy's episodes.
@@ -5673,7 +5675,7 @@ the swap losing his pin and shifting the night.
   `window.__syndicastBundle` on the bundle's first line, and the re-lay worker loads the
   same bundle with no `window`: it stops at once ("The re-lay worker stopped; re-lays run
   in the page from now on"), so every swap freezes the page again. 18000 doesn't stamp
-  until Ron restarts it.
+  until DarkManX16 restarts it.
 - **Fixed, Oct 29, 2026** (`relay-worker-stamp` branch, not merged). `src/web-bundle.js`
   now stamps the bundle's first line as `self.__syndicastBundle = ...` instead of
   `window.__syndicastBundle` - `self` is the global object in both the page and a Worker,
@@ -5684,17 +5686,17 @@ the swap losing his pin and shifting the night.
   but no `window` (a Worker's own scope) and checks it doesn't throw - it did, with exactly
   the console error above, before this fix. `npm test`: 2589/2589. Checked on a worktree
   preview (port 18190, a copy of `.dizquetv-dev`): a Swap's re-lay runs in the worker with
-  no console error. 18000 is still unstamped until Ron restarts it; awaiting his OK to merge.
+  no console error. 18000 is still unstamped until DarkManX16 restarts it; awaiting his OK to merge.
 
 ### What you see is what airs: hand edits kept in the list
 
-Designed Oct 29, 2026 (Opus 5.5) from Ron's brief and agreed the same day, with his
+Designed Oct 29, 2026 (Opus 5.5) from DarkManX16's brief and agreed the same day, with his
 decisions below. Replaces how "Swaps, inserts and Flex that keeps time" (above) keeps
 hand edits: a pin's clock time, and a re-lay on every swap. Build plan in
 [docs/list-lineup-plan.md](docs/list-lineup-plan.md). Measured on a copy of
 `.dizquetv-dev`'s channels taken Thu Oct 29 at 5:02am Central, read as of 5:05am.
 
-Ron's brief, in his words: swapping is frustrating to use; rethink it around one rule,
+DarkManX16's brief, in his words: swapping is frustrating to use; rethink it around one rule,
 *what I see in the list is what airs*.
 
 1. Swap replaces exactly the airing I clicked. Nothing else moves except the Flex right
@@ -5718,7 +5720,7 @@ Ron's brief, in his words: swapping is frustrating to use; rethink it around one
   Move - so the list can show one night while the pins hold another, and the next re-lay
   puts the pins back. Everything since Oct 29's "A pin moved by hand in the list, said
   before a re-lay puts it back" says so in red; it doesn't stop it.
-- **Ron's Friday Oct 30, channel 1.** The list has "A Very Venture Halloween" at Fri
+- **DarkManX16's Friday Oct 30, channel 1.** The list has "A Very Venture Halloween" at Fri
   12:00am, pinned to 3:30am (the Venture Bros. slot), and the 11 airings after it - Futurama
   12:30, Family Guy 1:00, Robot Chicken 1:30 and 1:45, Aqua Teen 2:00 and 2:15, Space
   Ghost 2:30 and 2:45, Sealab 3:00 and 3:15, Home Movies 3:30 - each in the slot after
@@ -5727,7 +5729,7 @@ Ron's brief, in his words: swapping is frustrating to use; rethink it around one
   S2E20 standing in for the Halloween episode, which is in Plex and not in the pool):
   the special goes back to 3:30, Futurama to 12:00, Family Guy's "There's Something
   About Paulie" to 12:30, the swapped-in Family Guy airs at 1:00 in Robot Chicken's slot,
-  and both Robot Chicken halves go to the next week. Family Guy twice; exactly what Ron
+  and both Robot Chicken halves go to the next week. Family Guy twice; exactly what DarkManX16
   saw.
 - **Channel 2 holds the same trap.** 47 pins still to air; five sit away from their
   pinned times, all Friday Oct 30: Mad About You at 12:30am (pinned 2:00), NewsRadio at
@@ -5747,12 +5749,12 @@ Ron's brief, in his words: swapping is frustrating to use; rethink it around one
   regeneration differs from the saved list in 37, 447 and 178 airings on channels 1-3
   over 400 days - Happy Days alone 338 on channel 2 - for reasons other than hand edits
   (not chased: the run had no catalog snapshot, and the list predates later catalog and
-  schedule changes). A comparison would keep things Ron never touched, so the marks are
+  schedule changes). A comparison would keep things DarkManX16 never touched, so the marks are
   explicit.
 
-#### What Ron decided, Oct 29
+#### What DarkManX16 decided, Oct 29
 
-1. **A schedule change doesn't move kept rows.** When Ron changes a slot in Time Slots
+1. **A schedule change doesn't move kept rows.** When DarkManX16 changes a slot in Time Slots
    and runs Create Lineup, every kept row stays at its time; the dialog says in one
    sentence when a kept swap now sits in another show's slot.
 2. **Drags follow the playlist rule anywhere.** When a drag would shift more than that
@@ -5776,7 +5778,7 @@ A kept row has no stored clock time: its time is where it sits in the list, read
 every airing's time is read (`startTime` plus everything before it). There is no second
 time to disagree with the list, so nothing can be "put back". Two kinds:
 
-- **Kept as it is** - a swap, an insert, a removal's Flex, a row Ron dragged: the time and
+- **Kept as it is** - a swap, an insert, a removal's Flex, a row DarkManX16 dragged: the time and
   the item both stay.
 - **Kept in time** - a row a drag or a run-late shifted: its time stays; its episode is
   still its show's next, so it takes part in moving episodes along (below).
@@ -5831,7 +5833,7 @@ the rest from the slots. A row kept as it is is placed as a pin is now. A row ke
 time is a one-off slot of its own position at that instant, filled with the position's
 next episode. Between kept rows, a slot that starts in the gap and fits whole is filled;
 otherwise the gap is Flex. The program on air is carried as now. `then` goes: every
-take-over or run-late Ron chose is already in the list as rows. A schedule change leaves
+take-over or run-late DarkManX16 chose is already in the list as rows. A schedule change leaves
 kept rows where they are (decision 1), and the Time Slots dialog says so ("Halloween on
 Spooner Street at Fri Oct 30, 1:00am is now in Robot Chicken's slot; it stays.").
 
@@ -5865,7 +5867,7 @@ nothing; letting go Trail Mix-Up's aired insert. OK converts `pin` to `kept` in 
 editor's copy, saved with Update Channel; Cancel converts nothing and the list shows again
 at the next open. Create Lineup and Regenerate wait until it is answered.
 
-#### Ron's Friday Oct 30, under the design
+#### DarkManX16's Friday Oct 30, under the design
 
 1. First open: the special stays at 12:00am; Futurama 12:30 to Home Movies 3:30 are kept
    in time; Harvey Birdman 4:00 on time.
@@ -5924,13 +5926,13 @@ in Node, bundled as `src/pins.js` is) holds the first-open sort, the list edits,
 ripple, Put back, `whyNot` and the sentences; what of `src/pins.js` still serves (the
 walk, `carryAt`, `fitAt`, `breaksThatFit`, the clock words) stays there.
 
-#### Choices made beyond Ron's decisions
+#### Choices made beyond DarkManX16's decisions
 
-- The row Ron drags keeps its episode; the rows it shifts take their show's next episodes
+- The row DarkManX16 drags keeps its episode; the rows it shifts take their show's next episodes
   (said Oct 29 in the design he approved).
 - ~~The library's add on a Time Slots channel goes in as an Insert at the scroll position,
   kept; "at the end of list" isn't offered there (it lands past the lineup's end, where
-  nothing keeps it).~~ **Reversed by Ron, Oct 30:** the library's add joins the channel at
+  nothing keeps it).~~ **Reversed by DarkManX16, Oct 30:** the library's add joins the channel at
   the end of the list, for Time Slots and Create Lineup, as it always did; nothing in the
   lineup moves or is kept. Only "Insert into the lineup here" (the library's other choice
   on a Time Slots channel) or a row's Insert after puts an item in the lineup, kept. See
@@ -5981,7 +5983,7 @@ Suite 2592 at the start, 2636 at the end.
   most of a loop later. Also: a run-late whose first row is a removal's Flex named "undefined"
   (it names the first program now); and Put back on an airing nobody edited said it "only
   moved with the rows around it".
-- **Ron's Friday, edit by edit, on channel 1** (`kept-check.js --first-open --swap
+- **DarkManX16's Friday, edit by edit, on channel 1** (`kept-check.js --first-open --swap
   "2026-10-30T01:00:00|S2E20" --move ... --put-back ...`, S2E20 standing in for the Halloween
   episode): the swap changes 2 entries, its row and its Flex ("Wasted Talent replaces There's
   Something About Paulie at 1:00am."); dragging the special to 3:30 moves the 11 airings 30
@@ -6026,11 +6028,11 @@ read as of 7:30am. Suite 2636 at the start, 2658 at the end.
     from the show's next airing, and the episode past the end from the catalog given (Play
     Next only; otherwise the last airing keeps its own).
   - The ripple is inside `swap`, `removeOnly` and `putBack`, not its own export.
-  - After the proof Ron asked (Oct 29) that the sentence name a night an episode moving
+  - After the proof DarkManX16 asked (Oct 29) that the sentence name a night an episode moving
     along runs long only when it is in the coming week; a night further off, Create Lineup
     lays out again before it airs.
 - **On the copy** (`kept-check.js`, edits in order, each followed by Put back):
-  - Channel 1, Ron's Friday after the first open (16 pins now, the special with its 11
+  - Channel 1, DarkManX16's Friday after the first open (16 pins now, the special with its 11
     airings): Family Guy at 1:00am swapped (S2E20 standing in) - "Wasted Talent replaces
     There's Something About Paulie at 1:00am; There's Something About Paulie airs Sun Nov 1,
     11:00pm." plus the Apr 16 night above. 225 later Family Guy airings, each the one
@@ -6091,11 +6093,11 @@ copy of `.dizquetv-dev` taken Thu Oct 29 at 5:23pm Central (identical to the liv
     (39,999, 35,377-35,407 and 37,578-37,608 entries), every position's record identical.
   - Pins at their times: channel 2 with its 5 moved pins unmarked, its 40 pins at their
     pinned times read as kept rows: 0 entries differ from `blocks` with the same pins. With
-    the first open as well, the 6 airings Ron's Friday drags moved are kept in time too,
+    the first open as well, the 6 airings DarkManX16's Friday drags moved are kept in time too,
     so those shows (Full House, Roseanne, Murphy Brown, Coach overnight; Avatar and My Life
     as a Teenage Robot at 5:00pm) air one more time that night and their later episodes are
-    one along - Ron's decision 3, and the only differences.
-  - Ron's Friday on channel 1 (16 pins at 7:30am, 13 swaps and the special still ahead at
+    one along - DarkManX16's decision 3, and the only differences.
+  - DarkManX16's Friday on channel 1 (16 pins at 7:30am, 13 swaps and the special still ahead at
     5:30pm): the first open, the Family Guy swap, the special dragged back to 3:30, Put back
     of the swap - after each, Create Lineup at 5:30pm gives the night 11pm-5am as the list
     has it, to the second (17 rows), and all 1,329 rows of the next three weeks; 138 of 138
@@ -6114,7 +6116,7 @@ copy of `.dizquetv-dev` taken Thu Oct 29 at 5:23pm Central (identical to the liv
 
 ### Special days
 
-Designed Oct 28-29, 2026 (Opus 5.5) from Ron's brief and agreed Oct 29, with
+Designed Oct 28-29, 2026 (Opus 5.5) from DarkManX16's brief and agreed Oct 29, with
 his decisions below; **not built**. Build plan in
 [docs/special-days-plan.md](docs/special-days-plan.md). Settles the spec's open
 question 4, one-off airings, which waited "until a one-off marathon is actually
@@ -6135,7 +6137,7 @@ transitions, its guide name. It is saved with the schedule, so every Create
 Lineup keeps it until it has aired. Nothing is added to the block's own weekly
 airings, so no block is left behind afterwards.
 
-Ron's first use: an all-day Toonami marathon on channel 1, **Fri Jan 1, 2027
+DarkManX16's first use: an all-day Toonami marathon on channel 1, **Fri Jan 1, 2027
 6:00am to Sat Jan 2 6:00am**, a full Toonami cycle of shows and movies. Later:
 Christmas and Halloween marathons, and movie days.
 
@@ -6161,7 +6163,7 @@ Christmas and Halloween marathons, and movie days.
   Sailor Moon S1E25 Mon Dec 28, S1E26 Sat Jan 2 2:30am, S1E27 Mon Jan 4. I Am
   Weasel S4E4 Thu Dec 31, S4E5-7 Fri Jan 1 5:00pm, S4E8 Mon Jan 4 2:30pm.
 
-#### What Ron decided, Oct 29
+#### What DarkManX16 decided, Oct 29
 
 1. **Advance or keep apart is set once per day.** Advance: the day's episodes
    carry on the regular show positions, and the regular slots pick up where the
@@ -6211,7 +6213,7 @@ And Oct 31, starting step 3:
     Powerpuff Girls in the afternoon; and five films - Batman & Mr. Freeze: SubZero
     1:30pm, DBZ: Dead Zone 5:00pm, DBZ: The Tree of Might 8:00pm, Batman: Mask of the
     Phantasm 9:30pm, DBZ: The World's Strongest 11:30pm - each starting on the hour or
-    half hour, with the commercials inside the film's own time. All five are in Ron's
+    half hour, with the commercials inside the film's own time. All five are in DarkManX16's
     Plex ("Y. Toonami Movies" and "Y.Cartoon Theatre"), with more Batman, DBZ, Gundam
     and Sailor Moon films.
 
@@ -6426,10 +6428,10 @@ and blocks Create Lineup until fixed.
   of the cycle, as it does any airing, without the block - regenerating before the
   loop (channel 1: Aug 3, 2027) avoids it, as it avoids the reruns.
 - Kept rows, Delete, the library's add and Put back outside special days.
-- Random Slots: not offered, like kept rows; none of Ron's channels uses it.
+- Random Slots: not offered, like kept rows; none of DarkManX16's channels uses it.
 - Day-parts and blocks as configured, and their weekly airings.
 
-#### Chosen in the design, beyond Ron's decisions
+#### Chosen in the design, beyond DarkManX16's decisions
 
 Said here so they can be changed before they are built:
 - A Back to back day whose rows run out **starts again from the top**, rather
@@ -6507,7 +6509,7 @@ read-only catalog snapshot of channel 1 (138 shows, 11,792 items), regenerated a
   the "no special days" one. `progress-check --special <day.json> --timetable --outside
   <days> --follow <regex>` (report in `scripts/lib/special-days-report.js`) makes the lineup
   with and without the days from the same pool, kept rows and carry.
-- **Ron's two days on channel 1, Advance, Back to back.** New Year's Eve Batman, Thu Dec 31
+- **DarkManX16's two days on channel 1, Advance, Back to back.** New Year's Eve Batman, Thu Dec 31
   5:00pm to Fri 6:00am: Batman/New Batman Adventures, The Batman, Batman Beyond round and
   round, 26 rows each on the :00 or :30, the longest Flex 9:43, then Ronin Warriors on time
   at 6:00am. New Year's Toonami, Fri 6:00am to Sat 6:00am, the 16 Toonami shows, Bah
@@ -6532,7 +6534,7 @@ read-only catalog snapshot of channel 1 (138 shows, 11,792 items), regenerated a
   length; it isn't something a day does to a show it doesn't touch.
 - **The workflow checklist** (`show-orderers.js` is bundled) on a preview of a fresh copy:
   all nine pass on channel 1; delete, swap-drag-put-back and create-lineup pass on channel 3;
-  on channel 2, swap-drag-put-back found no plain row after its swap to drag (four of Ron's
+  on channel 2, swap-drag-put-back found no plain row after its swap to drag (four of DarkManX16's
   kept swaps sit in the first screen) - delete and create-lineup pass there.
 - **Left for step 3:** starts on a day's rows, and a re-make during a day with no program
   carried. (Corrected in step 3: a tagged label didn't parse at all before it, so
@@ -6562,7 +6564,7 @@ channel 1 catalog snapshot, and Plex's two movie libraries read once (GET only),
   special day. `test/special-days-progress.js`, 21 checks, failing first; 3 more in
   `test/special-days.js`; step 2's "starts again" check now expects the movies once.
 - **The days, on the Full Cycle (decision 13).** New Year's: the Apr 8, 2000 running order
-  in Ron's shows - Superman: The Animated Series, Super Friends, ThunderCats, the DBZ /
+  in DarkManX16's shows - Superman: The Animated Series, Super Friends, ThunderCats, the DBZ /
   Gundam / Gundam / Ronin Warriors hour three times, Sailor Moon, The Powerpuff Girls - and
   the real five films from Plex, Back to back on the quarter hour, Advance, block Toonami:
   SubZero 3:00-4:06pm (next row 4:15), Dead Zone 6:15-6:56pm (7:00), Tree of Might
@@ -6572,7 +6574,7 @@ channel 1 catalog snapshot, and Plex's two movie libraries read once (GET only),
   New Year's Eve: Batman/New Batman Adventures, The Batman, Batman Beyond with Mystery of the
   Batwoman (6:30pm), Return of the Joker (9:30pm) and The Batman vs. Dracula (12:30am) - when
   the list starts again at 2:00am only the show rows come round - and New Year's starts at
-  6:00am straight after. Ron's Super Friends are 45-minute double episodes: with SLACK, one
+  6:00am straight after. DarkManX16's Super Friends are 45-minute double episodes: with SLACK, one
   ending 7:45:06 counts as on the quarter hour and the next starts at once.
 - **Re-made, each against the run before it:** Dec 31 noon - both days, 57 airings,
   identical; Jan 1 3:05pm (SubZero on air) and 9:30pm (Tree of Might on air) - the rest of
@@ -6587,18 +6589,18 @@ channel 1 catalog snapshot, and Plex's two movie libraries read once (GET only),
   three Tuesday noons; the shows the days displace move along, and, Advancing, the shows
   they air; plus knock-ons where a moved-along episode is another length - Toonheads' S8E8
   into Looney Tunes (as in step 2), and now Super Friends' alternating 22- and 45-minute
-  episodes into The Tex Avery Show after its Sunday 8am slot (and G.I. Joe ('83)). Ron's
+  episodes into The Tex Avery Show after its Sunday 8am slot (and G.I. Joe ('83)). DarkManX16's
   Dragon Ball Z jumps S2E35 to S2E43 with or without a day: Plex has no S2E36-42.
 - **The workflow checklist**, fresh copy taken 4:19am (port 18210): channel 1 - open,
   update, library-add, add-delete-create and first-open-silent pass (first-open kept 8 rows:
-  Ron's channel 1 on 18000 now has 17 edits still to air); delete, swap-drag-put-back and
+  DarkManX16's channel 1 on 18000 now has 17 edits still to air); delete, swap-drag-put-back and
   create-lineup find no plain row in view, since every row there is one of them; filler
   failed twice on its 1.5 s read-back - both deletes had landed (550, 549, 548) - and passed
   on the third run. Channel 3: delete, swap-drag-put-back and create-lineup pass.
 - **Seen in the reference, not built:** the Full Cycle aired the same episodes in each of its
   three DBZ / Gundam / Ronin hours. Rows here play each show's next episode every pass; airing
   an earlier row's episodes again would be a new row kind (a Repeat of a row of the day) for
-  Ron to decide.
+  DarkManX16 to decide.
 
 **Step 4, the block for the day, Oct 31, 2026** (`special-days`). Proof on run 1 of step 3 (the
 Full Cycle and Batman days laid out as of 4:17am Oct 31 on the step 1 copy), with the copy's
@@ -6612,7 +6614,7 @@ filler lists refreshed from the live ones at 8:21am. Suite 2754 at the start, 27
   `scripts/special-days-check.js` gains `--breaks` (every break with its situation, contexts,
   mix and the clips `buildPlan` picks from the real lists) and `--guide` (`getChannelPrograms`
   against the lineup, `--plain` without the days, `--context-from/-to` every minute).
-- **The breaks, 5:00am Jan 1 to 7:30am Jan 2, 40 of them, Ron's real steps:** the break before
+- **The breaks, 5:00am Jan 1 to 7:30am Jan 2, 40 of them, DarkManX16's real steps:** the break before
   the first row (5:50am) is the one boundary, Adult Swim into Toonami - out: Adult Swim's
   "First Aid" sign-off, CN Next Toonami, a Toonami NEXT promo; in: the Powerhouse intro; 34
   inside are Toonami's (12 between episodes, 22 between shows: Toonami bumpers, show intros),
@@ -6621,7 +6623,7 @@ filler lists refreshed from the live ones at 8:21am. Suite 2754 at the start, 27
 - **Found: no sign-off when the day's last item runs over, and fixed the same day.** The last
   row, Super Friends at 5:15am, runs to 6:01:05, and the regular schedule picked up right there
   with no Flex between (the run-late rule), so there was no break and Toonami's leaving steps
-  had nowhere to play. **Ron's decision:** the regular schedule starts at the day's own next
+  had nowhere to play. **DarkManX16's decision:** the regular schedule starts at the day's own next
   mark after the overrun - the half or quarter hour it rounds to - so the break between holds
   the leaving and entering steps; from there it runs late and catches up as before, unless the
   mark lands on a regular slot boundary, where the slot it ran into is simply skipped (nothing
@@ -6696,7 +6698,7 @@ the workflow checklist, all nine plus a new `special-day`, 10/10 on a fresh copy
   own timetable yet** - by design, that's Step 6's task, not a gap here.
 
 **A block with no weekly airings, named by a special day, Nov 5, 2026** (`special-days`, before
-step 6). Ron's plan for marathon-specific bumpers: a block that exists only for its transitions
+step 6). DarkManX16's plan for marathon-specific bumpers: a block that exists only for its transitions
 (its own show intros and NEXT promos), never on the weekly schedule - a special day names it, its
 transitions are copied from the block it stands in for, and one step's filler list is swapped for
 a marathon-specific one with the regular list as its fallback.
@@ -6727,19 +6729,19 @@ a marathon-specific one with the regular list as its fallback.
   Superman's breaks play their regular Toonami Show Intros clips ("DBZ Intro [Moltar]", "G Gundam
   Intro", "Superman Intro"); the boundary at the day's end still leaves Toonami and enters CN
   City (Day) as before. Also proved through the real UI, on an isolated copy (port 18213, since
-  18211 is Ron's): "+ Add block" starts with no airings and no warning shown anywhere in the
+  18211 is DarkManX16's): "+ Add block" starts with no airings and no warning shown anywhere in the
   card; "Copy transitions to..." lists it and copies into it cleanly ("Copied 10 steps to 1
   card"); the special day's "Block for the day" dropdown lists it, picks it, and shows no
   problem. The server log warned once, right after the block was added with nothing naming it
   yet (expected - a truly orphaned block still should warn); after the special day named it,
   Create Lineup and Update Channel, no further warning. `npm test` 2783/2783.
-- **Added to step 7's live checklist** (docs/special-days-plan.md): naming this block for Ron's
+- **Added to step 7's live checklist** (docs/special-days-plan.md): naming this block for DarkManX16's
   real New Year's day, saved with no warning, a Ronin Warriors break playing the Full Cycle clip
   and another show's break the regular one, checked live on the clock-shifted preview.
 
 **Fill long breaks with, Nov 5, 2026** (`special-days`, folded into step 6). Found building the
 real New Year's day on 18214: Dragon Ball Z: The Tree of Might (1:00:53) from 7:30am left a
-29-minute bare Flex to the next row's own 9:00 mark. Ron's fix, one setting on a special day:
+29-minute bare Flex to the next row's own 9:00 mark. DarkManX16's fix, one setting on a special day:
 **Fill long breaks with** - a show, custom show or filler list, off by default. A Back to back
 break over 10 minutes plays as many items of that source as fit, then a shorter plain break, so
 the next row still starts exactly on its mark.
@@ -6766,7 +6768,7 @@ the next row still starts exactly on its mark.
   with `layPads(pads, 0)` (only their usual small per-item pad), then fill items are pushed
   directly (`pushProgram`, no pad between them), then one `pushFlex` for whatever is left - never
   going through `layPads`'s own distribution for the long part at all.
-- **Proof, the real Full Cycle day, half-hour rounding (Ron's own words), I Am Weasel (6-7 minute
+- **Proof, the real Full Cycle day, half-hour rounding (DarkManX16's own words), I Am Weasel (6-7 minute
   episodes) as the fill source:** Dragon Ball Z: The Tree of Might (60:53) from 10:00pm - a
   4.1-minute pad, three I Am Weasel shorts (19:48), a 5.3-minute break, Batman: Mask of the
   Phantasm right on 11:30pm. Every movie's gap across the whole day filled the same way (SubZero,
@@ -6800,7 +6802,7 @@ the next row still starts exactly on its mark.
   `npm test` 2792/2792.
 
 **Preview this day, the Schedule tab, the transitions Preview's date, Nov 5, 2026** (`special-days`,
-step 6). Ron's keep-it-simple rule: Preview this day is a plain timetable, one line per show or
+step 6). DarkManX16's keep-it-simple rule: Preview this day is a plain timetable, one line per show or
 movie with its start time, nothing more unless asked.
 
 - **`src/special-days.js` gained `timetable({ programs, startTime, day, schedule })`**, pure: walks
@@ -6827,7 +6829,7 @@ movie with its start time, nothing more unless asked.
   `style.css`) when none are found yet - "not in the saved lineup yet" in the band's own label, not
   a separate line.
 - **Found and fixed: regular weekly slots and the day's own chips rendered at once, overlapping.**
-  Both used the identical `.sched-cal-slot` class for the same covered hours - Ron would have seen
+  Both used the identical `.sched-cal-slot` class for the same covered hours - DarkManX16 would have seen
   the regular Friday lineup (Waynehead, Detention) duplicated under the special day's own content
   (Superman, I Am Weasel). `rebuildScheduleCalendar` now tracks each day's `specialRanges` while
   building bands and filters `daySlots` against them before returning the day.
@@ -6846,7 +6848,7 @@ movie with its start time, nothing more unless asked.
   rule: both moved into one `scope.previewOptions = { from, useNames }` object, template and
   `runPreview` updated to match.
 - **Proof, real clicks, port 18218 (Full Cycle day, half-hour rows, fill long breaks, the real
-  Full Cycle block - all as Ron built them on 18217):** Preview this day for the New Year's day
+  Full Cycle block - all as DarkManX16 built them on 18217):** Preview this day for the New Year's day
   shows one line per show/movie at its real start time, nothing else, greyed never-aired rows and a
   thin restart rule where the schedule confirms a restart is real. The Schedule tab's week chooser
   walks forward/back correctly ("This week" appears/disappears right); the week of 12/27-1/2/2027
@@ -6866,7 +6868,7 @@ movie with its start time, nothing more unless asked.
 the playback-errors crash fix and the play-cache pool - first; one conflict, `editor-workflows.js`,
 resolved to `blocks`' own newer copy, byte-identical to it). Proved on a copy of the live data
 (7:49pm Nov 5): the Full Cycle running order (39 half-hour rows, Fri Jan 1 6:00am to Sat Jan 2
-6:00am, I Am Weasel filling long breaks) named to Ron's own "Toonami: Full Cycle" block. Ron's day
+6:00am, I Am Weasel filling long breaks) named to DarkManX16's own "Toonami: Full Cycle" block. DarkManX16's day
 from 18217 was never saved (no Update Channel landed in `special-days-data-ny2`), so this was the
 day used. Create Lineup and Update Channel through the dialog; the server warned nothing.
 
@@ -6899,14 +6901,14 @@ day used. Create Lineup and Update Channel through the dialog; the server warned
   - *The transitions Preview's From walking from the current time of day* (6b5a104, step 6's): the
     date field keeps the time it was made with - "from Fri Jan 1, 9:22pm". A picked date walks
     from its midnight; today from now, as before.
-- **Ron's own setup, not code:** his Full Cycle lists' clips named no show, so every "for the show
+- **DarkManX16's own setup, not code:** his Full Cycle lists' clips named no show, so every "for the show
   coming up" step on them found nothing and his cascade fell back to the regular clips as built.
   "Match shows" suggests Ronin Warriors for both Ronin clips (accepted on the copy only); "DragonBall
   Z Garlic Jr. Saga Intro (Full Cycle)" is flagged (a saga, no season nickname) and the SubZero NEXT
   promo wasn't looked at. Jan 1 is a Friday: the block's own entering steps (TOM Intro, Toonami Show
   Intros) are Mon-Wed only, and Adult Swim's leaving step plays the Cartoon Network Powerhouse Intro
   right before the marathon's first show.
-- **The additive check:** Create Lineup on all three of Ron's channels, `blocks`' code against this
+- **The additive check:** Create Lineup on all three of DarkManX16's channels, `blocks`' code against this
   branch's (each version's own `progress-check.js`, the same files, the same frozen moment): the
   lineups identical, and everything else saved - schedule, stored positions, catalog state - too.
 - `npm test` 2840/2840; the workflow checklist, all ten including `special-day`, on a fresh copy
@@ -6931,7 +6933,7 @@ re-serialize on each digest (`dayRowLine`, `problemsOf`), no slowness seen; the 
 `fill:` tag riding on the day tag (one special case in the planner, tested). (That last one is
 now `specialDays.dayOfTag`, which the holiday rows below use too.)
 
-**Holiday rows, Nov 6, 2026** (`holiday-rows`, step 8, from `blocks` 2440bb4). Ron's Christmas Eve
+**Holiday rows, Nov 6, 2026** (`holiday-rows`, step 8, from `blocks` 2440bb4). DarkManX16's Christmas Eve
 2026 marathon: channel 2, Thu Dec 24 midnight to midnight, the Christmas season (Christmas,
 Hanukkah and Kwanzaa together). Keep it simple: one dropdown on the day, one checkbox on a row.
 
@@ -7003,12 +7005,12 @@ failing check first:
 Set aside: a Rerun row, holiday or not, doesn't come out identical on a mid-day Create Lineup
 (what goes last in its next round is what actually aired - Rerun's own definition; Play Next,
 Shuffle and Ordered are identical); a holiday position inherits a channel-level season exclusion
-(`showConstraints`; none of Ron's channels has one) as well as the row's own; the holiday-row test
+(`showConstraints`; none of DarkManX16's channels has one) as well as the row's own; the holiday-row test
 is written out in five files (the planner counts `item: null` as an item, the others don't);
 `slot.pool` is a special case in the shared `forSlot`; and the earlier review's set-asides (the
 Schedule tab's columns across a clock change, two dialog caches that re-serialize per digest).
 
-**Built differently from the design.** Added beyond it, at Ron's request: *Fill long breaks with*
+**Built differently from the design.** Added beyond it, at DarkManX16's request: *Fill long breaks with*
 (Nov 5, with its own `fill:<day>` position) and the Christmas season group of holidays. The holiday
 rows' candidates reach the generator as `holidayItems`, a seventh argument filled by the dialog
 from the shows' catalogs, rather than the generator reading `catalogState` itself (it is a pure
@@ -7020,8 +7022,8 @@ episodes aired.
 
 ### Split episodes stay together
 
-Built Nov 6, 2026 (Opus 5.5) from Ron's brief, on the `split-episodes` branch from `blocks` at
-69f656c; unmerged until Ron says.
+Built Nov 6, 2026 (Opus 5.5) from DarkManX16's brief, on the `split-episodes` branch from `blocks` at
+69f656c; unmerged until DarkManX16 says.
 
 **What was wrong.** Some half-hour episodes are kept as one file per story: The Weekenders'
 "S03E11a - Clown" (11:33) and "S03E11b - Testing Dixon" (10:49). Time Slots filled a slot file by
@@ -7050,7 +7052,7 @@ year (35, 23 and 153 halves apart on channels 1-3).
   Time Slots fills from a position: a regular slot and a Set times row, a slot running late after
   a swap, a slot with a kept row in it (only a whole episode fits before the row), a Back to back
   row, and a special day's "Fill long breaks with". The episode fits or doesn't as one; when its
-  halves fit only without their pads they air back to back (Ron's 2:35: 11a, then 11b at
+  halves fit only without their pads they air back to back (DarkManX16's 2:35: 11a, then 11b at
   2:46:33, Flex to 3:00); on time they keep their 2:30 and 2:45, as before. Longer than its slot,
   it slides whole like any long program, and the next show starts after it.
 - **A slot never starts with a "b" half.** The planner moves a Play Next place on a later half
@@ -7060,18 +7062,18 @@ year (35, 23 and 153 halves apart on channels 1-3).
   airing the a half once more, with its b. A swap or a repeat of that half on air isn't the
   position's, so it doesn't count.
 - **Create Lineup with an a half on air** keeps the rest in its slot: after the half's pad when it
-  still fits by the slot's end, else straight after it (Ron's Nov 2 lineup at Sat 2:40pm: 11a
+  still fits by the slot's end, else straight after it (DarkManX16's Nov 2 lineup at Sat 2:40pm: 11a
   2:35, 11b 2:46:32, Recess on time). In a Back to back day, which moves on to the next row once a
   program is on air, the rest is laid with the half either way.
 - A row kept in time airs its position's next episode, and a split episode's rest straight after.
 - The halves are one story (`multiPart.stories`), so Shuffle and Rerun pick and air them together.
-- A picked item (This item) is only itself, and a row kept as it is airs as it is: Ron's Fri
+- A picked item (This item) is only itself, and a row kept as it is airs as it is: DarkManX16's Fri
   Nov 6 swap (S02E02a) and insert (S03E07b) stay as he made them.
 
 **What this doesn't change.** Shows without split files: the generator's arithmetic is the same
 unless a slot holds a split episode. The kept-rows ripple in the list (it moves an episode along one
 airing at a time; Create Lineup pairs again). The Random Slots generator doesn't pair halves; its
-editor shares the planner, so an out-of-step place there goes back to its a as well. None of Ron's
+editor shares the planner, so an out-of-step place there goes back to its a as well. None of DarkManX16's
 channels uses Random Slots.
 
 **Found by the review before merging**, each fixed with a test that failed first: Create Lineup
@@ -7091,16 +7093,16 @@ the program on air on time and late, Back to back on the quarter hour with and w
 air, an Advance start, the fill, the planner). Every proof below re-run on the final code.
 - **Next three weeks:** every airing of every other show identical on all three channels (1,318,
   1,003 and 1,063); every split episode aired whole (5, 12 and 6), and the split shows' airings
-  are the same as blocks' there too. The only halves apart are Ron's two Fri Nov 6 edits.
+  are the same as blocks' there too. The only halves apart are DarkManX16's two Fri Nov 6 edits.
 - **The year:** 0 halves apart on any channel (blocks: 36, 27, 124). Other shows move only
   because a split show's episodes land on other dates: on channel 1, Gym Partner's 41-minute
   special airs a week earlier and pushes Code Lyoko, so Megas XLR is one episode along on each
   later weekend (61 airings); on channels 2 and 3, four times in the year a late slot's pair runs a
   few minutes past the half hour and the next show starts 5 or 10 minutes late (5 airings).
-- **Realigned:** Ron's Nov 2 lineup at Sat Nov 7 3:00pm: Sunday 3:00 airs 11a, 3:15 11b (blocks:
+- **Realigned:** DarkManX16's Nov 2 lineup at Sat Nov 7 3:00pm: Sunday 3:00 airs 11a, 3:15 11b (blocks:
   11b, then 12a). The saved lineups where each show is out of step: The Weekenders Fri Nov 20 (Sat
   airs 4a and 4b), Gym Partner Sat Nov 28 (Sun 2:30 S02E03a, 2:45 S02E03b), Ren & Stimpy Mon May 24,
-  2027 (Tue 3:10 S04E02a and b). Each time only that show's position moves. And Ron's Nov 2 lineup
+  2027 (Tue 3:10 S04E02a and b). Each time only that show's position moves. And DarkManX16's Nov 2 lineup
   at Sat 2:40pm, 11a on air in the late slot: 11b at 2:46:32, Recess 3:00, Sunday 12a and 12b
   (blocks: 11a alone, Sunday 11b and 12a).
 - **Twice in a row:** regenerated from the branch's lineups on Sun Nov 8 at 3:05pm (11a on air,
@@ -7111,10 +7113,10 @@ air, an Advance start, the fill, the planner). Every proof below re-run on the f
 
 ### Insert before, and a drop past a row's own break
 
-Built Nov 6, 2026 (Sonnet 5.5) from Ron's brief, on the `insert-before` branch from `blocks` at
-8f00d73; unmerged until Ron says.
+Built Nov 6, 2026 (Sonnet 5.5) from DarkManX16's brief, on the `insert-before` branch from `blocks` at
+8f00d73; unmerged until DarkManX16 says.
 
-**What Ron hit.** On channel 1 he tried to put "Toonami Movie Intro (The Batman vs. Dracula)", 7
+**What DarkManX16 hit.** On channel 1 he tried to put "Toonami Movie Intro (The Batman vs. Dracula)", 7
 seconds, right before the movie, after the commercials. The library's "Insert into the lineup here"
 put it after an airing, ahead of the break (the commercials play in the Flex), and dragging it to
 just before the movie did nothing: the clip, with its Flex after it, already sat directly in front
@@ -7137,11 +7139,11 @@ of the movie, so the drag was read as "stay".
   (`edit.before`); a move past a break puts the break after the row again (`edit.past`).
 
 **The old rule that changed.** `test/kept-rows.js` said a drop on "the row after it" is nothing; that
-was the drop Ron needed, so it now moves the row past its break, and only a drop onto the row or its
+was the drop DarkManX16 needed, so it now moves the row past its break, and only a drop onto the row or its
 own Flex is nothing.
 
 **Not changed, found on the way.** Dragging the very last airing of a list earlier throws (`move`
-reads `rows[kf + 1]` for the "back on time" sentence); Ron's lists end a year out, so it is rare.
+reads `rows[kf + 1]` for the "back on time" sentence); DarkManX16's lists end a year out, so it is rare.
 The Swap dialog's list
 can show the row's own show after a quick switch to Custom shows, because the first read lands over
 the second; wait for "Reading..." to go.
@@ -7154,12 +7156,12 @@ with a clip in front of an airing.
 
 ### Event tools: dates, "until" rows, copy to a date, and edits inside a special day
 
-Designed Nov 8, 2026 (Opus 5.5) from Ron's brief and agreed the same day. Ron is setting up three
+Designed Nov 8, 2026 (Opus 5.5) from DarkManX16's brief and agreed the same day. DarkManX16 is setting up three
 events on channel 3: a House of Mouse marathon (Wed Nov 18) and two Marathon and a Movie days (Sun
 Nov 22, Thu Nov 26). Features 1-3 are wanted merged before Sun Nov 15; feature 4 comes after them,
 on its own branch. Built on `event-tools` from `blocks` at c91ad93.
 
-**Ron's decisions, Nov 8.** The design below as proposed; a copied Advance day drops its episode
+**DarkManX16's decisions, Nov 8.** The design below as proposed; a copied Advance day drops its episode
 starts; Preview this day shows an "until" row's run as one line.
 
 #### 1. Dates on a Mix entry and on a transition step
@@ -7171,7 +7173,7 @@ starts; Preview this day shows an "until" row's run as one line.
 - **Mix:** each Mix row gets one calendar button; set dates show on the row ("Nov 15 – Nov 26"),
   and From and To date boxes open under it. Outside its dates an entry is not in the mix, so the
   others share its weight. Once the dates have passed the row is greyed; it stays until deleted.
-  Ron's "MAAM Promos" in the Bounce Era day-parts' Mix: Nov 15-26, then stops by itself.
+  DarkManX16's "MAAM Promos" in the Bounce Era day-parts' Mix: Nov 15-26, then stops by itself.
 - **Step:** "Only on these dates" (From, To) under "Only at these times", both or neither. The
   sentence ends "only from Nov 15 to Nov 26", the chip says "Nov 15–26". A step outside its dates
   has found nothing, so a step watching it plays - as days and times. The Flex tag leaves it out.
@@ -7229,7 +7231,7 @@ starts; Preview this day shows an "until" row's run as one line.
 #### Build record
 
 **Features 1-3 built Nov 8, 2026 (Opus 5.5)** on `event-tools` from `blocks` at c91ad93; not
-merged until Ron confirms. Suite 3061 at the start, 3175 at the end. Feature 4 is not built.
+merged until DarkManX16 confirms. Suite 3061 at the start, 3175 at the end. Feature 4 is not built.
 
 - **Dates.** `src/date-range.js` holds the rule for both (`datesProblem`, `inDates`,
   `localDate`, `passed`). Steps: `leftOut` in `buildPlan` ("outside its dates"), the save-time
@@ -7269,12 +7271,12 @@ worktree at c91ad93:
 - Break plans, `scripts/compare-times-engine.js --control`: 9,103 breaks, 0 differ; controls 871
   (times) and 3,427 (every step of channel 1 dated to a range long over).
 - Create Lineup, `progress-check --save` from each checkout at the same moment: channels 1-3
-  identical program for program (39,999, 35,154 and 37,381 entries; channel 3 with Ron's three
+  identical program for program (39,999, 35,154 and 37,381 entries; channel 3 with DarkManX16's three
   special days), before the review's fixes and again after.
 - On a preview (port 18190, the 6:18am copy): MAAM Promos added to Bounce Era (Thur)'s Mix and
   dated Nov 15-26 with the calendar button and real keys, a step dated, Update Channel saved
   exactly that (every step of a touched card gains `"dates": null`, as `times` did); the step's
-  date taken off again. Ron's Kim Possible day rebuilt as "Kim Possible until 7:00pm", the movie,
+  date taken off again. DarkManX16's Kim Possible day rebuilt as "Kim Possible until 7:00pm", the movie,
   one row: Preview this day gave the same episodes at the same times as his 14 rows, in three
   lines. Copy put the Lizzie day on Sun Nov 29, 3:00-7:00pm. Neither change was saved.
 - The workflow checklist (`editor-workflows.js --channel 3`) has **eleven** workflows. Before the
@@ -7329,7 +7331,7 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
   `test/day-edits.js` (locate, the change on the schedule, the splice equal to a full Create Lineup
   for each kind, every sentence and its Put back's, an Advance day moving along and Put back giving
   the list back exactly, a Keep-apart day moving nothing).
-- **On a preview** (port 18190, a copy taken 8:32am Nov 8), Ron's Lizzie day, Nov 22: a swap at
+- **On a preview** (port 18190, a copy taken 8:32am Nov 8), DarkManX16's Lizzie day, Nov 22: a swap at
   4:00 and an insert after the 5:00 airing, 14-32 seconds each to lay the day again; saved with
   Update Channel (both on the row, the list as shown); Time Slots listed both; Create Lineup laid
   the day exactly as the list had it; Put back of each, saved, gave back exactly the original day
@@ -7356,7 +7358,7 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
   taken 8:44am, and again after the review's fixes on one taken 10:11am.
 - **The checklist** passed all eleven before the review's fixes (copy 8:44am) and again after them
   (copy 10:11am).
-- **Ron's answers, Nov 8:** (1) Delete inside a day is never air, as everywhere else on a Time
+- **DarkManX16's answers, Nov 8:** (1) Delete inside a day is never air, as everywhere else on a Time
   Slots channel - built below. (2) A change is to "the row's nth airing", so an insert stays at its
   place in the day when the episodes around it change (after a swap's Put back, the insert after
   the 5:00 airing follows Gordo's Video instead of Mom's Best Friend, still at 5:21pm): right, an
@@ -7371,7 +7373,7 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
   Slots"), and a day on the air are refused in one line; a failed re-lay takes the queued entry back
   off. Tests failing first: `test/day-edits.js` (Keep apart and Advance, against a full Create Lineup
   with the episode left out) and `test/kept-editor.js` (Delete on a day's airing goes to the day).
-  On the preview, Ron's Lizzie day: Delete on Gordo's Video, 43 seconds, saved: the day as
+  On the preview, DarkManX16's Lizzie day: Delete on Gordo's Video, 43 seconds, saved: the day as
   described, and the entry on the never-air list, "deleted, never".
 - **Merged into `blocks` Nov 8** (f61c93a) and pushed. On the merged result, a fresh copy taken
   5:54pm: `npm test` 3231/3231, the checklist 11 of 11 - its `special-day` workflow now checks Delete
@@ -7380,7 +7382,7 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
   Clash" (S4E9, .../177340) and "House of Genius" (S4E8, .../177275) have no never-air entry of any
   kind, by file key (what Delete checks), so Delete should have added them; the script was left
   alone. Cause still unknown; later fresh-copy runs passed.
-- **add-delete-create, Nov 11-12: deleted episodes still air** (recorded at Ron's request for the
+- **add-delete-create, Nov 11-12: deleted episodes still air** (recorded at DarkManX16's request for the
   Delete investigation; no cause claimed). Channel 3, fresh copies, the same five House of Mouse
   deletes. The three that fail are the files the added show holds: House of Turkey `.../177277`,
   Mickey and the Culture Clash `.../177340` and House of Genius `.../177275` (the Nov 8 pair). The
@@ -7388,23 +7390,25 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
   files, but House of Turkey only by an older file, `.../54121` (Oct 18); the script matches by
   title, so it counts House of Turkey as listed.
   - Nov 11, 6:34am (`checklist-day-notes` on blocks f995ef8): 3 of the 5 air in the next 3 weeks,
-    e.g. "House of Turkey" on Thu Nov 12 at 3:40pm, on a row carrying Ron's swap (made Nov 9,
+    e.g. "House of Turkey" on Thu Nov 12 at 3:40pm, on a row carrying DarkManX16's swap (made Nov 9,
     5:31am, replacing "Unplugged Club"; shifted twice and moved after), not inside a special day.
     Whether Delete added entries that run wasn't recorded, and that copy is gone.
   - Nov 12, copy taken 7:23am (blocks plus the same-drive pause and the checklist fix): Delete added
     **no** entry for any of the five - the Nov 8 symptom - and the three air with none. The copy is
-    kept at `C:\Users\ronpr\AppData\Local\Temp\claude\2c0506e9cdb9bad1\f1398e3c-e764-41bc-9bf4-5e4b8ca28db0\scratchpad\cl-data-used-nov12`
+    kept at `C:\Users\<user>\AppData\Local\Temp\claude\2c0506e9cdb9bad1\f1398e3c-e764-41bc-9bf4-5e4b8ca28db0\scratchpad\cl-data-used-nov12`
     (a temp folder; it may not last).
   - Nov 12, copy taken 7:36am, same code: Delete **did** add all three (7:38am, `how: deleted`), and
     all three air anyway: House of Turkey at Thu Nov 12 3:40pm on the same swap row; Mickey (2:30pm)
-    and House of Genius (4:00pm) on Thu Nov 19, inside Ron's "Celebrate Mickey: House of Mouse
+    and House of Genius (4:00pm) on Thu Nov 19, inside DarkManX16's "Celebrate Mickey: House of Mouse
     Marathon" (1-9pm), on rows with no kept edit.
   - So two things to explain: Delete sometimes adds nothing, and a never-air file still airs on a
     kept swap row and inside a marathon day.
+  - **Explained and fixed Nov 13:** Resolved, "Deleted episodes kept coming back". The server
+    forgot the save; the airings were DarkManX16's own swaps.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
-Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with Ron's
+Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with DarkManX16's
 decisions below; not built. The design and the build steps are Stage 6 in
 [docs/blocks-spec.md](docs/blocks-spec.md). Covers two roadmap lines,
 "Midrolls" under Blocks system and "Chapter and segment detector" under
@@ -7513,7 +7517,7 @@ minutes 2.9-3.0; programs of an hour or more 2.4-3.9. Almost nothing is
 followed by no Flex at all (14-22% of the 35-60-minute items on channels 1 and
 2).
 
-#### Ron's decisions (Oct 26)
+#### DarkManX16's decisions (Oct 26)
 
 1. **Only approved points air.** One-click approval of a show's pattern is the
    main way to approve, and the outliers are listed for him to check.
@@ -7573,7 +7577,7 @@ ripper's 5-minute chapters among them.
   at the first queue build, retried, because a boot can run out of file
   handles. `GET /api/breaks/scanner` is its status; a `PUT` changes its
   settings (see "The break scanner skips E:" in Known issues).
-- **Approved by Ron Nov 7**, against the spec's first wording: the 10-second
+- **Approved by DarkManX16 Nov 7**, against the spec's first wording: the 10-second
   count is per channel, across its items (a break of 6-15 s bumpers starved a
   stream for 80 s without any one item reaching 10 s); held items are
   ignored; Very Low disk priority and the drive skip were added before merging.
@@ -7611,7 +7615,7 @@ ripper's 5-minute chapters among them.
     146 MB) 44% from the disk, Coach (F:, 196 MB) 63%, each scanned within
     seconds of its live ffmpeg ending, having played from start to end. Windows
     kept about half of each in memory, not most of it.
-- **Changed Nov 10, with Ron's OK (71ca275):** Gentle reads a drive a viewer is
+- **Changed Nov 10, with DarkManX16's OK (71ca275):** Gentle reads a drive a viewer is
   on last instead of never - a free drive's file first, and when every file
   left is on a busy drive, one of those at Very Low disk priority; a viewer
   starting on the drive mid-file no longer stops it. The 10-second pause still
@@ -7620,7 +7624,7 @@ ripper's 5-minute chapters among them.
   tell a same-drive slowdown from background noise. Scanning an episode right
   after it airs was not built: half of it comes from the disk anyway, and with
   busy drives readable there is nothing left for it to unblock.
-- **Changed Nov 12, Ron's decision (merged on its own, ahead of step 3):** a
+- **Changed Nov 12, DarkManX16's decision (merged on its own, ahead of step 3):** a
   channel's 10 seconds below 0.99 count only while the scanner is on a file
   from that channel's drive, through the rests between that file's runs; the
   CPU pause is unchanged. The first day on 18000 had 14 pauses (5.2 h), none
@@ -7633,7 +7637,7 @@ Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time
 Slots' Create Lineup and every re-lay keep the program on air where it is; Random
 Slots has its own generator (`random-slots-service.js`) and its editor its own
 Create Lineup path, so it still starts the program on air again and moves its
-show along, as every Create Lineup did before. None of Ron's channels uses Random
+show along, as every Create Lineup did before. None of DarkManX16's channels uses Random
 Slots. The fix is the same shape: `carryAt` in the Random Slots editor, the
 planner's `placesFrom`, and a `carry` the generator places first.
 
@@ -8554,9 +8558,88 @@ investigation that Opus 5 already handles well.
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
 
+### Deleted episodes kept coming back
+
+DarkManX16, Nov 12, 2026, with his marathons starting Nov 18: the checklist had found four ways a
+deleted episode still aired. **DarkManX16's rule:** a deleted episode never airs anywhere on that
+channel - regular slots, special days, kept rows - until he brings it back from the Catalog
+page, even if its file is renamed or replaced. The one exception, as he decided Nov 12: a swap
+or insert he placed himself of that exact airing still airs, and Delete's one sentence names
+it. Built on `never-air-everywhere` (Fable 5.2), not merged.
+
+- **1. Delete sometimes added nothing: the server forgot the save.** Delete was sound (three
+  instrumented runs queued and sent every entry). Update Channel sends the channel's save and
+  then the catalog ops. `channelCache.saveChannelConfig` drops the cached channel before the
+  write, and a reader that began reading the file before the ops' save - the guide rebuild, a
+  viewer, the page's own refresh - put what it had read back in the cache afterwards: the
+  channel from before the ops. The POST had answered with the entries; the server then served
+  the old list, and the next save of that channel, which keeps the stored catalog, wrote the
+  old list back for good. Hypotheses ruled out on the way: Delete not queueing, the POST
+  failing, the page navigating away before the POST. Reproduced with the editor's own two
+  requests and one timed read: 3 of 7 entries lost before, 0 of 20 after. Fixed in
+  `channel-cache.js` (`getChannelConfig` keeps a read only if nothing was dropped while it
+  ran, and reads again otherwise; `dropChannelConfig`) and `channel-service.js` (dropped again
+  once the file is written). Not changed: a read that fails for 1.6 s during a very slow
+  write is still cached as "no channel" until the next save.
+- **2 and 3. The kept swap and the marathon were DarkManX16's own swaps.** "House of Turkey" on Nov
+  12 was his Nov 9 swap; "Mickey and the Culture Clash" and "House of Genius" on Nov 19 are
+  airings 4 and 7 of his 16 swaps inside the House of Mouse marathon. A day's unswapped row
+  draws on the pool and always obeyed the list. So: a swap or insert in the list, one inside
+  a special day, and a day's picked item air as placed (`keptRows.handPlaced`), and Delete
+  says, only when there is one ahead, "Your swap of it on Nov 19 at 2:30pm still airs; Put
+  back that swap to remove it too." (`handPlacedAhead`, `stillAirs`; up to three named, one
+  per kind when kinds are mixed; a swap that has aired and rotated past the lineup's end is
+  not named). A row DarkManX16 only dragged keeps its time, not a deleted episode: Create Lineup
+  airs its position's next episode there (`keptAhead`'s `neverAir`), and lets the row go when
+  the position has nothing to air. None of his rows was one of those.
+- **4. The list is keyed by file.** An episode is also on the list when an entry of the same
+  show has the same title (capitals and punctuation aside), **this file's own name carries
+  that title**, and either the season and episode are the same (a second copy) or the listed
+  file is gone from the show's catalog as last read (`shows[showId].known`: a replaced file -
+  DarkManX16's old and new House of Mouse number their episodes differently, S3E44 and S4E10).
+  Generic titles ("Episode 41", "Pilot", "Part 2") never match another file; movies are
+  listed by file alone; a show never reviewed matches only a second copy.
+  `showCatalog.matchFor` is the one gateway (`isNeverAir`, `entryFor`, the pool, a review, the
+  history filter, holiday rows' candidates). **The title alone is not enough**, measured on
+  DarkManX16's data before building: of 7 same-show same-title pairs, 4 were different episodes,
+  three because Plex gives a file another episode's title (Teamo Supremo S02E09, Back at the
+  Barnyard S02E24-E25, SpongeBob S02E01) and one generic (Double Dare "Episode 41"). The
+  three true ones: House of Turkey, and Hannah Montana's "Torn Between Two Hannahs" and
+  "Killing Me Softly with His Height" (second copies under `E:\Hannah Montana`).
+- **A fifth way, found on the way.** The generator's pool stripped `specialDay` and
+  `specialRow` from an episode but not `specialChange`, `specialInsert` and `specialN`, so
+  every regular airing of an episode a day's swap had aired carried the swap's mark (185 on
+  channel 3), and Delete on one offered to put back the day's swap. The pool strips all five;
+  Delete, the row's thumbtack and Time Slots' change times read the mark only inside its day.
+  Saved lineups lose the leftover marks at the next Create Lineup.
+- **A never-air save that fails** after Update Channel is tried once more, then says "The
+  never-air changes weren't saved: the deleted episodes can air again." through the page's
+  notices (window event `syndicast-notice`, shown by `toast-notifications.js`).
+- **What changes on DarkManX16's data, old code against new at one moment** (`progress-check --save`
+  with a catalog snapshot, a copy taken Nov 13 4:38am): channel 1 identical, 40,000 entries;
+  channel 2, 201 regular airings lose a leftover mark and 17 rows hold the same data in
+  another field order, nothing else; channel 3, 210 lose a leftover mark, House of Turkey's
+  two regular airings (Apr 16 and Oct 1, 2027) are gone, and Hannah Montana's "Torn Between
+  Two Hannahs" no longer airs Dec 26 from its second copy - the later episodes of those two
+  shows move up, 360 rows in all. It reaches a channel when DarkManX16 next runs Create Lineup.
+- **The fresh review (an agent, Nov 13) found three defects, each fixed with a test that
+  failed first:** two episodes sharing a title were both listed (now the numbers or the
+  gone file decide, and movies never match by title); the match re-read the list's keys for
+  every program (10 s for 40,000 programs against 3,000 entries; 100 ms now); a dragged row
+  of a deleted episode aired it when its position had nothing left. Also from it: the failed
+  save's line no longer asks for a delete that may be impossible, and a leftover mark no
+  longer shows a thumbtack. Left as it is: a title with "/" against a file name with "&", or
+  `Doug_s` for "Doug's", doesn't match (the safe side).
+- **The checklist's own catch:** `add-delete-create` now checks Delete's sentence against
+  what DarkManX16 placed by hand and that no other airing of the five is left anywhere in the lineup.
+  Its first run failed on a swap that had aired and rotated to the list's end being named.
+- **Guarded by** `test/channel-catalog.js` (three races), `test/delete-still-airs.js`,
+  `test/kept-editor.js` (the sentence, a leftover mark, the failed save), `test/show-catalog.js`
+  (the match), `test/special-day-edits-generator.js` (the pool). Suite 3304/3304.
+
 ### One unreadable file crashed the server
 
-Ron, Nov 5, 2026, 9:26:44am: the whole server crashed and every channel froze as channel 1's
+DarkManX16, Nov 5, 2026, 9:26:44am: the whole server crashed and every channel froze as channel 1's
 break started "Tom & Jerry Kids to Flintstones [Hippie]" (CN Powerhouse Up Next, Plex library
 ".CN Next bumpers (Powerhouse)"). With direct paths on, `plexTranscoder.js` checked the file with
 `fs.access` and threw from its callback, where nothing can catch it. Fixed on `playback-errors`.
@@ -8589,12 +8672,12 @@ break started "Tom & Jerry Kids to Flintstones [Hippie]" (CN Powerhouse Up Next,
   in a row, a missing step and a missing card (the Flex after them) and a missing program
   (Flex in its slot), each logging the file and why; and each escape above in a process of
   its own (`test/playback-errors-child.js`), which must live. All 21 failed first; the old
-  `plexTranscoder.js` crash reproduces with Ron's stack (`plexTranscoder.js:88:29`,
+  `plexTranscoder.js` crash reproduces with DarkManX16's stack (`plexTranscoder.js:88:29`,
   `FSReqCallback.oncomplete`). `test/stream-cursor.js`'s card is now a real file.
 
 ### Thousands of rows kept in time, and Delete that asked
 
-Ron, Oct 30, 2026, channel 3: after adding House of Mouse and deleting the episodes he
+DarkManX16, Oct 30, 2026, channel 3: after adding House of Mouse and deleting the episodes he
 didn't want, the Time Slots dialog said "Create Lineup keeps 16617 rows kept in time" over a
 wall of "next episode runs longer: Create Lineup will push..." lines, and every Delete asked
 which delete he meant and left kept Flex. Fixed on `simple-delete`, not merged.
@@ -8604,21 +8687,21 @@ which delete he meant and left kept Flex. Fixed on `simple-delete`, not merged.
   already worked this way). On a Time Slots channel the gap closes only up to the next kept
   row, which stays where it sits. On a channel with a slot schedule the episode goes on the
   channel's never-air list, so Create Lineup leaves it out, and the Catalog page restores it;
-  one already there (Ron's holiday episodes) keeps its entry. A kept row's Delete is still
+  one already there (DarkManX16's holiday episodes) keeps its entry. A kept row's Delete is still
   Put back. The delete prompt (Swap instead / this airing only / Holiday / Never air) is gone.
 - **The Time Slots dialog** says at most one line, only when your own swaps, inserts or
   dragged rows will be kept ("Your 1 swap stays where it is."; `keptRows.sayKept`). The
   kept-rows count, the "runs longer: will push" lines (`longerAhead`) and the "now in X's
   slot; it stays" lines (`scheduleNotes`) are gone.
 - **Where 16,617 came from.** Channel 3's file has no kept row saved (last saved Oct 29 05:17
-  UTC), so those marks lived only in Ron's unsaved editor, and they can't be read back. On a
+  UTC), so those marks lived only in DarkManX16's unsaved editor, and they can't be read back. On a
   copy, none of the library's add at the end, Delete (each of its old choices), the first
   open (with or without House of Mouse added) or Create Lineup marks more than one row, and
   an insert's run late at most a few hundred; only two edits in the code mark thousands: the
   first open's "Keep them", and a drag across many days (which asks "This shifts N airings
   over D days. Move it?" first). Measured, 16,617 is a drag from the end of the list to about
   Dec 9.
-- **The same thing, saved, on channel 1.** Ron's "Keep them" at 2:26am Oct 30 saved 19,073
+- **The same thing, saved, on channel 1.** DarkManX16's "Keep them" at 2:26am Oct 30 saved 19,073
   rows kept in time: A Very Venture Halloween, pinned to Fri 3:30am and dragged to 12:00am,
   had aired, and Create Lineup's carry had rotated it past the lineup's end Flex, to Sep 17,
   2027. Its pinned time was still ahead, so the first open read it as a pin still to air,
@@ -8639,7 +8722,7 @@ which delete he meant and left kept Flex. Fixed on `simple-delete`, not merged.
 
 ### The first open asked; now it just keeps them
 
-Ron, Oct 30, 2026: the first-open dialog ("Your edits by hand, from now on kept where they
+DarkManX16, Oct 30, 2026: the first-open dialog ("Your edits by hand, from now on kept where they
 sit", Not now / Keep them) blocked Time Slots and every other edit until answered, and
 confused more than it helped - he always chose Keep them anyway. Fixed on
 `first-open-silent` (built on `simple-delete`), not merged.
@@ -8677,7 +8760,7 @@ confused more than it helped - he always chose Keep them anyway. Fixed on
 
 ### Cancel and Update Channel covered after the first-open list
 
-Ron, Oct 30, 2026, channel 3: after answering the first-open list ("Keep them", and also
+DarkManX16, Oct 30, 2026, channel 3: after answering the first-open list ("Keep them", and also
 "Not now"), the channel editor's Cancel and Update Channel couldn't be clicked; only
 reloading the page got him out. Fixed on `editor-regressions`.
 
@@ -8706,11 +8789,11 @@ reloading the page got him out. Fixed on `editor-regressions`.
 
 ### The library's add went into the lineup on a Time Slots channel
 
-Ron, Oct 30, 2026, channel 3: House of Mouse (57 episodes) added with "Insert at the end of
+DarkManX16, Oct 30, 2026, channel 3: House of Mouse (57 episodes) added with "Insert at the end of
 list" went into tonight's lineup as kept inserts after the first row in view, with a wall of
 "goes in after / runs long" sentences. The kept-rows editor (step 4) had made every library
 add on a Time Slots channel an Insert at the scroll position, whatever was chosen, on a
-choice of its own ("Choices made beyond Ron's decisions"). Fixed on `editor-regressions`.
+choice of its own ("Choices made beyond DarkManX16's decisions"). Fixed on `editor-regressions`.
 
 - **As it always did.** On a Time Slots channel the library's add joins the channel at the
   end of the list, after the lineup, for Time Slots and Create Lineup; nothing in the lineup
@@ -8729,7 +8812,7 @@ choice of its own ("Choices made beyond Ron's decisions"). Fixed on `editor-regr
   3 failed before the fix, the Cancel one before its own) and the workflow script's
   `library-add`, which cancels the library once, then adds the show and fails as soon as
   rows in view become kept after Done, then checks what Update Channel saved. On the build
-  before the fix it failed with "18 rows in view became kept" and the wall of sentences Ron
+  before the fix it failed with "18 rows in view became kept" and the wall of sentences DarkManX16
   saw.
 
 ### Two viewers of a channel took turns with the offline screen
@@ -9446,7 +9529,7 @@ that leak - so the two have to be fixed together.
 (non-URL-safe) base64. `programKey` is `plex|<serverKey>|<program.key>`
 (`src/channel-cache.js`'s `getProgramKey`) - not a show title, but not a
 clean opaque id either: `serverKey` is the Plex server's own display name,
-which Ron named `Thats So Disney/Nick Picks` - a real slash, already live in
+which DarkManX16 named `Thats So Disney/Nick Picks` - a real slash, already live in
 every program key this install computes.
 
 The literal `/` in the name doesn't matter by itself; by the rule in the
@@ -9472,7 +9555,7 @@ program.
 
 ### The program-list-row work broke the live dev server, without touching it
 
-Ron's real server on port 18000 (`node index.js -p 18000 -d ./.dizquetv-dev`)
+DarkManX16's real server on port 18000 (`node index.js -p 18000 -d ./.dizquetv-dev`)
 started showing a stuck 6-row, non-scrolling programming list, and reported
 it before anything else. Root cause: `index.js` rebuilds
 `web/public/bundle.js` on the next `/bundle.js` request whenever any file
@@ -9488,7 +9571,7 @@ the code - so every edit made while debugging it was a candidate for port
 on that server, independent of anything run against the copy on 18098.
 `.dizquetv-dev` itself was never written to - confirmed against both the
 newest backup and a copy taken at the very start of that session, both
-already showing the same `channel.fillerCollections: []` Ron separately
+already showing the same `channel.fillerCollections: []` DarkManX16 separately
 flagged, ruling that specific change out as unrelated.
 
 Fixed in two steps: an immediate revert of `web/` to the commit before that
@@ -9643,7 +9726,7 @@ already dragged, scrolled and dropped cleanly).
 
 #### The lockup came back, Oct 25, 2026
 
-Ron hit 🚫 again on Edge 155 while dragging on the Filler Lists page, and a few days earlier in the channel
+DarkManX16 hit 🚫 again on Edge 155 while dragging on the Filler Lists page, and a few days earlier in the channel
 editor, with e054eb8's guard already live on 18000. The 🚫 stayed after a reload, and closing all of Edge
 cleared it. (That restart also moved Edge from 155 to 156, which had been installed Oct 24 and was waiting.)
 
@@ -9661,14 +9744,14 @@ by an ordinary probe drag. About 30 drags, none of which locked Edge:
 
 Also checked: the re-lay gate (`relaying()`) only disables buttons and never touches the programming list's
 drag; the Time Slots dialog (`ng-if="visible"`) is a separate modal outside the list; nothing else since
-e054eb8 re-renders or blocks a drag list. Ron's Edge profile has no drag-related flags or experiments set.
+e054eb8 re-renders or blocks a drag list. DarkManX16's Edge profile has no drag-related flags or experiments set.
 
 **What's added: a drag log** (`web/services/drag-recorder.js`, `test/drag-recorder.js`). It is started at
 load on every page and listens on window in the capture phase. It never changes an event. For each drag it
 records the page, the types the page's dragstart set, how many drag-enters and drag-overs arrived, how many the
 page accepted (read after the page's handlers, through `defaultPrevented`), the types they carried, and
 whether a drop and a `dragend` came. It also records a press-and-move on a draggable row that never became a
-drag. The last 40 drags are kept in `localStorage` (`syndicast.dragLog`) so they survive the reload Ron tries
+drag. The last 40 drags are kept in `localStorage` (`syndicast.dragLog`) so they survive the reload DarkManX16 tries
 first. Each drag gets a one-line verdict: Edge never started it, no drag-over reached the page, refused
 (with or without data), never ended, or ok. The footer's "Drag log" link shows the log with Copy, Refresh and
 Clear. When it next locks up: one drag, reload, one more, Copy, send it before closing Edge. Quick checks at
@@ -9677,7 +9760,7 @@ Edge with the tabs restored, quicker than closing everything.
 
 Lesson: puppeteer's `setDragInterception` drags never touch Windows' drag-and-drop, so they can't show a
 lockup that lives in the browser. Never run `msedge.exe --version` to read the version on Windows: it hands
-off to Ron's running Edge and opens a window. Read the folder names under `Edge\Application` instead.
+off to DarkManX16's running Edge and opens a window. Read the folder names under `Edge\Application` instead.
 
 Preview gotcha found on the way, and it was a real bug, fixed Nov 5, 2026: `ProgramPlayTimeDB.load()` opened every
 file under `play-cache/<channel>/` at once, ran past the open-file limit (EMFILE) and never loaded the files that
@@ -9691,7 +9774,7 @@ said the page code "failed to rebuild"; that no longer happens at startup. Count
 
 #### A drop threw away the row still being dragged, Oct 25, 2026
 
-Ron's drag log from the real server (Edge 156, 5:12-5:28 PM, filler list editor) showed four drags with "drop yes;
+DarkManX16's drag log from the real server (Edge 156, 5:12-5:28 PM, filler list editor) showed four drags with "drop yes;
 end never" ("Edge never ended it") among about 30 good ones, and then the lockup: a drag whose drag-overs carried
 no data (`types seen none`), refused everywhere. His reading was that a drop redraws the list before Edge sends
 dragend. Confirmed:
@@ -9726,12 +9809,12 @@ it kept its own until dragend, and the program itself landed where dropped (late
 after the last "never ended" one. With the fix those entries should stop; if 🚫 still comes back, the drag log
 will show whether anything still ends without a dragend first.
 
-**Update, Oct 26:** ruled out. Ron's next lockup (6:05 AM) came after 31 clean drags on code with this fix (18000
+**Update, Oct 26:** ruled out. DarkManX16's next lockup (6:05 AM) came after 31 clean drags on code with this fix (18000
 restarted at 3:17 AM on 8c97154); the only "never ended" entry was nine hours earlier.
 
 #### Edge lost the drag's data, Oct 26, 2026
 
-The 6:05 AM lockup in Ron's drag log: three drags in a row on the filler list editor, each with `start types:
+The 6:05 AM lockup in DarkManX16's drag log: three drags in a row on the filler list editor, each with `start types:
 application/x-dnd` (the page's dragstart wrote its data) and every drag-over and the drop carrying nothing
 (`types seen none`). `web/ext/dragdrop.js` reads the drag's MIME type off `dataTransfer.types` and turns down
 anything without one, so every spot showed 🚫. The data goes missing between the page handing it to Edge and Edge
@@ -9749,14 +9832,14 @@ list and custom show editors, the programming list, and the rest.
 the Filler Lists table (its real controller and `views/filler.html`), plus foreign-text and stale-dragstart cases
 that must still be refused. Before the change the five no-data checks failed (dragover not accepted, nothing moved);
 after, all pass. The drag log now says "ok, though Edge carried no data (the page used its own copy)" for such a
-drag, so a real one shows up in Ron's log.
+drag, so a real one shows up in DarkManX16's log.
 
 **Not known yet:** whether Edge, in that state, shows the drop as allowed and delivers the drop once the page
-accepts the drag-over. A script can't reach Edge's stuck state; Ron's next lockup will tell.
+accepts the drag-over. A script can't reach Edge's stuck state; DarkManX16's next lockup will tell.
 
 #### The fallback didn't take the 5:49 PM lockup, Oct 26, 2026
 
-Ron's next lockup (5:49:52-5:50:04 PM, filler page): eight drags refused, each with the page's data set at
+DarkManX16's next lockup (5:49:52-5:50:04 PM, filler page): eight drags refused, each with the page's data set at
 dragstart, every drag-over empty, accepted 0. With the fallback running, those would have read "ok, though Edge
 carried no data". Two explanations fit and the log couldn't tell them apart: the tab ran a bundle from before the
 fallback (18000 has served it since 7:36 AM), or Edge sent the drag events with no `dataTransfer` at all. The
@@ -9815,7 +9898,7 @@ Proved on the preview (port 18220, a full copy of `.dizquetv-dev` taken 6:09pm C
   drop maps straight onto `move`, proved in the preview).
 
 **Step 5, the checkpoint, live on a copy, Oct 29, 2026** (no code). The preview (port 18220)
-on a copy of `.dizquetv-dev` with Ron's step 4 night rebuilt on channel 1 - the first open
+on a copy of `.dizquetv-dev` with DarkManX16's step 4 night rebuilt on channel 1 - the first open
 answered, Family Guy at Fri 1:00am swapped for Halloween on Spooner Street (S09E04, from
 the Plex catalog snapshot) - its server run with its clock shifted (a `-r` preload) and the
 page through a proxy that shifts `bundle.js`'s clock the same way; both scratch scripts,
@@ -9835,7 +9918,7 @@ never in the repo.
 - **The swapped-out episode** at its next airing: Sun Nov 1, 11:00pm (Central Standard
   Time, after the clocks fell back), There's Something About Paulie.
 - Afterwards the preview was put back on the normal clock with a fresh copy of the channels.
-  Ron decides whether `list-lineup` merges into `blocks`; 18000 picks up the server code only
+  DarkManX16 decides whether `list-lineup` merges into `blocks`; 18000 picks up the server code only
   when he restarts it.
 
 **Step 6, final review and the record, Oct 29, 2026.** Suite 2682 at the start, 2687 at the
@@ -9856,10 +9939,10 @@ conventions) found eight things.
     `keptRows.insertMany` follows the edit's id.
   - `slotPool` carried its own copy of the kinds kept as they are; it uses
     `slotProgress.keptAsItIs`.
-- **Set aside, for Ron:**
+- **Set aside, for DarkManX16:**
   - Delete on a plain Flex row on a Time Slots channel still takes the Flex out, moving
     every later row - kept ones too - earlier, with no sentence. What deleting Flex should
-    mean (refuse, or close the gap only to the next kept row) is Ron's call.
+    mean (refuse, or close the gap only to the next kept row) is DarkManX16's call.
   - A row kept in time airs its show's next episode at Create Lineup; when that episode is
     longer than the row's room (after a schedule or range change), the kept rows after it
     wait for it, silently. Saying so in the Time Slots dialog is a follow-up.
@@ -9881,7 +9964,7 @@ conventions) found eight things.
 - **Every proof re-run on the final code**, on a fresh copy taken Thu Oct 29 at 8:31pm
   Central (identical to the live files at 8:33pm), with the catalog snapshot of 5:23pm:
   additive on channels 1-3 at 8:35pm, Fri 1:10am and Thu Nov 5 8:00pm, 0 entries differ
-  from `blocks` in all nine; Ron's Friday on channel 1 through its four steps, the night
+  from `blocks` in all nine; DarkManX16's Friday on channel 1 through its four steps, the night
   and all 1,331 rows of three weeks as the list has them after each, 138 of 138 positions,
   regenerated 0 of 39,999 different; swaps, a removal and each Put back on channels 1-3,
   every list given back JSON for JSON, every position continuing (138, 164, 162).

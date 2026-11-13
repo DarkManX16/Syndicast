@@ -82,7 +82,7 @@ function night(l, from, to) {
         .filter( (x) => (x.t >= from) && (x.t < to) && (! x.p.isOffline || x.p.kept) )
         .map( (x) => `${new Date(x.t).toTimeString().slice(0, 8)} ${x.p.isOffline ? 'Flex' : x.p.title}` );
 }
-// Ron's drag of the Venture special in the list, before this design: the row and its
+// DarkManX16's drag of the Venture special in the list, before this design: the row and its
 // Flex spliced in front of Futurama.
 function dragged(l, fromIndex, beforeIndex) {
     let programs = l.programs.slice();
@@ -174,7 +174,7 @@ module.exports = async function () {
                 && sorted.letGo.length === 0,
             JSON.stringify(sorted.keep.map( (x) => [ x.why, x.program.title ] )));
 
-        // The night as Ron left it: the special dragged from 3:30 to 12:00, still pinned to 3:30.
+        // The night as DarkManX16 left it: the special dragged from 3:30 to 12:00, still pinned to 3:30.
         const moved = dragged(inPlace, indexAt(inPlace, fri(3, 30)), indexAt(inPlace, fri(0)));
         const r = kept.firstOpen({ programs: moved.programs, startTime: moved.startTime, now: NOW, schedule: sched, getShowData });
         const shifted = r.keep.filter( (x) => x.why === 'shifted' );
@@ -411,7 +411,7 @@ module.exports = async function () {
         const movedUp = fri(0) + 22 * MIN + 30 * SEC; // Family Guy's new start once the gap closes
         suite.check('picked row is Futurama\'s own Flex', base.programs[flexAfterFuturama].isOffline && base.programs[flexAfterFuturama].duration === 7 * MIN + 30 * SEC, '');
 
-        // An episode (Ron, Oct 30): Delete takes it out at once, as before kept rows - no
+        // An episode (DarkManX16, Oct 30): Delete takes it out at once, as before kept rows - no
         // prompt, nothing kept, no episode moved along. Its break stays; the gap closes as a
         // Flex row's does.
         const marks = (l) => l.programs.filter( (p) => p.kept ).length;
@@ -510,7 +510,7 @@ module.exports = async function () {
                 && later.text === 'Futurama 1 moves to Fri Oct 30, 3:30am; 8 airings shift 30 minutes earlier, back on time at 4:00am.',
             later.text);
 
-        // Ron, Nov 6: a drop right after the row's own Flex, in front of the airing after it, now
+        // DarkManX16, Nov 6: a drop right after the row's own Flex, in front of the airing after it, now
         // moves the row past that Flex (test/insert-before.js); onto its own row or its own Flex
         // is still nothing.
         suite.check('onto its own row, or its own Flex: nothing',
@@ -617,7 +617,7 @@ module.exports = async function () {
             r.text);
 
         const early = kept.swap({ lineup: st, index: i, item: journal, now: NOW - 8 * DAY, schedule: ss });
-        suite.check('...but not a night more than a week away, which Create Lineup lays out again (Ron, Oct 29)',
+        suite.check('...but not a night more than a week away, which Create Lineup lays out again (DarkManX16, Oct 29)',
             early.text === 'The Journal replaces Hey Arnold! 1 at 6:00pm; Hey Arnold! 1 airs Fri Oct 30, 6:00pm.', early.text);
 
         suite.check('isKept: a row only run late by a ripple is not kept; one kept in time, kept as it is, or pinned is',
@@ -651,7 +651,7 @@ module.exports = async function () {
             JSON.stringify(tail.map( (p) => p.title || 'Flex' )));
     }
     {
-        // Ron dragged Monday's Hey Arnold! 5 there (kept as it is); Tuesday's moved with it (kept in time).
+        // DarkManX16 dragged Monday's Hey Arnold! 5 there (kept as it is); Tuesday's moved with it (kept in time).
         const programs = st.programs.slice();
         const mon = indexAt(st, eve(4, 18));
         const tue = indexAt(st, eve(5, 18));
@@ -783,10 +783,10 @@ module.exports = async function () {
             JSON.stringify(wa.slice(k0, k0 + 6)));
     }
 
-    suite.log('-- what the Time Slots dialog says, and clearing marks no edit of Ron\'s made --');
+    suite.log('-- what the Time Slots dialog says, and clearing marks no edit of DarkManX16\'s made --');
     {
-        // Ron's Friday drag (a real one: the moved row and the rows it shifted share its id),
-        // a real swap on Saturday night, and the marks Oct 29-30 left that no edit of Ron's
+        // DarkManX16's Friday drag (a real one: the moved row and the rows it shifted share its id),
+        // a real swap on Saturday night, and the marks Oct 29-30 left that no edit of DarkManX16's
         // made: rows kept in time by an edit with no row of its own still ahead, the Venture
         // special's swap and move rotated past the lineup's end with the rows it "shifted",
         // a removal's kept Flex, and a swap that has aired.
@@ -824,7 +824,7 @@ module.exports = async function () {
             JSON.stringify(kinds(after)) === JSON.stringify({ moved: 1, shifted: 8, swap: 1 })
                 && c.cleared === 25 && c.left === 10,
             JSON.stringify([ kinds(marked), kinds(after), c.cleared, c.left ]));
-        suite.check('...Ron\'s drag and swap keep theirs, and nothing moves: every entry the same length, in the same place',
+        suite.check('...DarkManX16\'s drag and swap keep theirs, and nothing moves: every entry the same length, in the same place',
             JSON.stringify(night(after, fri(0), fri(4, 1))) === JSON.stringify(night(lineOf(drag, base), fri(0), fri(4, 1)))
                 && kept.keptKind(after.programs[indexAt(after, sat(20))]) === 'swap'
                 && after.programs.length === p.length && after.programs.every( (q, k) => q.duration === p[k].duration ),

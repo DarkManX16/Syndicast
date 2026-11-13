@@ -1,7 +1,7 @@
 /*
- * A deleted episode never airs again on the channel, except where Ron placed
+ * A deleted episode never airs again on the channel, except where DarkManX16 placed
  * that very airing himself: a swap or an insert in the list, one inside a
- * special day, or a day's picked item (Ron, Nov 12, 2026). Delete's one
+ * special day, or a day's picked item (DarkManX16, Nov 12, 2026). Delete's one
  * sentence names those still ahead - src/kept-rows.js handPlacedAhead and
  * stillAirs. See NOTES.md, Resolved, "Deleted episodes kept coming back".
  */
@@ -77,7 +77,7 @@ module.exports = async function () {
 
     suite.log('-- what Create Lineup keeps --');
     {
-        // A row Ron only dragged keeps its time, but not a deleted episode: its position's
+        // A row DarkManX16 only dragged keeps its time, but not a deleted episode: its position's
         // next episode airs there. His swaps and inserts of it air as they are.
         const listed = (p) => p.key === X.key;
         const plainKeep = kept.keptAhead({ programs: l.programs, startTime: l.startTime, now: NOW });

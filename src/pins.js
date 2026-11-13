@@ -42,7 +42,7 @@ function dayClock(t) {
     return `${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()}, ${h}:${pad2(d.getMinutes())}${ (d.getHours() < 12) ? 'am' : 'pm' }`;
 }
 
-// The show an airing is of, as Ron names it.
+// The show an airing is of, as DarkManX16 names it.
 function showName(program) {
     if (typeof(program.customShowName) === 'string') {
         return program.customShowName;
@@ -311,7 +311,7 @@ function escapeAction({ key, undoPrompt }) {
 
 // "Hey Arnold! S03E23 Best Man / Cool Party"; a custom-show item by its place
 // in the show; a movie or anything else by its title.
-// The show a swap's "This show" lists: the airing's own (Ron, Oct 29: wherever it sits
+// The show a swap's "This show" lists: the airing's own (DarkManX16, Oct 29: wherever it sits
 // in the list now, not the show of the slot it's in), or the slot's for a movie or Flex.
 function swapShow({ airing, slotShow, getShowData }) {
     let own = getShowData(airing);

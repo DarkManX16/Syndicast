@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ron swaps an airing for another episode or item, or inserts one in a break, pinned to its date and time; the Flex around it grows or shrinks so everything after keeps its time, Create Lineup keeps the pin until it airs, and whatever it pushes out airs at its show's next slot.
+**Goal:** DarkManX16 swaps an airing for another episode or item, or inserts one in a break, pinned to its date and time; the Flex around it grows or shrinks so everything after keeps its time, Create Lineup keeps the pin until it airs, and whatever it pushes out airs at its show's next slot.
 
 **Architecture:** A pin is a mark (`program.pin`) on an airing in `channel.programs`. The Time Slots generator places pins by the spec's four rules; the editor reads the pins still to air from the lineup on air, and every swap, insert or undo re-lays the lineup through the generator exactly as Regenerate does. What the editor needs to say about a pin - where it fits, what a re-lay moved, ran late or dropped - lives in one pure module, `src/pins.js`, bundled like `src/episode-start.js`.
 
 **Tech Stack:** Node, AngularJS 1 bundled by browserify, express, the repo's `test/support.js` Suite. No new dependencies.
 
-**Spec:** NOTES.md, Known issues, "Swaps, inserts and Flex that keeps time" (agreed Oct 11, 2026, with Ron's four decisions). Read it before any task; this plan argues from it and does not restate its reasons.
+**Spec:** NOTES.md, Known issues, "Swaps, inserts and Flex that keeps time" (agreed Oct 11, 2026, with DarkManX16's four decisions). Read it before any task; this plan argues from it and does not restate its reasons.
 
 ## Global Constraints
 
@@ -17,7 +17,7 @@
 - Test only on copies of `.dizquetv-dev`: `C:\Projects\dizquetv-worktrees\swaps-proof` (channels, custom shows, aliases) and `swaps-data` (a full data folder for the preview, HDHomeRun discovery off, `xmltv-settings.json`'s `file` made absolute). Before a step's proof is reported, diff `.dizquetv-dev/channels`, `custom-shows`, `filler` and `show-aliases.json` against the copy, re-copy if they differ, re-run, and state the snapshot time.
 - Plex is read only (GET, token as a header, never printed). Catalog snapshots carry the token in icon URLs: they stay beside the copies and are never committed.
 - Additive: a lineup with no pins generates program for program what it generates now; a channel without a Time Slots schedule behaves exactly as now.
-- Copy shown to Ron is plain English, as in the spec's examples; docs and code never name other playout programs.
+- Copy shown to DarkManX16 is plain English, as in the spec's examples; docs and code never name other playout programs.
 - `npm test` passes at the end of every task (2009/2009 at the start).
 - Commit messages: `Swaps: <what changed>`, ending with the session's `Co-Authored-By` line.
 - Live checks: a preview server started by hand from the worktree (`node index.js -p 18200 -d C:/Projects/dizquetv-worktrees/swaps-data --unlock`, Bash background), restarted after any server-code change; after any `npm run build`, reload the tab and confirm the served bundle holds the change - a hash-only navigate keeps the old bundle.
@@ -26,7 +26,7 @@
 
 - **A pinned Flex next to break Flex** - the generator's `pushFlex` merges adjacent Flex; merged, the pin is lost or its length changes. Test in Task 1.
 - **A Repeat whose source slot holds a pin of its show** - the copy must not carry `pin`, or the next run finds two pins at one time. Test in Task 1.
-- **A pin a fraction of a second after a slot's start** (Ron's saved lineups start 0.6-1 s off the minute) - the slot's own episode must not squeeze in before it. Test in Task 1.
+- **A pin a fraction of a second after a slot's start** (DarkManX16's saved lineups start 0.6-1 s off the minute) - the slot's own episode must not squeeze in before it. Test in Task 1.
 - **The Nov 1 fall-back night** - a pin in the repeated 1:00-2:00 hour airs once, at its instant. Test in Task 1.
 - **A re-lay that drops something placed by hand** - named before it happens, never silently. Test in Task 3.
 
@@ -157,7 +157,7 @@ Behaviour:
 - [ ] **Step 5: Proof, live on the preview** (a fresh full copy): channel 3 - Go to Sat Oct 31 4:00pm, Swap, This show, "A Hero for Halloween": "It fits: 7:30 of Flex after it, and Lizzie McGuire starts at 4:30", "There's Something about Rene airs Sun Nov 1, 4:30pm..."; the first-swap note says nothing placed by hand would be lost; Swap, Update Channel. The saved file, checked by script: the pin at Oct 31 4:00pm with 7:30 of Flex after it, Rene Sun Nov 1 4:30pm, 155 of 155 positions continue, over 300 days only The Proud Family changes. Channel 1's 'Twas the Fight Before Christmas shows both choices with the spec's times; Run late applied and saved. Deleting the Halloween row undoes it: the saved lineup is Step 1's no-pin lineup again. Re-lay time per channel recorded. No console or server errors.
 - [ ] **Step 6:** Commit `Swaps: swap an airing from the Programming tab`.
 
-### Task 4b: A re-lay leaves the program on air alone (Ron, Oct 11, at the checkpoint)
+### Task 4b: A re-lay leaves the program on air alone (DarkManX16, Oct 11, at the checkpoint)
 
 Every re-lay - and Create Lineup, which takes the same path - keeps the program on air, or the one whose break is on air, exactly where it is, and re-makes the lineup only after it ends: it counts as aired, and the rest of its slot gets only what fits whole. Before, the program on air started again from its beginning and its show's later airings moved one along; and during a break, the slot's next episode went in at once, late.
 
@@ -170,9 +170,9 @@ Every re-lay - and Create Lineup, which takes the same path - keeps the program 
 - [ ] Proof on a copy: channel 3 regenerated Sun Oct 11 10pm, mid "The Jim Henson Hour": with the rule, Henson's airings continue (none of the 43 moves), and the lineup from 9:35pm is the saved one; at a break; channels 1-3 with no pins at three moments against `blocks`: differences only around the moment of the run.
 - [ ] Random Slots doesn't share the path: Known issue.
 
-**Halloween checkpoint.** A fresh review of Steps 1-4 (Opus 5.5), its fixes each with a test that failed first; then Steps 1-4 can merge into `blocks`, when Ron says. The server's generator changes, so the bundle is rebuilt and 18000 restarted together - Ron's to restart. Ron's first swap on a channel is also its first regeneration with the new code: measured, nothing changes on channels 1 and 2 for the year, and on channel 3 nothing before Apr 3, 2027.
+**Halloween checkpoint.** A fresh review of Steps 1-4 (Opus 5.5), its fixes each with a test that failed first; then Steps 1-4 can merge into `blocks`, when DarkManX16 says. The server's generator changes, so the bundle is rebuilt and 18000 restarted together - DarkManX16's to restart. DarkManX16's first swap on a channel is also its first regeneration with the new code: measured, nothing changes on channels 1 and 2 for the year, and on channel 3 nothing before Apr 3, 2027.
 
-## Step 4c - The editor refuses a server that is running older code (Ron, Oct 12)
+## Step 4c - The editor refuses a server that is running older code (DarkManX16, Oct 12)
 
 ### Task 4c: A fingerprint of the server's code, and the editor's check
 
@@ -245,4 +245,4 @@ Merging changes the editor at once (the bundle rebuilds on request) but not a se
 - [ ] **Step 1:** A fresh review of the whole branch (Opus 5.5): every fix with a test that failed first.
 - [ ] **Step 2:** Every step's proof re-run on the final code, on a fresh copy, with the snapshot time.
 - [ ] **Step 3:** NOTES.md: the build record under "Swaps, inserts and Flex that keeps time", the two Library management lines and the 1.0 line ticked with what shipped; "Full catalogs: smaller things left for later"'s note on the delete prompt's "As before" brought up to date.
-- [ ] **Step 4:** Commit `Docs: record swaps and inserts`; merge into `blocks` when Ron says, rebuilding the bundle and restarting 18000 together (Ron's).
+- [ ] **Step 4:** Commit `Docs: record swaps and inserts`; merge into `blocks` when DarkManX16 says, rebuilding the bundle and restarting 18000 together (DarkManX16's).

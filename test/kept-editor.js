@@ -109,7 +109,7 @@ module.exports = async function () {
 
     suite.log('-- the library adds to the channel; only "insert here" places in the lineup --');
     {
-        // Ron, Oct 30: 57 House of Mouse episodes added "at the end of list" on channel 3
+        // DarkManX16, Oct 30: 57 House of Mouse episodes added "at the end of list" on channel 3
         // went in as kept inserts after the first row in view. On a Time Slots channel the
         // library's add joins the channel for Time Slots and Create Lineup, as it always
         // did: nothing in the lineup moves or is kept.
@@ -154,7 +154,7 @@ module.exports = async function () {
 
     suite.log('-- the library\'s "insert here" goes right before the first airing in view; each row has Insert before --');
     {
-        // Ron, Nov 6: "Insert into the lineup here" put a 7-second clip after an airing, ahead of
+        // DarkManX16, Nov 6: "Insert into the lineup here" put a 7-second clip after an airing, ahead of
         // the commercials; it goes in right before the airing in view, after the break in front.
         const kept = require('../src/kept-rows');
         const flex = (m) => ({ isOffline: true, duration: m * 60000 });
@@ -207,7 +207,7 @@ module.exports = async function () {
 
     suite.log('-- Delete takes an episode out at once --');
     {
-        // Ron, Oct 30: on channel 3, after adding House of Mouse, deleting the episodes he
+        // DarkManX16, Oct 30: on channel 3, after adding House of Mouse, deleting the episodes he
         // didn't want asked which delete he meant and left kept Flex, with a ripple. Delete
         // takes the row out of the list at once, as before kept rows: no prompt, nothing
         // kept, nothing moved along; Create Lineup leaves the episode out (never air), and the
@@ -266,7 +266,7 @@ module.exports = async function () {
         suite.check('an episode already on the never-air list (a holiday): gone from the list, its entry left as it is',
             (titles(listed) === 'Recess 1, Kim Possible 4, Recess 2, House of Mouse 1') && (listed.queued.length === 0), never(listed));
 
-        // Ron, Nov 12: a swap he made of the episode still airs, and Delete's one sentence names it.
+        // DarkManX16, Nov 12: a swap he made of the episode still airs, and Delete's one sentence names it.
         const onTheMinute = Math.floor(startTime / 60000) * 60000;
         const swapAt = onTheMinute + 4 * 30 * 60000;
         const d = new Date(swapAt);
@@ -281,7 +281,7 @@ module.exports = async function () {
             ep('House of Mouse', 1), mouse2,
         ];
         const named = await deleteOnPage(src, { timeSlots: true, programs: withSwap, startTime: onTheMinute, index: withSwap.length - 1 });
-        suite.check('an episode Ron swapped in further on: Delete takes this row out, lists the episode, and its one sentence names the swap',
+        suite.check('an episode DarkManX16 swapped in further on: Delete takes this row out, lists the episode, and its one sentence names the swap',
             (named.programs.length === withSwap.length - 1) && (never(named) === 'House of Mouse 2 deleted/never')
                 && (named.said === `Your swap of it on ${when} still airs; Put back that swap to remove it too.`), `said "${named.said}"`);
         suite.check('...and the swap itself is left exactly as it was',
@@ -300,7 +300,7 @@ module.exports = async function () {
 
     suite.log('-- the never-air save after Update Channel --');
     {
-        // Ron, Nov 13: a never-air save that fails after Update Channel says so in one short
+        // DarkManX16, Nov 13: a never-air save that fails after Update Channel says so in one short
         // line - it only went to the console, and the deletes silently came back.
         const flush = async (applyChannelCatalogOps, queue) => {
             const scope = { catalogQueue: queue.slice() };

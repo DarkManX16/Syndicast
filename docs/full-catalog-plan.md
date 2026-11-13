@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Every slot can draw on its show's or custom show's full catalog - once Ron has reviewed that show - with a per-channel never-air list that keeps removed episodes out for good, and stored progress continuing exactly where it is.
+**Goal:** Every slot can draw on its show's or custom show's full catalog - once DarkManX16 has reviewed that show - with a per-channel never-air list that keeps removed episodes out for good, and stored progress continuing exactly where it is.
 
 **Architecture:** The rules live in one pure module, `src/show-catalog.js` (what a review lists, the pool for a run, what's new, applying ops), shared by the editors through browserify, the Catalog page, the server and the proof scripts. Catalogs are read in the browser with the library's own Plex code through `src/catalog-reader.js`, which takes its I/O as arguments so a script and a test can drive it too. The state is `channel.catalog`, written only by a new ops API; the server's generators don't change - the editor hands them a bigger pool.
 
@@ -97,7 +97,7 @@
 - [x] **Step 2:** run them - Expected: fail, module missing.
 - [x] **Step 3:** Implement `readCatalogs`, `getShowKey` and the snapshot script.
 - [x] **Step 4:** `npm test` - Expected: all pass.
-- [x] **Step 5: Proof on the copies.** `scripts/catalog-snapshot.js` on the proof copy: every show on channels 1-3 read, 0 errors, time per channel. For each episode the lineup holds, the snapshot's copy against the lineup's, field for field on `title, key, ratingKey, type, duration, file, plexFile, showTitle, season, episode, serverKey` - Expected: 0 differences, or each one explained. `reviewList` over the snapshot - Expected: the investigation's counts (226 short Plex shows, 14 custom; Double Dare 414 to add, Married... with Children 208). `preUntick` over every episode to add: counts by holiday with every matched title listed for a read-through (a false match goes back into `HOLIDAYS` as a fix, ruled in the ledger), and the long ones counted per show - so an hour-long show whose every episode is over 30 minutes is visible before Ron meets it.
+- [x] **Step 5: Proof on the copies.** `scripts/catalog-snapshot.js` on the proof copy: every show on channels 1-3 read, 0 errors, time per channel. For each episode the lineup holds, the snapshot's copy against the lineup's, field for field on `title, key, ratingKey, type, duration, file, plexFile, showTitle, season, episode, serverKey` - Expected: 0 differences, or each one explained. `reviewList` over the snapshot - Expected: the investigation's counts (226 short Plex shows, 14 custom; Double Dare 414 to add, Married... with Children 208). `preUntick` over every episode to add: counts by holiday with every matched title listed for a read-through (a false match goes back into `HOLIDAYS` as a fix, ruled in the ledger), and the long ones counted per show - so an hour-long show whose every episode is over 30 minutes is visible before DarkManX16 meets it.
 - [x] **Step 6:** Commit `Catalog: reading a show's catalog with the library's own code`.
 
 ## Step 2 - Regeneration from full catalogs (scripts only)
@@ -220,4 +220,4 @@
 - [x] **Step 2:** Write the NOTES changes.
 - [x] **Step 3:** Commit `Docs: record full catalogs and the never-air list`.
 
-After Task 8: one fresh whole-branch review on the most capable model, one fix pass, then the preview for Ron - his own look in the browser, on a copy - before anything merges. `full-catalog` merges after `stored-progress`, when Ron says.
+After Task 8: one fresh whole-branch review on the most capable model, one fix pass, then the preview for DarkManX16 - his own look in the browser, on a copy - before anything merges. `full-catalog` merges after `stored-progress`, when DarkManX16 says.

@@ -344,7 +344,7 @@ div.programming-programs div.list-group-item {
      content size) - without a real min-width, this and .psr-title/
      .psr-flex-label below would shrink all the way to 0px, invisibly,
      whenever the row is too narrow for everything at once (a real window
-     narrower than Ron's usual one, or the Tools pane open beside the list),
+     narrower than DarkManX16's usual one, or the Tools pane open beside the list),
      rather than truncating with an ellipsis the way a "too long" title is
      supposed to. Found live at an 800px test viewport: the show name and
      episode title both measured 0px wide while their text was correctly in

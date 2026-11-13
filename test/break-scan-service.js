@@ -403,7 +403,7 @@ module.exports = async () => {
                 (again.service.governor.mode() !== 'off') && (JSON.parse(fs.readFileSync(path.join(f, 'break-scanner.json'), 'utf8')).paused === false));
         }
 
-        // ---- a drive Ron skips -----------------------------------------------------------
+        // ---- a drive DarkManX16 skips -----------------------------------------------------------
         {
             const f = path.join(tmp, 'skip');
             fs.mkdirSync(f);

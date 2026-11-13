@@ -649,7 +649,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     catalogs: Object.assign( {}, holidayCatalogs, catalogs ) } );
             }
             scope.holidayChanged = () => { readHoliday(); };
-            //The holidays Ron has set episodes aside for, as the Catalog page names them;
+            //The holidays DarkManX16 has set episodes aside for, as the Catalog page names them;
             //the Christmas season among them when any of its three is. Rebuilt only when
             //the catalog state changes.
             let holidayOptionsCache = null;
@@ -883,7 +883,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
              * days"): a date's own Time Slots, with an optional block for the day.
              * The list above the regular slots, one line per day; its editor opens
              * inline, mirroring the Day-Parts/Blocks tabs' own cards rather than a
-             * dialog of its own. Keep it simple (Ron, Oct 30): nothing shown here
+             * dialog of its own. Keep it simple (DarkManX16, Oct 30): nothing shown here
              * that he did not ask for.
              */
             function newSpecialDayId() {
@@ -1480,7 +1480,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     readMissing();
                     readHoliday();
                 }
-                //One short line, only when your own swaps, inserts or dragged rows will be kept (Ron, Oct 30).
+                //One short line, only when your own swaps, inserts or dragged rows will be kept (DarkManX16, Oct 30).
                 scope.keptPins = '';
                 let keptAheadNow = null;
                 if (typeof(lineup) === 'function') {

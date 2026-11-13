@@ -356,7 +356,7 @@ function withRest({ before, after, bS, aS, day, pivot, marked, lead }) {
 }
 
 /*
- * Delete inside a day (Ron, Nov 8): the episode goes on the never-air list and
+ * Delete inside a day (DarkManX16, Nov 8): the episode goes on the never-air list and
  * the day is laid again without it. "X S1E3 is left out; X S1E4 airs at 7:00am
  * instead. Nothing else in the day moves." `at` is where the deleted airing
  * started, `title` its title.

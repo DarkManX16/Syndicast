@@ -346,7 +346,7 @@ function seriesStories(sortedPrograms) {
  * A round is Shuffle's hash order over every story of every series; the k-th
  * slot that falls to a series plays that series' k-th story. So each round is
  * a random interleaving of the series, each in its own order, every item once,
- * and a series airs in proportion to its size (Ron, Oct 9). The record is
+ * and a series airs in proportion to its size (DarkManX16, Oct 9). The record is
  * Shuffle's - { round, next, deferred } - and what goes last in the next
  * round is the later half of the hash order, as for Shuffle, so the planner
  * rebuilds it the same way.

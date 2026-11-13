@@ -1,7 +1,7 @@
 /*
  * Full catalogs, and a never-air list: what a show's whole episode list adds
  * to a channel, the pool a regeneration draws on, and the channel's list of
- * episodes left out of the rotation - holidays Ron places himself, and ones
+ * episodes left out of the rotation - holidays DarkManX16 places himself, and ones
  * never to air. Pure; the editors (through browserify), the Catalog page, the
  * server's ops and the proof scripts share it. See NOTES.md, Known issues,
  * "Full catalogs, and a never-air list".
@@ -95,9 +95,9 @@ function specialsAllowed(lineupItems) {
 /*
  * The list is keyed by file, and a file can change under an episode: replaced
  * by a new copy, renamed, or held twice in the library. So an episode is on
- * the list when its own file is, or when (Ron, Nov 13, 2026) an entry of the
+ * the list when its own file is, or when (DarkManX16, Nov 13, 2026) an entry of the
  * same show has the same title and this file's own name carries that title.
- * The title alone is not enough - Plex gives three of Ron's files another
+ * The title alone is not enough - Plex gives three of DarkManX16's files another
  * episode's title - and a generic title ("Episode 41", "Pilot") never matches
  * another file. Capitals and punctuation aside.
  */
@@ -178,7 +178,7 @@ function knownOf(state, showId) {
  * "Christmas Special"; the review, Nov 13). So an entry under another file is
  * the same episode only when its season and episode are the same (a second
  * copy), or its own file is known to be gone from the show's catalog (a
- * replaced file: Ron's old and new House of Mouse number their episodes
+ * replaced file: DarkManX16's old and new House of Mouse number their episodes
  * differently). A show never reviewed has no catalog to tell, and doesn't match.
  */
 function sameNumbers(entry, program) {
@@ -440,7 +440,7 @@ function opsAfterRun({ run, catalogs, lineupPool, leftOut, named, stateReadable,
 
 /*
  * The Catalog page rebuilds its rows after every save; a show's open state
- * and the choices Ron made on its episodes but hasn't saved carry over.
+ * and the choices DarkManX16 made on its episodes but hasn't saved carry over.
  * choices: { showId: { open, episodes: { fileKey: { ticked, touched, reason, holiday } } } }.
  */
 function carryChoices(choices, rows) {
@@ -471,7 +471,7 @@ function applyOps(state, ops, now) {
     (ops || []).forEach( (op) => {
         if (op.review) {
             let r = op.review;
-            // An automatic "complete" never replaces a review Ron made.
+            // An automatic "complete" never replaces a review DarkManX16 made.
             if ( (r.by === 'complete') && s.shows[r.showId] && (s.shows[r.showId].by !== 'complete') ) {
                 return;
             }

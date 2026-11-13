@@ -13,7 +13,7 @@
  * templates in $templateCache) in a real Chromium-family browser, and plays
  * a drag as events: dragstart on a row, dragenter/dragover/drop over another
  * row, then dragend - late, after the page's own timers have run, the way
- * Edge delivered it in Ron's log, and also promptly. Then a drop with no
+ * Edge delivered it in DarkManX16's log, and also promptly. Then a drop with no
  * dragend at all, for the fallback.
  *
  * Skips, not fails, when no Chromium-family browser is found.
@@ -130,7 +130,7 @@ function clips(prefix) {
  * `onto` (both visible-row positions). dragendAfter: 'late' (after the page's
  * timers ran), 'prompt' (straight after drop), or 'never'. lostData: the
  * drag-overs and the drop carry an empty DataTransfer, as Edge handed them
- * over in Ron's Oct 26 lockup ("types seen none") although the dragstart
+ * over in DarkManX16's Oct 26 lockup ("types seen none") although the dragstart
  * had set the data. lostData 'none': they carry no DataTransfer at all.
  */
 async function playDrag(page, listSelector, from, onto, dragendAfter, lostData) {

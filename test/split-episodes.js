@@ -5,7 +5,7 @@
  * slot, and a slot never starts with a "b" half. See NOTES.md, Known issues,
  * "Split episodes stay together".
  *
- * Ron's case, Sat Nov 7, 2026 on channel 3 (the Nov 2 lineup): the 2:30
+ * DarkManX16's case, Sat Nov 7, 2026 on channel 3 (the Nov 2 lineup): the 2:30
  * Weekenders slot started 5 minutes late behind a 22:35 House of Mouse, so it
  * had 25 minutes; 11a counted as its padded 15:00, 11b's 10:49 "didn't fit",
  * and 11a aired alone - though both end by 2:57:22. Sunday then started with
@@ -26,7 +26,7 @@ const day = (n, hour, minute, second) => THU + n * DAY + hour * HOUR + (minute |
 const NOON = day(0, 12);
 const ms = (m, s) => m * MIN + s * SEC;
 
-// The Weekenders, as Ron's custom show holds it: one item per file, in list order.
+// The Weekenders, as DarkManX16's custom show holds it: one item per file, in list order.
 const WK_ITEMS = [
     [ 'S03E10 - Celebrity', ms(22, 18) ],
     [ 'S03E11a - Clown', ms(11, 33) ],
@@ -70,7 +70,7 @@ function daily(o) {
         ],
     };
 }
-// House of Mouse runs 22:35 (Ron's 1355s) and ends 2:22:35, or 32 minutes to run the slot late.
+// House of Mouse runs 22:35 (DarkManX16's 1355s) and ends 2:22:35, or 32 minutes to run the slot late.
 const pool = (mouse) => seasonOf('House of Mouse', 20, mouse || ms(22, 35)).concat(seasonOf('Recess', 20), wk());
 const atWk = (key) => ({ [slotProgress.positionKey(WK, 'next', undefined)]: { next: slotProgress.ref(wk().find( (p) => p.key === key ), getShowData), wrapped: false } });
 
@@ -144,7 +144,7 @@ module.exports = async function () {
 
     suite.log('-- Time Slots: a slot that starts an a half plays the rest --');
     {
-        // Ron's Saturday: the slot starts at 2:35 with 25 minutes; 11a and 11b end 2:57:22.
+        // DarkManX16's Saturday: the slot starts at 2:35 with 25 minutes; 11a and 11b end 2:57:22.
         const late = await generate(pool(32 * MIN), Object.assign(daily(), { progress: { positions: atWk('/wk/1') } }), NOON);
         suite.check('a slot running 5 minutes late airs 11a and 11b, both before 3:00',
             same(wkOn(late, 0), [ '2:35:00 PM S03E11a', '2:46:33 PM S03E11b' ]), show(wkOn(late, 0)));
@@ -189,7 +189,7 @@ module.exports = async function () {
             { carry: { start: day(0, 14, 30), program: Object.assign({}, a, { slotPosition: 'next|' }) } });
         suite.check('with 11a on air, 11b follows it in the same slot', same(wkOn(carried, 0), [ '2:30:00 PM S03E11a', '2:45:00 PM S03E11b' ]), show(wkOn(carried, 0)));
 
-        // Ron's late slot again, Create Lineup at 2:40 with 11a on air: 11b still fits only unpadded.
+        // DarkManX16's late slot again, Create Lineup at 2:40 with 11a on air: 11b still fits only unpadded.
         const lateCarry = await generate(pool(32 * MIN), Object.assign(daily(), { progress: { positions: atWk('/wk/2') } }), day(0, 14, 40),
             { carry: { start: day(0, 14, 35), program: Object.assign({}, a, { slotPosition: 'next|' }) } });
         suite.check('with 11a on air in a late slot, 11b follows it at once', same(wkOn(lateCarry, 0), [ '2:35:00 PM S03E11a', '2:46:33 PM S03E11b' ]), show(wkOn(lateCarry, 0)));

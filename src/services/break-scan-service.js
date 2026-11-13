@@ -19,7 +19,7 @@
  *            when every file left is on such a drive, it is read anyway, at
  *            Very Low disk priority, the pace check still watching (measured
  *            Nov 10: no slower for the viewers than their usual blips; before,
- *            G: and F: went unscanned for days). A drive Ron skips ("E:") is
+ *            G: and F: went unscanned for days). A drive DarkManX16 skips ("E:") is
  *            not read at all until he turns it back on.
  *   limits   a file whose ffmpeg runs add up to 15 minutes is stopped and tried
  *            again a day later, as is one that fails.

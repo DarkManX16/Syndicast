@@ -1,6 +1,6 @@
 # Episode Start Implementation Plan
 
-**Goal:** Ron picks which episode a position plays next, once - Play Next, or "Air next" for Shuffle and Rerun - from the Time Slots editor, seeing each position's next episode and when it airs. Channels saved today don't change unless he sets one.
+**Goal:** DarkManX16 picks which episode a position plays next, once - Play Next, or "Air next" for Shuffle and Rerun - from the Time Slots editor, seeing each position's next episode and when it airs. Channels saved today don't change unless he sets one.
 
 **Design (agreed Oct 10, 2026):** NOTES.md, Known issues, "Episode start". This plan does not restate its reasons.
 

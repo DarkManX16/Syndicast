@@ -3,7 +3,7 @@
  * `dates: { from, to }` is in its mix only for breaks that start on those
  * dates, both ends included; outside them the other entries share its
  * weight. A mix with no dated entry is handed to the picker as the very
- * array it always was. Ron's case: "MAAM Promos" in the Bounce Era
+ * array it always was. DarkManX16's case: "MAAM Promos" in the Bounce Era
  * day-parts' Mix, Nov 15-26, 2026.
  */
 const { helperFuncs, dayParts, MIN, HOUR, at, freshStore, clip, show, flex, mix, Suite } = require('./support');

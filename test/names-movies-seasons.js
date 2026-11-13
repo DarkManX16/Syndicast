@@ -188,7 +188,7 @@ module.exports = async function run() {
     }
 
     // ---- fix (Oct 8, 2026): a movie's whole title takes part in the longest-match rule
-    // like a show's, in a custom show or not - real titles from Ron's "Cartoon Theatre
+    // like a show's, in a custom show or not - real titles from DarkManX16's "Cartoon Theatre
     // Next Time" list, where a movie with no colon subtitle used to be read as the show
     // it overlaps (or, with two shows in its words, as both) rather than as itself.
     {

@@ -136,7 +136,7 @@ overlapping.blocks = [
 
 // --- Stage 5: transitions. Every fixture below is built here - its own
 // day-parts and blocks, its own lineups, its own times - and none reads
-// channel 1 or the dev data folder, so a row holds whatever Ron's real block
+// channel 1 or the dev data folder, so a row holds whatever DarkManX16's real block
 // times are. Two layers carry the sequences: `ccnSeq` is the CCN fixture above
 // with steps on its day-parts and blocks, and `nickSeq` is Nick Picks with the
 // Nick at Nite sequence.
@@ -181,7 +181,7 @@ const SEQ_LISTS = {
     'CN Cinema bumper': [named('CN Cinema bumper', 10)],
     'Cartoon Theatre intro': [named('Cartoon Theatre intro', 10)],
     'Cartoon Theatre closing': [named('Cartoon Theatre closing', 10)],
-    // Step 8: Ron's real "Cartoon Theatre Next Time" list names the movie each
+    // Step 8: DarkManX16's real "Cartoon Theatre Next Time" list names the movie each
     // clip is for - one for the movie that opens next week's Cartoon Theatre.
     'CT Next Time': [named('Cartoon Theatre Next Time (Gamma)', 10, ['movie.Cartoon Theatre Movie 2'])],
     'CN City Grim bumper': [named('CN City Grim bumper', 10, ['tv.Grim'])],
@@ -201,7 +201,7 @@ const SEQ_LISTS = {
     'NN BTTS': [named('BTTS', 10)],
 
     // --- the Nick channel's own patterns (step 3b). The Nick lists name shows the
-    // way Ron's titles do: "Up Next Bumper (Doug)" is a clip naming Doug.
+    // way DarkManX16's titles do: "Up Next Bumper (Doug)" is a clip naming Doug.
     'Nick WBRB': [named('Clarissa WBRB', 10, ['tv.Clarissa']), named('Doug WBRB', 10, ['tv.Doug'])],
     'Nick Up Next': [named('Up Next (Clarissa)', 10, ['tv.Clarissa']), named('Up Next (Doug)', 10, ['tv.Doug'])],
     'Nick Bumpers': [named('Nick Bumper (Clarissa)', 10, ['tv.Clarissa']), named('Nick Bumper (Doug)', 10, ['tv.Doug'])],
@@ -658,7 +658,7 @@ const ROWS = [
     // step 4).
     //
     // Each row lays out its own lineup against the ccnSeq / nickSeq fixtures
-    // above, so it holds whatever Ron's real block times are.
+    // above, so it holds whatever DarkManX16's real block times are.
     planRow(5, 'Fri, Toonami -> CCF | Toonami sign-off -> CCF Up Next -> Flex -> CCF intro -> CCF host intro -> CCF show intro',
         'Toonami sign-off -> CCF Up Next (Ed Edd n Eddy) -> Flex -> CCF intro -> CCF host intro -> CCF show intro (Ed Edd n Eddy)',
         () => render(planOf(ccnSeq, [episode('Toonami Show', 1, 30), flex(5), episode('Ed Edd n Eddy', 1, 25)],
@@ -766,7 +766,7 @@ const ROWS = [
         () => render(planOf(nickSeqFallback, [episode('Frasier', 1, 25), flex(5), episode('Perfect Strangers', 1, 25)],
             '2026-01-05T21:00:00', 1))),
 
-    // --- Step 3b: real patterns from Ron's Nick channel, each its own fixture.
+    // --- Step 3b: real patterns from DarkManX16's Nick channel, each its own fixture.
     // The spec's "Worked examples from the Nick channel" says what each is for.
     planRow(5, 'Hey Dude -> Clarissa | a Clarissa WBRB (keyed on next) before the commercials, then Up Next (Clarissa) after them',
         'Clarissa WBRB -> Flex -> Up Next (Clarissa)',

@@ -267,14 +267,14 @@ module.exports = async function () {
             startOf(late, bThu) === thu(19, 44, 9) && firstAt(late, thu(20)).start === thu(20, 6, 9) && firstAt(late, thu(20, 29)).start === thu(20, 30),
             shows(late).filter((a) => a.start > thu(19) && a.start < thu(20, 31)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
 
-        // Ron's Oct 24 evening, in the fixture's slots: a movie that took over the slot it
+        // DarkManX16's Oct 24 evening, in the fixture's slots: a movie that took over the slot it
         // ends in, on air, and a swap in the next slot.
         const swap = item('Midnight Ride', 24 * MIN + 23 * SEC, 'C');
-        const ron = await generate(pool(), daily(), thu(19, 20), [pin(swap, thu(20), 'take')], { start: thu(19), program: pinnedAt7('take') });
+        const onAir = await generate(pool(), daily(), thu(19, 20), [pin(swap, thu(20), 'take')], { start: thu(19), program: pinnedAt7('take') });
         const d = shows(plain).find((a) => a.start === thu(20, 30)).program.title;
         suite.check('a swap after a carried take-over pin starts at its time, and the slot after it keeps its show',
-            startOf(ron, 'Midnight Ride') === thu(20) && startOf(ron, d) === thu(20, 30),
-            shows(ron).filter((a) => a.start > thu(19) && a.start < thu(21)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
+            startOf(onAir, 'Midnight Ride') === thu(20) && startOf(onAir, d) === thu(20, 30),
+            shows(onAir).filter((a) => a.start > thu(19) && a.start < thu(21)).map((a) => a.program.title + ' ' + clock(a.start)).join(', '));
 
         // A pin pushed late by another pin that runs late: the slot it then runs into was
         // never given to it, so that slot runs late rather than being taken over.

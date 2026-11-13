@@ -1,7 +1,7 @@
 /*
  * A file that can't be opened never takes the server down, and is skipped.
  *
- * Nov 5, 2026: Ron's whole server crashed, every channel with it, when channel
+ * Nov 5, 2026: DarkManX16's whole server crashed, every channel with it, when channel
  * 1's break reached a NEXT bumper on the USB drive that, for that moment,
  * couldn't be opened: plexTranscoder.js threw inside fs.access's callback,
  * where nothing can catch it. Two halves:

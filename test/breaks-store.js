@@ -50,7 +50,7 @@ module.exports = async () => {
         suite.check('a path no show holds comes back empty',
             store.findRecord(breaksDir, 'G:/nope.mkv') === null);
 
-        // Ron approves the opening by hand, then the file changes (re-ripped, same break).
+        // DarkManX16 approves the opening by hand, then the file changes (re-ripped, same break).
         const approved = store.loadShow(breaksDir, 'tv.Happy Days');
         approved.files[file1.path].points[0].status = 'approved';
         approved.files[file1.path].points[0].approvedBy = 'pattern';
@@ -65,7 +65,7 @@ module.exports = async () => {
         suite.check('the matching new point comes back marked as approved before the file changed',
             (record2.points.length === 1) && (record2.points[0].status === 'found') && (record2.points[0].approvedBy === 'pattern'));
 
-        // Ron clicks approve again on the carried-over point, settling it for real...
+        // DarkManX16 clicks approve again on the carried-over point, settling it for real...
         const settled = store.loadShow(breaksDir, 'tv.Happy Days');
         settled.files[file1Changed.path].points[0].status = 'approved';
         store.saveShow(breaksDir, 'tv.Happy Days', settled);

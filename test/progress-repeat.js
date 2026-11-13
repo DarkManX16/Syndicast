@@ -2,7 +2,7 @@
  * Repeat a slot: re-airs whatever a chosen earlier slot aired, the same day
  * (9pm's episode again at 1am) or another day of the week (channel 3's That's
  * So Raven: Saturday repeats Thursday, Sunday repeats Friday). A source that
- * aired nothing plays a Rerun of the same show (Ron, Oct 9). See NOTES.md,
+ * aired nothing plays a Rerun of the same show (DarkManX16, Oct 9). See NOTES.md,
  * Known issues, "Per-position stored progress, and the shuffles built on it".
  *
  * The real time-slots-service with the clock frozen, on fixtures. The

@@ -166,7 +166,7 @@ module.exports = async function () {
         suite.check('...an airing of another show in a slot is nobody\'s place', places.size === 3);
 
         // Friday's and Saturday's Shuffle slots share a position. From Friday
-        // noon, Saturday's airing comes first, but it has no number - Ron
+        // noon, Saturday's airing comes first, but it has no number - DarkManX16
         // replaced it by hand - so the place is next Friday's.
         const extended = { period: WEEK, slots: schedule.slots.concat([{ time: slotTime(Fri, 6), showId: 'tv.Doug', order: 'shuffle' }]) };
         const fromHand = read(lineup(THU, [
@@ -414,7 +414,7 @@ module.exports = async function () {
 
         // Saturday and Sunday share one Shuffle; only Saturday gets the range. Sunday
         // still plays the old round, so Saturday starts a round of its own rather
-        // than the same rest of it (Ron, Oct 10).
+        // than the same rest of it (DarkManX16, Oct 10).
         const dougWeekend = { period: WEEK, slots: [
             { time: slotTime(Sat, 6), showId: 'tv.Doug', order: 'shuffle' },
             { time: slotTime(Sun, 6), showId: 'tv.Doug', order: 'shuffle' },

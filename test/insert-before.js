@@ -1,5 +1,5 @@
 /*
- * Insert before (Ron, Nov 6, 2026): a clip goes in right before an airing, after the
+ * Insert before (DarkManX16, Nov 6, 2026): a clip goes in right before an airing, after the
  * break in front of it - the break shrinks by the clip's length and nothing else
  * moves - and a row dropped right after its own break moves past it. See NOTES.md,
  * "What you see is what airs", "Insert before, and a drop past a row's own break".
@@ -167,7 +167,7 @@ module.exports = async function () {
 
     suite.log('-- a drop right after the row\'s own break moves it past the break --');
     {
-        // Ron, Nov 6: the library's "Insert into the lineup here" put the intro after the
+        // DarkManX16, Nov 6: the library's "Insert into the lineup here" put the intro after the
         // airing before the movie - ahead of the commercials. Dragging it to just before the
         // movie did nothing: it already sat directly in front of it, with its Flex after it.
         const ins = kept.insertAfter({ lineup: l0, index: indexOf(l0, 'Family Guy 1'), item: intro, now: NOW });

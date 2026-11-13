@@ -260,7 +260,7 @@ module.exports = async function () {
         suite.check('storage that throws never breaks a drag', ok && r.rec.sessions().length === 0);
     }
 
-    suite.log('-- the copy for Ron to paste --');
+    suite.log('-- the copy for DarkManX16 to paste --');
     {
         const r = rig();
         goodDrag(r);

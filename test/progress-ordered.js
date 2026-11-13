@@ -2,7 +2,7 @@
  * Ordered shuffle: a series at random, and that series' next episode in
  * order - for custom shows that join several series. Each round is a random
  * interleaving of the series, each keeping its list order, so a series airs in
- * proportion to its size and every item once per round (Ron, Oct 9). See
+ * proportion to its size and every item once per round (DarkManX16, Oct 9). See
  * NOTES.md, Known issues, "Per-position stored progress, and the shuffles
  * built on it".
  *

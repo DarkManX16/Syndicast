@@ -66,7 +66,7 @@ function captureErrors(fn) {
 }
 const names = (p) => p.names.join();
 
-// The show titles on Ron's channels that have a hyphen inside a word (checked against the
+// The show titles on DarkManX16's channels that have a hyphen inside a word (checked against the
 // dev data folder): a hyphen in one of these is never the hyphen between two shows.
 const HYPHENATED_SHOWS = ['A Pup Named Scooby-Doo', 'Butt-Ugly Martians', 'He-Man and the Masters of the Universe (2002)',
     'Scooby-Doo and Scrappy-Doo', 'Scooby-Doo! Mystery Incorporated', 'Sym-Bionic Titan', 'The 13 Ghosts of Scooby-Doo',

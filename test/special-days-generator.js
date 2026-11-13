@@ -201,7 +201,7 @@ module.exports = async function () {
 
     suite.log('-- a row that runs until a time (row.until, Event tools) --');
     {
-        // Ron's Marathon and a Movie: Lizzie (X) until 8:00pm, then the movie.
+        // DarkManX16's Marathon and a Movie: Lizzie (X) until 8:00pm, then the movie.
         const rows = [ { showId: 'tv.X', order: 'next', until: 20 * HOUR }, item(LONG_MOVIE) ];
         const res = await generate(pool(), withDays(daily(), [ day({ slots: rows }) ]), NOW);
         const d = inside(res, FRI6, SAT6);
@@ -359,7 +359,7 @@ module.exports = async function () {
             `${brk ? brk.program.duration / MIN : '?'} min, X at ${x ? clock(x.start) : '?'}`);
     }
     {
-        // Ron, Nov 5: filling a break must never move the regular channel's own
+        // DarkManX16, Nov 5: filling a break must never move the regular channel's own
         // position for that show. A is one of daily()'s own regular slots, never
         // named by the day's rows, so the day itself already displaces A's 12
         // regular occurrences for its 24 hours either way (NOTES.md, "the shows

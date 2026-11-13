@@ -1,7 +1,7 @@
 /*
  * Rerun: a Shuffle of only the episodes its show's Play Next has already
  * aired, so a weekend never airs an episode before its weekday strip does.
- * With nothing aired yet, or no Play Next at all, it plays as a Shuffle (Ron,
+ * With nothing aired yet, or no Play Next at all, it plays as a Shuffle (DarkManX16,
  * Oct 9). See NOTES.md, Known issues, "Per-position stored progress, and the
  * shuffles built on it".
  *

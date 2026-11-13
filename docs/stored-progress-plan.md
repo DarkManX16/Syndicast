@@ -152,7 +152,7 @@
 - [x] **Step 1:** Implement; `npm run build` in the worktree; `test/bundle-freshness.js` passes.
 - [x] **Step 2: Proof, real data** (`progress-check` at the three moments, every channel copy):
   - Every Play Next position continues exactly: ch 1 138/138, Sep 29 50/50 (Johnny Bravo S01E28, S02E07, S01E34, S01E34), ch 2 All That S01E05, Rugrats S01E05, Hey Arnold S01E09, Kenan & Kel S01E05; ch 3's eight weekday strips; Monday's 18 weekend Shuffles continue exactly through `legacyShuffleOrder`.
-  - Hey Arnold's Friday Shuffle resumes at pick 1 (S1E9), not at Ron's hand-placed S5E5 - hand edits never move a position.
+  - Hey Arnold's Friday Shuffle resumes at pick 1 (S1E9), not at DarkManX16's hand-placed S5E5 - hand edits never move a position.
   - Channel 1 as saved regenerates field for field the same as `blocks`' generator, ignoring `slotPosition`: nothing changes where nothing was wrong.
   - Twice in a row: Friday's output saved, then regenerated from it at Monday - every position continues exactly, now read from labels.
   - The slot's old place, on copies with `--edit`: Rugrats' Friday range changed from no S1-5 to no S1-6 goes to S07E01; All That's Fri-Sun range narrowed to no S1-7 continues at the first S8 episode at or after its place; Sep 29's no-S2 Johnny Bravo slots removed in one run and restored in the next resume at S01E34 from the record.
@@ -171,7 +171,7 @@
 **Interfaces:**
 - Produces: `partOf(title) -> { base, n } | null` (markers `(2)`, `(II)`, `Part 2`, `Part Two`, `Pt. 2`, n 1-6); `stories(sortedPrograms) -> program[][]` - every program in exactly one story; part n (n >= 2) joins the one before it when that is part n-1, or for part 2 when that has the same title unmarked.
 
-- [x] **Step 1: Failing tests** with Ron's real titles as fixtures: `Deadomutt (1)/(2)` join; `Stewie Kills Lois (1)` + `Lois Kills Stewie (2)` join; `Judging Omi (1)`, `Saving Omi (2)`, `Finding Omi (3)` make one story of three; `Secret Origins`, `Secret Origins (2)`, `Secret Origins (3)` make one; `Escape to the House of Mummies Part II` after `Assassinanny 911` stays single; `The Thirteen Ghosts (1975)` is not a part; Sonic Underground's interleaved `(Chaos Emerald Crisis, Part 2)` / `(Origins, Part 2)` stay single.
+- [x] **Step 1: Failing tests** with DarkManX16's real titles as fixtures: `Deadomutt (1)/(2)` join; `Stewie Kills Lois (1)` + `Lois Kills Stewie (2)` join; `Judging Omi (1)`, `Saving Omi (2)`, `Finding Omi (3)` make one story of three; `Secret Origins`, `Secret Origins (2)`, `Secret Origins (3)` make one; `Escape to the House of Mummies Part II` after `Assassinanny 911` stays single; `The Thirteen Ghosts (1975)` is not a part; Sonic Underground's interleaved `(Chaos Emerald Crisis, Part 2)` / `(Origins, Part 2)` stay single.
 - [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass.
 - [x] **Step 5: Proof, real data:** across channels 1-3, 431 stories, 1,022 episodes, 24 parts single - the list printed matches NOTES'.
 - [x] **Step 6:** Commit: `Progress: multi-part stories from part markers and order`.
@@ -217,7 +217,7 @@
 - Modify: `scripts/progress-audit.js` (a Rerun airing must be an episode its show's Play Next had passed by that airing's start)
 
 **Interfaces:**
-- Produces: `registry.airedFor(showId) -> Set<fileKey>` - union over the show's live Play Next positions of every candidate before each one's current place (the whole range once `wrapped`), plus the same for `progress` records of the show's Play Next positions not in the schedule. A Rerun position draws stories wholly inside that set and inside its own range, in Shuffle's rounds; the set is asked afresh at each pick, so it grows as the strips advance. Fallbacks (Ron, Oct 9): nothing aired yet - plays as a Shuffle over its range, and the editor shows why under the slot; no Play Next for the show anywhere - plays as a Shuffle over its range.
+- Produces: `registry.airedFor(showId) -> Set<fileKey>` - union over the show's live Play Next positions of every candidate before each one's current place (the whole range once `wrapped`), plus the same for `progress` records of the show's Play Next positions not in the schedule. A Rerun position draws stories wholly inside that set and inside its own range, in Shuffle's rounds; the set is asked afresh at each pick, so it grows as the strips advance. Fallbacks (DarkManX16, Oct 9): nothing aired yet - plays as a Shuffle over its range, and the editor shows why under the slot; no Play Next for the show anywhere - plays as a Shuffle over its range.
 
 - [x] **Step 1: Failing tests:** `a Rerun never airs an episode its show's Play Next hasn't passed` over a generated year; `the pool grows as the strip advances`; `a story is rerun only once every part has aired`; `a strip that has gone round makes its whole range eligible`; `nothing aired yet plays as a Shuffle`; `no Play Next plays as a Shuffle`.
 - [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass; `npm run build`.
@@ -237,7 +237,7 @@
 - Create: `test/progress-repeat.js` (add to `test/run.js`)
 
 **Interfaces:**
-- A repeat slot: `{ time, showId, order: 'repeat', repeatOf }`, `repeatOf` the source slot's `time`, `showId` the source's. Its occurrence at `t` re-airs the programs of `showId` that started inside the source slot's latest occurrence before `t` - found by local wall-clock time, at most one period plus an hour back - from the lineup being built, else from `history`; each copied with `slotPosition = 'repeat'`. A source occurrence with nothing in it (Flex, or before `since`) plays a Rerun of the same show (Ron, Oct 9).
+- A repeat slot: `{ time, showId, order: 'repeat', repeatOf }`, `repeatOf` the source slot's `time`, `showId` the source's. Its occurrence at `t` re-airs the programs of `showId` that started inside the source slot's latest occurrence before `t` - found by local wall-clock time, at most one period plus an hour back - from the lineup being built, else from `history`; each copied with `slotPosition = 'repeat'`. A source occurrence with nothing in it (Flex, or before `since`) plays a Rerun of the same show (DarkManX16, Oct 9).
 
 - [x] **Step 1: Failing tests:** `a repeat re-airs its source's episodes`; `Saturday repeats Thursday, Sunday repeats Friday` (a weekly fixture shaped like channel 3's That's So Raven: Thu 18:30 and Fri 18:00 Play Next, Sat 18:30 and Sun 17:00 Repeat); `a same-day repeat: 9pm again at 1am`; `a source after the repeat in the week repeats last week's` (Thursday repeating Saturday plays the Saturday five days earlier); `two episodes in the source, two in the repeat, as many as fit`; `the first repeat after a regeneration comes from history, read back round the loop`; `a repeat never moves its source's position` (regenerate two days later - the source's Play Next continues exactly); `on the fall-back night a 1:00 repeat airs twice, the same episodes`; `nothing in the source plays a Rerun`.
 - [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass.
@@ -270,7 +270,7 @@
 - Modify: `web/directives/time-slots-schedule-editor.js` (`orderOptions` gains Ordered shuffle, offered only for a show whose items have two or more series; the row says how many), `scripts/progress-audit.js` (per series, items in list order with no skip; every item once per round; per-round counts equal series sizes)
 
 **Interfaces:**
-- Produces: `seriesOf(program) -> string` - the item's `showTitle`, else its title. A round is `roundOrder` over all stories; the k-th story of series S in that order plays S's k-th story in custom-show list order. Record `{ round, next }`, as Shuffle; the place in the round is found from `next`'s series and its index within it. Default to confirm with Ron: shares by series size (every item once per round), not equal per series.
+- Produces: `seriesOf(program) -> string` - the item's `showTitle`, else its title. A round is `roundOrder` over all stories; the k-th story of series S in that order plays S's k-th story in custom-show list order. Record `{ round, next }`, as Shuffle; the place in the round is found from `next`'s series and its index within it. Default to confirm with DarkManX16: shares by series size (every item once per round), not equal per series.
 
 - [x] **Step 1: Failing tests:** `each series plays in list order`; `every item once per round`; `per-round counts equal series sizes`; `a series' multi-part story stays together`; `a regeneration mid-round continues`.
 - [x] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** pass; `npm run build`.
@@ -289,4 +289,4 @@
 
 - [x] **Step 1:** Re-copy the data, diff, re-run every step's proof on the fresh copy, state the snapshot time.
 - [x] **Step 2:** Write the NOTES changes.
-- [x] **Step 3:** Commit: `Docs: record stored progress, shuffle, rerun, repeat a slot and ordered shuffle`. The branch stays unmerged until Ron says to merge it into `blocks`.
+- [x] **Step 3:** Commit: `Docs: record stored progress, shuffle, rerun, repeat a slot and ordered shuffle`. The branch stays unmerged until DarkManX16 says to merge it into `blocks`.

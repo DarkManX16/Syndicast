@@ -186,7 +186,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
      * this lineup, or from `history` when that occurrence was before it.
      * Labelled 'repeat', so a repeat never moves its source's position. A
      * source that aired nothing - Flex, or before the lineup on air existed -
-     * plays a Rerun of the same show (Ron, Oct 9). One occurrence at a time:
+     * plays a Rerun of the same show (DarkManX16, Oct 9). One occurrence at a time:
      * `occurrenceStart` is set by the loop below before each slot it fills.
      */
     let aired = [];
@@ -468,7 +468,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         return taken;
     }
     // A slot holding a split episode whose halves fit only without their pads lays them without:
-    // Ron's 2:35 slot airs 11a and 11b back to back, ending 2:57:22, rather than 11a alone.
+    // DarkManX16's 2:35 slot airs 11a and 11b back to back, ending 2:57:22, rather than 11a alone.
     // `openEnd`: the last item's pad isn't laid (before a pin), so it doesn't count.
     function squeeze(pads, room, split, openEnd) {
         let padded = pads.reduce( (sum, x) => sum + x.totalDuration, 0 );
@@ -848,7 +848,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
      * A show or custom show (its showId, exactly as a row names one) reuses
      * getNextForSlot/advanceSlot, but never the show's own regular position -
      * filling a break must never move where its regular slot picks up next
-     * (Ron, Nov 5). Tagged "fill:<dayId>" (specialDays.taggedKey, the same
+     * (DarkManX16, Nov 5). Tagged "fill:<dayId>" (specialDays.taggedKey, the same
      * mechanism a Keep-apart row's own position already uses to stay off the
      * regular one), it gets its own position, round robin, remembered between
      * runs the normal way, just never shared with anything else. "filler:<listId>"
