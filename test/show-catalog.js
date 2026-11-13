@@ -226,5 +226,57 @@ module.exports = async function () {
                 === 'Christmas:tv.Doug=1+tv.Wings=1 Halloween:tv.Doug=1', JSON.stringify(groups.map((g) => [g.holiday, g.shows.map((s) => s.showId)])));
     }
 
+    suite.log('-- a replaced or second file of a listed episode --');
+    {
+        // Ron, Nov 12-13, 2026: the list is keyed by file, so a replaced or renamed file, or a
+        // second copy in the library, brought a deleted episode back (House of Turkey). The same
+        // show, the same title, and the file's own name carrying that title is the same episode.
+        // Plex titles alone are not enough: three of his files carry another episode's title.
+        const mouse = (n, title, file, extra) => Object.assign({ type: 'episode', showTitle: 'House of Mouse', title, season: 4, episode: n,
+            duration: 22 * MIN, serverKey: 'srv', key: '/library/metadata/' + n, file }, extra || {});
+        const state = { shows: {}, neverAir: {
+            'srv|/library/metadata/54121': { showId: 'tv.House of Mouse', season: 3, episode: 44, title: 'House of Turkey', reason: 'holiday', holiday: 'Thanksgiving', how: 'deleted' },
+            'srv|/library/metadata/70293': { showId: 'tv.Teamo Supremo', season: 2, episode: 11, title: 'Happy Holidays, Mr. Gruff / The Grandfather Show', reason: 'holiday', holiday: 'Christmas', how: 'deleted' },
+            'srv|/library/metadata/121155': { showId: 'custom.dd', season: 2, episode: 41, title: 'Episode 41', reason: 'never', how: 'review' },
+            'srv|/library/metadata/900': { showId: 'tv.House of Mouse', season: 1, episode: 1, title: 'Pilot', reason: 'never', how: 'deleted' },
+            'srv|/library/metadata/901': { showId: 'tv.Hannah Montana', season: 1, episode: 16, title: 'Torn Between Two Hannahs', reason: 'holiday', holiday: 'Halloween', how: 'review' },
+        } };
+        const turkey = mouse(177277, 'House of Turkey', "E:\\That's So Disney Shows\\House Of Mouse\\House Of Mouse (Season 04)\\House of Mouse; S04E10 House Of Turkey.mp4");
+        suite.check('the new file of a listed episode is on the list: same show, same title, its name carries the title',
+            catalog.isNeverAir(state, turkey) && catalog.entryFor(state, turkey).holiday === 'Thanksgiving', JSON.stringify(catalog.entryFor(state, turkey)));
+        suite.check('...capitals and punctuation aside',
+            catalog.isNeverAir(state, mouse(5, 'house of TURKEY!', '/media/hom/House.of.Mouse.S04E10.House.Of.Turkey.480p.mkv')), '');
+        const hannah = { type: 'episode', showTitle: 'Hannah Montana', title: 'Torn Between Two Hannahs', season: 1, episode: 16, serverKey: 'srv', key: '/library/metadata/66128',
+            file: 'E:\\Hannah Montana\\Hannah Montana S01\\Hannah.Montana.S01E16.Torn.Between.Two.Hannahs.480p.WEBRip.AAC.2.0.x264-SRS.mkv' };
+        suite.check('...a second copy in another folder too', catalog.isNeverAir(state, hannah), '');
+        const teamo = { type: 'episode', showTitle: 'Teamo Supremo', title: 'Happy Holidays, Mr. Gruff / The Grandfather Show', season: 2, episode: 9, serverKey: 'srv', key: '/library/metadata/70291',
+            file: 'D:\\Shows\\Teamo Supremo\\Season 2\\Teamo Supremo S02E09 The Sinister Sloppy Joe_ & _Surf, Sand, Sun and...Skull.mp4' };
+        suite.check('a file Plex gives the listed title but whose own name says another episode is not on the list',
+            ! catalog.isNeverAir(state, teamo), '');
+        suite.check('a title alone, with no file name to check, is not enough', ! catalog.isNeverAir(state, mouse(6, 'House of Turkey', undefined)), '');
+        suite.check('another show with the same title is not on the list',
+            ! catalog.isNeverAir(state, Object.assign({}, turkey, { showTitle: 'Mickey Mouse Works' })), '');
+        const dd = { type: 'episode', customShowId: 'dd', customShowName: 'Double Dare', title: 'Episode 41', season: 1, episode: 41, serverKey: 'srv', key: '/library/metadata/105452',
+            file: 'F:\\Double Dare 2000 (2000)\\Season 01 Episode 41; Double Dare 2000 [Harris] The Red Warriors vs The Blue Monsoons.mp4' };
+        suite.check('a generic title - "Episode 41", "Pilot" - never matches another file, even when its name carries it',
+            ! catalog.isNeverAir(state, dd) && ! catalog.isNeverAir(state, mouse(7, 'Pilot', '/media/hom/House of Mouse S02E01 Pilot.mkv')), '');
+        suite.check('...generic: numbers, "Part 2", "Episode #3", "The Pilot", "Finale"; not "Pilot Error" or "Part of the Family"',
+            [ '41', 'Episode 41', 'Ep. 3', 'Part 2', 'Episode #3', 'The Pilot', 'Pilot', 'Finale', 'Chapter IV', '', 'S01E07' ].every( (t) => catalog.genericTitle(t) )
+                && [ 'Pilot Error', 'Part of the Family', 'House of Turkey', 'Episode 41: The Reckoning', 'Seven' ].every( (t) => ! catalog.genericTitle(t) ), '');
+        suite.check('the listed file itself is on the list, as always', catalog.isNeverAir(state, mouse(54121, 'anything', undefined)), '');
+        const pool = [ turkey, teamo, mouse(8, 'House of Genius', '/media/hom/House of Mouse S04E08 House Of Genius.mp4') ];
+        suite.check('the pool and a review leave the new file out, and keep the mis-titled one',
+            titles(catalog.withoutNeverAir(pool, state)) === 'Happy Holidays, Mr. Gruff / The Grandfather Show,House of Genius'
+                && titles(catalog.toAdd({ items: pool, lineupItems: [], state, specials: true })) === 'Happy Holidays, Mr. Gruff / The Grandfather Show,House of Genius',
+            titles(catalog.withoutNeverAir(pool, state)));
+        const added = catalog.applyOps(state, [ { neverAir: [ { key: 'srv|/library/metadata/8', entry: { showId: 'tv.House of Mouse', title: 'House of Genius', reason: 'never', how: 'deleted' } } ] } ], NOW);
+        suite.check('an entry added later is matched too, and a restored one no longer is',
+            catalog.isNeverAir(added, mouse(88, 'House of Genius', '/x/House Of Genius (new rip).mkv'))
+                && ! catalog.isNeverAir(catalog.applyOps(added, [ { restore: [ 'srv|/library/metadata/54121' ] } ], NOW), turkey), '');
+        const sd = require('../src/special-days');
+        suite.check('a holiday row finds the new file of an episode set aside for its holiday',
+            sd.holidayCandidates({ state, items: [ turkey, pool[2] ], holiday: 'Thanksgiving' }).length === 1, '');
+    }
+
     return suite;
 };

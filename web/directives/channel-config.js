@@ -1497,7 +1497,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     // A swap or insert Ron made of this episode still airs: say which (Nov 12).
                     if (! program.isOffline) {
                         scope.lastChange = keptRows.stillAirs(keptRows.handPlacedAhead({ lineup: lineupMs(), program: program, now: Date.now(),
-                            schedule: scope.channel.scheduleBackup }));
+                            schedule: scope.channel.scheduleBackup, same: showCatalog.sameEpisode(program) }));
                     }
                 } else {
                     scope.channel.programs.splice(x, 1);
@@ -2781,6 +2781,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     await dizquetv.applyChannelCatalogOps(number, ops);
                 } catch (err) {
                     console.error('Could not save the channel\'s catalog changes', err);
+                    // The editor has closed by now: said by the page's notices (Ron, Nov 13).
+                    window.dispatchEvent(new window.CustomEvent('syndicast-notice', { detail: { title: 'Never-air list', level: 'danger',
+                        text: "The never-air changes weren't saved: delete those episodes again." } }));
                 }
             };
 
@@ -3044,7 +3047,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         text = text.slice(0, -1) + moved.text + '.';
                     }
                     let still = keptRows.stillAirs(keptRows.handPlacedAhead({ lineup: { programs: moved.programs, startTime: before.startTime },
-                        program: program, now: Date.now(), schedule: scope.channel.scheduleBackup }));
+                        program: program, now: Date.now(), schedule: scope.channel.scheduleBackup, same: showCatalog.sameEpisode(program) }));
                     applyEdit({ programs: moved.programs, text: text + ( still ? ' ' + still : '' ) });
                 } catch (err) {
                     scope.catalogQueue = scope.catalogQueue.filter( (o) => o !== op );

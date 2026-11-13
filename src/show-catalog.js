@@ -92,8 +92,108 @@ function specialsAllowed(lineupItems) {
     return (lineupItems || []).some( (p) => (p.customShowId === undefined) && (p.season === 0) );
 }
 
+/*
+ * The list is keyed by file, and a file can change under an episode: replaced
+ * by a new copy, renamed, or held twice in the library. So an episode is on
+ * the list when its own file is, or when (Ron, Nov 13, 2026) an entry of the
+ * same show has the same title and this file's own name carries that title.
+ * The title alone is not enough - Plex gives three of Ron's files another
+ * episode's title - and a generic title ("Episode 41", "Pilot") never matches
+ * another file. Capitals and punctuation aside.
+ */
+function plain(text) {
+    return String( (text === null) || (typeof(text) === 'undefined') ? '' : text ).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/&/g, ' and ').replace(/['\u2019]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+const GENERIC_WORDS = [ 'the', 'a', 'an', 'episode', 'ep', 'part', 'pt', 'chapter', 'pilot', 'finale', 'premiere', 'special', 'show',
+    'volume', 'vol', 'disc', 'season', 'series', 'no', 'number', 'untitled', 'tba' ];
+function genericTitle(title) {
+    return plain(title).split(' ').every( (w) => (w === '') || (GENERIC_WORDS.indexOf(w) !== -1) || /^(s\d+)?e?\d+$/.test(w) || /^[ivx]+$/.test(w) );
+}
+
+// The show an episode is of, as an entry's showId has it (get-show-data.js).
+function showIdOf(program) {
+    if (typeof(program.customShowId) !== 'undefined') {
+        return 'custom.' + program.customShowId;
+    }
+    if (program.type === 'movie') {
+        return 'movie.';
+    }
+    if ( (program.type === 'episode') || (program.type === 'track') ) {
+        return ( (program.type === 'track') ? 'audio.' : 'tv.' ) + program.showTitle;
+    }
+    return null;
+}
+
+function nameCarries(file, title) {
+    if ( (typeof(file) !== 'string') || (file === '') ) {
+        return false;
+    }
+    let name = plain(file.split(/[\\/]/).pop().replace(/\.[a-z0-9]{2,4}$/i, ''));
+    return (' ' + name + ' ').indexOf(' ' + title + ' ') !== -1;
+}
+
+// Entries by show and title, built once per list (and again if it grows or shrinks).
+let titleIndexes = new WeakMap();
+function titlesOf(neverAir) {
+    let keys = Object.keys(neverAir);
+    let held = titleIndexes.get(neverAir);
+    if ( (typeof(held) === 'undefined') || (held.count !== keys.length) ) {
+        let byTitle = new Map();
+        keys.forEach( (key) => {
+            let e = neverAir[key];
+            if ( (e === null) || (typeof(e) !== 'object') || (typeof(e.showId) !== 'string') || genericTitle(e.title) ) {
+                return;
+            }
+            let id = e.showId + '|' + plain(e.title);
+            if (! byTitle.has(id)) {
+                byTitle.set(id, key);
+            }
+        } );
+        held = { count: keys.length, byTitle: byTitle };
+        titleIndexes.set(neverAir, held);
+    }
+    return held.byTitle;
+}
+
+// The entry an episode is listed under - { key, entry } - or null.
+function matchFor(state, program) {
+    let neverAir = (state && state.neverAir) || {};
+    let own = fileKey(program);
+    if (Object.prototype.hasOwnProperty.call(neverAir, own)) {
+        return { key: own, entry: neverAir[own] };
+    }
+    if ( program.isOffline || genericTitle(program.title) ) {
+        return null;
+    }
+    let showId = showIdOf(program);
+    if (showId === null) {
+        return null;
+    }
+    let title = plain(program.title);
+    let key = titlesOf(neverAir).get(showId + '|' + title);
+    if ( (typeof(key) === 'undefined') || ! Object.prototype.hasOwnProperty.call(neverAir, key) || ! nameCarries(program.file, title) ) {
+        return null;
+    }
+    return { key: key, entry: neverAir[key] };
+}
+
+// Whether a row airs `program`'s episode: its file, or another file of it.
+function sameEpisode(program) {
+    let own = fileKey(program);
+    let asListed = { neverAir: { [own]: { showId: showIdOf(program), title: program.title } } };
+    let reverse = (p) => { let k = fileKey(p); return matchFor({ neverAir: { [k]: { showId: showIdOf(p), title: p.title } } }, program) !== null; };
+    return (p) => ! p.isOffline && ( (fileKey(p) === own) || (matchFor(asListed, p) !== null) || reverse(p) );
+}
+
+function entryFor(state, program) {
+    let m = matchFor(state, program);
+    return (m === null) ? null : m.entry;
+}
+
 function isNeverAir(state, program) {
-    return Object.prototype.hasOwnProperty.call(state.neverAir || {}, fileKey(program));
+    return matchFor(state, program) !== null;
 }
 
 function withoutNeverAir(programs, state) {
@@ -398,6 +498,6 @@ function byHoliday(state) {
 module.exports = {
     DEFAULT_LIMIT_MS, HOLIDAYS,
     emptyState, stateOf, showKeysOf, fromPlex, fromCustom, specialsAllowed,
-    isNeverAir, withoutNeverAir, neverAirEntry, holidayOf, preUntick,
+    isNeverAir, matchFor, entryFor, genericTitle, sameEpisode, withoutNeverAir, neverAirEntry, holidayOf, preUntick,
     toAdd, reviewList, poolFor, applyOps, byHoliday, knownAfter, carryChoices, opsAfterRun,
 };

@@ -297,5 +297,47 @@ module.exports = async function () {
             (putBacks === 0) && (strayDel.prompt === null) && (strayDel.programs.length === programs.length - 1) && (never(strayDel) === 'Kim Possible 4 deleted/never'),
             `put backs ${putBacks}; ${titles(strayDel)}; ${never(strayDel)}`);
     }
+
+    suite.log('-- the never-air save after Update Channel --');
+    {
+        // Ron, Nov 13: a never-air save that fails after Update Channel says so in one short
+        // line - it only went to the console, and the deletes silently came back.
+        const flush = async (applyChannelCatalogOps, queue) => {
+            const scope = { catalogQueue: queue.slice() };
+            const notices = [];
+            const page = {
+                dizquetv: { applyChannelCatalogOps },
+                window: { dispatchEvent: (e) => notices.push(e.detail), CustomEvent: function (type, init) { this.type = type; this.detail = Object.assign({ type }, init.detail); } },
+                console: { error: () => {} },
+            };
+            // eslint-disable-next-line no-new-func
+            const f = new Function('scope', ...Object.keys(page), `return ${liftArrow(src, 'flushCatalogOps')};`)(scope, ...Object.values(page));
+            await f(3);
+            return { notices, left: scope.catalogQueue.length };
+        };
+        const op = { neverAir: [ { key: 'srv|/e/1', entry: { title: 'House of Genius' } } ] };
+        const failed = await flush(async () => { throw new Error('HTTP 500'); }, [ op ]);
+        suite.check('a failed never-air save says so, in one short line',
+            (failed.notices.length === 1) && (failed.notices[0].type === 'syndicast-notice')
+                && (failed.notices[0].text === "The never-air changes weren't saved: delete those episodes again.") && (failed.notices[0].text.length < 80),
+            JSON.stringify(failed.notices));
+        const fine = await flush(async () => ({}), [ op ]);
+        const none = await flush(async () => { throw new Error('never called'); }, []);
+        suite.check('...and one that saves, or has nothing to save, says nothing', (fine.notices.length === 0) && (none.notices.length === 0), '');
+        const toast = fs.readFileSync(path.join(__dirname, '../web/directives/toast-notifications.js'), 'utf8');
+        suite.check('the page\'s notices show it', /addEventListener\(\s*'syndicast-notice'/.test(toast), '');
+
+        // Delete's sentence finds a swap of the same episode under another file (show-catalog.js).
+        const showCatalog = require('../src/show-catalog');
+        const old = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', serverKey: 'srv', key: '/library/metadata/54121', file: 'E:/old/House Of Mouse - (Ep. 44) - House of Turkey.avi' };
+        const now2 = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', serverKey: 'srv', key: '/library/metadata/177277', file: 'E:/new/House of Mouse; S04E10 House Of Turkey.mp4' };
+        const other = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Genius', serverKey: 'srv', key: '/library/metadata/177275', file: 'E:/new/House of Mouse; S04E08 House Of Genius.mp4' };
+        const same = showCatalog.sameEpisode(old);
+        suite.check('the same episode: its own file, or another file of it; never another episode',
+            same(old) && same(now2) && ! same(other) && ! same({ isOffline: true, duration: 1 }), '');
+        suite.check('Delete\'s sentence looks for the episode, not only the file',
+            /handPlacedAhead\(\{[^}]*same: showCatalog\.sameEpisode\(program\)/.test(src.replace(/\s+/g, ' '))
+                && (src.match(/same: showCatalog\.sameEpisode\(program\)/g) || []).length === 2, '');
+    }
     return suite;
 };
