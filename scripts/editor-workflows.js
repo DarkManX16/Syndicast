@@ -485,7 +485,8 @@ function makeRunner(opts, page) {
         'delete': async () => {
             await openEditor();
             const row = await plainRow(3);
-            const keptBefore = (await rowsInView()).filter((r) => r.kept).length;
+            // Row by row: a kept row that only scrolls into view once the list is one shorter is not Delete's.
+            const others = (await rowsInView()).filter((r) => r.k !== row.k);
             await click(await (await rowHandle(row.k)).$('button[title="Delete..."]'), `${row.show} at ${row.start}'s Delete`);
             await sleep(800);
             if (await modalOpen()) {
@@ -495,12 +496,14 @@ function makeRunner(opts, page) {
             if (after.some((r) => r.start === row.start && r.show === row.show)) {
                 throw new Check(`${row.show} at ${row.start} is still in the list after Delete`);
             }
-            if (after.filter((r) => r.kept).length > keptBefore) {
-                throw new Check('Delete marked rows as kept');
+            const marked = others.filter((r, i) => after[i] && after[i].show === r.show && after[i].kept && ! r.kept);
+            if (marked.length > 0) {
+                throw new Check(`Delete marked rows as kept: ${marked.map((r) => `${r.show} at ${r.start}`).join(', ')}`);
             }
+            const scrolledIn = after.slice(others.length).filter((r) => r.kept).length;
             const said = await lastChange();
             await closeWith('Cancel');
-            return `${row.show} at ${row.start} went at once, nothing asked, nothing kept${said ? `; "${said}"` : ', nothing said'}; Cancel dropped it`;
+            return `${row.show} at ${row.start} went at once, nothing asked, nothing kept${scrolledIn ? ` (${scrolledIn} kept row(s) scrolled into view)` : ''}${said ? `; "${said}"` : ', nothing said'}; Cancel dropped it`;
         },
         'add-delete-create': async () => {
             // DarkManX16, Oct 30: add a show at the end of the list, delete five of its episodes,
