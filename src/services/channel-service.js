@@ -65,7 +65,13 @@ class ChannelService extends events.EventEmitter {
             this.onDemandService.fixupChannelBeforeSave( channel );
         }
         channelCache.saveChannelConfig( number, channel);
-        await channelDB.saveChannel( number, channel );
+        try {
+            await channelDB.saveChannel( number, channel );
+        } finally {
+            // A read made while the file was being written may hold the one from
+            // before: it is not kept (channel-cache.js, dropChannelConfig).
+            channelCache.dropChannelConfig( number );
+        }
 
         this.emit('channel-update', { channelNumber: number,  channel: channel, ignoreOnDemand: ignoreOnDemand} );
     }
