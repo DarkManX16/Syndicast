@@ -84,7 +84,7 @@ module.exports = async function () {
         // A read that failed for a moment (a file busy) makes a one-off mismatch: asked again.
         let asked = 0;
         const flaky = await buildCheck.guard({ retryMs: 1, run: generate, fetchVersion: async () => (++asked === 1) ? { codeRunning: 'a', codeOnDisk: 'x' } : { codeRunning: 'a', codeOnDisk: 'a' } });
-        suite.check('a mismatch is asked again once before it refuses: a one-off read problem does not lock Ron out',
+        suite.check('a mismatch is asked again once before it refuses: a one-off read problem does not lock DarkManX16 out',
             flaky === 'lineup' && asked === 2, `asked ${asked}`);
         let askedStale = 0, refusedAgain = null;
         try {

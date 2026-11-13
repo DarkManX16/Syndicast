@@ -272,7 +272,7 @@ function createPositions({ shows, schedule }) {
     /*
      * A Rerun may pick a story once every part of it has aired on its show's
      * Play Next. With nothing of its range aired yet, or no Play Next at all,
-     * it plays as a Shuffle over its range (Ron, Oct 9): a slot of Flex is
+     * it plays as a Shuffle over its range (DarkManX16, Oct 9): a slot of Flex is
      * worse than an early episode.
      */
     let rerunEligible = (showId) => (story, stories) => {

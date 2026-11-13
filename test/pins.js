@@ -78,7 +78,7 @@ module.exports = async function () {
         const flex = byHand.programs[i];
         byHand.programs.splice(i, 1, bumper, { isOffline: true, duration: flex.duration - bumper.duration });
 
-        // Ron, Oct 16: House of Mouse re-added from the library - 212 episodes in one go - and then
+        // DarkManX16, Oct 16: House of Mouse re-added from the library - 212 episodes in one go - and then
         // an episode deleted. Every one of them is "placed by hand".
         const mouse = [];
         for (let n = 1; n <= 212; n++) {
@@ -117,7 +117,7 @@ module.exports = async function () {
                 && afterDelete.slice(-11).every((p, i) => p === mouse.slice(0, 12).filter((m) => m !== gone)[i]),
             afterDelete.length + ' of ' + rest.length);
 
-        // Ron, Oct 29: "This show" is the airing's own show, whatever slot it sits in now.
+        // DarkManX16, Oct 29: "This show" is the airing's own show, whatever slot it sits in now.
         const futurama = episode('Futurama', 2, 14, { title: 'How Hermes Requisitioned His Groove Back' });
         suite.check('swapShow: the airing\'s own show, not the slot\'s it sits in',
             pins.swapShow({ airing: futurama, slotShow: 'tv.Family Guy', getShowData }) === 'tv.Futurama');
@@ -139,7 +139,7 @@ module.exports = async function () {
             return from === -1 ? '' : template.slice(from, template.indexOf('\n    </div>\n', from));
         };
         const undoModal = modalOf('<div ng-if="undoPrompt" class="modal"');
-        // Ron, Oct 30: Delete asks nothing; the row goes at once.
+        // DarkManX16, Oct 30: Delete asks nothing; the row goes at once.
         suite.check('there is no delete prompt', template.indexOf('deletePrompt') === -1, '');
         // Since kept rows (src/kept-rows.js) it asks with one sentence: Put back, a long drag, a whole-list tool.
         suite.check('the prompt that asks first scrolls, and says its one sentence',

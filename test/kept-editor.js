@@ -109,7 +109,7 @@ module.exports = async function () {
 
     suite.log('-- the library adds to the channel; only "insert here" places in the lineup --');
     {
-        // Ron, Oct 30: 57 House of Mouse episodes added "at the end of list" on channel 3
+        // DarkManX16, Oct 30: 57 House of Mouse episodes added "at the end of list" on channel 3
         // went in as kept inserts after the first row in view. On a Time Slots channel the
         // library's add joins the channel for Time Slots and Create Lineup, as it always
         // did: nothing in the lineup moves or is kept.
@@ -154,7 +154,7 @@ module.exports = async function () {
 
     suite.log('-- the library\'s "insert here" goes right before the first airing in view; each row has Insert before --');
     {
-        // Ron, Nov 6: "Insert into the lineup here" put a 7-second clip after an airing, ahead of
+        // DarkManX16, Nov 6: "Insert into the lineup here" put a 7-second clip after an airing, ahead of
         // the commercials; it goes in right before the airing in view, after the break in front.
         const kept = require('../src/kept-rows');
         const flex = (m) => ({ isOffline: true, duration: m * 60000 });
@@ -207,7 +207,7 @@ module.exports = async function () {
 
     suite.log('-- Delete takes an episode out at once --');
     {
-        // Ron, Oct 30: on channel 3, after adding House of Mouse, deleting the episodes he
+        // DarkManX16, Oct 30: on channel 3, after adding House of Mouse, deleting the episodes he
         // didn't want asked which delete he meant and left kept Flex, with a ripple. Delete
         // takes the row out of the list at once, as before kept rows: no prompt, nothing
         // kept, nothing moved along; Create Lineup leaves the episode out (never air), and the
@@ -265,6 +265,92 @@ module.exports = async function () {
         const listed = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: programs.length - 1, neverAir: holiday });
         suite.check('an episode already on the never-air list (a holiday): gone from the list, its entry left as it is',
             (titles(listed) === 'Recess 1, Kim Possible 4, Recess 2, House of Mouse 1') && (listed.queued.length === 0), never(listed));
+
+        // DarkManX16, Nov 12: a swap he made of the episode still airs, and Delete's one sentence names it.
+        const onTheMinute = Math.floor(startTime / 60000) * 60000;
+        const swapAt = onTheMinute + 4 * 30 * 60000;
+        const d = new Date(swapAt);
+        const when = `${[ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ][d.getMonth()]} ${d.getDate()} at `
+            + `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}${d.getHours() < 12 ? 'am' : 'pm'}`;
+        const mouse2 = programs[programs.length - 1];
+        const withSwap = [
+            ep('Recess', 1, { slotPosition: 'next|' }), brk(8), ep('Kim Possible', 4, { slotPosition: 'next|' }), brk(8),
+            ep('Recess', 2, { slotPosition: 'next|' }), brk(8), ep('Recess', 3, { slotPosition: 'next|' }), brk(8),
+            Object.assign({}, mouse2, { slotPosition: 'next|', kept: { edits: [ { id: 'e1', kind: 'swap', was: 'Recess S01E04 Recess 4', made: new Date(now).toISOString() } ] } }), brk(8),
+            brk(3 * 24 * 60),
+            ep('House of Mouse', 1), mouse2,
+        ];
+        const named = await deleteOnPage(src, { timeSlots: true, programs: withSwap, startTime: onTheMinute, index: withSwap.length - 1 });
+        suite.check('an episode DarkManX16 swapped in further on: Delete takes this row out, lists the episode, and its one sentence names the swap',
+            (named.programs.length === withSwap.length - 1) && (never(named) === 'House of Mouse 2 deleted/never')
+                && (named.said === `Your swap of it on ${when} still airs; Put back that swap to remove it too.`), `said "${named.said}"`);
+        suite.check('...and the swap itself is left exactly as it was',
+            named.programs[8] === withSwap[8], '');
+
+        // A regular airing carrying a mark left over from a special day's swap (185 of them on channel 3,
+        // Nov 12): Delete deletes it - it used to offer to put back the day's swap instead.
+        const stray = programs.map( (p, i) => (i === 2) ? Object.assign({}, p, { specialChange: 'ch_x', specialN: 4 }) : p );
+        let putBacks = 0;
+        const strayDel = await deleteOnPage(src, { timeSlots: true, programs: stray, startTime, index: 2,
+            extraScope: { dayPutBack: async () => { putBacks++; return { refused: 'no' }; } } });
+        suite.check('a regular airing with a day-swap mark left on it: Delete deletes it, and never offers to put back the day\'s swap',
+            (putBacks === 0) && (strayDel.prompt === null) && (strayDel.programs.length === programs.length - 1) && (never(strayDel) === 'Kim Possible 4 deleted/never'),
+            `put backs ${putBacks}; ${titles(strayDel)}; ${never(strayDel)}`);
+    }
+
+    suite.log('-- the never-air save after Update Channel --');
+    {
+        // DarkManX16, Nov 13: a never-air save that fails after Update Channel says so in one short
+        // line - it only went to the console, and the deletes silently came back.
+        const flush = async (applyChannelCatalogOps, queue) => {
+            const scope = { catalogQueue: queue.slice() };
+            const notices = [];
+            const page = {
+                dizquetv: { applyChannelCatalogOps },
+                window: { dispatchEvent: (e) => notices.push(e.detail), CustomEvent: function (type, init) { this.type = type; this.detail = Object.assign({ type }, init.detail); } },
+                console: { error: () => {} },
+                setTimeout: (f) => f(),
+            };
+            // eslint-disable-next-line no-new-func
+            const f = new Function('scope', ...Object.keys(page), `return ${liftArrow(src, 'flushCatalogOps')};`)(scope, ...Object.values(page));
+            await f(3);
+            return { notices, left: scope.catalogQueue.length };
+        };
+        const op = { neverAir: [ { key: 'srv|/e/1', entry: { title: 'House of Genius' } } ] };
+        let tries = 0;
+        const failed = await flush(async () => { tries++; throw new Error('HTTP 500'); }, [ op ]);
+        suite.check('a failed never-air save is tried once more, then says so in one short line',
+            (tries === 2) && (failed.notices.length === 1) && (failed.notices[0].type === 'syndicast-notice')
+                && (failed.notices[0].text === "The never-air changes weren't saved: the deleted episodes can air again.") && (failed.notices[0].text.length < 80),
+            `${tries} tries; ${JSON.stringify(failed.notices)}`);
+        let second = 0;
+        const recovered = await flush(async () => { if (second++ === 0) { throw new Error('HTTP 500'); } return {}; }, [ op ]);
+        suite.check('...one that saves on the second try says nothing', (second === 2) && (recovered.notices.length === 0), '');
+        // eslint-disable-next-line no-new-func
+        const dayChanged = new Function(`return ${src.slice(src.indexOf('let dayChanged = ') + 'let dayChanged = '.length, src.indexOf(';', src.indexOf('let dayChanged = ')))};`)();
+        suite.check('a regular airing with a leftover day-swap mark does not read as a day\'s edit (no thumbtack, no Put back)',
+            ! dayChanged({ specialChange: 'ch_x' }) && ! dayChanged({ specialInsert: 'ch_y' }) && dayChanged({ specialDay: 'sd', specialChange: 'ch_x' })
+                && dayChanged({ specialDay: 'sd', specialInsert: 'ch_y' }) && ! dayChanged(null), '');
+        const slotsSrc = fs.readFileSync(path.join(__dirname, '../web/directives/time-slots-schedule-editor.js'), 'utf8');
+        suite.check('...nor does Time Slots read a change\'s time from one',
+            /typeof\(p\.specialDay\) !== 'string'\) \? undefined/.test(slotsSrc), '');
+        const fine = await flush(async () => ({}), [ op ]);
+        const none = await flush(async () => { throw new Error('never called'); }, []);
+        suite.check('...and one that saves, or has nothing to save, says nothing', (fine.notices.length === 0) && (none.notices.length === 0), '');
+        const toast = fs.readFileSync(path.join(__dirname, '../web/directives/toast-notifications.js'), 'utf8');
+        suite.check('the page\'s notices show it', /addEventListener\(\s*'syndicast-notice'/.test(toast), '');
+
+        // Delete's sentence finds a swap of the same episode under another file (show-catalog.js).
+        const showCatalog = require('../src/show-catalog');
+        const old = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', season: 4, episode: 10, serverKey: 'srv', key: '/library/metadata/54121', file: 'E:/copy/House Of Mouse - (Ep. 44) - House of Turkey.avi' };
+        const now2 = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', season: 4, episode: 10, serverKey: 'srv', key: '/library/metadata/177277', file: 'E:/new/House of Mouse; S04E10 House Of Turkey.mp4' };
+        const other = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Genius', serverKey: 'srv', key: '/library/metadata/177275', file: 'E:/new/House of Mouse; S04E08 House Of Genius.mp4' };
+        const same = showCatalog.sameEpisode(old);
+        suite.check('the same episode: its own file, or a second copy of it (same season and episode); never another episode',
+            same(old) && same(now2) && ! same(other) && ! same({ isOffline: true, duration: 1 }) && ! same(Object.assign({}, now2, { season: 3, episode: 44 })), '');
+        suite.check('Delete\'s sentence looks for the episode, not only the file',
+            /handPlacedAhead\(\{[^}]*same: showCatalog\.sameEpisode\(program\)/.test(src.replace(/\s+/g, ' '))
+                && (src.match(/same: showCatalog\.sameEpisode\(program\)/g) || []).length === 2, '');
     }
     return suite;
 };

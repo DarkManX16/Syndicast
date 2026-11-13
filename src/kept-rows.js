@@ -222,7 +222,7 @@ function sayLate(overrun, late) {
 }
 
 /*
- * Episodes move along (Ron's rule 5). An episode an edit pushes out airs at
+ * Episodes move along (DarkManX16's rule 5). An episode an edit pushes out airs at
  * its position's next airing, and each later airing of the position takes the
  * episode of the one before, to the end of the lineup the generator made;
  * Put back runs it the other way. That end is pins.loopEnd: after its days of
@@ -571,7 +571,7 @@ function sayLanded(landed) {
 }
 // " He's Too Sexy for His Fat runs 4:00 long at Tue Nov 3, 12:30am, back on time at 1:00am."
 // Only in the coming week: a night further off is laid out again by Create
-// Lineup before it airs (Ron, Oct 29).
+// Lineup before it airs (DarkManX16, Oct 29).
 const SAID_AHEAD = 7 * DAY;
 function sayRunsLong(found, now) {
     let late = found.filter( (x) => x.start < now + SAID_AHEAD );
@@ -735,7 +735,7 @@ function breakBefore({ lineup, index }) {
 
 /*
  * The item right before the airing at `index`, after the break in front of it
- * (Ron, Nov 6): that break shrinks by the item's length and nothing else
+ * (DarkManX16, Nov 6): that break shrinks by the item's length and nothing else
  * moves. Refused when there is no break, when it is shorter than the item, or
  * when the item would have to begin in the past. Put back gives the break its
  * length again.
@@ -828,7 +828,7 @@ function insertMany({ lineup, index, items, now, schedule }) {
 /*
  * Delete on a Time Slots channel of a plain Flex row, or of an episode (any
  * row nothing keeps as it is): it leaves the list at once, as before kept
- * rows - nothing kept, nothing moved along (Ron, Oct 30). The gap it leaves
+ * rows - nothing kept, nothing moved along (DarkManX16, Oct 30). The gap it leaves
  * closes only up to the next kept row still ahead: the rows between move that
  * much earlier, same as an ordinary delete; a Flex of its length goes back in
  * right before the kept row, merged into the break already there when one is,
@@ -879,6 +879,115 @@ function deleteRow({ lineup, index, now, schedule }) {
         programs: out,
         text: said(`${title(programs[next])} at ${clockAm(startsOf(lineup)[next])} and everything after it stays where it is`),
     };
+}
+
+/*
+ * A deleted episode never airs again on the channel - regular slots, special
+ * days, kept rows - except where DarkManX16 placed that very airing himself: a swap
+ * or an insert in the list, one inside a special day, or a day's picked item
+ * (DarkManX16, Nov 12, 2026). Those stay, and Delete's one sentence names them.
+ * handPlaced says which of these a row is, or null: a row only dragged, a
+ * day row's own pick of the rotation, and a mark left on a regular airing
+ * are not his placement of the episode.
+ */
+function handPlaced(program, schedule) {
+    if ( ! program || program.isOffline ) {
+        return null;
+    }
+    if (typeof(program.specialDay) === 'string') {
+        if (typeof(program.specialChange) === 'string') {
+            return { kind: 'swap' };
+        }
+        if (typeof(program.specialInsert) === 'string') {
+            return { kind: 'insert' };
+        }
+        let days = ( schedule && Array.isArray(schedule.specialDays) ) ? schedule.specialDays : [];
+        let day = days.find( (d) => (d != null) && (d.id === program.specialDay) );
+        let rows = ( day && Array.isArray(day.slots) ) ? day.slots.filter( (r) => (r !== null) && (typeof(r) === 'object') ) : [];
+        let row = rows[program.specialRow];
+        if ( row && (typeof(row.item) === 'object') && (row.item !== null) ) {
+            return { kind: 'pick', day: String(day.name || 'the special day') };
+        }
+        return null;
+    }
+    let edits = editsOf(program);
+    for (let k = edits.length - 1; k >= 0; k--) {
+        if ( (edits[k].kind === 'swap') || (edits[k].kind === 'insert') ) {
+            return { kind: edits[k].kind };
+        }
+    }
+    if ( program.pin && ( (program.pin.kind === 'swap') || (program.pin.kind === 'insert') ) ) {
+        return { kind: program.pin.kind };
+    }
+    return null;
+}
+
+const sameFile = (program) => (p) => rounds.fileKey(p) === rounds.fileKey(program);
+
+// DarkManX16's placements of `program`'s episode still to air: [ { at, kind, day } ],
+// in the list's order. `same(p)` says whether a row airs it - by file, unless
+// the caller knows better.
+function handPlacedAhead({ lineup, program, now, schedule, same }) {
+    let airsIt = (typeof(same) === 'function') ? same : sameFile(program);
+    let starts = startsOf(lineup);
+    // Past the lineup's end is what has aired, rotated there (pins.loopEnd), as keptAhead reads it.
+    let end = pins.loopEnd(lineup, now);
+    let out = [];
+    lineup.programs.forEach( (p, i) => {
+        if ( p.isOffline || (starts[i] + p.duration <= now) || (starts[i] >= end) || ! airsIt(p) ) {
+            return;
+        }
+        let placed = handPlaced(p, schedule);
+        if (placed !== null) {
+            out.push(Object.assign({ at: starts[i] }, placed));
+        }
+    } );
+    return out;
+}
+
+const MONTHS = [ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ];
+// How many of one kind are named: three, or one each when kinds are mixed.
+const NAMED = 3;
+
+// "Your swap of it on Nov 19 at 2:30pm still airs; Put back that swap to remove
+// it too." - one sentence for what handPlacedAhead found, '' for nothing.
+function stillAirs(placed) {
+    if ( ! Array.isArray(placed) || (placed.length === 0) ) {
+        return '';
+    }
+    let when = (t) => { let d = new Date(t); return `${MONTHS[d.getMonth()]} ${d.getDate()} at ${clockAm(t)}`; };
+    let list = (words) => (words.length === 1) ? words[0] : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
+    let parts = [];
+    let kinds = [ 'swap', 'insert', 'pick' ].filter( (kind) => placed.some( (x) => x.kind === kind ) );
+    let limit = (kinds.length === 1) ? NAMED : 1;
+    kinds.forEach( (kind) => {
+        let mine = placed.filter( (x) => x.kind === kind );
+        let named = mine.slice(0, limit).map( (x) => ( (kind === 'pick') ? `for ${x.day} on ` : '' ) + when(x.at) );
+        if (mine.length > limit) {
+            named.push(`${mine.length - limit} more`);
+        }
+        let on = (kind === 'pick') ? ' ' : ' on ';
+        parts.push(`your ${kind}${ (mine.length === 1) ? '' : 's' } of it${on}${list(named)}`);
+    } );
+    let subject = list(parts);
+    let one = (placed.length === 1);
+    let count = (kind) => placed.filter( (x) => x.kind === kind ).length;
+    let undo;
+    if (kinds.length === 1) {
+        let kind = kinds[0];
+        let many = count(kind) > 1;
+        undo = (kind === 'pick')
+            ? ( many ? 'remove their rows in Time Slots to remove them too' : 'remove its row in Time Slots to remove it too' )
+            : ( many ? `Put back those ${kind}s to remove them too` : `Put back that ${kind} to remove it too` );
+    } else if (kinds.indexOf('pick') === -1) {
+        undo = 'Put them back to remove them too';
+    } else {
+        let others = kinds.filter( (k) => k !== 'pick' );
+        let back = (others.length === 1) ? `the ${others[0]}${ (count(others[0]) > 1) ? 's' : '' }` : 'the swaps and inserts';
+        let picks = (count('pick') > 1) ? "the picks' rows" : "the pick's row";
+        undo = `Put back ${back}, and remove ${picks} in Time Slots, to remove them too`;
+    }
+    return subject.charAt(0).toUpperCase() + subject.slice(1) + ( one ? ' still airs; ' : ' still air; ' ) + undo + '.';
 }
 
 // "Remove this airing only": kept Flex of the airing's length; every row where
@@ -1011,7 +1120,7 @@ function move({ lineup, from, to, now, sure, schedule }) {
         return {};
     }
     if (kt === kf + 1) {
-        // Dropped right after its own break, in front of the airing after it (Ron, Nov 6):
+        // Dropped right after its own break, in front of the airing after it (DarkManX16, Nov 6):
         // the row moves past the break and sits against that airing; nothing else moves.
         // Anywhere in or before its break it is already there.
         if ( (to !== rows[kt].index) || (rf.flex <= 0) ) {
@@ -1333,7 +1442,7 @@ function putBack({ lineup, index, now, schedule, catalog }) {
 }
 
 /*
- * The first open of a channel (Ron, Oct 29): what this list holds that was
+ * The first open of a channel (DarkManX16, Oct 29): what this list holds that was
  * edited by hand, before pins become kept rows. Read over one loop of the
  * list from `now`, each entry at its next airing:
  *
@@ -1531,25 +1640,40 @@ function applyFirstOpen({ programs, startTime, now, schedule, getShowData }) {
  * that has aired is let go, and so is anything rotated past the lineup's end
  * (pins.loopEnd), where the loop brings what aired round again.
  *
- *   [ { at, program, kept: true, key? } ]
+ *   [ { at, program, kept: true, key?, orNothing? } ]
+ *
+ * `neverAir(program)`, optional, says an episode is on the channel's never-air
+ * list (DarkManX16, Nov 12, 2026). His swap or insert of one airs as it is
+ * (handPlaced); a row he only dragged keeps its time and airs its position's
+ * next episode instead, and one with no position is let go.
  */
-function keptAhead({ programs, startTime, now }) {
+function keptAhead({ programs, startTime, now, neverAir }) {
     let lineup = { programs, startTime };
     let end = pins.loopEnd(lineup, now);
-    return rowsOf(lineup)
+    let out = [];
+    rowsOf(lineup)
         .filter( (r) => (r.start + r.program.duration > now) && (r.start < end) && ( (keptKind(r.program) !== null) || r.program.pin ) )
-        .map( (r) => {
+        .forEach( (r) => {
             let x = { at: r.start, program: r.program, kept: true };
-            let key = (keptKind(r.program) === 'shifted') ? positionOf(r.program) : null;
+            let deleted = (typeof(neverAir) === 'function') && (keptKind(r.program) !== 'shifted') && ! r.program.isOffline
+                && (handPlaced(r.program) === null) && neverAir(r.program);
+            let key = ( (keptKind(r.program) === 'shifted') || deleted ) ? positionOf(r.program) : null;
             if (key !== null) {
                 x.key = key;
+                if (deleted) {
+                    // With nothing of its position to air there, the generator lets it go.
+                    x.orNothing = true;
+                }
+            } else if (deleted) {
+                return;
             }
-            return x;
+            out.push(x);
         } );
+    return out;
 }
 
 /*
- * The Time Slots dialog's one line (Ron, Oct 30): your own swaps, inserts and
+ * The Time Slots dialog's one line (DarkManX16, Oct 30): your own swaps, inserts and
  * dragged rows that Create Lineup keeps, and nothing when there are none - rows
  * kept in time only moved with them, and aren't counted. `rows`, keptAhead's
  * answer. "Your 2 swaps and 1 insert stay where they are."
@@ -1573,7 +1697,7 @@ function sayKept(rows) {
 }
 
 /*
- * Takes off the marks no edit of Ron's still to air accounts for (Ron, Oct 30:
+ * Takes off the marks no edit of DarkManX16's still to air accounts for (DarkManX16, Oct 30:
  * only real swaps, inserts and drags are kept). Nothing moves; only marks come
  * off:
  *   - every mark on a row Create Lineup lets go anyway: aired, or past the
@@ -1637,6 +1761,9 @@ module.exports = {
     insertManyBefore: insertManyBefore,
     breakBefore: breakBefore,
     deleteRow: deleteRow,
+    handPlaced: handPlaced,
+    handPlacedAhead: handPlacedAhead,
+    stillAirs: stillAirs,
     removeOnly: removeOnly,
     leaveOut: leaveOut,
     rowNote: rowNote,

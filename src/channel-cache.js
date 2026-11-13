@@ -111,15 +111,47 @@ function addFlexPick(channelId, key, index, entryEnd, item, now) {
 let configCache = {};
 let numbers = null;
 
+/*
+ * How many times each channel's cached config has been dropped (a save, or
+ * clear()). A read from disk is only kept if nothing was dropped while it ran:
+ * one that began before a save and finished after it holds the file from
+ * before the save, and keeping it made the server forget the save - and the
+ * next save, which keeps the stored catalog, wrote the old never-air list back
+ * for good (NOTES.md, Resolved, "Delete sometimes added nothing"). Such a read
+ * is made again, so its caller gets what was saved.
+ */
+let dropped = {};
+let droppedAll = 0;
+const STALE_READ_RETRIES = 3;
+
+function dropsOf(channelId) {
+    return droppedAll + '|' + (dropped[channelId] || 0);
+}
+
+// Drops a channel's cached config alone: as its save begins (saveChannelConfig)
+// and again once the file is written, so a read made while it was being
+// written - which may hold the file from before - is never kept either.
+function dropChannelConfig(channelId) {
+    delete configCache[channelId];
+    dropped[channelId] = (dropped[channelId] || 0) + 1;
+}
+
 async function getChannelConfig(channelDB, channelId) {
     //with lazy-loading
-     
-    if ( typeof(configCache[channelId]) === 'undefined') {
+    let read = [];
+    for (let tries = 0; typeof(configCache[channelId]) === 'undefined'; tries++) {
+        let before = dropsOf(channelId);
         let channel = await channelDB.getChannel(channelId)
-        if (channel == null) {
-            configCache[channelId]  = [];
-        } else {
-            configCache[channelId] = [channel];
+        read = (channel == null) ? [] : [channel];
+        if (typeof(configCache[channelId]) !== 'undefined') {
+            break;   // another reader's, read after ours began
+        }
+        if (dropsOf(channelId) === before) {
+            configCache[channelId] = read;
+            break;
+        }
+        if (tries >= STALE_READ_RETRIES) {
+            return read;   // saved again and again meanwhile: answered, never kept
         }
     }
     return configCache[channelId];
@@ -179,7 +211,7 @@ async function getAllChannels(channelDB) {
  * seed the cache after a successful write would want it back.
  */
 function saveChannelConfig(number, channel ) {
-    delete configCache[number];
+    dropChannelConfig(number);
 
     // flush the item played cache for the channel and any channel in its
     // redirect chain, keeping each one's position as a resume hint
@@ -427,6 +459,7 @@ function clearPlayback(channelId) {
 function clear() {
     //it's not necessary to clear the playback cache and it may be undesirable
     configCache = {};
+    droppedAll++;
     cache = {};
     resumeHints = {};
     cursors = {};
@@ -445,6 +478,7 @@ module.exports = {
     getAllNumbers: getAllNumbers,
     getChannelConfig: getChannelConfig,
     saveChannelConfig: saveChannelConfig,
+    dropChannelConfig: dropChannelConfig,
     getFillerLastPlayTime: getFillerLastPlayTime,
     clearPlayback: clearPlayback,
     getCursor: getCursor,

@@ -82,7 +82,7 @@ class ScanGovernor {
     /*
      * drive: the drive of the file being scanned. It is kept through the rests
      * between that file's runs and cleared by fileDone(): a viewer's slowdown
-     * counts only while the scanner is on a file from that viewer's drive (Ron,
+     * counts only while the scanner is on a file from that viewer's drive (DarkManX16,
      * Nov 12), and the pause's log entry names it.
      */
     setWorking(working, drive = null) {
@@ -161,7 +161,7 @@ class ScanGovernor {
          * items carries the count on, a healthy one ends it, and the seconds
          * at an item's start with no reading yet leave it as it is.
          *
-         * Only an item on the drive of the file being scanned counts (Ron, Nov
+         * Only an item on the drive of the file being scanned counts (DarkManX16, Nov
          * 12): on 18000's first day on Very Low disk priority, 14 pauses came
          * from viewers slow on other drives and none from the scanner's own,
          * and viewers on its drive were no slower than with it idle. An item

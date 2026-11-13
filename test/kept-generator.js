@@ -136,7 +136,7 @@ module.exports = async function () {
         suite.check('regenerated from its own output: identical, JSON for JSON',
             JSON.stringify(again.programs) === JSON.stringify(made.programs) && again.startTime === made.startTime, '');
 
-        // Ron changes the 7:30 slot to D: the swap stays.
+        // DarkManX16 changes the 7:30 slot to D: the swap stays.
         const changed = JSON.parse(JSON.stringify(sched));
         changed.slots[1].showId = 'tv.D';
         const after = await createLineup(made, changed, NOON);

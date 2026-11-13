@@ -230,7 +230,7 @@ module.exports = async () => {
             g.mode() === 'normal');
     }
 
-    // ---- only a slowdown on the drive being read pauses (Ron, Nov 12) -----------------
+    // ---- only a slowdown on the drive being read pauses (DarkManX16, Nov 12) -----------------
     // The first day on 18000: 14 pauses, none with the scanner on the slow viewer's drive.
     {
         const { g, feed } = rig();

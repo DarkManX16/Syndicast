@@ -1,6 +1,6 @@
 /*
  * src/multi-part.js: which episodes are parts of one story, so every shuffle
- * keeps part 2 right after part 1. Fixtures are real titles from Ron's
+ * keeps part 2 right after part 1. Fixtures are real titles from DarkManX16's
  * channels, in their shows' order. See NOTES.md, Known issues, "Per-position
  * stored progress, and the shuffles built on it".
  */

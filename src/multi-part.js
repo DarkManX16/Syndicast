@@ -7,7 +7,7 @@
  * that one has the same title with no marker ("Secret Origins", then "Secret
  * Origins (2)"). Titles are not compared otherwise, because real two-parters
  * often title each part differently: "Stewie Kills Lois (1)" is followed by
- * "Lois Kills Stewie (2)". On Ron's three channels this finds 430 stories;
+ * "Lois Kills Stewie (2)". On DarkManX16's three channels this finds 430 stories;
  * the 24 parts it leaves single are crossovers whose other parts belong to
  * another show, parts whose part 1 isn't next to them or isn't in the
  * library, and Sonic Underground's two interleaved arcs.

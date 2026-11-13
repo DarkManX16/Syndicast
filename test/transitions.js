@@ -985,7 +985,7 @@ module.exports = async function run() {
                 titles(allMiss.out) === 'WBRB', JSON.stringify(allMiss));
 
             // A step left out by its day or its chance has found nothing - not played
-            // - exactly like one that looked and found no clip. Ron's Miguzi setup:
+            // - exactly like one that looked and found no clip. DarkManX16's Miguzi setup:
             // Up Next at 75%, otherwise BTTS.
             const miguzi = (roll) => {
                 const channel = channelWith({

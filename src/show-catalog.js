@@ -1,7 +1,7 @@
 /*
  * Full catalogs, and a never-air list: what a show's whole episode list adds
  * to a channel, the pool a regeneration draws on, and the channel's list of
- * episodes left out of the rotation - holidays Ron places himself, and ones
+ * episodes left out of the rotation - holidays DarkManX16 places himself, and ones
  * never to air. Pure; the editors (through browserify), the Catalog page, the
  * server's ops and the proof scripts share it. See NOTES.md, Known issues,
  * "Full catalogs, and a never-air list".
@@ -92,8 +92,145 @@ function specialsAllowed(lineupItems) {
     return (lineupItems || []).some( (p) => (p.customShowId === undefined) && (p.season === 0) );
 }
 
+/*
+ * The list is keyed by file, and a file can change under an episode: replaced
+ * by a new copy, renamed, or held twice in the library. So an episode is on
+ * the list when its own file is, or when (DarkManX16, Nov 13, 2026) an entry of the
+ * same show has the same title and this file's own name carries that title.
+ * The title alone is not enough - Plex gives three of DarkManX16's files another
+ * episode's title - and a generic title ("Episode 41", "Pilot") never matches
+ * another file. Capitals and punctuation aside.
+ */
+function plain(text) {
+    return String( (text === null) || (typeof(text) === 'undefined') ? '' : text ).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/&/g, ' and ').replace(/['\u2019]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+const GENERIC_WORDS = [ 'the', 'a', 'an', 'episode', 'ep', 'part', 'pt', 'chapter', 'pilot', 'finale', 'premiere', 'special', 'show',
+    'volume', 'vol', 'disc', 'season', 'series', 'no', 'number', 'untitled', 'tba' ];
+function genericTitle(title) {
+    return plain(title).split(' ').every( (w) => (w === '') || (GENERIC_WORDS.indexOf(w) !== -1) || /^(s\d+)?e?\d+$/.test(w) || /^[ivx]+$/.test(w) );
+}
+
+// The show an episode is of, as an entry's showId has it (get-show-data.js).
+function showIdOf(program) {
+    if (typeof(program.customShowId) !== 'undefined') {
+        return 'custom.' + program.customShowId;
+    }
+    if (program.type === 'movie') {
+        return 'movie.';
+    }
+    if ( (program.type === 'episode') || (program.type === 'track') ) {
+        return ( (program.type === 'track') ? 'audio.' : 'tv.' ) + program.showTitle;
+    }
+    return null;
+}
+
+function nameCarries(file, title) {
+    if ( (typeof(file) !== 'string') || (file === '') ) {
+        return false;
+    }
+    let name = plain(file.split(/[\\/]/).pop().replace(/\.[a-z0-9]{2,4}$/i, ''));
+    return (' ' + name + ' ').indexOf(' ' + title + ' ') !== -1;
+}
+
+// Entries by show and title, built once per list object: a list is never
+// changed in place (applyOps and stateOf copy it), so the object is the list.
+// Movies are left out - two films can share a title - and are listed by file.
+let titleIndexes = new WeakMap();
+function titlesOf(neverAir) {
+    let byTitle = titleIndexes.get(neverAir);
+    if (typeof(byTitle) === 'undefined') {
+        byTitle = new Map();
+        Object.keys(neverAir).forEach( (key) => {
+            let e = neverAir[key];
+            if ( (e === null) || (typeof(e) !== 'object') || (typeof(e.showId) !== 'string') || (e.showId === 'movie.') || genericTitle(e.title) ) {
+                return;
+            }
+            let id = e.showId + '|' + plain(e.title);
+            if (! byTitle.has(id)) {
+                byTitle.set(id, []);
+            }
+            byTitle.get(id).push(key);
+        } );
+        titleIndexes.set(neverAir, byTitle);
+    }
+    return byTitle;
+}
+
+// Files a reviewed show's catalog held when it was last read, as a set, once per list.
+let knownSets = new WeakMap();
+function knownOf(state, showId) {
+    let record = (state && state.shows) ? state.shows[showId] : undefined;
+    if ( ! record || ! Array.isArray(record.known) ) {
+        return null;
+    }
+    let set = knownSets.get(record.known);
+    if (typeof(set) === 'undefined') {
+        set = new Set(record.known);
+        knownSets.set(record.known, set);
+    }
+    return set;
+}
+
+/*
+ * Two episodes of one show can share a title ("Halloween", a second
+ * "Christmas Special"; the review, Nov 13). So an entry under another file is
+ * the same episode only when its season and episode are the same (a second
+ * copy), or its own file is known to be gone from the show's catalog (a
+ * replaced file: DarkManX16's old and new House of Mouse number their episodes
+ * differently). A show never reviewed has no catalog to tell, and doesn't match.
+ */
+function sameNumbers(entry, program) {
+    return Number.isInteger(entry.season) && Number.isInteger(entry.episode) && (entry.season === program.season) && (entry.episode === program.episode);
+}
+
+// The entry an episode is listed under - { key, entry } - or null.
+function matchFor(state, program) {
+    let neverAir = (state && state.neverAir) || {};
+    let own = fileKey(program);
+    if (Object.prototype.hasOwnProperty.call(neverAir, own)) {
+        return { key: own, entry: neverAir[own] };
+    }
+    if ( program.isOffline || genericTitle(program.title) ) {
+        return null;
+    }
+    let showId = showIdOf(program);
+    if (showId === null) {
+        return null;
+    }
+    let title = plain(program.title);
+    let keys = titlesOf(neverAir).get(showId + '|' + title);
+    if ( (typeof(keys) === 'undefined') || ! nameCarries(program.file, title) ) {
+        return null;
+    }
+    let known = knownOf(state, showId);
+    let key = keys.find( (k) => Object.prototype.hasOwnProperty.call(neverAir, k)
+        && ( sameNumbers(neverAir[k], program) || ( (known !== null) && ! known.has(k) ) ) );
+    if (typeof(key) === 'undefined') {
+        return null;
+    }
+    return { key: key, entry: neverAir[key] };
+}
+
+// Whether a row airs `program`'s episode: its file, or a second copy of it -
+// the same show, title, season and episode, each file's name carrying the title.
+function sameEpisode(program) {
+    let own = fileKey(program);
+    let showId = showIdOf(program);
+    let title = plain(program.title);
+    let copies = (showId !== null) && (showId !== 'movie.') && ! genericTitle(program.title) && nameCarries(program.file, title);
+    return (p) => ! p.isOffline && ( (fileKey(p) === own)
+        || ( copies && (showIdOf(p) === showId) && (plain(p.title) === title) && sameNumbers(program, p) && nameCarries(p.file, title) ) );
+}
+
+function entryFor(state, program) {
+    let m = matchFor(state, program);
+    return (m === null) ? null : m.entry;
+}
+
 function isNeverAir(state, program) {
-    return Object.prototype.hasOwnProperty.call(state.neverAir || {}, fileKey(program));
+    return matchFor(state, program) !== null;
 }
 
 function withoutNeverAir(programs, state) {
@@ -303,7 +440,7 @@ function opsAfterRun({ run, catalogs, lineupPool, leftOut, named, stateReadable,
 
 /*
  * The Catalog page rebuilds its rows after every save; a show's open state
- * and the choices Ron made on its episodes but hasn't saved carry over.
+ * and the choices DarkManX16 made on its episodes but hasn't saved carry over.
  * choices: { showId: { open, episodes: { fileKey: { ticked, touched, reason, holiday } } } }.
  */
 function carryChoices(choices, rows) {
@@ -334,7 +471,7 @@ function applyOps(state, ops, now) {
     (ops || []).forEach( (op) => {
         if (op.review) {
             let r = op.review;
-            // An automatic "complete" never replaces a review Ron made.
+            // An automatic "complete" never replaces a review DarkManX16 made.
             if ( (r.by === 'complete') && s.shows[r.showId] && (s.shows[r.showId].by !== 'complete') ) {
                 return;
             }
@@ -398,6 +535,6 @@ function byHoliday(state) {
 module.exports = {
     DEFAULT_LIMIT_MS, HOLIDAYS,
     emptyState, stateOf, showKeysOf, fromPlex, fromCustom, specialsAllowed,
-    isNeverAir, withoutNeverAir, neverAirEntry, holidayOf, preUntick,
+    isNeverAir, matchFor, entryFor, genericTitle, sameEpisode, withoutNeverAir, neverAirEntry, holidayOf, preUntick,
     toAdd, reviewList, poolFor, applyOps, byHoliday, knownAfter, carryChoices, opsAfterRun,
 };

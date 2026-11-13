@@ -24,7 +24,7 @@
  */
 
 const SLACK = require('./constants').SLACK;
-const fileKey = require('./shuffle-rounds').fileKey;
+const showCatalog = require('./show-catalog');
 
 const MINUTE = 60 * 1000;
 const HALF_HOUR = 30 * MINUTE;
@@ -661,14 +661,16 @@ function holidayCandidates({ state, items, holiday }) {
     if ( (names.length === 0) || ! Array.isArray(items) ) {
         return [];
     }
+    // By the entry an episode is listed under (show-catalog.js matchFor): its own
+    // file's, or - a replaced file, a second copy - the one its title and name match.
+    // Each entry once, so two copies of one episode are one candidate.
     let seen = new Set();
     return items.filter( (p) => {
-        let key = fileKey(p);
-        let entry = Object.prototype.hasOwnProperty.call(aside, key) ? aside[key] : null;
-        if ( (entry === null) || (entry.reason !== 'holiday') || (names.indexOf(entry.holiday) === -1) || seen.has(key) ) {
+        let m = showCatalog.matchFor({ neverAir: aside, shows: (state != null) ? state.shows : undefined }, p);
+        if ( (m === null) || (m.entry.reason !== 'holiday') || (names.indexOf(m.entry.holiday) === -1) || seen.has(m.key) ) {
             return false;
         }
-        seen.add(key);
+        seen.add(m.key);
         return true;
     } );
 }

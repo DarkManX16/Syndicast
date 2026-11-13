@@ -1,7 +1,7 @@
 /*
  * src/swap-read.js: what the Swap and Insert dialog does when it cannot read a
  * show - "This show", "Other shows on this channel" and "Custom shows" - and
- * says why in plain words. Ron, Oct 16: on a preview whose server was no longer
+ * says why in plain words. DarkManX16, Oct 16: on a preview whose server was no longer
  * running, This show and Custom shows both said "Something went wrong reading
  * that show." and listed nothing.
  */

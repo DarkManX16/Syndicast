@@ -111,6 +111,12 @@ module.exports = function ($timeout) {
                 eventSource.addEventListener('lifecycle',  normalEvent("Server") );
             };
 
+            // A notice from the page itself: window event 'syndicast-notice', detail { title, text, level }.
+            window.addEventListener('syndicast-notice', (event) => {
+                let data = event.detail || {};
+                addToast( { title: data.title, text: data.text, deco: getDeco(data) } );
+            } );
+
             scope.destroy = (index) => {
                 scope.toasts.splice(index,1);
             }

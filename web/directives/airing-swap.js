@@ -47,7 +47,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
             let lineupNow = () => ({ programs: channel.programs, startTime: startTime() });
             let isPick = (req.mode === 'pick');
             let isInsert = (req.mode === 'insert');
-            // Right before the airing, after the break in front of it (Ron, Nov 6).
+            // Right before the airing, after the break in front of it (DarkManX16, Nov 6).
             let isBefore = (req.mode === 'insertBefore');
             scope.isPick = isPick;
             scope.verb = isPick ? 'Pick' : (isInsert ? 'Insert after' : (isBefore ? 'Insert before' : 'Swap'));
@@ -133,7 +133,7 @@ module.exports = function ($timeout, dizquetv, getShowData, commonProgramTools, 
                 try {
                     let list = [];
                     if (scope.source === 'holiday') {
-                        // The Catalog page's holiday episodes: left out of the rotation for Ron to place by hand.
+                        // The Catalog page's holiday episodes: left out of the rotation for DarkManX16 to place by hand.
                         let state = await req.catalogState();
                         scope.items = [];
                         showCatalog.byHoliday(state).forEach( (group) => group.shows.forEach( (show) => show.entries.forEach( (e) => {

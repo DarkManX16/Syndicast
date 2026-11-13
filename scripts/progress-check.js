@@ -347,7 +347,8 @@ async function main() {
     }
     // Every row kept in the list, at its instant there, as Create Lineup keeps them; and any pin asked for.
     let total0 = channel.programs.reduce( (a, p) => a + p.duration, 0 );
-    let pins = keptRows.keptAhead({ programs: channel.programs, startTime: savedStart, now: at });
+    let pins = keptRows.keptAhead({ programs: channel.programs, startTime: savedStart, now: at,
+        neverAir: args.catalog ? ( (p) => showCatalog.isNeverAir(state, p) ) : undefined });
     console.log(`kept: ${pins.length} rows ahead - ${keptRows.sayKept(pins) || "none of them a swap, insert or dragged row"}`);
     let catalogItems = args.catalog ? (JSON.parse(fs.readFileSync(args.catalog, 'utf8'))[String(channel.number)] || {}) : {};
     (args.pins || []).forEach( (spec) => {

@@ -1,6 +1,6 @@
 /*
  * A channel's Catalog page: the one-time review that lets each show draw on
- * its full catalog, the holiday episodes Ron places himself, and the episodes
+ * its full catalog, the holiday episodes DarkManX16 places himself, and the episodes
  * never to air - each restorable. The rules are src/show-catalog.js; what
  * this page saves goes straight to the catalog API, one op per click. See
  * NOTES.md, Known issues, "Full catalogs, and a never-air list".
@@ -42,7 +42,7 @@ module.exports = function ($scope, $routeParams, $timeout, dizquetv, getShowData
         e.reason = (u === null) ? 'never' : u.reason;
         e.holiday = (u !== null && u.holiday) ? u.holiday : (showCatalog.holidayOf(e.program.title) || 'Christmas');
     };
-    // What Ron has opened and changed but not saved, kept across a rebuild:
+    // What DarkManX16 has opened and changed but not saved, kept across a rebuild:
     // a save, a restore or a reason switch must not undo another show's ticks.
     let unsavedChoices = () => {
         let choices = {};

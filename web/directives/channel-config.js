@@ -1350,7 +1350,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 for (let i = 0, l = selectedPrograms.length; i < l; i++) {
                     delete selectedPrograms[i].commercials;
                 }
-                // On a Time Slots channel (Ron, Oct 30) the library's add joins the channel, after
+                // On a Time Slots channel (DarkManX16, Oct 30) the library's add joins the channel, after
                 // the lineup, for Time Slots and Create Lineup: nothing in the lineup moves or is
                 // kept. Only "Insert into the lineup here" puts them in it, as kept inserts.
                 let timeSlotsLineup = scope.hasTimeSlots() && (scope.channel.programs.length > 0);
@@ -1442,7 +1442,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
             }
             /*
-             * Delete takes the row out of the list at once (Ron, Oct 30): no prompt,
+             * Delete takes the row out of the list at once (DarkManX16, Oct 30): no prompt,
              * nothing kept, no episode moved along. On a channel with a slot schedule
              * the episode goes on the channel's never-air list (src/show-catalog.js;
              * saved after Update Channel), so Create Lineup leaves it out; the Catalog
@@ -1458,7 +1458,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 ensureHandEditsKept();
                 program = scope.channel.programs[x];
                 // An edit made inside a special day: Put back takes it off the day's row.
-                if (scope.hasTimeSlots() && ( (typeof(program.specialChange) === 'string') || (typeof(program.specialInsert) === 'string') )) {
+                // (Inside the day only: a regular airing can carry the mark of a day that
+                // once aired the episode, and its Delete is a Delete.)
+                if (scope.hasTimeSlots() && (typeof(program.specialDay) === 'string')
+                    && ( (typeof(program.specialChange) === 'string') || (typeof(program.specialInsert) === 'string') )) {
                     scope.lastChange = 'Laying the day out again...';
                     $timeout();
                     return scope.dayPutBack(program.specialChange || program.specialInsert).then( (got) => {
@@ -1490,6 +1493,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (scope.hasTimeSlots()) {
                     if (! applyEdit(keptRows.deleteRow({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup }))) {
                         return;
+                    }
+                    // A swap or insert DarkManX16 made of this episode still airs: say which (Nov 12).
+                    if (! program.isOffline) {
+                        scope.lastChange = keptRows.stillAirs(keptRows.handPlacedAhead({ lineup: lineupMs(), program: program, now: Date.now(),
+                            schedule: scope.channel.scheduleBackup, same: showCatalog.sameEpisode(program) }));
                     }
                 } else {
                     scope.channel.programs.splice(x, 1);
@@ -2771,8 +2779,18 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 try {
                     await dizquetv.applyChannelCatalogOps(number, ops);
-                } catch (err) {
-                    console.error('Could not save the channel\'s catalog changes', err);
+                } catch (first) {
+                    // Once more, a moment later; then say so. The editor has closed by now,
+                    // so it is said by the page's notices (DarkManX16, Nov 13).
+                    console.error('Could not save the channel\'s catalog changes; trying once more', first);
+                    try {
+                        await new Promise( (resolve) => setTimeout(resolve, 1500) );
+                        await dizquetv.applyChannelCatalogOps(number, ops);
+                    } catch (err) {
+                        console.error('Could not save the channel\'s catalog changes', err);
+                        window.dispatchEvent(new window.CustomEvent('syndicast-notice', { detail: { title: 'Never-air list', level: 'danger',
+                            text: "The never-air changes weren't saved: the deleted episodes can air again." } }));
+                    }
                 }
             };
 
@@ -2986,7 +3004,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
             scope.dayPutBack = dayPutBack;
             /*
-             * Delete inside a special day (Ron, Nov 8): as everywhere else on a Time Slots
+             * Delete inside a special day (DarkManX16, Nov 8): as everywhere else on a Time Slots
              * channel, the episode goes on the never-air list - and the day is laid again
              * at once without it (the queued entry is in the state the re-lay reads), with
              * one sentence. A picked item, or an episode set aside for the day's holiday,
@@ -3035,7 +3053,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     if (moved.text && /\.$/.test(text)) {
                         text = text.slice(0, -1) + moved.text + '.';
                     }
-                    applyEdit({ programs: moved.programs, text: text });
+                    let still = keptRows.stillAirs(keptRows.handPlacedAhead({ lineup: { programs: moved.programs, startTime: before.startTime },
+                        program: program, now: Date.now(), schedule: scope.channel.scheduleBackup, same: showCatalog.sameEpisode(program) }));
+                    applyEdit({ programs: moved.programs, text: text + ( still ? ' ' + still : '' ) });
                 } catch (err) {
                     scope.catalogQueue = scope.catalogQueue.filter( (o) => o !== op );
                     scope.lastChange = '';
@@ -3043,10 +3063,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 $timeout();
             };
-            let dayChanged = (x) => (x != null) && ( (typeof(x.specialChange) === 'string') || (typeof(x.specialInsert) === 'string') );
+            let dayChanged = (x) => (x != null) && (typeof(x.specialDay) === 'string') && ( (typeof(x.specialChange) === 'string') || (typeof(x.specialInsert) === 'string') );
 
             /*
-             * The first open (Ron, Oct 30): a channel whose list still holds pins from
+             * The first open (DarkManX16, Oct 30): a channel whose list still holds pins from
              * before kept rows has them kept silently, the first time the channel is
              * edited or Create Lineup runs - no prompt, no message. Every pin still to
              * air, and every row a drag moved, becomes a kept row exactly as
@@ -3120,7 +3140,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 $timeout();
             };
             // The library's add: one after another, right before the first airing in view, in
-            // the break in front of it (Ron, Nov 6).
+            // the break in front of it (DarkManX16, Nov 6).
             let insertFromLibrary = (selected) => {
                 ensureHandEditsKept();
                 let lineup = lineupMs();

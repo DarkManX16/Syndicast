@@ -1,5 +1,5 @@
 /*
- * The channel page's silent first open (Ron, Oct 30): no dialog, no "Not
+ * The channel page's silent first open (DarkManX16, Oct 30): no dialog, no "Not
  * now"/"Keep them" choice, no message. The first time a channel whose list
  * still holds pins from before kept rows is edited or Create Lineup runs,
  * web/directives/channel-config.js's ensureHandEditsKept keeps every real

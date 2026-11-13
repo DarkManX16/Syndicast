@@ -102,6 +102,81 @@ module.exports = async function run() {
         let threw = null;
         try { await service.applyCatalogOps(7, [{ explode: 1 }]); } catch (err) { threw = err; }
         suite.check('a bad op is refused and nothing is saved', threw !== null && Object.keys((await service.getCatalog(7)).neverAir).length === 2);
+
+        /*
+         * Update Channel sends the channel's save and then the catalog ops. A reader
+         * (the guide, a viewer, the page's own refresh) that began reading the file
+         * before the ops' save and finished after it used to put the channel it had
+         * read - the list from before the ops - back in the cache: the server then
+         * forgot the new entries, and the next save wrote the old list back for good
+         * (Nov 8 and 12, 2026: "Delete sometimes puts nothing on the never-air list").
+         */
+        const realGet = db.getChannel.bind(db);
+        let hold = null;
+        db.getChannel = async (n) => {
+            const got = await realGet(n);
+            if (hold !== null) {
+                const h = hold;
+                hold = null;
+                await h;
+            }
+            return got;
+        };
+        try {
+            await service.saveChannel(7, JSON.parse(JSON.stringify(await service.getChannel(7))), { keepCatalog: true });
+            let release;
+            hold = new Promise( (resolve) => { release = resolve; } );
+            const slowRead = service.getChannel(7);
+            await new Promise( (resolve) => setTimeout(resolve, 50) );
+            await service.applyCatalogOps(7, [{ neverAir: [entry(8)] }]);
+            release();
+            const slow = await slowRead;
+            const known = await service.getCatalog(7);
+            suite.check('a read that began before a catalog save does not bring the old list back',
+                Object.keys(known.neverAir).includes('srv|/library/metadata/8'), Object.keys(known.neverAir).join());
+            suite.check('and that reader is itself given the saved list',
+                slow !== null && Object.keys(slow.catalog.neverAir).includes('srv|/library/metadata/8'), JSON.stringify(slow && Object.keys(slow.catalog.neverAir)));
+            await service.saveChannel(7, channel(7, 'Seven, saved after'), { keepCatalog: true });
+            const disk = JSON.parse(fs.readFileSync(path.join(channels, '7.json'), 'utf8'));
+            suite.check('and the next channel save keeps the new entry on disk',
+                disk.name === 'Seven, saved after' && Object.keys(disk.catalog.neverAir).includes('srv|/library/metadata/8'), Object.keys(disk.catalog.neverAir).join());
+
+            // The same for a read caught by channelCache.clear() (a channel deleted meanwhile).
+            await service.saveChannel(7, JSON.parse(JSON.stringify(await service.getChannel(7))), { keepCatalog: true });
+            hold = new Promise( (resolve) => { release = resolve; } );
+            const slowRead2 = service.getChannel(7);
+            await new Promise( (resolve) => setTimeout(resolve, 50) );
+            channelCache.clear();
+            await service.applyCatalogOps(7, [{ neverAir: [entry(9)] }]);
+            release();
+            await slowRead2;
+            suite.check('nor does one caught by a cache clear',
+                Object.keys((await service.getCatalog(7)).neverAir).includes('srv|/library/metadata/9'));
+            await service.applyCatalogOps(7, [{ restore: ['srv|/library/metadata/8', 'srv|/library/metadata/9'] }]);
+
+            // A read made while the file is being written (it can still get the old file).
+            const realSave = db.saveChannel.bind(db);
+            let writing;
+            let started;
+            const startedWriting = new Promise( (resolve) => { started = resolve; } );
+            db.saveChannel = async (n, json) => { started(); await writing; return realSave(n, json); };
+            try {
+                let finish;
+                writing = new Promise( (resolve) => { finish = resolve; } );
+                const op = service.applyCatalogOps(7, [{ neverAir: [entry(10)] }]);
+                await startedWriting;
+                await service.getChannel(7);
+                finish();
+                await op;
+                suite.check('nor does a read made while the save was being written',
+                    Object.keys((await service.getCatalog(7)).neverAir).includes('srv|/library/metadata/10'));
+            } finally {
+                db.saveChannel = realSave;
+            }
+            await service.applyCatalogOps(7, [{ restore: ['srv|/library/metadata/10'] }]);
+        } finally {
+            db.getChannel = realGet;
+        }
     } finally {
         try { fs.rmSync(root, { recursive: true, force: true }); } catch (err) { console.log('  (could not remove ' + root + ')'); }
     }

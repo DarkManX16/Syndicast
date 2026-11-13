@@ -293,7 +293,7 @@ function restOfRoundOf(pool, getShowData, key, record) {
 }
 
 /*
- * A position's record once Ron has picked the episode it plays next (Episode
+ * A position's record once DarkManX16 has picked the episode it plays next (Episode
  * start), or null when the pick can't apply and the position carries on as it
  * was. `record` is what the position's place would be without the pick.
  *
@@ -536,7 +536,7 @@ function placeOf(program, start, labelled, findSlot, schedule, getShowData) {
  *   3. its record from the last run, for a position with none ahead;
  *   4. the place of the position the same slot - same time, show and mode -
  *      belonged to in the schedule the lineup was made from, moved forward to
- *      the nearest episode its range allows (Ron, Oct 9);
+ *      the nearest episode its range allows (DarkManX16, Oct 9);
  *   5. the first episode of its range, for a position the schedule never had.
  *
  * A position the schedule already had but whose place can't be read gets no
@@ -791,7 +791,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
             }
             // A round goes to a narrowed slot only when no slot still plays it:
             // two positions finishing one round would air the same episodes days
-            // apart (Ron, Oct 10). Play Next keeps its place either way.
+            // apart (DarkManX16, Oct 10). Play Next keeps its place either way.
             if ( (ROUND_MODES.indexOf(group.mode) !== -1) && groups.has(oldKey) ) {
                 return;
             }
@@ -875,7 +875,7 @@ function planProgress({ programs, startTime, now, openedSchedule, schedule, pool
                 }
             }
         }
-        // Episode start: Ron's pick of the episode this position plays next,
+        // Episode start: DarkManX16's pick of the episode this position plays next,
         // for this run only - the editor holds it, nothing saves it.
         let pick = (isRecord(starts) && isRecord(starts[key])) ? starts[key] : null;
         if ( (pick !== null) && (typeof(pick.key) === 'string') ) {

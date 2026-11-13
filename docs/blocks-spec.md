@@ -444,7 +444,7 @@ first). It is proposed automatically and fixed on a review screen:
   "AcTN Big O Silhouette Intro" names The Big O. Two titles found in order
   make a pair, and three or four make a list: which is how they are *read* is up
   to the step: now → then (two only) in a `pair` step, "coming up, in this order"
-  in one keyed on `next` (see Steps). Ron's styles of multi-show title, "A to B" (CN Powerhouse: "CN Next
+  in one keyed on `next` (see Steps). DarkManX16's styles of multi-show title, "A to B" (CN Powerhouse: "CN Next
   (Dexter's Lab to Ed, Edd n Eddy)"), "Now/Then (A / B)" (CN City) and "(A-B)" or
   "(A-B-C)" inside brackets (Miguzi: "Miguzi - Next Bumper (TMNT-Teen Titans)"), all
   read the same way under the rule in Steps: **A is the show coming up next, B airs
@@ -826,7 +826,7 @@ Adult Swim break with a matching clip and does nothing for the rest.
 
 #### Worked examples from the Nick channel
 
-Real patterns from Ron's Nick channel, each a fixture row in
+Real patterns from DarkManX16's Nick channel, each a fixture row in
 `test/blocks-acceptance.js` (and listed under Acceptance tests below). Each reads
 in play order, out steps, Flex, in steps. A clip's name is the show it names, as
 the review screen will have set it ("Up Next Bumper (Doug)" names Doug).
@@ -901,7 +901,7 @@ Between episodes situation.
 
 One session each, each verified on a copy of the real data folder (never the
 live one, and never the server on port 18000). Steps 4 and 7 need a TiviMate
-preview from Ron; the rest are verified by tests and scripts against channel 1.
+preview from DarkManX16; the rest are verified by tests and scripts against channel 1.
 
 1. **Situations and assembly** — `src/transitions.js`: show keys, P and N
    with their contexts, the four situations, the run of Flex entries, the
@@ -913,7 +913,7 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
 2. **Names and the matcher** — `names` on filler clips, `src/show-match.js`
    (pure: titles and aliases in, proposals out), `<data>/show-aliases.json`,
    `GET /api/filler/:id/match` and the alias save. Tests on fixtures. Real-data
-   check: the matcher over Ron's ten lists, reporting what it proposes for
+   check: the matcher over DarkManX16's ten lists, reporting what it proposes for
    the Adult Swim, Toonami and AcTN lists and what it leaves unnamed.
 3. **Plans** — matching and fallback, longest-idle choice, the never-a-
    different-show rule, without `later` for now. A step can also be marked
@@ -966,7 +966,7 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
 6. **The review screen** — the Names tag and "Match shows" in the filler
    editor, writing `names` and aliases (which may be phrases, see Learning), with the
    clips the matcher left `unresolved` and the hits marked `shortened` shown as such.
-   Verified on Ron's lists: the SGC2C case above learns from one fix. **Built Oct 4, 2026**; see NOTES.md.
+   Verified on DarkManX16's lists: the SGC2C case above learns from one fix. **Built Oct 4, 2026**; see NOTES.md.
    With it: the overview on the Filler Lists page, the preview's "would fit once their names are
    accepted" lines, and the matcher's phrase nicknames.
 6b. **Movies and seasons in names** — a name may also be one movie, one season of a show or one
@@ -994,7 +994,7 @@ preview from Ron; the rest are verified by tests and scripts against channel 1.
    10 and Oct 17, 2026) found the right movie each time, in under 1ms.
    **Built Oct 8, 2026**; see NOTES.md.
 9. **Generated cards** — the first piece of the Generated Up Next bumpers
-   roadmap item, pulled into 1.0 and designed from Ron's real "Cartoon
+   roadmap item, pulled into 1.0 and designed from DarkManX16's real "Cartoon
    Theatre Next Time" clips: a `kind: 'generated'` step that plays a card
    Syndicast renders itself when step 8's real Next Time clip has none for
    next week's movie, built on the same `now`/`next`/`later` lookups and the
@@ -1021,7 +1021,7 @@ parts, built in that order:
    gets.
 
 **Every saved channel keeps playing exactly as it does.** No context has
-midrolls until one is switched on, and even then only points Ron has approved
+midrolls until one is switched on, and even then only points DarkManX16 has approved
 ever air.
 
 #### What the files offer (measured Oct 15, 2026)
@@ -1056,7 +1056,7 @@ episodes, which is what the show pattern below is built on.
   strength: 0.0-1.0,         // from the black's and silence's lengths, and a chapter agreeing
   keyframe: 327.4,           // the first keyframe inside the black, if any (for files sent out without re-encoding)
   status: 'found' | 'approved' | 'rejected' | 'hand',
-  approvedBy: null | 'pattern' | 'ron' }
+  approvedBy: null | 'pattern' | 'owner' }
 ```
 
 - **Kinds.** `opening` is the break after a cold open or the opening titles;
@@ -1065,7 +1065,7 @@ episodes, which is what the show pattern below is built on.
   Pickles"); `credits` where the closing credits begin. The detector proposes
   a kind from where the point sits (the first few minutes, the last 90 seconds,
   the point nearest the middle of a file whose title names two stories), and
-  the show pattern lets Ron relabel a whole cluster once. `credits` is never a
+  the show pattern lets DarkManX16 relabel a whole cluster once. `credits` is never a
   midroll spot; it is stored for the generated "Up Next" clips, which must
   avoid credits and a cold open.
 - **Only `approved` and `hand` points ever air.** `found` is a suggestion,
@@ -1087,7 +1087,7 @@ pattern) and a record per file, keyed by the file's path:
   scannedAt, scanner: 1,                     // which detector version wrote it
   chapters: [ [start, end, title], ... ],
   points: [ ... ],
-  noBreaks: false,                           // Ron: "this one has none"
+  noBreaks: false,                           // DarkManX16: "this one has none"
   error: null }                              // the last failure, and when to retry
 ```
 
@@ -1126,7 +1126,7 @@ whole picture, in a fifth of the time.
 
 A movie or a custom show can be marked **theatrical** (Looney Tunes shorts,
 The Iron Giant): it is not scanned, shows no found points, and gets breaks
-only where Ron adds them by hand. Every other movie is treated as TV-made, like
+only where DarkManX16 adds them by hand. Every other movie is treated as TV-made, like
 a DCOM: scanned, its found points shown, and each needing approval like an
 episode's. A movie has no pattern of its own, so its found points are always
 on the list to check.
@@ -1146,9 +1146,9 @@ The main way to approve is **one click per show**.
 - **Approve the pattern.** In every scanned episode, the point closest to each
   pattern position (within 45 s) is approved, `approvedBy: 'pattern'`.
   Episodes scanned later that fit the approved pattern are approved as they
-  arrive; those that do not join the list below. Ron can withdraw a show's
+  arrive; those that do not join the list below. DarkManX16 can withdraw a show's
   pattern approval, which returns its pattern-approved points to `found`.
-- **The outliers, listed for Ron to check:** episodes missing a pattern point;
+- **The outliers, listed for DarkManX16 to check:** episodes missing a pattern point;
   chapter-only points; episodes with no points at all; found points that fit no
   pattern group, collapsed per episode (Batman's scene fades land here and are
   never approved by the pattern); and every TV-made movie's points.
@@ -1175,7 +1175,7 @@ and 10 seconds after a channel is saved, it queues what needs scanning.
   also set to Very Low disk priority as it starts: on a shared drive its reads
   wait for everyone else's, the other streaming server's included. If that
   cannot be set, the run goes at Normal and the scanner carries on.
-- **Skipped drives.** Ron can keep the scanner off a drive ("E:", while its
+- **Skipped drives.** DarkManX16 can keep the scanner off a drive ("E:", while its
   health is checked): its files are not read at all, a scan already on it
   stops at once without counting as a failure, and the Breaks page counts them
   as skipped. Kept with the Pause switch, so a restart does not undo it.
@@ -1192,16 +1192,16 @@ and 10 seconds after a channel is saved, it queues what needs scanning.
     rests twice as long as it ran (about a third of one core at most), and it
     takes a file on a drive no live stream is reading first. When every file
     left is on a drive a viewer is on, it reads one anyway, at Very Low disk
-    priority, the Paused rule below still watching (changed with Ron's OK on
+    priority, the Paused rule below still watching (changed with DarkManX16's OK on
     Nov 10: measured, reading those drives slowed no viewer beyond their usual
     blips, and waiting had left G: and F: unscanned for days). Each pause's log
     entry records the slow item's drive and the drive the scanner was reading.
   - *Paused*, as soon as a channel's pace stays below 0.99 for 10 seconds
     while the scanner is working, counted across that channel's items (a break
     of 6-second bumpers is one low stretch, not several short ones; approved by
-    Ron Nov 7), ignoring an item held back by a slow or departed viewer, whose
+    DarkManX16 Nov 7), ignoring an item held back by a slow or departed viewer, whose
     output simply is not being read, and counting only while the scanner is on
-    a file from that item's own drive (Ron, Nov 12: on 18000's first day, 14
+    a file from that item's own drive (DarkManX16, Nov 12: on 18000's first day, 14
     pauses, 5.2 hours, all came from viewers slow on other drives, none from
     the scanner's own, and viewers on its drive were no slower than with it
     idle), or the whole PC's CPU stays above 85% for 30
@@ -1257,7 +1257,7 @@ files, where most of the time went; step 1 measures what they save.
 #### Keeping the schedule on time
 
 **Midrolls borrow only from the Flex after the program**, so the next program
-starts exactly when it does today. Half-hour episodes on Ron's channels are
+starts exactly when it does today. Half-hour episodes on DarkManX16's channels are
 followed by a median of 6-7½ minutes of Flex, shorts by about 3, movies by 2½-4
 (measured Oct 15 on the saved lineups).
 
@@ -1309,7 +1309,7 @@ Robot Chicken, approved acts at 5:28 and 15:48, `count: 2`:
 
 #### Build order for Sonnet 5
 
-One session each. Every proof runs on copies of Ron's real data
+One session each. Every proof runs on copies of DarkManX16's real data
 (`.dizquetv-dev` copied fresh, the copy's time stated, the media read-only),
 never on the live data folder and never through the server on port 18000.
 
@@ -1343,7 +1343,7 @@ never on the live data folder and never through the server on port 18000.
 4. **The Breaks page.** The scanner's status and switch, the shows with their
    scan progress and pattern, approve the pattern, the outliers with frames and
    playback, every per-point action, theatrical on movies and custom shows.
-   **Proof:** by hand in the preview on the copy, with screenshots; Ron tries
+   **Proof:** by hand in the preview on the copy, with screenshots; DarkManX16 tries
    it.
 5. **The Midroll plan** (pure): the fifth situation and its empty default, the
    `midrolls` setting and its default, save-time cleanup and warnings,
@@ -1358,16 +1358,16 @@ never on the live data folder and never through the server on port 18000.
    viewer in `test/lineup-cursor.js` and the real router in
    `test/stream-cursor.js`. **Proof:** a scratch server from the worktree on a
    copy, stage 4's compressed channels given midrolls, two viewers tuned in at
-   different moments; then a **TiviMate preview** from Ron of two real
+   different moments; then a **TiviMate preview** from DarkManX16 of two real
    midrolls (Family Guy and Happy Days).
 7. **The editor.** The Midroll row in the Transitions section of each day-part
    and block card, the midroll setting beside it, "Copy transitions to..."
    carrying it, the preview on this week's lineup listing midrolls, and a tag
    on program rows ("2 midrolls"). **Proof:** by hand on the copy, with
    screenshots.
-8. **End to end.** Ron approves real shows on a copy; a day of a channel walked
+8. **End to end.** DarkManX16 approves real shows on a copy; a day of a channel walked
    by script; a TiviMate preview; then the roadmap ticked. The scanner reaches
-   the real library only when Ron restarts 18000 on the merged code.
+   the real library only when DarkManX16 restarts 18000 on the merged code.
 
 ## Acceptance tests
 
