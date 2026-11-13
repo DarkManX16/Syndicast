@@ -498,15 +498,17 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     }
 
     // load the programs
+    const DAY_MARKS = [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN' ];
     for (let i = 0; i < programs.length; i++) {
         let p = programs[i];
         // An episode enters the pool as itself: a special day's own airing in the
         // lineup this pool came from (specialCopy) would otherwise be what every
         // regular slot plays of it from here on, marked as a row of that day.
-        if ( (typeof(p.specialDay) !== 'undefined') || (typeof(p.specialRow) !== 'undefined') ) {
+        // The same for a day's swap or insert of it (specialChange, specialInsert,
+        // specialN): left on, Delete on a regular airing took it for the day's edit.
+        if (DAY_MARKS.some( (k) => typeof(p[k]) !== 'undefined' )) {
             p = Object.assign( {}, p );
-            delete p.specialDay;
-            delete p.specialRow;
+            DAY_MARKS.forEach( (k) => { delete p[k]; } );
         }
         let show = getShow(p);
         if (show != null) {

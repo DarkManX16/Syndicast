@@ -265,6 +265,37 @@ module.exports = async function () {
         const listed = await deleteOnPage(src, { timeSlots: true, programs, startTime, index: programs.length - 1, neverAir: holiday });
         suite.check('an episode already on the never-air list (a holiday): gone from the list, its entry left as it is',
             (titles(listed) === 'Recess 1, Kim Possible 4, Recess 2, House of Mouse 1') && (listed.queued.length === 0), never(listed));
+
+        // Ron, Nov 12: a swap he made of the episode still airs, and Delete's one sentence names it.
+        const onTheMinute = Math.floor(startTime / 60000) * 60000;
+        const swapAt = onTheMinute + 4 * 30 * 60000;
+        const d = new Date(swapAt);
+        const when = `${[ 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ][d.getMonth()]} ${d.getDate()} at `
+            + `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}${d.getHours() < 12 ? 'am' : 'pm'}`;
+        const mouse2 = programs[programs.length - 1];
+        const withSwap = [
+            ep('Recess', 1, { slotPosition: 'next|' }), brk(8), ep('Kim Possible', 4, { slotPosition: 'next|' }), brk(8),
+            ep('Recess', 2, { slotPosition: 'next|' }), brk(8), ep('Recess', 3, { slotPosition: 'next|' }), brk(8),
+            Object.assign({}, mouse2, { slotPosition: 'next|', kept: { edits: [ { id: 'e1', kind: 'swap', was: 'Recess S01E04 Recess 4', made: new Date(now).toISOString() } ] } }), brk(8),
+            brk(3 * 24 * 60),
+            ep('House of Mouse', 1), mouse2,
+        ];
+        const named = await deleteOnPage(src, { timeSlots: true, programs: withSwap, startTime: onTheMinute, index: withSwap.length - 1 });
+        suite.check('an episode Ron swapped in further on: Delete takes this row out, lists the episode, and its one sentence names the swap',
+            (named.programs.length === withSwap.length - 1) && (never(named) === 'House of Mouse 2 deleted/never')
+                && (named.said === `Your swap of it on ${when} still airs; Put back that swap to remove it too.`), `said "${named.said}"`);
+        suite.check('...and the swap itself is left exactly as it was',
+            named.programs[8] === withSwap[8], '');
+
+        // A regular airing carrying a mark left over from a special day's swap (185 of them on channel 3,
+        // Nov 12): Delete deletes it - it used to offer to put back the day's swap instead.
+        const stray = programs.map( (p, i) => (i === 2) ? Object.assign({}, p, { specialChange: 'ch_x', specialN: 4 }) : p );
+        let putBacks = 0;
+        const strayDel = await deleteOnPage(src, { timeSlots: true, programs: stray, startTime, index: 2,
+            extraScope: { dayPutBack: async () => { putBacks++; return { refused: 'no' }; } } });
+        suite.check('a regular airing with a day-swap mark left on it: Delete deletes it, and never offers to put back the day\'s swap',
+            (putBacks === 0) && (strayDel.prompt === null) && (strayDel.programs.length === programs.length - 1) && (never(strayDel) === 'Kim Possible 4 deleted/never'),
+            `put backs ${putBacks}; ${titles(strayDel)}; ${never(strayDel)}`);
     }
     return suite;
 };

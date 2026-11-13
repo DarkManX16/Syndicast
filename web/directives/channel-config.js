@@ -1458,7 +1458,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 ensureHandEditsKept();
                 program = scope.channel.programs[x];
                 // An edit made inside a special day: Put back takes it off the day's row.
-                if (scope.hasTimeSlots() && ( (typeof(program.specialChange) === 'string') || (typeof(program.specialInsert) === 'string') )) {
+                // (Inside the day only: a regular airing can carry the mark of a day that
+                // once aired the episode, and its Delete is a Delete.)
+                if (scope.hasTimeSlots() && (typeof(program.specialDay) === 'string')
+                    && ( (typeof(program.specialChange) === 'string') || (typeof(program.specialInsert) === 'string') )) {
                     scope.lastChange = 'Laying the day out again...';
                     $timeout();
                     return scope.dayPutBack(program.specialChange || program.specialInsert).then( (got) => {
@@ -1490,6 +1493,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (scope.hasTimeSlots()) {
                     if (! applyEdit(keptRows.deleteRow({ lineup: lineupMs(), index: x, now: Date.now(), schedule: scope.channel.scheduleBackup }))) {
                         return;
+                    }
+                    // A swap or insert Ron made of this episode still airs: say which (Nov 12).
+                    if (! program.isOffline) {
+                        scope.lastChange = keptRows.stillAirs(keptRows.handPlacedAhead({ lineup: lineupMs(), program: program, now: Date.now(),
+                            schedule: scope.channel.scheduleBackup }));
                     }
                 } else {
                     scope.channel.programs.splice(x, 1);
@@ -3035,7 +3043,9 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     if (moved.text && /\.$/.test(text)) {
                         text = text.slice(0, -1) + moved.text + '.';
                     }
-                    applyEdit({ programs: moved.programs, text: text });
+                    let still = keptRows.stillAirs(keptRows.handPlacedAhead({ lineup: { programs: moved.programs, startTime: before.startTime },
+                        program: program, now: Date.now(), schedule: scope.channel.scheduleBackup }));
+                    applyEdit({ programs: moved.programs, text: text + ( still ? ' ' + still : '' ) });
                 } catch (err) {
                     scope.catalogQueue = scope.catalogQueue.filter( (o) => o !== op );
                     scope.lastChange = '';

@@ -203,5 +203,32 @@ module.exports = async function () {
         const empty = await make(null, sched(day({ slots: [ { showId: 'tv.X', order: 'next', changes: [] } ] })), NOW);
         suite.check('an empty changes list lays exactly as no changes', JSON.stringify(empty.programs) === JSON.stringify(plain.programs), '');
     }
+
+    suite.log('-- an episode enters the pool as itself --');
+    {
+        // The editor's pool is the lineup's own copies of its episodes. One a day's swap or
+        // insert aired carries that day's marks; every regular slot that then played it carried
+        // them too (185 airings on channel 3, Nov 12, 2026), and Delete on such a row offered
+        // to put back the day's swap.
+        const marked = pool().map( (p) => (p.title === 'A S1E3')
+            ? Object.assign({}, p, { specialDay: 'sd_old', specialRow: 0, specialChange: 'ch_old', specialN: 4 })
+            : (p.title === 'B S1E2') ? Object.assign({}, p, { specialDay: 'sd_old', specialRow: 0, specialInsert: 'ch_old2' }) : p );
+        const RealDate = Date;
+        class FrozenDate extends RealDate {
+            constructor(...a) { if (a.length === 0) super(NOW); else super(...a); }
+            static now() { return NOW; }
+        }
+        global.Date = FrozenDate;
+        let res;
+        try {
+            res = await timeSlotsService(marked, JSON.parse(JSON.stringify(daily())));
+        } finally {
+            global.Date = RealDate;
+        }
+        const aired = res.programs.filter( (x) => (x.title === 'A S1E3') || (x.title === 'B S1E2') );
+        const left = aired.filter( (x) => [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN' ].some( (k) => typeof(x[k]) !== 'undefined' ) );
+        suite.check('a regular slot airs it with none of a special day\'s marks', (aired.length >= 2) && (left.length === 0),
+            `${aired.length} airings, ${left.length} still marked: ${JSON.stringify(left[0] && [ left[0].specialChange, left[0].specialInsert, left[0].specialN ])}`);
+    }
     return suite;
 };

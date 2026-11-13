@@ -56,6 +56,7 @@ const suites = [
     './pins-generator',
     './kept-generator',
     './kept-editor',
+    './delete-still-airs',
     './first-open-silent',
     './editor-footer',
     './pins',

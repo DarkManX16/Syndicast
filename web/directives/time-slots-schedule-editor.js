@@ -1334,7 +1334,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 let keep = Array.isArray(pinsToKeep) ? pinsToKeep : [];
                 if ( ! Array.isArray(pinsToKeep) && (typeof(scope.lineup) === 'function') ) {
                     let onAir = scope.lineup();
-                    keep = keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0 });
+                    //A row only dragged doesn't keep a deleted episode; a swap or insert of one does.
+                    let listed = catalogStateNow();
+                    keep = keptRows.keptAhead({ programs: onAir.programs, startTime: new Date(onAir.startTime).getTime(), now: t0,
+                        neverAir: (p) => showCatalog.isNeverAir(listed, p) });
                 }
                 if ( (carry !== null) && (carry.program.pin || keptRows.keptKind(carry.program)) ) {
                     keep = keep.filter( (x) => x.program !== carry.program );
