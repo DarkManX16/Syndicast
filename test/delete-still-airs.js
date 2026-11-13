@@ -65,6 +65,16 @@ module.exports = async function () {
         kept.handPlacedAhead({ lineup: l, program: other, now: NOW, schedule }).length === 0
             && kept.handPlacedAhead({ lineup: l, program: other, now: NOW, schedule, same: (p) => p.title === X.title }).length === 6, '');
 
+    {
+        // The editor rotates a saved lineup to now: a swap that aired sits past the lineup's
+        // closing Flex, a year on by the list's clock (the checklist, Nov 13). It has aired.
+        const rotated = { startTime: START, programs: lineup([ ep('Recess', 1), X, Object.assign({}, X, keptAs('swap')) ]).programs
+            .concat([ brk(3 * DAY), Object.assign({}, X, keptAs('swap')), brk(8 * MIN), X ]) };
+        const ahead = kept.handPlacedAhead({ lineup: rotated, program: X, now: NOW, schedule });
+        suite.check('a swap of it that has aired, rotated past the lineup\'s end, is not named',
+            ahead.map( (f) => (f.at - START) / (30 * MIN) ).join() === '2', ahead.map( (f) => new Date(f.at).toString() ).join());
+    }
+
     suite.log('-- what Create Lineup keeps --');
     {
         // A row Ron only dragged keeps its time, but not a deleted episode: its position's
@@ -82,6 +92,37 @@ module.exports = async function () {
         const noPosition = [ Object.assign({}, X, keptAs('moved'), { slotPosition: undefined }) ];
         suite.check('a dragged row of a deleted episode no slot made is let go: nothing to air in its place',
             kept.keptAhead({ programs: noPosition, startTime: at(5), now: NOW, neverAir: listed }).length === 0, '');
+    }
+
+    {
+        // The review, Nov 13: a dragged row of a deleted episode whose show has nothing left
+        // to air (its slot gone, or every episode listed) is let go - it aired the deleted one.
+        const timeSlotsService = require('../src/services/time-slots-service');
+        const only = ep('Solo', 1);
+        const others = Array.from({ length: 30 }, (x, i) => ep('Recess', i + 1));
+        const sched = { period: DAY, lateness: DAY, maxDays: 3, flexPreference: 'distribute', pad: 5 * MIN,
+            slots: Array.from({ length: 48 }, (x, k) => ({ time: k * 30 * MIN, showId: 'tv.Recess', order: 'next' })) };
+        const draggedAt = START + DAY + 2 * HOUR;
+        const run = async (keep) => {
+            const RealDate = Date;
+            class FrozenDate extends RealDate {
+                constructor(...a) { if (a.length === 0) super(NOW); else super(...a); }
+                static now() { return NOW; }
+            }
+            global.Date = FrozenDate;
+            try {
+                return await timeSlotsService(others.slice(), JSON.parse(JSON.stringify(sched)), undefined, keep);
+            } finally {
+                global.Date = RealDate;
+            }
+        };
+        const draggedRow = Object.assign({}, only, keptAs('moved'));
+        const keep = kept.keptAhead({ programs: [ draggedRow ], startTime: draggedAt, now: NOW, neverAir: (p) => p.key === only.key });
+        const res = await run(keep);
+        suite.check('a dragged row of a deleted episode with nothing to air in its place is let go, not aired',
+            (keep.length === 1) && ! res.programs.some( (p) => p.title === only.title ), `${res.programs.filter( (p) => p.title === only.title ).length} airings`);
+        const stays = await run(kept.keptAhead({ programs: [ draggedRow ], startTime: draggedAt, now: NOW }));
+        suite.check('...and without the list it airs where it was dragged, as before', stays.programs.filter( (p) => p.title === only.title ).length === 1, '');
     }
 
     suite.log('-- the sentence --');

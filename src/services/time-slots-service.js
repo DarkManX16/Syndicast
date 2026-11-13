@@ -1081,6 +1081,12 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         if (pin.kept) {
             let episode = (typeof(pin.key) === 'string') ? keptEpisode(pin) : null;
             fromPosition = (episode !== null);
+            // A dragged row of a deleted episode (kept-rows.js keptAhead) with nothing
+            // of its position to air there: let go, never the deleted episode.
+            if ( ! fromPosition && (pin.orNothing === true) ) {
+                keptSlot = null;
+                return;
+            }
             program = fromPosition ? episode : program;
         } else {
             delete program.slotPosition;

@@ -2779,11 +2779,18 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 try {
                     await dizquetv.applyChannelCatalogOps(number, ops);
-                } catch (err) {
-                    console.error('Could not save the channel\'s catalog changes', err);
-                    // The editor has closed by now: said by the page's notices (Ron, Nov 13).
-                    window.dispatchEvent(new window.CustomEvent('syndicast-notice', { detail: { title: 'Never-air list', level: 'danger',
-                        text: "The never-air changes weren't saved: delete those episodes again." } }));
+                } catch (first) {
+                    // Once more, a moment later; then say so. The editor has closed by now,
+                    // so it is said by the page's notices (Ron, Nov 13).
+                    console.error('Could not save the channel\'s catalog changes; trying once more', first);
+                    try {
+                        await new Promise( (resolve) => setTimeout(resolve, 1500) );
+                        await dizquetv.applyChannelCatalogOps(number, ops);
+                    } catch (err) {
+                        console.error('Could not save the channel\'s catalog changes', err);
+                        window.dispatchEvent(new window.CustomEvent('syndicast-notice', { detail: { title: 'Never-air list', level: 'danger',
+                            text: "The never-air changes weren't saved: the deleted episodes can air again." } }));
+                    }
                 }
             };
 
@@ -3056,7 +3063,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 $timeout();
             };
-            let dayChanged = (x) => (x != null) && ( (typeof(x.specialChange) === 'string') || (typeof(x.specialInsert) === 'string') );
+            let dayChanged = (x) => (x != null) && (typeof(x.specialDay) === 'string') && ( (typeof(x.specialChange) === 'string') || (typeof(x.specialInsert) === 'string') );
 
             /*
              * The first open (Ron, Oct 30): a channel whose list still holds pins from

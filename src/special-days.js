@@ -666,7 +666,7 @@ function holidayCandidates({ state, items, holiday }) {
     // Each entry once, so two copies of one episode are one candidate.
     let seen = new Set();
     return items.filter( (p) => {
-        let m = showCatalog.matchFor({ neverAir: aside }, p);
+        let m = showCatalog.matchFor({ neverAir: aside, shows: (state != null) ? state.shows : undefined }, p);
         if ( (m === null) || (m.entry.reason !== 'holiday') || (names.indexOf(m.entry.holiday) === -1) || seen.has(m.key) ) {
             return false;
         }

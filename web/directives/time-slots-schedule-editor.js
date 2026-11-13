@@ -1106,7 +1106,9 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     if ( (onAir !== null) && Array.isArray(onAir.programs) ) {
                         let t = new Date(onAir.startTime).getTime();
                         onAir.programs.forEach( (p) => {
-                            let id = (typeof(p.specialChange) === 'string') ? p.specialChange : p.specialInsert;
+                            //Inside its day only: a regular airing can carry a leftover mark.
+                            let id = (typeof(p.specialDay) !== 'string') ? undefined
+                                : (typeof(p.specialChange) === 'string') ? p.specialChange : p.specialInsert;
                             if (typeof(id) === 'string') {
                                 changeStarts.set(id, t);
                             }

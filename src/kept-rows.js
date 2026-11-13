@@ -930,9 +930,11 @@ const sameFile = (program) => (p) => rounds.fileKey(p) === rounds.fileKey(progra
 function handPlacedAhead({ lineup, program, now, schedule, same }) {
     let airsIt = (typeof(same) === 'function') ? same : sameFile(program);
     let starts = startsOf(lineup);
+    // Past the lineup's end is what has aired, rotated there (pins.loopEnd), as keptAhead reads it.
+    let end = pins.loopEnd(lineup, now);
     let out = [];
     lineup.programs.forEach( (p, i) => {
-        if ( p.isOffline || (starts[i] + p.duration <= now) || ! airsIt(p) ) {
+        if ( p.isOffline || (starts[i] + p.duration <= now) || (starts[i] >= end) || ! airsIt(p) ) {
             return;
         }
         let placed = handPlaced(p, schedule);
@@ -1638,7 +1640,7 @@ function applyFirstOpen({ programs, startTime, now, schedule, getShowData }) {
  * that has aired is let go, and so is anything rotated past the lineup's end
  * (pins.loopEnd), where the loop brings what aired round again.
  *
- *   [ { at, program, kept: true, key? } ]
+ *   [ { at, program, kept: true, key?, orNothing? } ]
  *
  * `neverAir(program)`, optional, says an episode is on the channel's never-air
  * list (Ron, Nov 12, 2026). His swap or insert of one airs as it is
@@ -1658,6 +1660,10 @@ function keptAhead({ programs, startTime, now, neverAir }) {
             let key = ( (keptKind(r.program) === 'shifted') || deleted ) ? positionOf(r.program) : null;
             if (key !== null) {
                 x.key = key;
+                if (deleted) {
+                    // With nothing of its position to air there, the generator lets it go.
+                    x.orNothing = true;
+                }
             } else if (deleted) {
                 return;
             }

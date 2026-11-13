@@ -234,7 +234,11 @@ module.exports = async function () {
         // Plex titles alone are not enough: three of his files carry another episode's title.
         const mouse = (n, title, file, extra) => Object.assign({ type: 'episode', showTitle: 'House of Mouse', title, season: 4, episode: n,
             duration: 22 * MIN, serverKey: 'srv', key: '/library/metadata/' + n, file }, extra || {});
-        const state = { shows: {}, neverAir: {
+        // House of Mouse is reviewed, and its old files (54121, 8) are gone from its catalog.
+        const state = { shows: { 'tv.House of Mouse': { known: [ 'srv|/library/metadata/177277', 'srv|/library/metadata/900' ] },
+            'tv.Doug': { known: [ 'srv|/library/metadata/d105', 'srv|/library/metadata/d304' ] } }, neverAir: {
+            'srv|/library/metadata/d105': { showId: 'tv.Doug', season: 1, episode: 5, title: 'Halloween', reason: 'holiday', holiday: 'Halloween', how: 'review' },
+            'srv|/library/metadata/m1': { showId: 'movie.', title: 'The Lion King', reason: 'never', how: 'deleted' },
             'srv|/library/metadata/54121': { showId: 'tv.House of Mouse', season: 3, episode: 44, title: 'House of Turkey', reason: 'holiday', holiday: 'Thanksgiving', how: 'deleted' },
             'srv|/library/metadata/70293': { showId: 'tv.Teamo Supremo', season: 2, episode: 11, title: 'Happy Holidays, Mr. Gruff / The Grandfather Show', reason: 'holiday', holiday: 'Christmas', how: 'deleted' },
             'srv|/library/metadata/121155': { showId: 'custom.dd', season: 2, episode: 41, title: 'Episode 41', reason: 'never', how: 'review' },
@@ -273,6 +277,34 @@ module.exports = async function () {
         suite.check('an entry added later is matched too, and a restored one no longer is',
             catalog.isNeverAir(added, mouse(88, 'House of Genius', '/x/House Of Genius (new rip).mkv'))
                 && ! catalog.isNeverAir(catalog.applyOps(added, [ { restore: [ 'srv|/library/metadata/54121' ] } ], NOW), turkey), '');
+        // The review, Nov 13: two episodes of a show can share a title that is not generic.
+        const doug = (s, e, key) => ({ type: 'episode', showTitle: 'Doug', title: 'Halloween', season: s, episode: e, serverKey: 'srv', key: '/library/metadata/' + key,
+            file: `/media/Doug/Doug - S0${s}E0${e} - Halloween.mkv` });
+        suite.check('another episode of the show with the same title is not on the list: the listed file is still there, and its numbers differ',
+            ! catalog.isNeverAir(state, doug(3, 4, 'd304')) && catalog.isNeverAir(state, doug(1, 5, 'd105')), '');
+        suite.check('...a second copy with the same season and episode is',
+            catalog.isNeverAir(state, doug(1, 5, 'd105-copy')), '');
+        const unreviewed = { shows: {}, neverAir: { 'srv|/library/metadata/54121': state.neverAir['srv|/library/metadata/54121'] } };
+        suite.check('...and with different numbers it takes knowing the listed file is gone: a show never reviewed does not match',
+            ! catalog.isNeverAir(unreviewed, turkey) && catalog.isNeverAir(state, turkey), '');
+        suite.check('a movie is listed by its file alone: two films can share a title',
+            ! catalog.isNeverAir(state, { type: 'movie', title: 'The Lion King', year: 2019, serverKey: 'srv', key: '/library/metadata/m2', file: '/movies/The Lion King (2019).mkv' })
+                && catalog.isNeverAir(state, { type: 'movie', title: 'The Lion King', serverKey: 'srv', key: '/library/metadata/m1' }), '');
+        {
+            const big = { shows: {}, neverAir: {} };
+            for (let i = 0; i < 3000; i++) {
+                big.neverAir['srv|/library/metadata/n' + i] = { showId: 'tv.Show' + (i % 50), season: 1, episode: i, title: `Listed Title ${i} Alpha` };
+            }
+            const many = [];
+            for (let i = 0; i < 40000; i++) {
+                many.push({ type: 'episode', showTitle: 'Show' + (i % 50), season: 1, episode: i, title: `Some Title ${i} Beta`, serverKey: 'srv', key: '/library/metadata/p' + i,
+                    file: `E:/x/Show - Some Title ${i} Beta.mkv`, duration: 22 * MIN });
+            }
+            const t0 = Date.now();
+            const left = catalog.withoutNeverAir(many, big).length;
+            const ms = Date.now() - t0;
+            suite.check('a pool of 40,000 against a list of 3,000 is read in well under two seconds', (left === 40000) && (ms < 2000), `${ms} ms`);
+        }
         const sd = require('../src/special-days');
         suite.check('a holiday row finds the new file of an episode set aside for its holiday',
             sd.holidayCandidates({ state, items: [ turkey, pool[2] ], holiday: 'Thanksgiving' }).length === 1, '');

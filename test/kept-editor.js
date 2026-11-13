@@ -309,6 +309,7 @@ module.exports = async function () {
                 dizquetv: { applyChannelCatalogOps },
                 window: { dispatchEvent: (e) => notices.push(e.detail), CustomEvent: function (type, init) { this.type = type; this.detail = Object.assign({ type }, init.detail); } },
                 console: { error: () => {} },
+                setTimeout: (f) => f(),
             };
             // eslint-disable-next-line no-new-func
             const f = new Function('scope', ...Object.keys(page), `return ${liftArrow(src, 'flushCatalogOps')};`)(scope, ...Object.values(page));
@@ -316,11 +317,23 @@ module.exports = async function () {
             return { notices, left: scope.catalogQueue.length };
         };
         const op = { neverAir: [ { key: 'srv|/e/1', entry: { title: 'House of Genius' } } ] };
-        const failed = await flush(async () => { throw new Error('HTTP 500'); }, [ op ]);
-        suite.check('a failed never-air save says so, in one short line',
-            (failed.notices.length === 1) && (failed.notices[0].type === 'syndicast-notice')
-                && (failed.notices[0].text === "The never-air changes weren't saved: delete those episodes again.") && (failed.notices[0].text.length < 80),
-            JSON.stringify(failed.notices));
+        let tries = 0;
+        const failed = await flush(async () => { tries++; throw new Error('HTTP 500'); }, [ op ]);
+        suite.check('a failed never-air save is tried once more, then says so in one short line',
+            (tries === 2) && (failed.notices.length === 1) && (failed.notices[0].type === 'syndicast-notice')
+                && (failed.notices[0].text === "The never-air changes weren't saved: the deleted episodes can air again.") && (failed.notices[0].text.length < 80),
+            `${tries} tries; ${JSON.stringify(failed.notices)}`);
+        let second = 0;
+        const recovered = await flush(async () => { if (second++ === 0) { throw new Error('HTTP 500'); } return {}; }, [ op ]);
+        suite.check('...one that saves on the second try says nothing', (second === 2) && (recovered.notices.length === 0), '');
+        // eslint-disable-next-line no-new-func
+        const dayChanged = new Function(`return ${src.slice(src.indexOf('let dayChanged = ') + 'let dayChanged = '.length, src.indexOf(';', src.indexOf('let dayChanged = ')))};`)();
+        suite.check('a regular airing with a leftover day-swap mark does not read as a day\'s edit (no thumbtack, no Put back)',
+            ! dayChanged({ specialChange: 'ch_x' }) && ! dayChanged({ specialInsert: 'ch_y' }) && dayChanged({ specialDay: 'sd', specialChange: 'ch_x' })
+                && dayChanged({ specialDay: 'sd', specialInsert: 'ch_y' }) && ! dayChanged(null), '');
+        const slotsSrc = fs.readFileSync(path.join(__dirname, '../web/directives/time-slots-schedule-editor.js'), 'utf8');
+        suite.check('...nor does Time Slots read a change\'s time from one',
+            /typeof\(p\.specialDay\) !== 'string'\) \? undefined/.test(slotsSrc), '');
         const fine = await flush(async () => ({}), [ op ]);
         const none = await flush(async () => { throw new Error('never called'); }, []);
         suite.check('...and one that saves, or has nothing to save, says nothing', (fine.notices.length === 0) && (none.notices.length === 0), '');
@@ -329,12 +342,12 @@ module.exports = async function () {
 
         // Delete's sentence finds a swap of the same episode under another file (show-catalog.js).
         const showCatalog = require('../src/show-catalog');
-        const old = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', serverKey: 'srv', key: '/library/metadata/54121', file: 'E:/old/House Of Mouse - (Ep. 44) - House of Turkey.avi' };
-        const now2 = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', serverKey: 'srv', key: '/library/metadata/177277', file: 'E:/new/House of Mouse; S04E10 House Of Turkey.mp4' };
+        const old = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', season: 4, episode: 10, serverKey: 'srv', key: '/library/metadata/54121', file: 'E:/copy/House Of Mouse - (Ep. 44) - House of Turkey.avi' };
+        const now2 = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Turkey', season: 4, episode: 10, serverKey: 'srv', key: '/library/metadata/177277', file: 'E:/new/House of Mouse; S04E10 House Of Turkey.mp4' };
         const other = { type: 'episode', showTitle: 'House of Mouse', title: 'House of Genius', serverKey: 'srv', key: '/library/metadata/177275', file: 'E:/new/House of Mouse; S04E08 House Of Genius.mp4' };
         const same = showCatalog.sameEpisode(old);
-        suite.check('the same episode: its own file, or another file of it; never another episode',
-            same(old) && same(now2) && ! same(other) && ! same({ isOffline: true, duration: 1 }), '');
+        suite.check('the same episode: its own file, or a second copy of it (same season and episode); never another episode',
+            same(old) && same(now2) && ! same(other) && ! same({ isOffline: true, duration: 1 }) && ! same(Object.assign({}, now2, { season: 3, episode: 44 })), '');
         suite.check('Delete\'s sentence looks for the episode, not only the file',
             /handPlacedAhead\(\{[^}]*same: showCatalog\.sameEpisode\(program\)/.test(src.replace(/\s+/g, ' '))
                 && (src.match(/same: showCatalog\.sameEpisode\(program\)/g) || []).length === 2, '');

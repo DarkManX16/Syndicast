@@ -134,27 +134,55 @@ function nameCarries(file, title) {
     return (' ' + name + ' ').indexOf(' ' + title + ' ') !== -1;
 }
 
-// Entries by show and title, built once per list (and again if it grows or shrinks).
+// Entries by show and title, built once per list object: a list is never
+// changed in place (applyOps and stateOf copy it), so the object is the list.
+// Movies are left out - two films can share a title - and are listed by file.
 let titleIndexes = new WeakMap();
 function titlesOf(neverAir) {
-    let keys = Object.keys(neverAir);
-    let held = titleIndexes.get(neverAir);
-    if ( (typeof(held) === 'undefined') || (held.count !== keys.length) ) {
-        let byTitle = new Map();
-        keys.forEach( (key) => {
+    let byTitle = titleIndexes.get(neverAir);
+    if (typeof(byTitle) === 'undefined') {
+        byTitle = new Map();
+        Object.keys(neverAir).forEach( (key) => {
             let e = neverAir[key];
-            if ( (e === null) || (typeof(e) !== 'object') || (typeof(e.showId) !== 'string') || genericTitle(e.title) ) {
+            if ( (e === null) || (typeof(e) !== 'object') || (typeof(e.showId) !== 'string') || (e.showId === 'movie.') || genericTitle(e.title) ) {
                 return;
             }
             let id = e.showId + '|' + plain(e.title);
             if (! byTitle.has(id)) {
-                byTitle.set(id, key);
+                byTitle.set(id, []);
             }
+            byTitle.get(id).push(key);
         } );
-        held = { count: keys.length, byTitle: byTitle };
-        titleIndexes.set(neverAir, held);
+        titleIndexes.set(neverAir, byTitle);
     }
-    return held.byTitle;
+    return byTitle;
+}
+
+// Files a reviewed show's catalog held when it was last read, as a set, once per list.
+let knownSets = new WeakMap();
+function knownOf(state, showId) {
+    let record = (state && state.shows) ? state.shows[showId] : undefined;
+    if ( ! record || ! Array.isArray(record.known) ) {
+        return null;
+    }
+    let set = knownSets.get(record.known);
+    if (typeof(set) === 'undefined') {
+        set = new Set(record.known);
+        knownSets.set(record.known, set);
+    }
+    return set;
+}
+
+/*
+ * Two episodes of one show can share a title ("Halloween", a second
+ * "Christmas Special"; the review, Nov 13). So an entry under another file is
+ * the same episode only when its season and episode are the same (a second
+ * copy), or its own file is known to be gone from the show's catalog (a
+ * replaced file: Ron's old and new House of Mouse number their episodes
+ * differently). A show never reviewed has no catalog to tell, and doesn't match.
+ */
+function sameNumbers(entry, program) {
+    return Number.isInteger(entry.season) && Number.isInteger(entry.episode) && (entry.season === program.season) && (entry.episode === program.episode);
 }
 
 // The entry an episode is listed under - { key, entry } - or null.
@@ -172,19 +200,28 @@ function matchFor(state, program) {
         return null;
     }
     let title = plain(program.title);
-    let key = titlesOf(neverAir).get(showId + '|' + title);
-    if ( (typeof(key) === 'undefined') || ! Object.prototype.hasOwnProperty.call(neverAir, key) || ! nameCarries(program.file, title) ) {
+    let keys = titlesOf(neverAir).get(showId + '|' + title);
+    if ( (typeof(keys) === 'undefined') || ! nameCarries(program.file, title) ) {
+        return null;
+    }
+    let known = knownOf(state, showId);
+    let key = keys.find( (k) => Object.prototype.hasOwnProperty.call(neverAir, k)
+        && ( sameNumbers(neverAir[k], program) || ( (known !== null) && ! known.has(k) ) ) );
+    if (typeof(key) === 'undefined') {
         return null;
     }
     return { key: key, entry: neverAir[key] };
 }
 
-// Whether a row airs `program`'s episode: its file, or another file of it.
+// Whether a row airs `program`'s episode: its file, or a second copy of it -
+// the same show, title, season and episode, each file's name carrying the title.
 function sameEpisode(program) {
     let own = fileKey(program);
-    let asListed = { neverAir: { [own]: { showId: showIdOf(program), title: program.title } } };
-    let reverse = (p) => { let k = fileKey(p); return matchFor({ neverAir: { [k]: { showId: showIdOf(p), title: p.title } } }, program) !== null; };
-    return (p) => ! p.isOffline && ( (fileKey(p) === own) || (matchFor(asListed, p) !== null) || reverse(p) );
+    let showId = showIdOf(program);
+    let title = plain(program.title);
+    let copies = (showId !== null) && (showId !== 'movie.') && ! genericTitle(program.title) && nameCarries(program.file, title);
+    return (p) => ! p.isOffline && ( (fileKey(p) === own)
+        || ( copies && (showIdOf(p) === showId) && (plain(p.title) === title) && sameNumbers(program, p) && nameCarries(p.file, title) ) );
 }
 
 function entryFor(state, program) {
