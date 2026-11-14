@@ -637,10 +637,19 @@ div.programming-programs div.list-group-item {
   opacity: 0.0;
 }
 
+/* The wordmark is as big as the word it replaced (28px capitals, 170px wide at 40px type): 70px tall. */
 #syndicast-logo {
-  height: 1.15em;
+  height: 1.75em;
   width: auto;
-  margin-bottom: 0.1em;
+}
+
+/* On a phone the two icons stay beside it, so the logo takes the width they leave. */
+@media (max-width: 480px) {
+  #syndicast-logo {
+    height: auto;
+    width: calc(100vw - 130px);
+    max-width: 6.8em;
+  }
 }
 
 .list-group-item .library-item-hover:hover {
