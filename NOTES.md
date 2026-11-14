@@ -7630,6 +7630,49 @@ ripper's 5-minute chapters among them.
   CPU pause is unchanged. The first day on 18000 had 14 pauses (5.2 h), none
   same-drive, and viewers on the scanner's drive no slower than with it idle
   (4.9% of readings below 0.99, against 6.1%).
+- **Step 3's proof, Nov 12-13** (`midrolls-step3`, on a copy taken Nov 12 4:41am:
+  1,020 files of the proof shows, none failed; frames 1.5 s either side of each
+  point, read by eye). What the frames showed, and what changed for it on Nov 13
+  with DarkManX16's decisions:
+  - *Cheers counted each break twice.* Black, the show's own "Cheers" card for
+    about 4 s, black again: "2 breaks an episode" was that pair in 127 of the
+    130 episodes it fit, and one click would have aired two breaks 5 s apart.
+    Now mid-episode points within 15 s are one break, read at the later point
+    so the card plays before the commercials: "1 break an episode (195 of
+    207)". Openings are left as they were: doing the same to them moved the
+    opening in about 40 shows, none checked in frames, and lost The Incredible
+    Hulk's pattern. Rupert (1:03 and 1:09, 63 of 65) and Rocko's Modern Life
+    (0:54 and 1:05) have such a pair at the opening.
+  - *Family Guy's list was strays.* 137 of its 166 listed episodes fit and were
+    listed only for a weak chapter-only point; a chapter-only point in an
+    episode that fits is now a stray like any other (list: 28).
+  - *Theatrical was per show key*, so marking The Lizzie McGuire Movie marked
+    its whole Saturday custom show, Wizards of Waverly Place: The Movie (a DCOM)
+    with it. Now a movie's record carries `theatrical`.
+  - *Movies inside a custom show were read as episodes*: the Friday custom show
+    of four TV movies said "too few to tell", and AfterToon Movies (Robin Hood,
+    The Jungle Book, The Sword in the Stone) had "3 breaks an episode", so one
+    click would have aired 9 midrolls in three cinema films. Records now carry
+    `movie` (40 minutes or more, as the names picker reads movies), marked by
+    the scanner as it builds its queue for records scanned before.
+  - *Full House has real breaks the count does not use.* 15 of 18 sampled
+    mid-episode points are clear act breaks, 7 of the 9 weaker than 0.6 among
+    them; only 44 of its episodes have a strong one, so it has no pattern.
+    DarkManX16 chose a second line, approved only by its own click: "1 break an
+    episode at different times (weaker points, 121 of 190)". 25 shows on the
+    copy were offered one.
+  - *Review of the branch before merging, Nov 13*, three fixes, each with a
+    test that failed first: a point within 15 s after the opening joins it (The
+    Incredible Hulk's 2:27, 10 s after its 2:17 opening, would have aired as a
+    midroll with the opening's break off); each Approve withdraws the one before
+    it (the weaker breaks stayed approved after choosing the first line); and a
+    rescan saves a file's record under the key it is stored under (a file in a
+    custom show that aired soonest on its own got a second record, and its
+    carried approvals and marks were lost).
+  - *Streaming copies with the breaks cut* (96 Happy Days files, 51 Full House)
+    sit on the list one by one; step 4 gets a "these have no breaks" action.
+  - Batman: 9 of 16 picks clear, 6 unclear, 1 doubtful; Family Guy 21 of 22
+    clear; Gargoyles 14 of 18; Hannah Montana 14 of 14.
 
 ### Random Slots' Create Lineup restarts the program on air
 

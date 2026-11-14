@@ -1088,11 +1088,20 @@ pattern) and a record per file, keyed by the file's path:
   chapters: [ [start, end, title], ... ],
   points: [ ... ],
   noBreaks: false,                           // DarkManX16: "this one has none"
-  error: null }                              // the last failure, and when to retry
+  error: null,                               // the last failure, and when to retry
+  movie: true,                               // only on a movie of 40 minutes or more
+  theatrical: true }                         // only on a movie DarkManX16 marked theatrical
 ```
 
+`noBreaks` carries through a rescan of the same file (a new detector
+version) and is dropped when the file changed, since a new copy may have its
+breaks; `movie` and `theatrical` always carry. Records scanned before
+`movie` existed are marked by the scanner as it builds its queue, without a
+rescan.
+
 A file reached under two show keys (an episode in a custom show and in its
-own show) has one record, found by its path wherever it is stored. A file
+own show) has one record, found by its path wherever it is stored, and a
+rescan saves it there again, whichever key it airs under first. A file
 whose size or date changes is scanned again; its old approvals come back as
 `found` points marked "approved before the file changed", so the pattern can
 approve them again in one click.
@@ -1131,6 +1140,18 @@ a DCOM: scanned, its found points shown, and each needing approval like an
 episode's. A movie has no pattern of its own, so its found points are always
 on the list to check.
 
+**Theatrical is per movie** (DarkManX16, Nov 13). Marking The Lizzie McGuire Movie
+marks that movie wherever it airs (its record carries `theatrical: true`), not
+the custom show it is in: Wizards of Waverly Place: The Movie, a DCOM in the
+same Saturday custom show, keeps its breaks. A whole custom show is marked only
+for one of shorts (Looney Tunes). **A movie inside a custom show is a movie**
+(Nov 13): any item of 40 minutes or more that Plex calls a movie (the length
+the names picker uses for movies), so the Friday custom show of four TV
+movies lists each movie's points instead of reading as a four-episode show
+with "too few to tell", and a custom show of movies and episodes keeps its
+episodes' pattern. The line counts them: *"Saturday movies: 4 TV movies, each
+on the list to check; 1 theatrical movie, breaks only where added by hand."*
+
 #### Show patterns, and approving
 
 The main way to approve is **one click per show**.
@@ -1140,18 +1161,88 @@ The main way to approve is **one click per show**.
   the start, within 45 s of each other). A group present in at least half the
   scanned episodes, and in at least three, is part of the pattern, shown as a
   line: *"Happy Days, 98 of 104 episodes scanned: opening near 1:14 (95%), act
-  near 11:46 (91%), act near 23:00 (88%)."* When a show's seasons break at
-  different places (an hour-long season, a later format), the pattern is shown
-  per season.
+  near 11:46 (91%), act near 23:00 (88%)."*
+- **"N breaks an episode"** (DarkManX16, Nov 10). Many shows' breaks move from
+  episode to episode while their number stays the same: on the real store
+  (Nov 9), only 18 of 48 shows with eight or more episodes scanned had a
+  pattern by position that could air, while Hannah Montana had two strong
+  breaks in 14 of 14 episodes, Gargoyles two in 9 of 9 and Rupert one in 12 of
+  12, at different times. So a show is also offered *"N breaks an episode at
+  different times"*: each episode's N strongest mid-episode points (act or
+  story, at least 2 minutes from either end, strength 0.6 or more), when at
+  least half its episodes, and at least three, have exactly N. Whichever of
+  the two fits more episodes is offered (by position on a tie); an opening
+  found by position stays in the pattern either way. Batman's act breaks are
+  its two long fades, the strongest points it has, so the count leaves its
+  scene fades out. Line: *"Gargoyles, 9 of 78 episodes scanned: opening near
+  1:03 (100%), 2 breaks an episode at different times (9 of 9)."*
+- **Groups by running length, not season** (DarkManX16, Nov 10). The records hold each
+  file's length and not its season, and the difference that matters is the
+  length: Adventures of the Gummi Bears runs 10.6-21.8 minutes. Episodes
+  within 15% of each other's length form a group with its own pattern, each
+  named in the line ("11-minute episodes (4): ..."); a group of fewer than
+  three has none.
+- **Kinds read past the fade-in** (DarkManX16, Nov 10). Points in a file's first 10 s
+  are the file fading in, never a break: the detector drops them, and files
+  scanned before it did are read the same way from their stored points, so
+  the break after the titles is the opening and "opening: false" keeps it off
+  air without a rescan. Approval stores the kind it was read as.
+- **An opening past 3:00.** A half-hour show's cold open and titles can run
+  longer: Hannah Montana's break after the title card falls anywhere from
+  2:16 to 4:42 (seen in the frames, Nov 12), and read as an act it would have
+  aired in 8 of 14 episodes with "opening: false". A running-length group of
+  20 minutes or more, at least half of whose episodes have their first point
+  between 3:00 and 5:00, reads that point as its opening; shorts never do.
+  Where the opening's time moves too much for a position, the line says so -
+  *"Hannah Montana, 14 episodes scanned: opening at 2:16-4:42 (14 of 14), 1
+  break an episode at different times (14 of 14)"* - and approval approves
+  each episode's own.
+- **Two points within 15 s are one break** (DarkManX16, Nov 13). Cheers fades to
+  black, shows its own "Cheers" card for about 4 s, and fades to black again;
+  the detector found both blacks, so "2 breaks an episode" was one break
+  counted twice in 127 of the 130 episodes it fit (frames, Nov 13), and
+  approving it would have aired two breaks 5 s apart. Points within 15 s of
+  each other are read as one, at the later point, so the card plays as the
+  show's own bumper before the commercials, and at the stronger of their
+  strengths; the earlier point is never approved and never listed. Openings
+  stay as they are for now (DarkManX16, Nov 13; the break after the opening is
+  off by default): the opening keeps its own time, and a point within 15 s
+  after it joins it (Rupert's 1:03 and 1:09, in 63 of 65 episodes), so it is
+  never read as a mid-episode break just after the titles - The Incredible
+  Hulk's 2:27, 10 s after its 2:17 opening, would otherwise have aired as one.
+- **A second line, from weaker points** (DarkManX16, Nov 13). Full House's one
+  mid-episode point is a real act break in 15 of 18 sampled, 7 of the 9 below
+  0.6 among them, but only 44 of 190 episodes have a strong one, so "N breaks
+  an episode" finds nothing. Where a running-length group's strong points give
+  no mid-episode break, and counting every mid-episode point with a black (any
+  strength) gives a steady number by the same rule (at least half the
+  episodes, and three), that count is offered on a line of its own: *"Full
+  House, 190 episodes scanned: 1 break an episode at different times (weaker
+  points, 121 of 190)."* It is never approved by the ordinary click; its own
+  click approves the show with that count wherever it is offered (and the
+  first line's pattern everywhere else), recorded on each approved group as
+  `weak: true` so later episodes are approved the same way. On the Nov 12
+  copy, 25 shows were offered one.
 - **Approve the pattern.** In every scanned episode, the point closest to each
-  pattern position (within 45 s) is approved, `approvedBy: 'pattern'`.
-  Episodes scanned later that fit the approved pattern are approved as they
-  arrive; those that do not join the list below. DarkManX16 can withdraw a show's
-  pattern approval, which returns its pattern-approved points to `found`.
-- **The outliers, listed for DarkManX16 to check:** episodes missing a pattern point;
-  chapter-only points; episodes with no points at all; found points that fit no
-  pattern group, collapsed per episode (Batman's scene fades land here and are
-  never approved by the pattern); and every TV-made movie's points.
+  pattern position (within 45 s) is approved, and for "N breaks an episode",
+  the N strong mid-episode points of every episode that has exactly N;
+  `approvedBy: 'pattern'`. Only `found` points change: DarkManX16's own approvals,
+  rejections and hand points stay his. Episodes scanned later, and files that
+  changed and were scanned again, are approved as they arrive; those that do
+  not fit join the list below. DarkManX16 can withdraw a show's pattern approval,
+  which returns its pattern-approved points to `found`; each click withdraws
+  the one before it first, so choosing the first line after the second takes
+  the weaker breaks back off.
+- **The outliers, listed for DarkManX16 to check:** episodes missing a pattern point,
+  or with a different number of strong breaks; episodes of a length with too
+  few episodes for a pattern, or with no pattern; chapter-only points in an
+  episode that does not fit; files with no audio; episodes with no points at
+  all; and every TV-made movie's points. **Stray points in an episode that
+  fits are not listed** (DarkManX16, Nov 10): they are never approved, so they never
+  air, and listing them would have put most episodes on the list (768 strays
+  across 52 shows on Nov 9). A chapter-only point is a stray like any other
+  (Nov 13): 137 of Family Guy's 166 listed episodes fit and were listed only
+  for one.
 - **For each point on the list:** the frame before and after it, a few seconds
   of playback across it, and approve, reject, nudge (by frames or a typed
   mm:ss), change its kind, add a break, or mark the episode as having none.
@@ -1343,6 +1434,10 @@ never on the live data folder and never through the server on port 18000.
 4. **The Breaks page.** The scanner's status and switch, the shows with their
    scan progress and pattern, approve the pattern, the outliers with frames and
    playback, every per-point action, theatrical on movies and custom shows.
+   **"These have no breaks"** (DarkManX16, Nov 13): one action marking many episodes
+   at once, by folder or by a ticked selection on the list, `noBreaks: true`
+   on each: 96 Happy Days and 51 Full House files are streaming copies with
+   the breaks cut out, and would otherwise sit on the list one by one.
    **Proof:** by hand in the preview on the copy, with screenshots; DarkManX16 tries
    it.
 5. **The Midroll plan** (pure): the fifth situation and its empty default, the

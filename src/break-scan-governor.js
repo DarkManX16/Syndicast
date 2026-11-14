@@ -41,7 +41,11 @@ function clockText(ms) {
 
 function minutesText(ms) {
     const min = Math.round(ms / 60000);
-    return (min >= 60) ? `${min / 60} h` : `${min} min`;
+    if (min < 60) {
+        return `${min} min`;
+    }
+    const h = Math.floor(min / 60);
+    return (min % 60 === 0) ? `${h} h` : `${h} h ${min % 60} min`;
 }
 
 function itemName(item) {
