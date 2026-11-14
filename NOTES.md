@@ -7745,8 +7745,9 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
   (5) Nothing is said when a change is made: the line or list changes instead.
 - **Proof.** The suite 3,469/3,469 (107 new tests, each new behaviour checked by changing the
   code and watching a test fail). The workflow checklist, now twelve with `breaks-page`
-  (the Breaks page by real clicks and keys), 12/12 on a fresh copy taken Nov 14, 6:35am, a
-  scratch server on 18210 with its scanner paused by hand and E: skipped; the page's own
+  (the Breaks page by real clicks and keys), 12/12 on the final code (7:30am Nov 14), on a copy taken at 7:09am, a
+  scratch server on 18210 with its scanner paused by hand and E: skipped (the page's
+  own workflow found two more bugs on earlier runs, below); the page's own
   Pause / Resume click is made with every drive skipped. A fresh review of the branch
   found nine things, all fixed or answered (the scanner's index kept a movie's deleted
   theatrical mark, a file kept under another key, one show's answer replacing another's
