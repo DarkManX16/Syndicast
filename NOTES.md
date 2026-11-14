@@ -7743,7 +7743,7 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
   (hand points only), as airing nothing from found or approved points.** (4) "No breaks in
   this show" marks the scanned episodes only; files scanned later show their points as usual.
   (5) Nothing is said when a change is made: the line or list changes instead.
-- **Proof.** The suite 3,468/3,468 (106 new tests, each new behaviour checked by changing the
+- **Proof.** The suite 3,469/3,469 (107 new tests, each new behaviour checked by changing the
   code and watching a test fail). The workflow checklist, now twelve with `breaks-page`
   (the Breaks page by real clicks and keys), 12/12 on a fresh copy taken Nov 14, 6:35am, a
   scratch server on 18210 with its scanner paused by hand and E: skipped; the page's own
@@ -7755,7 +7755,8 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
   checklist found a tenth: a break he added 6 s from a rejected point vanished, because
   points within 15 s are read as one (Cheers); a break he placed himself is now never
   merged with its neighbour (one he approved, rejected or moved still joins its pair, so
-  rejecting a pair's break rejects the pair and reveals nothing).
+  rejecting a pair's break rejects the pair and reveals nothing), and a break he moves to
+  within 15 s after the opening no longer joins the opening.
 
 ### Random Slots' Create Lineup restarts the program on air
 

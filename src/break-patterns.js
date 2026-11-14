@@ -109,7 +109,7 @@ function oneBreakEach(pts) {
             openingTail = p.at;
             continue;
         }
-        if ( (opening !== null) && (run.length === 0) && (p.at - openingTail <= ONE_BREAK_S) ) {
+        if ( (opening !== null) && (run.length === 0) && (p.foundAt == null) && (p.at - openingTail <= ONE_BREAK_S) ) {
             opening.absorbed = (opening.absorbed || []).concat( [ p.index ] );
             openingTail = p.at;
             continue;

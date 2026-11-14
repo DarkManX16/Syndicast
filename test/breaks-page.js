@@ -111,6 +111,11 @@ module.exports = async function() {
         edit.addPoint(show.files[file], 123.5);
         const shown = page.detail('tv.X', show, 'X', () => null, {}, NOW).episodes[0].points.map( (p) => `${p.at}:${p.status}` ).join(' ');
         suite.check('a break he adds 6 s from a rejected point is still there', shown === '123.5:hand 130:rejected 827:found', shown);
+        // a break he moved to just after the opening does not join it
+        const op = { theatrical: false, pattern: null, files: { [file]: rec(22, [ pt(60, 'opening'), pt(500, 'act') ]) } };
+        edit.editPoint(op.files[file], 1, 'time', 70);
+        const near = page.detail('tv.X', op, 'X', () => null, {}, NOW).episodes[0].points.map( (p) => `${p.at}:${p.kind}:${p.status}` ).join(' ');
+        suite.check('...a break he moves to 10 s after the opening is not read as part of it', near === '60:opening:found 70:act:approved', near);
         // a pair read as one (Cheers): rejecting the break rejects the pair, it does not reveal the earlier point
         const pair = { theatrical: false, pattern: null, files: { [file]: rec(22, [ pt(700, 'act'), pt(706, 'act') ]) } };
         edit.editPoint(pair.files[file], 1, 'reject');

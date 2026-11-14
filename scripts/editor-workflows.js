@@ -1236,15 +1236,28 @@ function makeRunner(opts, page) {
             }
             out.push('scanner line, Details and the Pause / Resume switch');
 
-            const domOrder = await page.$$eval('.bk-show .bk-name a', (as) => as.slice(0, 12).map((a) => a.textContent.trim()));
-            const apiOrder = list.shows.filter((s) => s.needsClick).slice(0, 12).map((s) => s.name);
+            // The page's order against the server's, read back to back; a show can start or end between the
+            // two (the half hour), so a difference is read again before it counts.
+            let domOrder;
+            let apiOrder;
+            let fresh;
+            for (let tries = 0; tries < 3; tries++) {
+                await openPage();
+                domOrder = await page.$$eval('.bk-show .bk-name a', (as) => as.slice(0, 12).map((a) => a.textContent.trim()));
+                fresh = await api('/api/breaks/shows');
+                apiOrder = fresh.shows.filter((s) => s.needsClick).slice(0, 12).map((s) => s.name);
+                if (JSON.stringify(domOrder) === JSON.stringify(apiOrder)) {
+                    break;
+                }
+            }
             if (JSON.stringify(domOrder) !== JSON.stringify(apiOrder)) {
                 throw new Check(`Needs a click isn't in the order the shows next air: page ${domOrder.slice(0, 4).join(' | ')} ... , server ${apiOrder.slice(0, 4).join(' | ')} ...`);
             }
-            const times = list.shows.filter((s) => s.needsClick && s.nextAt != null).map((s) => s.nextAt);
+            const times = fresh.shows.filter((s) => s.needsClick && s.nextAt != null).map((s) => s.nextAt);
             if (times.some((t, i) => i > 0 && t < times[i - 1])) {
                 throw new Check('the shows that air are not in order of when they next air');
             }
+            list = fresh;
             out.push('Needs a click in next-airing order');
 
             // 2. a pattern approved from its line and withdrawn; then the weaker second line
@@ -1330,25 +1343,39 @@ function makeRunner(opts, page) {
             if (!shot || Math.abs(shot.at - (third.at + 0.04)) > 0.03) {
                 throw new Check('after a nudge the cursor did not stay on the moved point');
             }
+            // Times well away from every point of the episode, so no neighbour within 15 s reads as one with them.
+            const epLength = (await detailOf(key)).episodes.find((e) => e.path === third.path).durationMs / 1000;
+            const have = pointsOf(await detailOf(key), third.path);
+            const freeTimes = [];
+            for (let t = 100; t < epLength - 200 && freeTimes.length < 2; t += 31) {
+                if (have.every((p) => Math.abs(p.at - t) > 40) && freeTimes.every((u) => Math.abs(u - t) > 40)) {
+                    freeTimes.push(t);
+                }
+            }
+            if (freeTimes.length < 2) {
+                throw new Check('no stretch of the episode is clear of its points to try a typed time and an added break in');
+            }
+            const [ moveTo, addAt ] = freeTimes;
+            const clockOf = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
             const input = await find('.bk-buttons .bk-time input', null, 'the time box');
             await input.evaluate((el) => { el.focus(); el.select(); });
-            await page.keyboard.type('1:05.5');
+            await page.keyboard.type(clockOf(moveTo));
             await clickText('.bk-buttons button', 'Move there', 'Move there');
-            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - 65.5) < 0.03 && p.status === 'approved'), 'Move there');
+            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(moveTo)) < 0.5 && p.status === 'approved'), 'Move there');
             await page.select('.bk-kind', 'story');
-            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - 65.5) < 0.03 && p.kind === 'story'), 'the kind box');
+            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(moveTo)) < 0.5 && p.kind === 'story'), 'the kind box');
             out.push('a frame later, a typed time and a kind change');
 
             // a break added by hand, then taken away
             const typed = (await page.$$('.bk-buttons .bk-time input'))[1];
             await typed.evaluate((el) => { el.focus(); el.select(); });
-            await page.keyboard.type('2:03.5');
+            await page.keyboard.type(clockOf(addAt));
             await clickText('.bk-buttons button', 'Add a break here', 'Add a break here');
-            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - 123.5) < 0.03 && p.status === 'hand'), 'Add a break here');
+            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(addAt)) < 0.5 && p.status === 'hand'), 'Add a break here');
             await sleep(600);
             await click(await panelButton('Reject'), 'Reject (of the break just added)');
-            d = await waitDetail(key, (x) => !pointsOf(x, third.path).some((p) => Math.abs(p.at - 123.5) < 0.03), 'taking the added break away');
-            out.push('a break added at 2:03.5 and taken away');
+            d = await waitDetail(key, (x) => !pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(addAt)) < 0.5), 'taking the added break away');
+            out.push(`a break added at ${clockOf(addAt)} and taken away`);
 
             // the keys: A approves the point in front of you
             const fourth = (await page.evaluate(() => angular.element(document.querySelector('.breaks-page')).scope().focus));
