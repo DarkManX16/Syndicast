@@ -3602,7 +3602,10 @@ leave it manual so users keep any artwork they replaced themselves.
 
 ### Logo, icons and the guide's own icon (Nov 14, 2026)
 
-The top bar is the full logo (`web/public/syndicast-logo.svg`); the tab has an SVG favicon
+The top bar is the full logo (`web/public/syndicast-logo.svg`, 70px tall: capitals and
+wordmark at least as big as the word it replaced). The top menu and every tab strip are set in
+Bricolage Grotesque (600, `web/public/fonts/`, SIL OFL), which is the wordmark's own font:
+found by overlap with 80 Google Fonts families, 0.84 against 0.76 for the next. The tab has an SVG favicon
 that turns cream in dark tabs (`resources/favicon.svg`, served at `/favicon.svg`), 16 and
 32 px PNGs, `favicon.ico`, a home-screen icon and `site.webmanifest` (no theme colours), all
 static files in `web/public`. `node scripts/make-brand-images.js` makes them from the TV icon

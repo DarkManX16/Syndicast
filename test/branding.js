@@ -41,6 +41,18 @@ module.exports = async function run() {
         suite.check(`${href} is served from a file in the repository`, fs.existsSync(file));
     }
 
+    // --- the logo's size, and the wordmark's font on the menu and the tab strips ---
+    const css = fs.readFileSync(path.join(PUBLIC, 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    suite.check('the logo is 1.75em (70px) tall, as big as the word it replaced', /#syndicast-logo \{\s*height: 1\.75em;/.test(css));
+    suite.check('the menu links sit in #top-menu', /<span id="top-menu">[\s\S]*topMenu\.guide[\s\S]*topMenu\.version[\s\S]*<\/span>\s*<span class="pull-right">/.test(html));
+    suite.check('the menu and every tab strip use Bricolage Grotesque, with the system fonts behind it',
+        /#top-menu,\s*\.nav-tabs \.nav-link \{\s*font-family: 'Bricolage Grotesque', -apple-system/.test(css));
+    const face = css.match(/@font-face \{[^}]*Bricolage Grotesque[^}]*\}/);
+    suite.check('the font is bundled, not fetched from elsewhere', !!face && /url\(fonts\/BricolageGrotesque-600\.woff2\)/.test(face[0]) && !/https?:/.test(face[0]));
+    const woff = fs.readFileSync(path.join(PUBLIC, 'fonts', 'BricolageGrotesque-600.woff2'));
+    suite.check('fonts/BricolageGrotesque-600.woff2 is a woff2 file', woff.slice(0, 4).toString('ascii') === 'wOF2');
+    suite.check('its licence is shipped beside it', /SIL Open Font License/.test(fs.readFileSync(path.join(PUBLIC, 'fonts', 'OFL.txt'), 'utf8')));
+
     // --- the icons ---
     const sizes = { 'favicon-16.png': 16, 'favicon-32.png': 32, 'apple-touch-icon.png': 180, 'icon-192.png': 192, 'icon-512.png': 512 };
     for (const [name, size] of Object.entries(sizes)) {
