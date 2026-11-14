@@ -33,6 +33,12 @@
  *   create-lineup        Time Slots... (at most one short line about kept rows), Create
  *                        Lineup; kept rows stay; saved
  *   filler               a filler list: drag a clip, delete one, Done; saved
+ *   breaks-page          the Breaks page: the scanner's line and Pause switch, Needs a click in
+ *                        next-airing order, a pattern approved and withdrawn (and the weaker
+ *                        line), a show's list stepped through with the frames either side, a
+ *                        nudge, a typed time, a kind, a break added and taken away, "these have
+ *                        no breaks", theatrical on a movie never scanned, Scan next. Refuses a
+ *                        server whose scanner is not paused by hand; changes the copy's breaks
  *   special-day          a date's own Time Slots: add a day, a row of its own shows,
  *                        Create Lineup, Update Channel; Delete on one of its airings
  *                        refused; the day deleted and regenerated clean after. SKIPs

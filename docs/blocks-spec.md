@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-9, through "Next Time", `keyedOn: 'later'` and generated cards); stage 6 (the break-point detector and midrolls) designed Oct 15-26, 2026, not built
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-9, through "Next Time", `keyedOn: 'later'` and generated cards); stage 6 (the break-point detector and midrolls) designed Oct 15-26, 2026; steps 1-3 built, step 4 (the Breaks page) built Nov 14 and awaiting DarkManX16's OK
 
 ## Summary
 
@@ -1440,6 +1440,15 @@ never on the live data folder and never through the server on port 18000.
    the breaks cut out, and would otherwise sit on the list one by one.
    **Proof:** by hand in the preview on the copy, with screenshots; DarkManX16 tries
    it.
+   **Built Nov 14** (NOTES.md, "Step 4 build record"): one line per show, in the order
+   each next airs; the pattern (and the weaker line) approved and withdrawn from the
+   line; the list to check without the episodes that have no breaks found, stepped
+   through a point at a time with the picture either side; nudge, a typed time, a kind,
+   a break added; "these have no breaks"; theatrical per movie, a movie never scanned
+   included; "Scan this show next"; the scanner's mode, log and Pause switch. A few
+   seconds of playback is left for later. **Step 5 must read a record with `noBreaks`,
+   or a theatrical one (its hand points only), as airing nothing from found or approved
+   points.**
 5. **The Midroll plan** (pure): the fifth situation and its empty default, the
    `midrolls` setting and its default, save-time cleanup and warnings,
    `buildMidrollPlan` (points, budget, shares, `minMs`, spacing, the steps
