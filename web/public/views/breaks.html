@@ -1,0 +1,246 @@
+<div class='container breaks-page'>
+    <h5>Breaks</h5>
+
+    <!-- ------------------------------------------------------------ the scanner -->
+    <div class="bk-scanner" ng-if="scanner">
+        <span class="bk-mode" ng-class="'bk-mode-' + scanner.mode">{{scanner.reason}}</span>
+        <span class="small text-muted">
+            this week {{scannedText(scanner.counts.week)}}<span ng-if="scanner.counts.library"> &middot; all {{scannedText(scanner.counts.library)}}</span>
+        </span>
+        <span class="bk-scanner-actions">
+            <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="togglePause()">{{scanner.pausedByHand ? 'Resume' : 'Pause'}}</button>
+            <a href="" class="small" ng-click="ui.details = !ui.details">{{ui.details ? 'Less' : 'Details'}}</a>
+        </span>
+        <div class="bk-details small" ng-if="ui.details">
+            <div ng-if="scanner.current">Scanning: {{scanner.current.title}} <span class="text-muted">({{scanner.current.drive}})</span></div>
+            <div ng-if="scanner.live.length === 0" class="text-muted">No streams are playing.</div>
+            <div ng-repeat="l in scanner.live">
+                Channel {{l.channel}} on {{l.drive}}: pace {{paceText(l.pace)}}<span ng-if="l.held" class="text-muted"> (held by its viewer)</span>
+            </div>
+            <div>Skipping drives: <b>{{scanner.skipDrives.length ? scanner.skipDrives.join(', ') : 'none'}}</b>
+                <span ng-if="scanner.counts.skipped.files > 0" class="text-muted">({{scanner.counts.skipped.files}} files not scanned for it)</span>
+                <input type="text" class="form-control form-control-sm bk-drives" ng-model="ui.drives" placeholder="E:, G:" ng-keydown="$event.key === 'Enter' &amp;&amp; saveDrives()">
+                <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="saveDrives()">Set</button>
+            </div>
+            <div class="bk-log">
+                <div ng-if="scanner.log.length === 0" class="text-muted">Nothing has slowed or paused it.</div>
+                <div ng-repeat="entry in scanner.log.slice(-8).reverse()"><span class="text-muted">{{entry.at | date:'MMM d h:mm a'}}</span> {{entry.text}}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-danger small bk-error" ng-if="error">{{error}}</div>
+    <div class="loader" ng-if="loading"></div>
+
+    <div ng-if="!loading">
+        <!-- ---------------------------------------------------------- filters -->
+        <div class="bk-toolbar">
+            <span class="bk-chips">
+                <button type="button" class="btn btn-sm" ng-class="ui.filter === 'click' ? 'btn-primary' : 'btn-outline-secondary'" ng-click="setFilter('click')">Needs a click <span class="badge badge-light">{{filterCount('click')}}</span></button>
+                <button type="button" class="btn btn-sm" ng-class="ui.filter === 'approved' ? 'btn-primary' : 'btn-outline-secondary'" ng-click="setFilter('approved')">Approved <span class="badge badge-light">{{filterCount('approved')}}</span></button>
+                <button type="button" class="btn btn-sm" ng-class="ui.filter === 'movies' ? 'btn-primary' : 'btn-outline-secondary'" ng-click="setFilter('movies')">Movies <span class="badge badge-light">{{filterCount('movies')}}</span></button>
+                <button type="button" class="btn btn-sm" ng-class="ui.filter === 'all' ? 'btn-primary' : 'btn-outline-secondary'" ng-click="setFilter('all')">All <span class="badge badge-light">{{filterCount('all')}}</span></button>
+            </span>
+            <input type="text" class="form-control form-control-sm bk-search" placeholder="Search shows..." ng-model="ui.search" ng-change="ui.limit = 100">
+        </div>
+
+        <p class="text-muted small" ng-if="visible().length === 0 &amp;&amp; ready">Nothing here.</p>
+        <p class="text-muted small" ng-if="!ready">The scanner is still starting; the list fills in a minute after the server starts.</p>
+
+        <!-- ---------------------------------------------------------- one line per show -->
+        <div class="bk-list">
+            <div class="bk-show" ng-repeat="s in visible() | limitTo: ui.limit track by s.key" ng-class="{'bk-open': openKey === s.key}">
+                <div class="bk-line">
+                    <div class="bk-name">
+                        <a href="" ng-click="toggleOpen(s)" title="Open this show">
+                            <span class="fa" ng-class="openKey === s.key ? 'fa-caret-down' : 'fa-caret-right'"></span>
+                            {{s.name}}
+                        </a>
+                        <span class="badge badge-light text-muted" ng-if="s.kind === 'custom'">custom show</span>
+                        <span class="badge badge-light text-muted" ng-if="s.kind === 'movie'">movie</span>
+                        <span class="badge badge-secondary" ng-if="s.theatrical">theatrical</span>
+                        <div class="bk-meta small text-muted">
+                            {{s.scanned}} of {{s.total}} scanned &middot; <span ng-class="{'text-success': s.thisWeek}">airs {{when(s.nextAt)}}</span>
+                        </div>
+                    </div>
+                    <div class="bk-patterns small">
+                        <div class="bk-pat" ng-if="s.pattern !== null">
+                            <span class="bk-pat-text" title="{{s.pattern}}">{{s.pattern}}</span>
+                            <span class="bk-pat-actions">
+                                <span class="text-success" ng-if="s.approved &amp;&amp; !s.approvedWeaker"><span class="fa fa-check"></span> Approved</span>
+                                <button type="button" class="btn btn-sm btn-primary" ng-if="!(s.approved &amp;&amp; !s.approvedWeaker)" ng-click="pattern(s, 'approve', false)" ng-disabled="busy">Approve</button>
+                                <button type="button" class="btn btn-sm btn-link" ng-if="s.approved" ng-click="pattern(s, 'withdraw')" ng-disabled="busy">Withdraw</button>
+                            </span>
+                        </div>
+                        <div class="bk-pat" ng-if="s.weaker !== null">
+                            <span class="bk-pat-text" title="{{s.weaker}}">{{s.weaker}}</span>
+                            <span class="bk-pat-actions">
+                                <span class="text-success" ng-if="s.approvedWeaker"><span class="fa fa-check"></span> Approved</span>
+                                <button type="button" class="btn btn-sm btn-outline-primary" ng-if="!s.approvedWeaker" ng-click="pattern(s, 'approve', true)" ng-disabled="busy">Approve</button>
+                                <button type="button" class="btn btn-sm btn-link" ng-if="s.approvedWeaker" ng-click="pattern(s, 'withdraw')" ng-disabled="busy">Withdraw</button>
+                            </span>
+                        </div>
+                        <div class="text-muted" ng-if="s.pattern === null &amp;&amp; s.weaker === null &amp;&amp; s.kind !== 'movie'">
+                            {{s.theatrical ? 'breaks only where added by hand' : (s.scanned === 0 ? 'not scanned yet' : 'no pattern')}}
+                        </div>
+                        <div class="text-muted" ng-if="s.kind === 'movie' &amp;&amp; s.scanned === 0 &amp;&amp; !s.theatrical">not scanned yet</div>
+                        <div class="text-muted" ng-if="s.kind === 'movie' &amp;&amp; s.theatrical">breaks only where added by hand</div>
+                    </div>
+                    <div class="bk-actions">
+                        <div class="bk-counts small">
+                            <span class="badge badge-warning" ng-if="s.toCheck > 0" title="Episodes with a point waiting for you">{{s.toCheck}} to check</span>
+                            <span class="text-muted" ng-if="s.noBreaksFound + s.markedNoBreaks > 0" title="No breaks found, or marked as having none">{{s.noBreaksFound + s.markedNoBreaks}} with none</span>
+                            <span class="text-danger" ng-if="s.errors > 0" title="Could not be scanned; tried again each day">{{s.errors}} failed</span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" ng-if="s.kind === 'movie' &amp;&amp; s.moviePath !== null"
+                            ng-click="movieTheatrical(s, s.moviePath, !s.theatrical)" ng-disabled="busy"
+                            title="A theatrical movie is not scanned; it has breaks only where you add them">{{s.theatrical ? 'Not theatrical' : 'Theatrical'}}</button>
+                        <button type="button" class="btn btn-sm" ng-class="scanFirst[s.key] > 0 ? 'btn-secondary' : 'btn-outline-secondary'" ng-click="scanNext(s)" ng-disabled="busy || s.theatrical"
+                            ng-if="s.scanned < s.total || scanFirst[s.key] > 0"
+                            title="Scan this show's files before the rest">{{scanFirst[s.key] > 0 ? 'Next: ' + scanFirst[s.key] + ' left' : 'Scan next'}}</button>
+                    </div>
+                </div>
+
+                <!-- -------------------------------------------------------- the show opened -->
+                <div class="bk-panel" ng-if="openKey === s.key">
+                    <div class="loader" ng-if="!detail"></div>
+                    <div ng-if="detail">
+                        <div class="bk-panel-bar">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" ng-if="s.kind === 'custom'" ng-click="showTheatrical(s, !s.theatrical)" ng-disabled="busy"
+                                title="A whole custom show of shorts that were made for cinemas">{{s.theatrical ? 'Not theatrical' : 'Theatrical show'}}</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" ng-if="detail.episodes.length > 0 &amp;&amp; s.kind !== 'movie'" ng-click="markShowNone()" ng-disabled="busy">No breaks in this show</button>
+                        </div>
+
+                        <!-- ---------------------------------------- movies: theatrical or made for TV -->
+                        <div class="bk-movies" ng-if="movies().length > 0 &amp;&amp; s.kind !== 'movie'">
+                            <div class="bk-section">Movies <span class="text-muted">({{movies().length}})</span></div>
+                            <div class="bk-ep" ng-repeat="e in movies() track by e.path">
+                                <a href="" ng-if="canLook(e)" ng-click="look(e, (e.points | filter: {status: 'found'})[0] || e.points[0])">{{e.name}}</a>
+                                <span ng-if="!canLook(e)">{{e.name}}</span>
+                                <span class="small text-muted">{{clock(e.durationMs / 1000)}}</span>
+                                <span class="small text-muted" ng-if="e.unscanned &amp;&amp; !e.theatrical">not scanned yet</span>
+                                <span class="small text-muted" ng-if="!e.unscanned &amp;&amp; !e.theatrical">{{ (e.points | filter: {status: 'found'}).length }} waiting, {{ (e.points | filter: {status: 'approved'}).length + (e.points | filter: {status: 'hand'}).length }} approved</span>
+                                <span class="small text-muted" ng-if="e.theatrical">breaks only where added by hand</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="movieTheatrical(s, e.path, !e.theatrical)" ng-disabled="busy"
+                                    title="A theatrical movie is not scanned; it has breaks only where you add them">{{e.theatrical ? 'Not theatrical' : 'Theatrical'}}</button>
+                            </div>
+                        </div>
+
+                        <!-- ---------------------------------------- the point in front of you -->
+                        <div class="bk-review" ng-if="todo.length > 0 || focus">
+                            <div class="bk-review-head">
+                                <b ng-if="focusEpisode()">{{focusEpisode().name}}</b>
+                                <span class="small text-muted" ng-if="focusEpisode()">{{clock(focusEpisode().durationMs / 1000)}}</span>
+                                <span class="small text-muted" ng-if="todo.length > 0">&middot; point {{focusIndex() + 1 > 0 ? focusIndex() + 1 : '-'}} of {{todo.length}} waiting</span>
+                                <span class="small text-muted" ng-if="todo.length === 0">&middot; nothing left waiting</span>
+                            </div>
+                            <div class="small text-muted" ng-if="reasonsOf(focus.path).length > 0">{{reasonsOf(focus.path).join('; ')}}</div>
+
+                            <div class="bk-episode-points" ng-if="focusEpisode()">
+                                <a href="" class="bk-pt" ng-repeat="p in focusEpisode().points" ng-click="look(focusEpisode(), p)"
+                                    ng-class="['bk-pt-' + p.status, {'bk-pt-on': focus.at !== null &amp;&amp; (p.at - focus.at) * (p.at - focus.at) < 0.001}]"
+                                    title="{{p.kind}}, {{p.status}}{{p.by ? ' (' + p.by + ')' : ''}}">{{clock(p.at)}} {{p.kind}}<span ng-if="p.status === 'approved' || p.status === 'hand'"> &#10003;</span><span ng-if="p.status === 'rejected'"> &#10005;</span></a>
+                                <span class="small text-muted" ng-if="focusEpisode().points.length === 0">{{focusEpisode().noBreaks ? 'marked as having no breaks' : 'no breaks found'}}</span>
+                            </div>
+
+                            <div class="bk-frames" ng-if="focusPoint()">
+                                <breaks-frame path="focusEpisode().path" t="focusPoint().frames.before" label="before"></breaks-frame>
+                                <breaks-frame path="focusEpisode().path" t="focusPoint().frames.after" label="after"></breaks-frame>
+                            </div>
+                            <div class="small text-muted bk-point-info" ng-if="focusPoint()">
+                                {{focusPoint().kind}} at {{clock(focusPoint().at)}}<span ng-if="focusPoint().black"> &middot; black {{clock(focusPoint().black[0])}}&ndash;{{clock(focusPoint().black[1])}}</span>
+                                &middot; strength {{focusPoint().strength}}<span ng-if="focusPoint().chapterOnly"> &middot; from a chapter only</span><span ng-if="focusPoint().movedFrom !== null"> &middot; moved from {{clock(focusPoint().movedFrom)}}</span>
+                            </div>
+
+                            <div class="bk-buttons" ng-if="focusPoint()">
+                                <button type="button" class="btn btn-sm btn-success" ng-click="approve()" ng-disabled="busy" title="Key: A">Approve</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" ng-click="reject()" ng-disabled="busy" title="Key: R">Reject</button>
+                                <span class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary" ng-click="nudge(-1)" ng-disabled="busy" title="A second earlier (Shift + left arrow)">&laquo; 1s</button>
+                                    <button type="button" class="btn btn-outline-secondary" ng-click="nudge(-0.04)" ng-disabled="busy" title="A frame earlier (left arrow)">&lsaquo; frame</button>
+                                    <button type="button" class="btn btn-outline-secondary" ng-click="nudge(0.04)" ng-disabled="busy" title="A frame later (right arrow)">frame &rsaquo;</button>
+                                    <button type="button" class="btn btn-outline-secondary" ng-click="nudge(1)" ng-disabled="busy" title="A second later (Shift + right arrow)">1s &raquo;</button>
+                                </span>
+                                <span class="bk-time">
+                                    <input type="text" class="form-control form-control-sm" ng-model="entry.time" placeholder="mm:ss" ng-keydown="$event.key === 'Enter' &amp;&amp; setTime()">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="setTime()" ng-disabled="busy">Move there</button>
+                                </span>
+                                <select class="form-control form-control-sm bk-kind" ng-model="kindGS" ng-model-options="{getterSetter: true}" ng-disabled="busy" title="What kind of break this is">
+                                    <option value="opening">opening</option>
+                                    <option value="act">act</option>
+                                    <option value="story">story</option>
+                                    <option value="credits">credits</option>
+                                </select>
+                                <button type="button" class="btn btn-sm btn-link" ng-click="prev()" ng-disabled="todo.length < 2" title="Key: P">Previous</button>
+                                <button type="button" class="btn btn-sm btn-link" ng-click="next()" ng-disabled="todo.length < 2" title="Key: N">Next</button>
+                            </div>
+
+                            <div class="bk-buttons" ng-if="focusEpisode()">
+                                <span class="bk-time">
+                                    <input type="text" class="form-control form-control-sm" ng-model="entry.typed" placeholder="mm:ss" ng-keydown="$event.key === 'Enter' &amp;&amp; addBreak()">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="addBreak()" ng-disabled="busy">Add a break here</button>
+                                </span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="markOneNone(focusEpisode(), !focusEpisode().noBreaks)" ng-disabled="busy">{{focusEpisode().noBreaks ? 'Use its breaks again' : 'This one has no breaks'}}</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" ng-if="focusEpisode().movie || s.kind === 'movie'"
+                                    ng-click="movieTheatrical(s, focusEpisode().path, !focusEpisode().theatrical)" ng-disabled="busy">{{focusEpisode().theatrical ? 'Not theatrical' : 'Theatrical'}}</button>
+                                <span class="small text-muted" ng-if="focusEpisode().noAudio">no audio track: only its chapters offer a break</span>
+                                <span class="small text-muted" ng-if="focusEpisode().error">could not be scanned: {{focusEpisode().error}}</span>
+                            </div>
+                        </div>
+                        <p class="small text-muted" ng-if="todo.length === 0 &amp;&amp; !focus">Nothing here is waiting for you.</p>
+
+                        <!-- ---------------------------------------- the list to check -->
+                        <div class="bk-section" ng-if="detail.toCheck.length > 0">To check <span class="text-muted">({{detail.toCheck.length}})</span></div>
+                        <div class="bk-eps" ng-if="detail.toCheck.length > 0">
+                            <div class="bk-ep" ng-repeat="e in detail.toCheck | limitTo: 60 track by e.path" ng-class="{'bk-ep-on': focus.path === e.path}">
+                                <input type="checkbox" ng-model="ticked[e.path]">
+                                <a href="" ng-click="look(e, (e.points | filter: {status: 'found'})[0])">{{e.name}}</a>
+                                <span class="small text-muted">{{e.reasons.join('; ')}}</span>
+                            </div>
+                            <div class="small text-muted" ng-if="detail.toCheck.length > 60">and {{detail.toCheck.length - 60}} more, in the same order.</div>
+                        </div>
+
+                        <!-- ---------------------------------------- every episode -->
+                        <div class="bk-section">
+                            <a href="" ng-click="ui.allEpisodes = !ui.allEpisodes"><span class="fa" ng-class="ui.allEpisodes ? 'fa-caret-down' : 'fa-caret-right'"></span> All episodes</a>
+                            <span class="text-muted">({{detail.episodes.length}})</span>
+                        </div>
+                        <div ng-if="ui.allEpisodes || tickedPaths().length > 0">
+                            <div class="bk-tickbar small">
+                                <span class="text-muted">Tick:</span>
+                                <a href="" ng-click="tickNothing()">the ones with no breaks found</a> &middot; <a href="" ng-click="tickMarked()">the marked ones</a> &middot; <a href="" ng-click="tickNone()">none</a>
+                                <label class="bk-only"><input type="checkbox" ng-model="ui.onlyNone" ng-change="regroup()"> only those</label>
+                                <button type="button" class="btn btn-sm btn-primary" ng-if="tickedPaths().length > 0" ng-click="markNone()" ng-disabled="busy">
+                                    {{takeBack() ? 'Use their breaks again' : 'These have no breaks'}} ({{tickedPaths().length}})
+                                </button>
+                            </div>
+                            <div class="bk-group" ng-repeat="g in groups track by g.folder">
+                                <div class="bk-folder small" ng-if="groups.length > 1">
+                                    <b>{{g.label}}</b> <span class="text-muted">{{g.episodes.length}}</span>
+                                    <a href="" ng-click="tickGroup(g, true)">tick all</a> &middot; <a href="" ng-click="tickGroup(g, false)">none</a>
+                                </div>
+                                <div class="bk-ep" ng-repeat="e in g.episodes | limitTo: 300 track by e.path" ng-class="{'bk-ep-on': focus.path === e.path}">
+                                    <input type="checkbox" ng-model="ticked[e.path]" ng-if="!e.unscanned">
+                                    <span class="bk-nobox" ng-if="e.unscanned"></span>
+                                    <a href="" ng-if="canLook(e)" ng-click="look(e, (e.points | filter: {status: 'found'})[0] || e.points[0])">{{e.name}}</a>
+                                    <span ng-if="!canLook(e)">{{e.name}}</span>
+                                    <span class="small text-muted">{{clock(e.durationMs / 1000)}}</span>
+                                    <span class="small text-muted" ng-if="e.unscanned &amp;&amp; !e.theatrical">not scanned yet</span>
+                                    <span class="small" ng-if="e.noBreaks"><span class="badge badge-secondary">no breaks</span></span>
+                                    <span class="small badge badge-secondary" ng-if="e.theatrical">theatrical</span>
+                                    <span class="small text-muted" ng-if="!e.noBreaks &amp;&amp; !e.unscanned &amp;&amp; e.points.length === 0 &amp;&amp; !e.error">none found</span>
+                                    <span class="small text-danger" ng-if="e.error">not scanned</span>
+                                    <span class="small text-muted" ng-if="!e.noBreaks &amp;&amp; !e.unscanned &amp;&amp; e.points.length > 0">{{ (e.points | filter: {status: 'approved'}).length + (e.points | filter: {status: 'hand'}).length }} approved, {{(e.points | filter: {status: 'found'}).length}} waiting</span>
+                                </div>
+                                <div class="small text-muted" ng-if="g.episodes.length > 300">the first 300 of {{g.episodes.length}}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="bk-more" ng-if="visible().length > ui.limit">
+            <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="showMore()">Show {{visible().length - ui.limit > 100 ? 100 : visible().length - ui.limit}} more of {{visible().length - ui.limit}}</button>
+        </div>
+    </div>
+</div>

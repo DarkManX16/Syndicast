@@ -93,6 +93,9 @@ const suites = [
     './break-scan-service',
     './io-priority',
     './break-patterns',
+    './break-edit',
+    './breaks-page',
+    './breaks-api',
     './close-browser',
 ];
 

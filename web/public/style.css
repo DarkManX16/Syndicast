@@ -1087,3 +1087,60 @@ div.programming-programs div.list-group-item {
 .nicknames-page .nk-panel-row > td { border-top: 0; }
 .nicknames-page .nk-changes { margin: 6px 0; }
 .nicknames-page .nr-slot-label { flex: 0 0 8rem; }
+
+/* the Breaks page (web/public/views/breaks.html) */
+.breaks-page .bk-scanner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 10px; margin-bottom: 10px; border: 1px solid rgba(128,128,128,0.35); border-radius: 4px; }
+.breaks-page .bk-mode { font-weight: 600; }
+.breaks-page .bk-mode-paused, .breaks-page .bk-mode-off { color: #a94442; }
+.breaks-page .bk-mode-gentle { color: #8a6d3b; }
+.breaks-page .bk-mode-normal { color: #3c763d; }
+.breaks-page .bk-scanner-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.breaks-page .bk-details { flex: 1 1 100%; border-top: 1px solid rgba(128,128,128,0.25); padding-top: 6px; }
+.breaks-page .bk-drives { display: inline-block; width: 7rem; margin: 0 4px; }
+.breaks-page .bk-log { margin-top: 4px; max-height: 9rem; overflow-y: auto; }
+.breaks-page .bk-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.breaks-page .bk-chips .btn { margin-right: 4px; }
+.breaks-page .bk-search { max-width: 16rem; margin-left: auto; }
+.breaks-page .bk-show { border-top: 1px solid rgba(128,128,128,0.25); }
+.breaks-page .bk-line { display: grid; grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) 9rem; gap: 4px 12px; align-items: center; padding: 6px 0; }
+.breaks-page .bk-name { font-weight: 600; overflow-wrap: anywhere; }
+.breaks-page .bk-name a { display: inline-block; }
+.breaks-page .bk-name .badge { font-weight: 400; }
+.breaks-page .bk-pat { display: flex; align-items: center; gap: 8px; }
+.breaks-page .bk-pat-text { flex: 1 1 auto; min-width: 0; }
+.breaks-page .bk-pat-actions { flex: 0 0 auto; white-space: nowrap; }
+.breaks-page .bk-actions { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; text-align: right; }
+.breaks-page .bk-meta { font-weight: 400; }
+.breaks-page .bk-open > .bk-line { background: rgba(128,128,128,0.08); }
+.breaks-page .bk-panel { padding: 8px 4px 14px 22px; }
+.breaks-page .bk-panel-bar { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
+.breaks-page .bk-review { border: 1px solid rgba(128,128,128,0.35); border-radius: 4px; padding: 10px; margin-bottom: 10px; }
+.breaks-page .bk-review-head { margin-bottom: 4px; }
+.breaks-page .bk-episode-points { margin: 4px 0 8px; }
+.breaks-page .bk-pt { display: inline-block; margin: 0 6px 4px 0; padding: 1px 7px; border: 1px solid rgba(128,128,128,0.45); border-radius: 10px; font-size: 85%; color: inherit; text-decoration: none; }
+.breaks-page .bk-pt-on { border-color: #007bff; box-shadow: 0 0 0 1px #007bff; }
+.breaks-page .bk-pt-approved, .breaks-page .bk-pt-hand { background: rgba(60,118,61,0.15); }
+.breaks-page .bk-pt-rejected { text-decoration: line-through; opacity: 0.6; }
+.breaks-page .bk-frames { display: flex; gap: 10px; flex-wrap: wrap; }
+.breaks-page breaks-frame { display: block; flex: 1 1 18rem; max-width: 30rem; min-width: 0; }
+.breaks-page .bk-frame { width: 100%; }
+.breaks-page .bk-frame-box { background: #000; aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; }
+.breaks-page .bk-frame-box img { max-width: 100%; max-height: 100%; display: block; }
+.breaks-page .bk-frame-msg { padding: 8px; text-align: center; }
+.breaks-page .bk-point-info { margin: 4px 0; }
+.breaks-page .bk-buttons { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-top: 6px; }
+.breaks-page .bk-time { display: inline-flex; gap: 4px; align-items: center; }
+.breaks-page .bk-time input { width: 5.5rem; }
+.breaks-page .bk-kind { width: 6.5rem; }
+.breaks-page .bk-section { font-weight: 600; margin: 10px 0 4px; }
+.breaks-page .bk-ep { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; padding: 1px 0; }
+.breaks-page .bk-nobox { display: inline-block; width: 13px; }
+.breaks-page .bk-ep-on { background: rgba(0,123,255,0.1); }
+.breaks-page .bk-folder { margin-top: 6px; }
+.breaks-page .bk-tickbar { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-bottom: 4px; }
+.breaks-page .bk-only { margin: 0; }
+.breaks-page .bk-more { margin: 12px 0; }
+@media (max-width: 900px) {
+    .breaks-page .bk-line { grid-template-columns: 1fr; }
+    .breaks-page .bk-actions { flex-direction: row; align-items: center; justify-content: flex-start; }
+}

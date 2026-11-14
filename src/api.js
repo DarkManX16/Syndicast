@@ -39,6 +39,8 @@ function api(db, channelService, fillerDB, customShowDB, xmltvInterval,  guideSe
     // The break scanner's status and switch (break-scan-api.js).
     if (breakScanService != null) {
         require('./break-scan-api')(router, breakScanService);
+        // The Breaks page: shows, points, "no breaks", theatrical and frames (breaks-api.js).
+        require('./breaks-api')(router, breakScanService, { customShows: () => customShowDB.getAllShowsInfo() });
     }
 
     router.get('/api/version', async (req, res) => {

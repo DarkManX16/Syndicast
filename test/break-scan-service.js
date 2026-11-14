@@ -484,7 +484,7 @@ module.exports = async () => {
             await again.service.building;
             const saved = JSON.parse(fs.readFileSync(path.join(f, 'break-scanner.json'), 'utf8'));
             suite.check('...and an empty list scans every drive again',
-                again.service.queue.some( (e) => e.drive === 'G:' ) && (JSON.stringify(saved) === JSON.stringify( { paused: false, skipDrives: [] } )), JSON.stringify(saved));
+                again.service.queue.some( (e) => e.drive === 'G:' ) && (JSON.stringify(saved) === JSON.stringify( { paused: false, skipDrives: [], scanFirst: [] } )), JSON.stringify(saved));
         }
         {
             const f = path.join(tmp, 'skip-mid');
