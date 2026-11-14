@@ -94,9 +94,10 @@ function oneBreakEach(pts) {
         run = [];
     };
     for (const p of pts.slice().sort( (a, b) => a.at - b.at )) {
-        // A break DarkManX16 placed, moved, approved or rejected himself is his own: it is never read as
-        // the same break as a point beside it (a hand break 6 s from a rejected point would vanish).
-        if ( (p.status === 'hand') || (p.approvedBy === 'owner') ) {
+        // A break DarkManX16 placed himself is his own: it is never read as the same break as a point
+        // beside it (a hand break 6 s from a rejected point would vanish). Points he approved, rejected
+        // or moved still join their neighbour as before, so deciding on a break decides the pair.
+        if (p.status === 'hand') {
             flush();
             out.push(p);
             continue;
