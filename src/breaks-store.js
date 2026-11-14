@@ -135,7 +135,10 @@ function recordFor(breaksDir, key, file, scanResult, now = Date.now) {
         scanner: CURRENT_SCANNER_VERSION,
         chapters: (file.chapters || []).map( (c) => [c.s, c.e, c.t] ),
         points,
-        noBreaks: (old != null) && (old.noBreaks === true) && sameFingerprint(old, file),
+        // "none" carries while it is the same file; a file with no record yet is marked when the whole show was
+        // (DarkManX16, Nov 14: "No breaks in this show" covers files scanned later; one he ticked stays as it is)
+        // (a record that was never scanned - a failed try, a theatrical mark alone - is no record yet)
+        noBreaks: ( (old != null) && (old.scannedAt != null) ) ? ( (old.noBreaks === true) && sameFingerprint(old, file) ) : (show.noBreaks === true),
         error: null,
     };
     if (scanResult.noAudio === true) {

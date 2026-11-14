@@ -150,6 +150,24 @@ module.exports = async () => {
             marked.body.episodes.filter( (e) => e.noBreaks ).map( (e) => e.path ).join() === 'G:\\HD\\e3.mkv,G:\\HD\\e4.mkv');
         const all = await call(router, 'POST', '/api/breaks/none', { body: { key: 'tv.Happy Days', all: true } });
         suite.check('...or every episode of the show', all.body.episodes.every( (e) => e.noBreaks ) && (all.body.line.needsClick === false));
+        suite.check('...and the show is marked as a whole, for files scanned later (Nov 14)',
+            (all.body.line.noBreaksShow === true) && (store.loadShow(breaksDir, 'tv.Happy Days').noBreaks === true));
+        const e99 = 'G:\\HD\\e99.mkv';
+        const lateFile = store.recordFor(breaksDir, 'tv.Happy Days', { path: e99, ratingKey: '99', size: 1000, mtimeMs: 5, durationS: 1500, chapters: [] }, { points: [ pt(706, 'act') ] }, () => state.now);
+        suite.check('...a file scanned afterwards is marked too', lateFile.noBreaks === true);
+        service.index.set(e99, { key: 'tv.Happy Days', record: lateFile });
+        const takenBack = await call(router, 'POST', '/api/breaks/none', { body: { key: 'tv.Happy Days', paths: [ e99 ], value: false } });
+        suite.check('...a ticked episode taken back stays taken back, the show still marked as a whole',
+            (takenBack.body.episodes.find( (e) => e.path === e99 ).noBreaks === false) && (takenBack.body.line.noBreaksShow === true));
+        const wholeBack = await call(router, 'POST', '/api/breaks/none', { body: { key: 'tv.Happy Days', all: true, value: false } });
+        suite.check('...taking the whole show back clears the mark and every episode',
+            (wholeBack.body.line.noBreaksShow === false) && ! store.loadShow(breaksDir, 'tv.Happy Days').noBreaks && wholeBack.body.episodes.every( (e) => ! e.noBreaks ));
+        {
+            const s = store.loadShow(breaksDir, 'tv.Happy Days');
+            delete s.files[e99];
+            store.saveShow(breaksDir, 'tv.Happy Days', s);
+            service.index.delete(e99);
+        }
         const undone = await call(router, 'POST', '/api/breaks/none', { body: { key: 'tv.Happy Days', all: true, value: false } });
         suite.check('...and takes it back', undone.body.episodes.every( (e) => ! e.noBreaks ));
         suite.check('...a request that says which episodes is needed', (await call(router, 'POST', '/api/breaks/none', { body: { key: 'tv.Happy Days' } })).code === 400);

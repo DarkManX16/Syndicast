@@ -1402,12 +1402,20 @@ function makeRunner(opts, page) {
             }
             await clickText('.bk-panel button', 'No breaks in this show', 'No breaks in this show');
             d = await waitDetail(key, (x) => x.episodes.filter((e) => !e.unscanned).every((e) => e.noBreaks), 'No breaks in this show');
+            if (d.line.noBreaksShow !== true) {
+                throw new Check('No breaks in this show did not mark the show as a whole (files scanned later are meant to be marked as they arrive)');
+            }
             if (d.line.toCheck !== 0) {
                 throw new Check(`with every episode marked as having none, ${d.line.toCheck} are still on the list to check`);
             }
             await clickText('.bk-tickbar a', /the marked ones/, 'tick the marked ones');
             await clickText('.bk-tickbar button', /^Use their breaks again/, 'Use their breaks again');
             d = await waitDetail(key, (x) => x.episodes.every((e) => !e.noBreaks), 'Use their breaks again');
+            if (d.line.noBreaksShow !== true) {
+                throw new Check('taking back the ticked episodes cleared the whole-show mark: ticked episodes are meant to stay as they are');
+            }
+            await clickText('.bk-panel button', 'Breaks again in this show', 'Breaks again in this show');
+            d = await waitDetail(key, (x) => x.line.noBreaksShow === false, 'Breaks again in this show');
             if (markedBefore.length > 0) {
                 await fetch(opts.url + '/api/breaks/none', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key, paths: markedBefore }) });
             }

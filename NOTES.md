@@ -7741,7 +7741,11 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
   and hand breaks stay), and taking the mark back lets the approved pattern speak for it
   again. **Step 5's planner must still read a record with `noBreaks`, or a `theatrical` one
   (hand points only), as airing nothing from found or approved points.** (4) "No breaks in
-  this show" marks the scanned episodes only; files scanned later show their points as usual.
+  this show" marks the show as a whole (`noBreaks` on its store file) as well as every
+  scanned episode, so a file with no record yet is marked as it is scanned (DarkManX16,
+  Nov 14; tests first); an episode he ticked stays as he left it, through a rescan or a
+  changed file, and the button, pressed again ("Breaks again in this show"), takes the
+  whole show back.
   (5) Nothing is said when a change is made: the line or list changes instead.
 - **Proof.** The suite 3,469/3,469 (107 new tests, each new behaviour checked by changing the
   code and watching a test fail). The workflow checklist, now twelve with `breaks-page`

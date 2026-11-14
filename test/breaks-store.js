@@ -94,6 +94,27 @@ module.exports = async () => {
         suite.check('...a file that changed drops "this one has none" (a new copy may have its breaks), keeps the rest',
             (newCopy.noBreaks === false) && (newCopy.theatrical === true) && (newCopy.movie === true), JSON.stringify(newCopy));
 
+        // "No breaks in this show" (Nov 14): files with no record yet, scanned later, are marked as they arrive;
+        // an episode he ticked (taken back, here) stays as it is through an unchanged rescan and a changed file.
+        const whole = store.loadShow(breaksDir, 'tv.Whole Show');
+        whole.noBreaks = true;
+        store.saveShow(breaksDir, 'tv.Whole Show', whole);
+        const later = store.recordFor(breaksDir, 'tv.Whole Show', { path: 'G:/ws/new.mkv', ratingKey: '5', size: 10, mtimeMs: 1, durationS: 1500, chapters: [] }, { points: [] }, () => 1);
+        suite.check('a file scanned after "no breaks in this show" is marked as having none',
+            later.noBreaks === true, JSON.stringify(later));
+        const taken = store.loadShow(breaksDir, 'tv.Whole Show');
+        taken.files['G:/ws/new.mkv'].noBreaks = false;
+        store.saveShow(breaksDir, 'tv.Whole Show', taken);
+        const again = store.recordFor(breaksDir, 'tv.Whole Show', { path: 'G:/ws/new.mkv', ratingKey: '5', size: 10, mtimeMs: 1, durationS: 1500, chapters: [] }, { points: [] }, () => 2);
+        const changed = store.recordFor(breaksDir, 'tv.Whole Show', { path: 'G:/ws/new.mkv', ratingKey: '5', size: 11, mtimeMs: 1, durationS: 1500, chapters: [] }, { points: [] }, () => 3);
+        suite.check('...an episode he ticked and took back stays taken back, rescanned unchanged or changed',
+            (again.noBreaks === false) && (changed.noBreaks === false), JSON.stringify([ again.noBreaks, changed.noBreaks ]));
+        const failedFirst = store.recordError(breaksDir, 'tv.Whole Show', { path: 'G:/ws/failed.mkv', ratingKey: '7', size: 10, mtimeMs: 1 }, new Error('x'), () => 1);
+        const afterFail = store.recordFor(breaksDir, 'tv.Whole Show', { path: 'G:/ws/failed.mkv', ratingKey: '7', size: 10, mtimeMs: 1, durationS: 1500, chapters: [] }, { points: [] }, () => 2);
+        suite.check('...a file whose first try failed counts as a file scanned later', (failedFirst.scannedAt === undefined) && (afterFail.noBreaks === true));
+        suite.check('...a show without the mark marks nothing',
+            store.recordFor(breaksDir, 'tv.Other Show', { path: 'G:/os/new.mkv', ratingKey: '6', size: 10, mtimeMs: 1, durationS: 1500, chapters: [] }, { points: [] }, () => 1).noBreaks === false);
+
         const recordError = store.recordError(breaksDir, 'tv.Happy Days', file1Changed, new Error('timed out after 15 minutes'), () => 9600);
         suite.check('a failed scan is recorded without losing the file\'s last good points',
             (recordError.error.message === 'timed out after 15 minutes') && (recordError.points.length === 1));

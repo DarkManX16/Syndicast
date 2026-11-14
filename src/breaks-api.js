@@ -219,6 +219,9 @@ module.exports = function breaksRoutes(router, service, options = {}) {
         }
         for (const [owner, paths] of byOwner) {
             service.updateShow(owner, (show) => {
+                if (paths === null) {
+                    show.noBreaks = value;   // the whole show: files scanned later are marked as they arrive
+                }
                 for (const p of (paths || Object.keys(show.files).filter( (f) => show.files[f].stub !== true ))) {
                     if (show.files[p] != null) {
                         edit.setNoBreaks(show.files[p], value);

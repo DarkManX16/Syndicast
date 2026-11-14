@@ -148,6 +148,7 @@ function lineCore(key, show, name, total = null) {
         approvedWeaker: approved && (show.pattern.weaker === true),
         noBreaksFound: noneFound,
         markedNoBreaks: records.filter( (r) => r.noBreaks === true ).length,
+        noBreaksShow: show.noBreaks === true,
         toCheck: list.length,
         needsClick: ( ! approved && (hasPattern || (weakerFull != null)) && (show.theatrical !== true) ) || (list.length > 0),
     };

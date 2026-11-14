@@ -108,7 +108,7 @@
                         <div class="bk-panel-bar">
                             <button type="button" class="btn btn-sm btn-outline-secondary" ng-if="s.kind === 'custom'" ng-click="showTheatrical(s, !s.theatrical)" ng-disabled="busy"
                                 title="A whole custom show of shorts that were made for cinemas">{{s.theatrical ? 'Not theatrical' : 'Theatrical show'}}</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" ng-if="detail.episodes.length > 0 &amp;&amp; s.kind !== 'movie'" ng-click="markShowNone()" ng-disabled="busy">No breaks in this show</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" ng-if="detail.episodes.length > 0 &amp;&amp; s.kind !== 'movie'" ng-click="markShowNone(s)" ng-disabled="busy">{{s.noBreaksShow ? 'Breaks again in this show' : 'No breaks in this show'}}</button>
                         </div>
 
                         <!-- ---------------------------------------- movies: theatrical or made for TV -->

@@ -426,7 +426,8 @@ module.exports = function ($scope, $timeout, $document, dizquetv) {
         await run( () => dizquetv.breakNone( { key: $scope.openKey, paths, value } ), 'keep');
         $scope.ticked = {};
     };
-    $scope.markShowNone = () => run( () => dizquetv.breakNone( { key: $scope.openKey, all: true } ), 'keep');
+    // The whole show, files scanned later included; pressed again it takes the whole show back.
+    $scope.markShowNone = (line) => run( () => dizquetv.breakNone( { key: $scope.openKey, all: true, value: ! line.noBreaksShow } ), 'keep');
     $scope.markOneNone = (e, value) => run( () => dizquetv.breakNone( { key: $scope.openKey, paths: [ e.path ], value } ), 'advance');
 
     // ---- theatrical -------------------------------------------------------------------------------------------------
