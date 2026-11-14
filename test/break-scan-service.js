@@ -160,6 +160,28 @@ module.exports = async () => {
                 (after['D:\\Sat\\college.mkv'].movie === true) && (after['D:\\Sat\\bugs.mkv'].movie === undefined), JSON.stringify(Object.keys(after)));
         }
 
+        // ---- a file reached under two show keys keeps its one record (review, Nov 13) ----------
+        {
+            const bf = path.join(tmp, 'twokeys');
+            fs.mkdirSync(bf);
+            const bd = path.join(bf, 'breaks');
+            // Scanned in its custom show; now airing soonest on its own, and the file changed.
+            store.saveShow(bd, 'custom.bat', { theatrical: false, pattern: null, files: {
+                'G:\\Bat\\e1.mkv': { ratingKey: '1', size: 999, mtimeMs: 5, durationMs: 22 * MIN, scannedAt: 1, scanner: store.CURRENT_SCANNER_VERSION, chapters: [], points: [], noBreaks: false, error: null },
+            } } );
+            const ch = { number: 1, startTime: new Date(Date.UTC(2026, 9, 28, 0, 0, 0)).toISOString(), programs: [
+                program('Batman: The Animated Series', 'G:\\Bat\\e1.mkv', 22),
+                program('Batman: The Animated Series', 'G:\\Bat\\e1.mkv', 22, { customShowId: 'bat' }),
+            ] };
+            const { service: bs } = rig(bf, { channels: [ ch ] });
+            await bs.init();
+            await bs.buildOnce();
+            await bs.scanOne(bs.queue.find( (e) => e.path === 'G:\\Bat\\e1.mkv' ));
+            const keys = store.listShowKeys(bd).sort().join(',');
+            suite.check('a file scanned again is saved where its record is, not as a second record under the key it aired under first',
+                (keys === 'custom.bat') && (store.loadShow(bd, 'custom.bat').files['G:\\Bat\\e1.mkv'].size === 1000), keys);
+        }
+
         // ---- one file, saved when it finishes ----------------------------------------------
         const hd = service.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' );
         const outcome = await service.scanOne(hd);

@@ -69,13 +69,17 @@ function episode(record) {
  * plays as the show's bumper before the commercials, at the stronger of the two
  * strengths; the earlier point's index is kept in `absorbed`. A later point with
  * no black (a chapter alone) gives way to the latest one with a black.
- * Mid-episode points only: the opening and the credits are read as before
- * (doing the same to openings moved them in about 40 shows on the Nov 12 copy
- * and lost The Incredible Hulk's pattern, none of it checked in the frames).
+ * The opening keeps its own time (doing the same to openings moved them in about
+ * 40 shows on the Nov 12 copy and lost The Incredible Hulk's pattern, none of it
+ * checked in the frames; DarkManX16: leave them as they are), but a point within 15 s
+ * after it joins it: otherwise The Incredible Hulk's 2:27, 10 s after its 2:17
+ * opening, was a midroll right after the titles while the opening's break is off.
  */
 function oneBreakEach(pts) {
     const out = [];
     let run = [];
+    let opening = null;     // the opening, while points within 15 s of it are joining it
+    let openingTail = 0;
     const flush = () => {
         if (run.length === 0) {
             return;
@@ -93,8 +97,16 @@ function oneBreakEach(pts) {
         if ( (p.kind === 'credits') || (p.kind === 'opening') ) {
             flush();
             out.push(p);
+            opening = (p.kind === 'opening') ? p : null;
+            openingTail = p.at;
             continue;
         }
+        if ( (opening !== null) && (run.length === 0) && (p.at - openingTail <= ONE_BREAK_S) ) {
+            opening.absorbed = (opening.absorbed || []).concat( [ p.index ] );
+            openingTail = p.at;
+            continue;
+        }
+        opening = null;
         if ( (run.length > 0) && (p.at - run[run.length - 1].at > ONE_BREAK_S) ) {
             flush();
         }
@@ -478,6 +490,9 @@ function approve(show, now, { weaker = false } = {}) {
     if (show.theatrical === true) {
         return 0;
     }
+    // What an earlier click approved goes back first, so the second line's breaks do not
+    // stay approved after the first line is chosen instead.
+    withdraw(show);
     const groups = [];
     for (const g of showPatterns(show).groups) {
         const p = (weaker && (g.weaker !== null)) ? g.weaker : g.pattern;

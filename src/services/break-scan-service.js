@@ -368,6 +368,7 @@ class BreakScanService {
                 }
             }
         }
+        this.markMovies( [ ...byPath ].map( ([file, { program }]) => ({ path: file, movie: isMovie(program) }) ) );
         const entries = [];
         for (const [file, { program, nextAt }] of byPath) {
             const key = transitions.showKey(program);
@@ -378,7 +379,8 @@ class BreakScanService {
             }
             entries.push( {
                 path: file,
-                key,
+                // A file reached under two show keys has one record, saved again where it is.
+                key: (found != null) ? found.key : key,
                 nextAt,
                 inWeek: nextAt < now + WEEK_MS,
                 drive: paceMeter.driveOf(file),
@@ -387,7 +389,6 @@ class BreakScanService {
                 movie: isMovie(program),
             } );
         }
-        this.markMovies(entries);
         entries.sort( (a, b) => (a.inWeek === b.inWeek) ? (a.nextAt - b.nextAt) : (a.inWeek ? -1 : 1) );
         const counts = { week: { files: 0, scanned: 0 }, library: { files: 0, scanned: 0 }, skipped: { files: 0 } };
         for (const e of entries) {

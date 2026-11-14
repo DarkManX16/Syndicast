@@ -275,6 +275,13 @@ module.exports = async () => {
             patterns.outliers(s).length === 0, JSON.stringify(patterns.outliers(s)));
         const far = patterns.effectivePoints(rec(24.5, [ pt(600, 'act'), pt(616, 'act') ])).map( (p) => p.at );
         suite.check('...points 16 s apart stay two', JSON.stringify(far) === '[600,616]', JSON.stringify(far));
+        // The Incredible Hulk: an opening at 2:17 and a strong black at 2:27 - one break, the
+        // opening's, which keeps its own time; never a midroll 10 s after the titles.
+        const hulk = rec(22, [ pt(137, 'opening', 0.7), pt(147, 'act', 0.85), pt(700, 'act', 0.85), pt(1250, 'credits') ]);
+        const hulkPts = patterns.effectivePoints(hulk);
+        suite.check('...a point within 15 s after the opening joins the opening, which keeps its time',
+            (JSON.stringify(hulkPts.map( (p) => `${p.kind}@${p.at}` )) === '["opening@137","act@700","credits@1250"]')
+            && (JSON.stringify(hulkPts[0].absorbed) === '[1]') && (JSON.stringify(patterns.strongMid(hulk).map( (p) => p.at )) === '[700]'), JSON.stringify(hulkPts.map( (p) => `${p.kind}@${p.at}` )));
     }
 
     // ---- a count from weaker points, approved only by its own click (Nov 13) ------------------
@@ -308,6 +315,11 @@ module.exports = async () => {
         patterns.applyApproved(s, 'F:\\FH\\e8.mkv');
         suite.check('...a later episode is approved by the weaker count it was approved with',
             approvedAts(s.files['F:\\FH\\e8.mkv']) === 'opening@85 act@777', approvedAts(s.files['F:\\FH\\e8.mkv']));
+        s.files['F:\\FH\\e1.mkv'].points[0] = Object.assign( {}, s.files['F:\\FH\\e1.mkv'].points[0], { status: 'approved', approvedBy: 'owner' } );
+        patterns.approve(s, 2);
+        suite.check('...approving the first line after it takes the weaker breaks back off; the owner\'s own approval stays',
+            Object.values(s.files).every( (r) => approvedAts(r) === 'opening@85' ) && (s.pattern.weaker === false)
+            && (s.files['F:\\FH\\e1.mkv'].points[0].approvedBy === 'owner'), JSON.stringify(Object.values(s.files).map(approvedAts)));
         suite.check('a show whose strong points already give breaks offers no second line',
             patterns.weakerLine('Gargoyles', gargoyles()) === null);
     }

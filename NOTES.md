@@ -7658,6 +7658,17 @@ ripper's 5-minute chapters among them.
   - *Full House has real breaks the count does not use.* 15 of 18 sampled
     mid-episode points are clear act breaks, 7 of the 9 weaker than 0.6 among
     them; only 44 of its episodes have a strong one, so it has no pattern.
+    DarkManX16 chose a second line, approved only by its own click: "1 break an
+    episode at different times (weaker points, 121 of 190)". 25 shows on the
+    copy were offered one.
+  - *Review of the branch before merging, Nov 13*, three fixes, each with a
+    test that failed first: a point within 15 s after the opening joins it (The
+    Incredible Hulk's 2:27, 10 s after its 2:17 opening, would have aired as a
+    midroll with the opening's break off); each Approve withdraws the one before
+    it (the weaker breaks stayed approved after choosing the first line); and a
+    rescan saves a file's record under the key it is stored under (a file in a
+    custom show that aired soonest on its own got a second record, and its
+    carried approvals and marks were lost).
   - *Streaming copies with the breaks cut* (96 Happy Days files, 51 Full House)
     sit on the list one by one; step 4 gets a "these have no breaks" action.
   - Batman: 9 of 16 picks clear, 6 unclear, 1 doubtful; Family Guy 21 of 22

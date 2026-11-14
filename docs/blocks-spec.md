@@ -1100,7 +1100,8 @@ breaks; `movie` and `theatrical` always carry. Records scanned before
 rescan.
 
 A file reached under two show keys (an episode in a custom show and in its
-own show) has one record, found by its path wherever it is stored. A file
+own show) has one record, found by its path wherever it is stored, and a
+rescan saves it there again, whichever key it airs under first. A file
 whose size or date changes is scanned again; its old approvals come back as
 `found` points marked "approved before the file changed", so the pattern can
 approve them again in one click.
@@ -1203,11 +1204,12 @@ The main way to approve is **one click per show**.
   approving it would have aired two breaks 5 s apart. Points within 15 s of
   each other are read as one, at the later point, so the card plays as the
   show's own bumper before the commercials, and at the stronger of their
-  strengths; the earlier point is never approved and never listed. The
-  opening is read the same way: where two points fall within 15 s there
-  (Rupert's 1:03 and 1:09, in 63 of 65 episodes), the later one is the
-  opening. Openings stay as they are for now (DarkManX16, Nov 13): the break
-  after the opening is off by default.
+  strengths; the earlier point is never approved and never listed. Openings
+  stay as they are for now (DarkManX16, Nov 13; the break after the opening is
+  off by default): the opening keeps its own time, and a point within 15 s
+  after it joins it (Rupert's 1:03 and 1:09, in 63 of 65 episodes), so it is
+  never read as a mid-episode break just after the titles - The Incredible
+  Hulk's 2:27, 10 s after its 2:17 opening, would otherwise have aired as one.
 - **A second line, from weaker points** (DarkManX16, Nov 13). Full House's one
   mid-episode point is a real act break in 15 of 18 sampled, 7 of the 9 below
   0.6 among them, but only 44 of 190 episodes have a strong one, so "N breaks
@@ -1228,7 +1230,9 @@ The main way to approve is **one click per show**.
   rejections and hand points stay his. Episodes scanned later, and files that
   changed and were scanned again, are approved as they arrive; those that do
   not fit join the list below. DarkManX16 can withdraw a show's pattern approval,
-  which returns its pattern-approved points to `found`.
+  which returns its pattern-approved points to `found`; each click withdraws
+  the one before it first, so choosing the first line after the second takes
+  the weaker breaks back off.
 - **The outliers, listed for DarkManX16 to check:** episodes missing a pattern point,
   or with a different number of strong breaks; episodes of a length with too
   few episodes for a pattern, or with no pattern; chapter-only points in an
