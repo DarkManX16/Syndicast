@@ -115,9 +115,12 @@ function carryApprovals(oldPoints, newPoints, nearS = CARRY_APPROVAL_NEAR_S) {
 }
 
 /*
- * file: { path, ratingKey, size, mtimeMs, durationS, chapters }
+ * file: { path, ratingKey, size, mtimeMs, durationS, chapters, movie }
  * scanResult: break-scan.js's scanFile() result, { points, timings }
- * Saves and returns the new record.
+ * Saves and returns the new record. DarkManX16's marks on the file carry over:
+ * theatrical always (it is about the movie), "this one has none" while the file
+ * is the same one (a new scanner version), not once it changed (a new copy may
+ * have its breaks).
  */
 function recordFor(breaksDir, key, file, scanResult, now = Date.now) {
     const show = loadShow(breaksDir, key);
@@ -132,11 +135,17 @@ function recordFor(breaksDir, key, file, scanResult, now = Date.now) {
         scanner: CURRENT_SCANNER_VERSION,
         chapters: (file.chapters || []).map( (c) => [c.s, c.e, c.t] ),
         points,
-        noBreaks: false,
+        noBreaks: (old != null) && (old.noBreaks === true) && sameFingerprint(old, file),
         error: null,
     };
     if (scanResult.noAudio === true) {
         record.noAudio = true;   // no audio stream: only its chapters can offer a point
+    }
+    if ( (file.movie === true) || ( (old != null) && (old.movie === true) ) ) {
+        record.movie = true;     // a movie, inside a custom show or not: no part of a show's pattern
+    }
+    if ( (old != null) && (old.theatrical === true) ) {
+        record.theatrical = true;
     }
     show.files[file.path] = record;
     // A show whose pattern DarkManX16 approved approves each episode as it arrives

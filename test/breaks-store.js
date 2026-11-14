@@ -81,6 +81,19 @@ module.exports = async () => {
         suite.check('listShowKeys sees every show that has ever been scanned',
             store.listShowKeys(breaksDir).sort().join(',') === 'custom.friday-dcom,tv.Happy Days');
 
+        // DarkManX16's marks through a rescan (Nov 13): "this one has none" while it is the same
+        // file, not once it changed; theatrical and "a movie" always.
+        const marked = store.loadShow(breaksDir, 'custom.friday-dcom');
+        Object.assign(marked.files['G:/movies/dcom1.mkv'], { noBreaks: true, theatrical: true });
+        store.saveShow(breaksDir, 'custom.friday-dcom', marked);
+        const dcom = { path: 'G:/movies/dcom1.mkv', ratingKey: '222', size: 10, mtimeMs: 1, durationS: 5400, chapters: [], movie: true };
+        const same = store.recordFor(breaksDir, 'custom.friday-dcom', dcom, { points: [] }, () => 2);
+        suite.check('a file scanned again unchanged keeps "this one has none", theatrical, and "a movie"',
+            (same.noBreaks === true) && (same.theatrical === true) && (same.movie === true), JSON.stringify(same));
+        const newCopy = store.recordFor(breaksDir, 'custom.friday-dcom', { ...dcom, size: 11, movie: false }, { points: [] }, () => 3);
+        suite.check('...a file that changed drops "this one has none" (a new copy may have its breaks), keeps the rest',
+            (newCopy.noBreaks === false) && (newCopy.theatrical === true) && (newCopy.movie === true), JSON.stringify(newCopy));
+
         const recordError = store.recordError(breaksDir, 'tv.Happy Days', file1Changed, new Error('timed out after 15 minutes'), () => 9600);
         suite.check('a failed scan is recorded without losing the file\'s last good points',
             (recordError.error.message === 'timed out after 15 minutes') && (recordError.points.length === 1));

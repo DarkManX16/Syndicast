@@ -1088,8 +1088,16 @@ pattern) and a record per file, keyed by the file's path:
   chapters: [ [start, end, title], ... ],
   points: [ ... ],
   noBreaks: false,                           // DarkManX16: "this one has none"
-  error: null }                              // the last failure, and when to retry
+  error: null,                               // the last failure, and when to retry
+  movie: true,                               // only on a movie of 40 minutes or more
+  theatrical: true }                         // only on a movie DarkManX16 marked theatrical
 ```
+
+`noBreaks` carries through a rescan of the same file (a new detector
+version) and is dropped when the file changed, since a new copy may have its
+breaks; `movie` and `theatrical` always carry. Records scanned before
+`movie` existed are marked by the scanner as it builds its queue, without a
+rescan.
 
 A file reached under two show keys (an episode in a custom show and in its
 own show) has one record, found by its path wherever it is stored. A file
@@ -1130,6 +1138,18 @@ only where DarkManX16 adds them by hand. Every other movie is treated as TV-made
 a DCOM: scanned, its found points shown, and each needing approval like an
 episode's. A movie has no pattern of its own, so its found points are always
 on the list to check.
+
+**Theatrical is per movie** (DarkManX16, Nov 13). Marking The Lizzie McGuire Movie
+marks that movie wherever it airs (its record carries `theatrical: true`), not
+the custom show it is in: Wizards of Waverly Place: The Movie, a DCOM in the
+same Saturday custom show, keeps its breaks. A whole custom show is marked only
+for one of shorts (Looney Tunes). **A movie inside a custom show is a movie**
+(Nov 13): any item of 40 minutes or more that Plex calls a movie (the length
+the names picker uses for movies), so the Friday custom show of four TV
+movies lists each movie's points instead of reading as a four-episode show
+with "too few to tell", and a custom show of movies and episodes keeps its
+episodes' pattern. The line counts them: *"Saturday movies: 4 TV movies, each
+on the list to check; 1 theatrical movie, breaks only where added by hand."*
 
 #### Show patterns, and approving
 
@@ -1176,6 +1196,17 @@ The main way to approve is **one click per show**.
   *"Hannah Montana, 14 episodes scanned: opening at 2:16-4:42 (14 of 14), 1
   break an episode at different times (14 of 14)"* - and approval approves
   each episode's own.
+- **Two points within 15 s are one break** (DarkManX16, Nov 13). Cheers fades to
+  black, shows its own "Cheers" card for about 4 s, and fades to black again;
+  the detector found both blacks, so "2 breaks an episode" was one break
+  counted twice in 127 of the 130 episodes it fit (frames, Nov 13), and
+  approving it would have aired two breaks 5 s apart. Points within 15 s of
+  each other are read as one, at the later point, so the card plays as the
+  show's own bumper before the commercials, and at the stronger of their
+  strengths; the earlier point is never approved and never listed. The
+  opening is read the same way: where two points fall within 15 s there
+  (Rupert's 1:03 and 1:09, in 63 of 65 episodes), the later one is the
+  opening.
 - **Approve the pattern.** In every scanned episode, the point closest to each
   pattern position (within 45 s) is approved, and for "N breaks an episode",
   the N strong mid-episode points of every episode that has exactly N;
@@ -1186,11 +1217,14 @@ The main way to approve is **one click per show**.
   which returns its pattern-approved points to `found`.
 - **The outliers, listed for DarkManX16 to check:** episodes missing a pattern point,
   or with a different number of strong breaks; episodes of a length with too
-  few episodes for a pattern, or with no pattern; chapter-only points; files
-  with no audio; episodes with no points at all; and every TV-made movie's
-  points. **Stray points in an episode that fits are not listed** (DarkManX16, Nov
-  10): they are never approved, so they never air, and listing them would have
-  put most episodes on the list (768 strays across 52 shows on Nov 9).
+  few episodes for a pattern, or with no pattern; chapter-only points in an
+  episode that does not fit; files with no audio; episodes with no points at
+  all; and every TV-made movie's points. **Stray points in an episode that
+  fits are not listed** (DarkManX16, Nov 10): they are never approved, so they never
+  air, and listing them would have put most episodes on the list (768 strays
+  across 52 shows on Nov 9). A chapter-only point is a stray like any other
+  (Nov 13): 137 of Family Guy's 166 listed episodes fit and were listed only
+  for one.
 - **For each point on the list:** the frame before and after it, a few seconds
   of playback across it, and approve, reject, nudge (by frames or a typed
   mm:ss), change its kind, add a break, or mark the episode as having none.
@@ -1382,6 +1416,10 @@ never on the live data folder and never through the server on port 18000.
 4. **The Breaks page.** The scanner's status and switch, the shows with their
    scan progress and pattern, approve the pattern, the outliers with frames and
    playback, every per-point action, theatrical on movies and custom shows.
+   **"These have no breaks"** (DarkManX16, Nov 13): one action marking many episodes
+   at once, by folder or by a ticked selection on the list, `noBreaks: true`
+   on each: 96 Happy Days and 51 Full House files are streaming copies with
+   the breaks cut out, and would otherwise sit on the list one by one.
    **Proof:** by hand in the preview on the copy, with screenshots; DarkManX16 tries
    it.
 5. **The Midroll plan** (pure): the fifth situation and its empty default, the

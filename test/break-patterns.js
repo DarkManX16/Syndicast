@@ -219,6 +219,64 @@ module.exports = async () => {
             (list.length === 1) && (list[0].reasons[0] === 'a TV movie: 3 points to check (27:58, 53:13, 75:14)'), JSON.stringify(list));
     }
 
+    // ---- theatrical per movie, and movies inside a custom show (Nov 13) ---------------------------
+    {
+        // The Saturday movies: five films of 83-101 minutes in one custom show, one marked theatrical.
+        const movies = (n, mins) => rec(mins, [ pt(40 * 60 + n * 17, 'act', 0.85), pt(65 * 60 - n * 23, 'act', 0.85), pt(mins * 60 - 300, 'credits') ], { movie: true });
+        const s = show( {
+            'D:\\Sat\\First Kid.mp4': movies(1, 101),
+            'D:\\Sat\\Wizards.mp4': movies(2, 94),
+            'D:\\Sat\\Lizzie McGuire.mkv': Object.assign(movies(3, 94), { theatrical: true }),
+            'D:\\Sat\\College Road Trip.mkv': movies(4, 83),
+            'D:\\Sat\\My Date.mp4': movies(5, 89),
+        } );
+        const list = patterns.outliers(s);
+        const line = patterns.patternLine('Saturday movies', s);
+        suite.check('a movie marked theatrical leaves the other movies of its custom show as TV movies',
+            (line === 'Saturday movies: 4 TV movies, each on the list to check; 1 theatrical movie, breaks only where added by hand')
+            && (list.length === 4) && ! list.some( (x) => /Lizzie/.test(x.path) ) && list.every( (x) => /^a TV movie: 2 points to check/.test(x.reasons[0]) ), `${line} ${JSON.stringify(list)}`);
+        suite.check('...movies of a custom show are never a pattern, however alike, and one click approves none of them',
+            (patterns.showPatterns(s).groups.length === 0) && (patterns.approve(s, 1) === 0));
+        // Movies and episodes in one custom show: the episodes keep their pattern, the movie is listed.
+        const mixed = happyDays();
+        mixed.files['D:\\HD\\movie.mkv'] = rec(95, [ pt(1678, 'act'), pt(3193, 'act'), pt(5600, 'credits') ], { movie: true });
+        const mixedList = patterns.outliers(mixed);
+        suite.check('...a movie among a custom show\'s episodes is listed as a movie and leaves their pattern alone',
+            /^Happy Days, 6 episodes scanned: opening near 1:22 \(100%\), act near 11:54 \(100%\), act near 23:00 \(83%\); 1 TV movie, each on the list to check$/.test(patterns.patternLine('Happy Days', mixed))
+            && (mixedList.find( (x) => x.path === 'D:\\HD\\movie.mkv' ).reasons[0] === 'a TV movie: 2 points to check (27:58, 53:13)'), `${patterns.patternLine('Happy Days', mixed)} ${JSON.stringify(mixedList)}`);
+    }
+
+    // ---- two points within 15 s are one break, after the card (Nov 13) ---------------------------
+    {
+        // Cheers: black, the "Cheers" card for about 4 s, black again - in one episode the
+        // first black is the stronger, in another the second.
+        const files = {};
+        const acts = [ [ 640, 1130 ], [ 700, 1090 ], [ 590, 1150 ], [ 660, 1010 ], [ 720, 1180 ], [ 610, 1060 ] ];
+        acts.forEach( ([a, b], i) => {
+            files[`F:\\Cheers\\e${i + 1}.mkv`] = rec(24.5, [
+                pt(133, 'opening', 0.8), pt(a, 'act', (i === 1) ? 0.85 : 0.62), pt(a + 5, 'act', (i === 1) ? 0.45 : 0.85),
+                pt(b, 'act', 0.7), pt(b + 5, 'act', 0.7), pt(1400, 'credits'),
+            ] );
+        } );
+        const s = show(files);
+        const line = patterns.patternLine('Cheers', s);
+        suite.check('Cheers: the black either side of its own card is one break, so it reads "2 breaks an episode", not 4',
+            /opening near 2:13 \(100%\), 2 breaks an episode at different times \(6 of 6\)$/.test(line), line);
+        const eff = patterns.effectivePoints(s.files['F:\\Cheers\\e1.mkv']);
+        suite.check('...the black before the card is kept, by its place, with the break it belongs to',
+            (JSON.stringify(eff.map( (p) => p.index )) === '[0,2,4,5]') && (JSON.stringify(eff[1].absorbed) === '[1]'), JSON.stringify(eff.map( (p) => p.index )));
+        patterns.approve(s, 1000);
+        const e1 = s.files['F:\\Cheers\\e1.mkv'], e2 = s.files['F:\\Cheers\\e2.mkv'];
+        suite.check('...approving it approves the point after the card, so the card plays before the commercials',
+            (approvedAts(e1) === 'opening@133 act@645 act@1135') && (e1.points[1].status === 'found') && (e1.points[3].status === 'found'), approvedAts(e1));
+        suite.check('...at the stronger of the two strengths, so a weaker second black still counts',
+            approvedAts(e2) === 'opening@133 act@705 act@1095', approvedAts(e2));
+        suite.check('...and the black before the card is not a stray on the list',
+            patterns.outliers(s).length === 0, JSON.stringify(patterns.outliers(s)));
+        const far = patterns.effectivePoints(rec(24.5, [ pt(600, 'act'), pt(616, 'act') ])).map( (p) => p.at );
+        suite.check('...points 16 s apart stay two', JSON.stringify(far) === '[600,616]', JSON.stringify(far));
+    }
+
     // ---- no audio, no breaks, chapter-only ----------------------------------------------------
     {
         const s = happyDays();
@@ -230,6 +288,10 @@ module.exports = async () => {
             /^no audio track/.test(of('F:\\HD\\silent.mp4')) && /a chapter-only point at 11:46/.test(of('F:\\HD\\silent.mp4')), of('F:\\HD\\silent.mp4'));
         suite.check('an episode with no breaks found is listed as such',
             /^no breaks found/.test(of('F:\\HD\\blank.mkv')), of('F:\\HD\\blank.mkv'));
+        // Family Guy: 137 of its 166 listed episodes fit, listed only for a weak chapter (Nov 13).
+        s.files['F:\\HD\\e1.mkv'].points.splice(2, 0, pt(900, 'act', 0.15, { chapterOnly: true }));
+        suite.check('a chapter-only point in an episode that fits is a stray, not on the list',
+            ! patterns.outliers(s).some( (x) => x.path === 'F:\\HD\\e1.mkv' ), JSON.stringify(patterns.outliers(s)));
     }
 
     // ---- later episodes, and a file that changed, through the store ------------------------------

@@ -9,7 +9,8 @@
  *
  *   order    every file airing in the next 7 days on any channel, soonest
  *            first, then the rest by next airing. Theatrical shows and movies
- *            are skipped; so is a file with a current record. Files airing
+ *            (a movie marked by itself, in a custom show or not) are skipped;
+ *            so is a file with a current record. Files airing
  *            this week are checked against their size and date (at most once a
  *            day); the rest are trusted until they come into the week.
  *   modes    break-scan-governor.js, fed every 2 s from the pace meter and the
@@ -36,6 +37,7 @@ const transitions = require('../transitions');
 const paceMeter = require('../pace-meter');
 const { ScanGovernor } = require('../break-scan-governor');
 const { DiskPriority } = require('../io-priority');
+const { MOVIE_MIN_MS } = require('../clip-names');
 
 const FIRST_QUEUE_MS = 60 * 1000;
 const QUEUE_EVERY_MS = 30 * 60 * 1000;
@@ -57,6 +59,11 @@ function driveName(d) {
     }
     const s = d.trim();
     return /^[A-Za-z]$/.test(s) ? (s.toUpperCase() + ':') : paceMeter.driveOf(s);
+}
+
+// A movie of 40 minutes or more: shorter "movies" in a custom show are its shorts and episodes.
+function isMovie(program) {
+    return (program.type === 'movie') && (typeof(program.duration) === 'number') && (program.duration >= MOVIE_MIN_MS);
 }
 
 function scannable(program) {
@@ -295,6 +302,35 @@ class BreakScanService {
         return (record != null) && (record.error == null) && (record.scanner === store.CURRENT_SCANNER_VERSION);
     }
 
+    /*
+     * Records scanned before they carried `movie` (every one before Nov 13) are marked
+     * now, without a rescan, so a movie inside a custom show is read as a movie: one
+     * write per show file that has any.
+     */
+    markMovies(entries) {
+        const byKey = new Map();
+        for (const e of entries) {
+            const found = this.index.get(e.path);
+            if (e.movie && (found != null) && (found.record.movie !== true)) {
+                byKey.set(found.key, (byKey.get(found.key) || []).concat( [ e.path ] ));
+            }
+        }
+        for (const [key, paths] of byKey) {
+            try {
+                const show = store.loadShow(this.breaksDir, key);
+                for (const p of paths) {
+                    if (show.files[p] != null) {
+                        show.files[p].movie = true;
+                        this.index.set(p, { key, record: show.files[p] });
+                    }
+                }
+                store.saveShow(this.breaksDir, key, show);
+            } catch (err) {
+                this.log(`Breaks: could not mark the movies of ${key}: ${err.message || err}`);
+            }
+        }
+    }
+
     needsWork(entry, now) {
         const found = this.index.get(entry.path);
         const record = found ? found.record : null;
@@ -335,7 +371,9 @@ class BreakScanService {
         const entries = [];
         for (const [file, { program, nextAt }] of byPath) {
             const key = transitions.showKey(program);
-            if ( (key === null) || this.isTheatrical(key) ) {
+            const found = this.index.get(file);
+            // A theatrical show, or a movie marked theatrical by itself (in a custom show or not).
+            if ( (key === null) || this.isTheatrical(key) || ( (found != null) && (found.record.theatrical === true) ) ) {
                 continue;
             }
             entries.push( {
@@ -346,8 +384,10 @@ class BreakScanService {
                 drive: paceMeter.driveOf(file),
                 title: (program.type === 'episode') ? `${program.showTitle} - ${program.title}` : program.title,
                 ratingKey: (program.ratingKey != null) ? String(program.ratingKey) : null,
+                movie: isMovie(program),
             } );
         }
+        this.markMovies(entries);
         entries.sort( (a, b) => (a.inWeek === b.inWeek) ? (a.nextAt - b.nextAt) : (a.inWeek ? -1 : 1) );
         const counts = { week: { files: 0, scanned: 0 }, library: { files: 0, scanned: 0 }, skipped: { files: 0 } };
         for (const e of entries) {
@@ -510,7 +550,7 @@ class BreakScanService {
                         run: (cmd, args) => this.run(cmd, args),
                         beforeChunk: () => this.beforeChunk(entry),
                     } );
-                const saved = store.recordFor(this.breaksDir, entry.key, Object.assign( {}, file, { durationS, chapters } ), result, this.now);
+                const saved = store.recordFor(this.breaksDir, entry.key, Object.assign( {}, file, { durationS, chapters, movie: entry.movie === true } ), result, this.now);
                 this.index.set(entry.path, { key: entry.key, record: saved });
                 this.verifiedAt.set(entry.path, this.now());
                 this.bumpCounts(entry);

@@ -18,10 +18,20 @@
  *     found by position stays in the pattern either way;
  *   - the list to check leaves out stray points in episodes that fit the
  *     pattern: they are never approved, so they never air.
+ * And of Nov 13:
+ *   - two points within 15 s are one break with the show's own card between
+ *     them (Cheers: black, the "Cheers" card, black), read as the later one, so
+ *     the card plays before the commercials;
+ *   - a chapter-only point in an episode that fits is a stray like any other;
+ *   - theatrical is per movie: a record carries `theatrical: true`, so marking one
+ *     movie leaves the rest of its custom show alone;
+ *   - a movie inside a custom show (a record with `movie: true`) is a movie: no
+ *     part of the show's pattern, its points always on the list to check.
  */
 const { FILE_START_S, constants: detectConstants } = require('./break-detect');
 
 const SPAN_S = 45;                  // a position group, and how near a point must be to it
+const ONE_BREAK_S = 15;             // points this close are one break, a card between them
 const MIN_EPISODES = 3;
 const LENGTH_TOLERANCE = 1.15;      // a running-length group spans at most 15%
 const STRONG = 0.6;                 // a mid-episode point counted by "N breaks an episode"
@@ -41,21 +51,69 @@ function clock(s) {
 
 function usable(record) {
     return (record != null) && (record.error == null) && Array.isArray(record.points)
-        && (record.durationMs > 0) && (record.noBreaks !== true);
+        && (record.durationMs > 0) && (record.noBreaks !== true) && (record.theatrical !== true);
+}
+
+// An episode of the show: a movie in a custom show has no part in its pattern.
+function episode(record) {
+    return usable(record) && (record.movie !== true);
 }
 
 /*
- * The record's points as step 3 reads them: the first 10 s dropped, and the
- * earliest remaining opening-or-act point within the first 3 minutes made the
- * opening (any other `opening` becomes an act). Each keeps `index`, its place in
- * record.points, so an approval lands on the stored point.
+ * Two points within 15 s are one break (DarkManX16, Nov 13): Cheers fades to black,
+ * shows its own "Cheers" card for about 4 s, and fades to black again, and the
+ * detector finds both blacks. The break is read as the later point, so the card
+ * plays as the show's bumper before the commercials, at the stronger of the two
+ * strengths; the earlier point's index is kept in `absorbed`. A later point with
+ * no black (a chapter alone) gives way to the latest one with a black.
+ * Mid-episode points only: the opening and the credits are read as before
+ * (doing the same to openings moved them in about 40 shows on the Nov 12 copy
+ * and lost The Incredible Hulk's pattern, none of it checked in the frames).
+ */
+function oneBreakEach(pts) {
+    const out = [];
+    let run = [];
+    const flush = () => {
+        if (run.length === 0) {
+            return;
+        }
+        const blacks = run.filter( (p) => p.black != null );
+        const keep = blacks.length ? blacks[blacks.length - 1] : run[run.length - 1];
+        if (run.length > 1) {
+            keep.strength = Math.max(...run.map( (p) => p.strength || 0 ));
+            keep.absorbed = run.filter( (p) => p !== keep ).map( (p) => p.index );
+        }
+        out.push(keep);
+        run = [];
+    };
+    for (const p of pts.slice().sort( (a, b) => a.at - b.at )) {
+        if ( (p.kind === 'credits') || (p.kind === 'opening') ) {
+            flush();
+            out.push(p);
+            continue;
+        }
+        if ( (run.length > 0) && (p.at - run[run.length - 1].at > ONE_BREAK_S) ) {
+            flush();
+        }
+        run.push(p);
+    }
+    flush();
+    return out.sort( (a, b) => a.at - b.at );
+}
+
+/*
+ * The record's points as step 3 reads them: the first 10 s dropped, the earliest
+ * remaining opening-or-act point within the first 3 minutes made the opening (any
+ * other `opening` becomes an act), and mid-episode points within 15 s of each
+ * other read as one. Each keeps `index`, its place in record.points, so an
+ * approval lands on the stored point.
  */
 function effectivePoints(record, windowS = OPENING_WINDOW_S) {
     const pts = (record.points || []).map( (p, index) => Object.assign( {}, p, { index } ) )
         .filter( (p) => p.at >= FILE_START_S );
     const candidates = pts.filter( (p) => ( (p.kind === 'opening') || (p.kind === 'act') ) && (p.at <= windowS) );
     const opening = candidates.length ? candidates.reduce( (a, b) => (b.at < a.at ? b : a) ) : null;
-    return pts.map( (p) => {
+    return oneBreakEach( pts.map( (p) => {
         if (p === opening) {
             return Object.assign(p, { kind: 'opening' });
         }
@@ -63,7 +121,7 @@ function effectivePoints(record, windowS = OPENING_WINDOW_S) {
             return Object.assign(p, { kind: 'act' });
         }
         return p;
-    } );
+    } ) );
 }
 
 // Mid-episode points a midroll could use, and the strong ones among them.
@@ -237,8 +295,18 @@ function groupPattern(group) {
     return chosen;
 }
 
+// The show's scanned episodes (its movies and theatrical items left out).
 function scanned(show) {
-    return Object.entries(show.files || {}).filter( ([, r]) => usable(r) );
+    return Object.entries(show.files || {}).filter( ([, r]) => episode(r) );
+}
+
+// A custom show's movies: { tv: TV-made ones scanned, theatrical }.
+function moviesOf(show) {
+    const recs = Object.values(show.files || {}).filter( (r) => (r != null) && (r.movie === true) );
+    return {
+        tv: recs.filter( (r) => usable(r) ).length,
+        theatrical: recs.filter( (r) => r.theatrical === true ).length,
+    };
 }
 
 /*
@@ -267,6 +335,14 @@ function patternLine(name, show, total = null) {
     if (show.theatrical === true) {
         return `${name}: theatrical, breaks only where added by hand`;
     }
+    const m = moviesOf(show);
+    const movies = [
+        m.tv ? `${m.tv} TV movie${ (m.tv === 1) ? '' : 's' }, each on the list to check` : null,
+        m.theatrical ? `${m.theatrical} theatrical movie${ (m.theatrical === 1) ? '' : 's' }, breaks only where added by hand` : null,
+    ].filter( (c) => c !== null );
+    if ( (n === 0) && (movies.length > 0) ) {
+        return `${name}: ${movies.join('; ')}`;
+    }
     const groups = showPatterns(show).groups;
     const several = groups.length > 1;
     const clauses = groups.map( (g) => {
@@ -284,7 +360,7 @@ function patternLine(name, show, total = null) {
         }
         return label + parts.join(', ');
     } );
-    return `${head}: ${clauses.join('; ')}`;
+    return `${head}: ${clauses.concat(movies).join('; ')}`;
 }
 
 // The approved pattern's group a record belongs to, by its running length.
@@ -307,7 +383,7 @@ function approvePoint(record, p, kind) {
  * when it has exactly N. Returns { fits, approved }.
  */
 function applyToRecord(approved, record) {
-    if (! usable(record)) {
+    if (! episode(record)) {
         return { fits: false, approved: 0 };
     }
     const g = groupFor(approved, record);
@@ -395,7 +471,8 @@ function applyApproved(show, path) {
 
 /*
  * The list for DarkManX16 to check: [{ path, reasons: [...] }]. Episodes that fit the
- * pattern are left out, stray points and all; a TV movie always lists its points.
+ * pattern are left out, stray points and chapter-only points and all; a TV movie
+ * always lists its points, under its own movie key or inside a custom show.
  * `isMovie`: the show key is a movie's (movie.<title>), which has no pattern.
  */
 function outliers(show, isMovie = false) {
@@ -403,14 +480,12 @@ function outliers(show, isMovie = false) {
         return [];
     }
     const out = [];
-    const all = Object.entries(show.files || {}).filter( ([, r]) => (r != null) && (r.error == null) && Array.isArray(r.points) && (r.noBreaks !== true) );
-    if (isMovie) {
-        for (const [path, rec] of all) {
-            const pts = effectivePoints(rec).filter( (p) => p.kind !== 'credits' );
-            out.push( { path, reasons: [ pts.length ? `a TV movie: ${pts.length} point${ (pts.length === 1) ? '' : 's' } to check (${pts.map( (p) => clock(p.at) ).join(', ')})` : 'a TV movie with no breaks found' ] } );
-        }
-        return out;
+    const listed = Object.entries(show.files || {}).filter( ([, r]) => (r != null) && (r.error == null) && Array.isArray(r.points) && (r.noBreaks !== true) && (r.theatrical !== true) );
+    for (const [path, rec] of listed.filter( ([, r]) => isMovie || (r.movie === true) )) {
+        const pts = effectivePoints(rec).filter( (p) => p.kind !== 'credits' );
+        out.push( { path, reasons: [ pts.length ? `a TV movie: ${pts.length} point${ (pts.length === 1) ? '' : 's' } to check (${pts.map( (p) => clock(p.at) ).join(', ')})` : 'a TV movie with no breaks found' ] } );
     }
+    const all = isMovie ? [] : listed.filter( ([, r]) => r.movie !== true );
     const pattern = (show.pattern != null) ? show.pattern : { groups: showPatterns(show).groups.filter( (g) => g.pattern !== null ).map( (g) => Object.assign( { minMs: g.minMs, maxMs: g.maxMs }, g.pattern ) ) };
     const sizes = lengthGroups(all.filter( ([, r]) => r.durationMs > 0 ));
     for (const [path, rec] of all) {
@@ -419,6 +494,7 @@ function outliers(show, isMovie = false) {
             reasons.push('no audio track, so only its chapters can offer a break');
         }
         const g = groupFor(pattern, rec);
+        const fit = (g !== null) && fits(g, rec);
         const w = (g && g.openingWindowS) || OPENING_WINDOW_S;
         const pts = effectivePoints(rec, w).filter( (p) => p.kind !== 'credits' );
         if (pts.length === 0) {
@@ -447,7 +523,7 @@ function outliers(show, isMovie = false) {
                 }
             }
         }
-        for (const p of pts) {
+        for (const p of (fit ? [] : pts)) {
             if ( (p.black == null) && (p.status === 'found') ) {
                 reasons.push(`a chapter-only point at ${clock(p.at)}`);
             }
@@ -463,5 +539,5 @@ function outliers(show, isMovie = false) {
 module.exports = {
     effectivePoints, midPoints, strongMid, openingWindow, lengthGroups, positionGroups, countPattern, groupPattern,
     showPatterns, patternLine, approve, withdraw, applyApproved, outliers, fits, clock,
-    constants: { SPAN_S, MIN_EPISODES, LENGTH_TOLERANCE, STRONG, EDGE_S, LONG_OPENING_WINDOW_S, LONG_OPENING_MIN_MS },
+    constants: { SPAN_S, ONE_BREAK_S, MIN_EPISODES, LENGTH_TOLERANCE, STRONG, EDGE_S, LONG_OPENING_WINDOW_S, LONG_OPENING_MIN_MS },
 };

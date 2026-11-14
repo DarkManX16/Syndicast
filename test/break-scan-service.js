@@ -125,6 +125,41 @@ module.exports = async () => {
         suite.check('how much is scanned is counted for the week and the whole library',
             JSON.stringify(service.counts) === JSON.stringify( { week: { files: 3, scanned: 0 }, library: { files: 5, scanned: 0 }, skipped: { files: 0 } } ), JSON.stringify(service.counts));
 
+        // ---- movies in a custom show, theatrical by themselves (Nov 13) ------------------------
+        {
+            const mf = path.join(tmp, 'movies');
+            fs.mkdirSync(mf);
+            const md = path.join(mf, 'breaks');
+            const key = 'custom.sat';
+            const old = { ratingKey: '1', size: 1000, mtimeMs: 5, durationMs: 94 * MIN, scannedAt: 1, scanner: store.CURRENT_SCANNER_VERSION, chapters: [], points: [], noBreaks: false, error: null };
+            store.saveShow(md, key, { theatrical: false, pattern: null, files: {
+                'D:\\Sat\\lizzie.mkv': Object.assign( {}, old, { theatrical: true } ),
+                'D:\\Sat\\wizards.mp4': Object.assign( {}, old ),
+            } } );
+            const movie = (title, file, minutes) => program(title, file, minutes, { type: 'movie', title, customShowId: 'sat' });
+            const ch = { number: 1, startTime: new Date(Date.UTC(2026, 9, 28, 0, 0, 0)).toISOString(), programs: [
+                movie('The Lizzie McGuire Movie', 'D:\\Sat\\lizzie.mkv', 94),
+                movie('Wizards of Waverly Place: The Movie', 'D:\\Sat\\wizards.mp4', 94),
+                movie('College Road Trip', 'D:\\Sat\\college.mkv', 83),
+                movie('Baseball Bugs', 'D:\\Sat\\bugs.mkv', 7),
+            ] };
+            const { service: ms } = rig(mf, { channels: [ ch ] });
+            await ms.init();
+            await ms.buildOnce();
+            const queued = ms.queue.map( (e) => path.win32.basename(e.path) ).sort().join(',');
+            // (wizards.mp4 is scanned, and queued only for this week's size-and-date check)
+            suite.check('a movie marked theatrical by itself is never queued; the rest of its custom show is',
+                queued === 'bugs.mkv,college.mkv,wizards.mp4', queued);
+            const saved = store.loadShow(md, key).files;
+            suite.check('...a movie scanned before records carried "movie" is marked as one, without a rescan',
+                (saved['D:\\Sat\\wizards.mp4'].movie === true) && (saved['D:\\Sat\\lizzie.mkv'].theatrical === true), JSON.stringify(saved['D:\\Sat\\wizards.mp4']));
+            await ms.scanOne(ms.queue.find( (e) => /college/.test(e.path) ));
+            await ms.scanOne(ms.queue.find( (e) => /bugs/.test(e.path) ));
+            const after = store.loadShow(md, key).files;
+            suite.check('...a movie scanned now is saved as a movie; a 7-minute short in the same custom show is not',
+                (after['D:\\Sat\\college.mkv'].movie === true) && (after['D:\\Sat\\bugs.mkv'].movie === undefined), JSON.stringify(Object.keys(after)));
+        }
+
         // ---- one file, saved when it finishes ----------------------------------------------
         const hd = service.queue.find( (e) => e.path === 'G:\\HD\\s01e01.mkv' );
         const outcome = await service.scanOne(hd);
