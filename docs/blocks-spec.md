@@ -1,6 +1,6 @@
 # Blocks — Design Spec
 
-Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-9, through "Next Time", `keyedOn: 'later'` and generated cards); stage 6 (the break-point detector and midrolls) designed Oct 15-26, 2026; steps 1-3 built, step 4 (the Breaks page) built Nov 14 and awaiting DarkManX16's OK
+Syndicast · `blocks` branch · Status: stages 1-4 built; stage 5 (transitions) designed Oct 1, 2026, built in full (steps 1-9, through "Next Time", `keyedOn: 'later'` and generated cards); stage 6 (the break-point detector and midrolls) designed Oct 15-26, 2026; steps 1-3 built, step 4 (the Breaks page) built and merged Nov 14
 
 ## Summary
 

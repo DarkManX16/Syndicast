@@ -7686,7 +7686,7 @@ ripper's 5-minute chapters among them.
   - Batman: 9 of 16 picks clear, 6 unclear, 1 doubtful; Family Guy 21 of 22
     clear; Gargoyles 14 of 18; Hannah Montana 14 of 14.
 
-#### Step 4 build record: the Breaks page (`midrolls-step4`, built Nov 14, not merged)
+#### Step 4 build record: the Breaks page (merged into blocks Nov 14, d5253fa)
 
 `#!/breaks`, "Breaks" in the top menu: `web/public/views/breaks.html`,
 `web/controllers/breaks.js`, a `breaks-frame` directive, `src/breaks-page.js` (pure: a
@@ -7747,12 +7747,16 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
   changed file, and the button, pressed again ("Breaks again in this show"), takes the
   whole show back.
   (5) Nothing is said when a change is made: the line or list changes instead.
-- **Proof.** The suite 3,469/3,469 (107 new tests, each new behaviour checked by changing the
+- **Proof.** The suite 3,477/3,477 (115 new tests, each new behaviour checked by changing the
   code and watching a test fail). The workflow checklist, now twelve with `breaks-page`
   (the Breaks page by real clicks and keys), 12/12 on the final code (7:30am Nov 14), on a copy taken at 7:09am, a
   scratch server on 18210 with its scanner paused by hand and E: skipped (the page's
   own workflow found two more bugs on earlier runs, below); the page's own
-  Pause / Resume click is made with every drive skipped. A fresh review of the branch
+  Pause / Resume click is made with every drive skipped. **On the merged result
+  (Nov 14, a copy of 11:15am, a scratch server from the main checkout on 18212):**
+  3,477/3,477 and 12/12 workflows; the first full run had one `breaks-page` failure (the
+  show's panel did not open on a click right after `special-day`), which did not come back
+  in four more runs of it, one of them the whole list. A fresh review of the branch
   found nine things, all fixed or answered (the scanner's index kept a movie's deleted
   theatrical mark, a file kept under another key, one show's answer replacing another's
   open panel, a pattern's approvals surviving "no breaks", an empty drives box un-skipping
