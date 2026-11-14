@@ -58,6 +58,8 @@ module.exports = async () => {
         happy['G:\\HD\\e6.mkv'] = rec(25.5, [ pt(74, 'opening'), pt(300, 'act', 0.4), pt(706, 'act') ]);
         happy['G:\\HD\\e7.mkv'] = rec(25.5, []);
         store.saveShow(breaksDir, 'tv.Happy Days', { theatrical: false, pattern: null, files: happy });
+        // Twitches: scanned as a movie of its own, and now also inside a custom show - one record, kept under movie.Twitches
+        store.saveShow(breaksDir, 'movie.Twitches', { theatrical: false, pattern: null, files: { 'E:\\Movies\\twitches.mkv': rec(88, [ pt(1678, 'act'), pt(3193, 'act') ], { movie: true }) } });
         store.saveShow(breaksDir, 'movie.First Kid', { theatrical: false, pattern: null, files: { 'E:\\Movies\\firstkid.mkv': rec(90, [ pt(1600, 'act'), pt(3000, 'act') ], { movie: true }) } });
 
         // Cheers airs first, Happy Days later today, Gargoyles next week, and one show not at all
@@ -69,6 +71,7 @@ module.exports = async () => {
             program('Gargoyles', 'F:\\Garg\\e1.mkv', 24 * 60 * 8),
             program('First Kid', 'E:\\Movies\\firstkid.mkv', 90, { type: 'movie', title: 'First Kid', season: undefined, episode: undefined }),
             program('College Road Trip', 'E:\\Movies\\crt.mkv', 90, { type: 'movie', title: 'College Road Trip', season: undefined, episode: undefined }),
+            program('Twitches', 'E:\\Movies\\twitches.mkv', 88, { type: 'movie', title: 'Twitches', customShowId: 'abc', season: undefined, episode: undefined }),
         ] };
         const service = new BreakScanService( {
             folder,
@@ -167,6 +170,37 @@ module.exports = async () => {
         await call(router, 'POST', '/api/breaks/theatrical', { body: { key: 'tv.Happy Days', value: false } });
         clearTimeout(service.soonTimer);
 
+        // ---- a file whose record is kept under another show's key ------------------------------------------
+        const tw = 'E:\\Movies\\twitches.mkv';
+        const customLine = (await call(router, 'GET', '/api/breaks/shows')).body.shows.find( (s) => s.key === 'custom.abc' );
+        suite.check('a custom show\'s movie scanned under its own key counts as scanned for the custom show',
+            (customLine.scanned === 1) && (customLine.total === 1) && (customLine.movieFiles === 1), JSON.stringify(customLine));
+        const customOpen = await call(router, 'GET', '/api/breaks/show', { query: { key: 'custom.abc' } });
+        suite.check('...and is listed with its points, not as "not scanned yet"',
+            (customOpen.body.episodes.length === 1) && (customOpen.body.episodes[0].unscanned === false) && (customOpen.body.episodes[0].points.length === 2) && (customOpen.body.episodes[0].elsewhere === 'movie.Twitches'));
+        const rej = await call(router, 'POST', '/api/breaks/point', { body: { key: 'custom.abc', path: tw, index: 0, action: 'reject' } });
+        suite.check('a point acted on from the custom show lands on the record where it is kept',
+            (rej.code === 200) && (store.loadShow(breaksDir, 'movie.Twitches').files[tw].points[0].status === 'rejected') && ! fs.existsSync(store.showFile(breaksDir, 'custom.abc')));
+        const th = await call(router, 'POST', '/api/breaks/theatrical', { body: { key: 'custom.abc', path: tw } });
+        suite.check('...so does a theatrical mark, and no stub is made under the custom show',
+            (th.code === 200) && (store.loadShow(breaksDir, 'movie.Twitches').files[tw].theatrical === true) && ! fs.existsSync(store.showFile(breaksDir, 'custom.abc')));
+        await call(router, 'POST', '/api/breaks/theatrical', { body: { key: 'custom.abc', path: tw, value: false } });
+        clearTimeout(service.soonTimer);
+        const nn = await call(router, 'POST', '/api/breaks/none', { body: { key: 'custom.abc', paths: [ tw ] } });
+        suite.check('...and "no breaks"', (nn.code === 200) && (store.loadShow(breaksDir, 'movie.Twitches').files[tw].noBreaks === true));
+        await call(router, 'POST', '/api/breaks/none', { body: { key: 'custom.abc', paths: [ tw ], value: false } });
+
+        // ---- a mark taken back lets the approved pattern speak for the episode again -------------------------
+        await call(router, 'POST', '/api/breaks/pattern', { body: { key: 'tv.Happy Days', action: 'approve' } });
+        const e1 = 'G:\\HD\\e1.mkv';
+        await call(router, 'POST', '/api/breaks/none', { body: { key: 'tv.Happy Days', paths: [ e1 ] } });
+        const released = store.loadShow(breaksDir, 'tv.Happy Days').files[e1].points.filter( (p) => p.status === 'approved' ).length;
+        await call(router, 'POST', '/api/breaks/none', { body: { key: 'tv.Happy Days', paths: [ e1 ], value: false } });
+        const again = store.loadShow(breaksDir, 'tv.Happy Days').files[e1].points.filter( (p) => p.status === 'approved' ).length;
+        suite.check('"no breaks" on an episode the pattern approved sends its points back to found; taking it back approves them again',
+            (released === 0) && (again > 0), JSON.stringify([ released, again ]));
+        await call(router, 'POST', '/api/breaks/pattern', { body: { key: 'tv.Happy Days', action: 'withdraw' } });
+
         // ---- a movie never scanned (College Road Trip) -----------------------------------------------
         const crt = 'E:\\Movies\\crt.mkv';
         const crtLine = (await call(router, 'GET', '/api/breaks/shows')).body.shows.find( (s) => s.key === 'movie.College Road Trip' );
@@ -183,6 +217,8 @@ module.exports = async () => {
         clearTimeout(service.soonTimer);
         suite.check('...marked back, the mark goes and nothing else is left of it',
             (unmarked2.body.line.theatrical === false) && (store.loadShow(breaksDir, 'movie.College Road Trip').files[crt] === undefined));
+        suite.check('...and the scanner no longer reads the movie as marked: it is queued again',
+            ! service.index.has(crt) && ( await service.buildOnce(), service.queue.some( (e) => e.path === crt ) ));
         const strange = await call(router, 'POST', '/api/breaks/theatrical', { body: { key: 'movie.College Road Trip', path: 'E:\\Movies\\other.mkv' } });
         suite.check('...a file the show does not carry cannot be marked', strange.code === 400);
 

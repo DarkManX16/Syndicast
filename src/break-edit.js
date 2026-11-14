@@ -111,9 +111,18 @@ function addPoint(record, at, kind = 'act') {
     return { ok: true, index: points.findIndex( (p) => p.at === at ) };
 }
 
+// What a pattern approved on a record goes back to found when the record is marked: the pattern no longer
+// speaks for it. DarkManX16's own approvals and hand points stay his.
+function releasePatternPoints(record) {
+    record.points = (record.points || []).map( (p) => ( (p.status === 'approved') && (p.approvedBy === 'pattern') ) ? Object.assign( {}, p, { status: 'found', approvedBy: null } ) : p );
+}
+
 // "This one has none" (a streaming copy with its breaks cut out).
 function setNoBreaks(record, value) {
     record.noBreaks = (value === true);
+    if (record.noBreaks) {
+        releasePatternPoints(record);
+    }
     return { ok: true };
 }
 
@@ -121,6 +130,7 @@ function setNoBreaks(record, value) {
 function setTheatrical(record, value) {
     if (value === true) {
         record.theatrical = true;
+        releasePatternPoints(record);
     } else {
         delete record.theatrical;
     }

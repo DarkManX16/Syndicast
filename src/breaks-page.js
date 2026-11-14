@@ -170,6 +170,8 @@ function listOf(key, show, pattern = patterns.patternOf(show)) {
 function lineFor(core, info = {}, now = Date.now()) {
     const nextAt = (info.nextAt != null) ? info.nextAt : null;
     return Object.assign( {}, core, {
+        // files kept under another show's key count as scanned here too
+        scanned: core.scanned + (info.elsewhere || 0),
         total: Math.max(core.total, info.total || 0),
         moviePath: core.moviePath || ( (core.kind === 'movie') && info.paths && info.paths[0] ) || null,
         movieFiles: Math.max(info.movies || 0, ((core.movies || {}).tv || 0) + ((core.movies || {}).theatrical || 0)),
@@ -222,7 +224,16 @@ function detail(key, show, name, names = () => null, info = {}, now = Date.now()
             all.find( (e) => e.path === file ).unscanned = true;
         }
     }
-    const known = new Set(Object.keys(show.files || {}));
+    // Files of this show whose records are kept under another show's key: shown with their points, acted on there.
+    for (const f of (info.elsewhere || [])) {
+        const r = f.record;
+        if ( (r != null) && (r.stub !== true) ) {
+            const e = episodeOf( [ f.path, r ] );
+            e.elsewhere = f.key;
+            all.push(e);
+        }
+    }
+    const known = new Set(Object.keys(show.files || {}).concat( (info.elsewhere || []).map( (f) => f.path ) ));
     for (const f of (info.files || [])) {
         if ( ! known.has(f.path) ) {
             const a = names(f.path);
@@ -232,7 +243,8 @@ function detail(key, show, name, names = () => null, info = {}, now = Date.now()
     all.sort( (a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name, undefined, { numeric: true }) );
     const reasons = new Map(listOf(key, show, pattern).map( (o) => [ o.path, o.reasons ] ));
     const toCheck = all.filter( (e) => reasons.has(e.path) ).map( (e) => Object.assign( {}, e, { reasons: reasons.get(e.path) } ) );
-    return { line: lineFor(core, info, now), toCheck, episodes: all };
+    const scannedElsewhere = (info.elsewhere || []).filter( (f) => (f.record != null) && (f.record.error == null) && Array.isArray(f.record.points) && (f.record.stub !== true) ).length;
+    return { line: lineFor(core, Object.assign( {}, info, { elsewhere: scannedElsewhere } ), now), toCheck, episodes: all };
 }
 
 module.exports = { lineCore, lineFor, byNextAiring, detail, listOf, framesOf, episodeName, folderOf, nameOf, kindOf, WEEK_MS };

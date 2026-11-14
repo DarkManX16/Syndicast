@@ -224,6 +224,7 @@ class BreakScanService {
             clearInterval(t);
         }
         this.timers = [];
+        clearTimeout(this.soonTimer);
         this.abort('stop');
         if (this.worker) {
             await this.worker;
@@ -497,7 +498,6 @@ class BreakScanService {
     rebuildSoon() {
         clearTimeout(this.soonTimer);
         this.soonTimer = setTimeout( () => this.rebuildQueue().catch( (err) => this.log(`Breaks: could not work out what to scan: ${err.stack || err}`) ), AFTER_SAVE_MS );
-        this.timers.push(this.soonTimer);
     }
 
     // ---- DarkManX16's changes from the page ------------------------------------------------------
@@ -509,6 +509,7 @@ class BreakScanService {
      */
     updateShow(key, mutate) {
         const show = store.loadShow(this.breaksDir, key);
+        const before = Object.keys(show.files);
         const result = mutate(show);
         if ( (result != null) && (result.ok === false) ) {
             return result;
@@ -516,6 +517,14 @@ class BreakScanService {
         store.saveShow(this.breaksDir, key, show);
         for (const p of Object.keys(show.files)) {
             this.index.set(p, { key, record: show.files[p] });
+        }
+        // a record the change took away (a theatrical mark that was all a movie had) goes from the index too,
+        // or the scanner would still read the movie as marked
+        for (const p of before) {
+            const had = this.index.get(p);
+            if ( (show.files[p] == null) && (had != null) && (had.key === key) ) {
+                this.index.delete(p);
+            }
         }
         this.theatrical.delete(key);
         // a show or movie marked theatrical leaves the queue at once; one marked back waits for the next rebuild

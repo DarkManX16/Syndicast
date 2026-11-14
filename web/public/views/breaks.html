@@ -19,7 +19,7 @@
             </div>
             <div>Skipping drives: <b>{{scanner.skipDrives.length ? scanner.skipDrives.join(', ') : 'none'}}</b>
                 <span ng-if="scanner.counts.skipped.files > 0" class="text-muted">({{scanner.counts.skipped.files}} files not scanned for it)</span>
-                <input type="text" class="form-control form-control-sm bk-drives" ng-model="ui.drives" placeholder="E:, G:" ng-keydown="$event.key === 'Enter' &amp;&amp; saveDrives()">
+                <input type="text" class="form-control form-control-sm bk-drives" ng-model="ui.drives" placeholder="E:, G: or none" ng-keydown="$event.key === 'Enter' &amp;&amp; saveDrives()">
                 <button type="button" class="btn btn-sm btn-outline-secondary" ng-click="saveDrives()">Set</button>
             </div>
             <div class="bk-log">
@@ -187,7 +187,6 @@
                                 <span class="small text-muted" ng-if="focusEpisode().error">could not be scanned: {{focusEpisode().error}}</span>
                             </div>
                         </div>
-                        <p class="small text-muted" ng-if="todo.length === 0 &amp;&amp; !focus">Nothing here is waiting for you.</p>
 
                         <!-- ---------------------------------------- the list to check -->
                         <div class="bk-section" ng-if="detail.toCheck.length > 0">To check <span class="text-muted">({{detail.toCheck.length}})</span></div>

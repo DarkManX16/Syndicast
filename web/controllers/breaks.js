@@ -113,7 +113,11 @@ module.exports = function ($scope, $timeout, $document, dizquetv) {
 
     $scope.saveDrives = async () => {
         try {
-            const drives = String($scope.ui.drives || '').split(/[\s,;]+/).filter( (d) => d !== '' );
+            const text = String($scope.ui.drives || '').trim();
+            if (text === '') {
+                return;   // an empty box changes nothing; "none" scans every drive
+            }
+            const drives = /^none$/i.test(text) ? [] : text.split(/[\s,;]+/).filter( (d) => d !== '' );
             $scope.scanner = await dizquetv.setBreakScanner( { skipDrives: drives } );
             $scope.ui.drives = '';
         } catch (err) {
@@ -226,9 +230,6 @@ module.exports = function ($scope, $timeout, $document, dizquetv) {
     const apply = (d, how, at, prevPos) => {
         const key = d.line.key;
         touched[key] = true;
-        $scope.detail = d;
-        $scope.todo = buildTodo(d);
-        $scope.groups = groupsOf(d);
         const i = $scope.shows.findIndex( (s) => s.key === key );
         if (i >= 0) {
             $scope.shows[i] = d.line;
@@ -239,9 +240,13 @@ module.exports = function ($scope, $timeout, $document, dizquetv) {
         } else {
             delete $scope.scanFirst[key];
         }
+        // an answer about a show that is not the one open (Approve on another line) changes its line only
         if ($scope.openKey !== key) {
             return;
         }
+        $scope.detail = d;
+        $scope.todo = buildTodo(d);
+        $scope.groups = groupsOf(d);
         const path = $scope.focus ? $scope.focus.path : null;
         if ( (how === 'keep') && path && $scope.episode(path) ) {
             $scope.focus = { path, at: (at != null) ? at : $scope.focus.at };

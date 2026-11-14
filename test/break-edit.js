@@ -80,6 +80,19 @@ module.exports = async function() {
     }
 
     {
+        // A record marked "none" or theatrical is no longer spoken for by a pattern
+        const mk = () => rec([ pt(74, 'opening', 0.75, 'approved', 'pattern'), pt(706, 'act', 0.75, 'approved', 'pattern'), pt(1380, 'act', 0.75, 'approved', 'owner'), Object.assign( pt(500, 'act'), { status: 'hand', approvedBy: 'owner' } ) ]);
+        const none = mk();
+        edit.setNoBreaks(none, true);
+        suite.check('marking an episode "none" sends what the pattern approved back to found, and leaves his own approvals and breaks',
+            (none.points[0].status === 'found') && (none.points[0].approvedBy === null) && (none.points[1].status === 'found') && (none.points[2].status === 'approved') && (none.points[3].status === 'hand'),
+            JSON.stringify(none.points.map( (p) => p.status )));
+        const theatrical = mk();
+        edit.setTheatrical(theatrical, true);
+        suite.check('...a movie marked theatrical the same', (theatrical.points[1].status === 'found') && (theatrical.points[2].status === 'approved'));
+    }
+
+    {
         // His own say survives the pattern's withdraw, and a pattern approved later.
         const make = (n) => rec([ pt(74, 'opening'), pt(706 + n, 'act'), pt(1380 + n, 'act') ]);
         const show = { theatrical: false, pattern: null, files: { a: make(0), b: make(5), c: make(-8), d: make(10) } };

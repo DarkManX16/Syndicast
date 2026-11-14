@@ -67,6 +67,24 @@ module.exports = function breaksRoutes(router, service, options = {}) {
     }
 
     const names = (file) => service.airing.files.get(file) || null;
+
+    // A file's record is kept under the key it was first scanned under, which can be another show's
+    // (an episode in a custom show and in its own show has one record): acting on a file goes there.
+    const ownerOf = (file, key) => {
+        const found = service.index.get(file);
+        return (found != null) ? found.key : key;
+    };
+    // This show's files on the channels whose records are kept under another key.
+    function elsewhereOf(key) {
+        const out = [];
+        for (const file of (service.airing.byKey.get(key) || [])) {
+            const found = service.index.get(file);
+            if ( (found != null) && (found.key !== key) ) {
+                out.push( { path: file, key: found.key, record: found.record } );
+            }
+        }
+        return out;
+    }
     const bad = (res, code, error) => res.status(code).send( { error } );
 
     async function allLines() {
@@ -78,7 +96,8 @@ module.exports = function breaksRoutes(router, service, options = {}) {
             if ( ! KEY.test(key) ) {
                 continue;
             }
-            lines.push(page.lineFor(coreOf(key, page.nameOf(key, custom)), infoOf(key), now));
+            const elsewhere = elsewhereOf(key).filter( (f) => (f.record.error == null) && Array.isArray(f.record.points) && (f.record.stub !== true) ).length;
+            lines.push(page.lineFor(coreOf(key, page.nameOf(key, custom)), Object.assign( {}, infoOf(key), { elsewhere } ), now));
         }
         return page.byNextAiring(lines);
     }
@@ -103,7 +122,7 @@ module.exports = function breaksRoutes(router, service, options = {}) {
         const custom = await namesOfCustomShows();
         const show = store.loadShow(service.breaksDir, key);
         const files = (service.airing.byKey.get(key) || []).map( (path) => ({ path, movie: (names(path) || {}).movie === true, durationMs: (names(path) || {}).durationMs || 0 }) );
-        const d = page.detail(key, show, page.nameOf(key, custom), names, Object.assign( {}, infoOf(key), { files } ), Date.now());
+        const d = page.detail(key, show, page.nameOf(key, custom), names, Object.assign( {}, infoOf(key), { files, elsewhere: elsewhereOf(key) } ), Date.now());
         d.scanFirst = service.scanFirst.includes(key) ? service.remaining(key) : null;
         return d;
     }
@@ -169,7 +188,7 @@ module.exports = function breaksRoutes(router, service, options = {}) {
     // A point: approve, reject, nudge (value: seconds), time (value: seconds from the start),
     // kind (value), or add (value: seconds, kind).
     router.post('/api/breaks/point', guarded( async (b, res) => {
-        const result = service.updateShow(b.key, (show) => {
+        const result = service.updateShow(ownerOf(b.path, b.key), (show) => {
             const record = show.files[b.path];
             if (record == null) {
                 return { ok: false, error: 'No such episode.' };
@@ -188,20 +207,36 @@ module.exports = function breaksRoutes(router, service, options = {}) {
         if ( ! b.all && ! Array.isArray(b.paths) ) {
             return bad(res, 400, 'Say which episodes.');
         }
-        const result = service.updateShow(b.key, (show) => {
-            const paths = b.all ? Object.keys(show.files) : b.paths.filter( (p) => show.files[p] != null );
-            for (const p of paths) {
-                edit.setNoBreaks(show.files[p], value);
+        // each file's mark goes on its own record, wherever it is kept; `all` is the show's own file
+        const byOwner = new Map();
+        if (b.all) {
+            byOwner.set(b.key, null);
+        } else {
+            for (const p of b.paths) {
+                const owner = ownerOf(p, b.key);
+                byOwner.set(owner, (byOwner.get(owner) || []).concat( [ p ] ));
             }
-            return { ok: true, count: paths.length };
-        } );
-        await answer(res, b.key, result);
+        }
+        for (const [owner, paths] of byOwner) {
+            service.updateShow(owner, (show) => {
+                for (const p of (paths || Object.keys(show.files).filter( (f) => show.files[f].stub !== true ))) {
+                    if (show.files[p] != null) {
+                        edit.setNoBreaks(show.files[p], value);
+                        if ( ! value ) {
+                            patterns.applyApproved(show, p);   // the approved pattern speaks for it again
+                        }
+                    }
+                }
+                return { ok: true };
+            } );
+        }
+        await answer(res, b.key, { ok: true });
     } ) );
 
     // Theatrical: one movie (path), or a whole custom show (no path).
     router.post('/api/breaks/theatrical', guarded( async (b, res) => {
         const value = (b.value !== false);
-        const result = service.updateShow(b.key, (show) => {
+        const result = service.updateShow((b.path == null) ? b.key : ownerOf(b.path, b.key), (show) => {
             if (b.path == null) {
                 show.theatrical = value;
                 return { ok: true };
@@ -217,6 +252,8 @@ module.exports = function breaksRoutes(router, service, options = {}) {
             const result = edit.setTheatrical(show.files[b.path], value);
             if ( (value === false) && (show.files[b.path].stub === true) ) {
                 delete show.files[b.path];   // nothing but the mark: it goes with it
+            } else if (value === false) {
+                patterns.applyApproved(show, b.path);
             }
             return result;
         } );
