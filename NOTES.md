@@ -3589,13 +3589,27 @@ that too.
 The branding kit replaces the images in `resources/`, but the app copies those
 into the data folder (`.syndicast` / `.dizquetv`) on startup and only when the
 file is missing. An existing install therefore keeps showing the old artwork
-after a rebrand: the header logo and the on-air screens for error, offline,
-music, and loading.
+after a rebrand: the default channel icon (`images/dizquetv.png`) and the on-air
+screens for error, offline, music, and loading. The top bar no longer depends on
+it: since Nov 14 it loads `web/public/syndicast-logo.svg`, shipped with the code.
+The only screen that differs from what an install already has is the music one
+(redrawn Nov 14); the other three already carried the current icon.
 
 Affects `initDB()` in `index.js`. Workaround is to delete the stale files from
 `<data folder>/images/` and restart, which recreates them from `resources/`.
 Worth deciding whether the app should overwrite these on version change, or
 leave it manual so users keep any artwork they replaced themselves.
+
+### Logo, icons and the guide's own icon (Nov 14, 2026)
+
+The top bar is the full logo (`web/public/syndicast-logo.svg`); the tab has an SVG favicon
+that turns cream in dark tabs (`resources/favicon.svg`, served at `/favicon.svg`), 16 and
+32 px PNGs, `favicon.ico`, a home-screen icon and `site.webmanifest` (no theme colours), all
+static files in `web/public`. `node scripts/make-brand-images.js` makes them from the TV icon
+in `assets/` and leaves any on-air screen that already carries the icon untouched. With no
+channels the guide uses `/icons/icon-512.png` instead of a GitHub link, and the XMLTV image
+cache skips any `{{host}}` address. `test/branding.js` pins it. Left alone on purpose: the
+Unraid templates' icon URL and `src/svg/`.
 
 ### Branding script counts the same file more than once
 
