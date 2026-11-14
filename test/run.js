@@ -96,6 +96,7 @@ const suites = [
     './break-edit',
     './breaks-page',
     './breaks-api',
+    './branding',
     './close-browser',
 ];
 

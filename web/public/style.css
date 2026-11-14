@@ -637,10 +637,10 @@ div.programming-programs div.list-group-item {
   opacity: 0.0;
 }
 
-#dizquetv-logo {
-  width: 1em;
-  height: 1em;
-  margin-bottom: 0.25em;
+#syndicast-logo {
+  height: 1.15em;
+  width: auto;
+  margin-bottom: 0.1em;
 }
 
 .list-group-item .library-item-hover:hover {
