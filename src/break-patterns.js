@@ -94,6 +94,14 @@ function oneBreakEach(pts) {
         run = [];
     };
     for (const p of pts.slice().sort( (a, b) => a.at - b.at )) {
+        // A break DarkManX16 placed himself is his own: it is never read as the same break as a point
+        // beside it (a hand break 6 s from a rejected point would vanish). Points he approved, rejected
+        // or moved still join their neighbour as before, so deciding on a break decides the pair.
+        if (p.status === 'hand') {
+            flush();
+            out.push(p);
+            continue;
+        }
         if ( (p.kind === 'credits') || (p.kind === 'opening') ) {
             flush();
             out.push(p);
@@ -101,7 +109,7 @@ function oneBreakEach(pts) {
             openingTail = p.at;
             continue;
         }
-        if ( (opening !== null) && (run.length === 0) && (p.at - openingTail <= ONE_BREAK_S) ) {
+        if ( (opening !== null) && (run.length === 0) && (p.foundAt == null) && (p.at - openingTail <= ONE_BREAK_S) ) {
             opening.absorbed = (opening.absorbed || []).concat( [ p.index ] );
             openingTail = p.at;
             continue;
@@ -548,6 +556,23 @@ function applyApproved(show, path) {
 }
 
 /*
+ * The pattern the list to check is read against: the approved one, or the one on offer
+ * (a group with none is left out).
+ */
+function patternOf(show) {
+    return (show.pattern != null) ? show.pattern : { groups: showPatterns(show).groups.filter( (g) => g.pattern !== null ).map( (g) => Object.assign( { minMs: g.minMs, maxMs: g.maxMs }, g.pattern ) ) };
+}
+
+/*
+ * A record's points as the page shows them: read the way the pattern reads them (its
+ * group's opening window), credits left out.
+ */
+function readPoints(pattern, record) {
+    const g = groupFor(pattern, record);
+    return effectivePoints(record, (g && g.openingWindowS) || OPENING_WINDOW_S).filter( (p) => p.kind !== 'credits' );
+}
+
+/*
  * The list for DarkManX16 to check: [{ path, reasons: [...] }]. Episodes that fit the
  * pattern are left out, stray points and chapter-only points and all; a TV movie
  * always lists its points, under its own movie key or inside a custom show.
@@ -564,7 +589,7 @@ function outliers(show, isMovie = false) {
         out.push( { path, reasons: [ pts.length ? `a TV movie: ${pts.length} point${ (pts.length === 1) ? '' : 's' } to check (${pts.map( (p) => clock(p.at) ).join(', ')})` : 'a TV movie with no breaks found' ] } );
     }
     const all = isMovie ? [] : listed.filter( ([, r]) => r.movie !== true );
-    const pattern = (show.pattern != null) ? show.pattern : { groups: showPatterns(show).groups.filter( (g) => g.pattern !== null ).map( (g) => Object.assign( { minMs: g.minMs, maxMs: g.maxMs }, g.pattern ) ) };
+    const pattern = patternOf(show);
     const sizes = lengthGroups(all.filter( ([, r]) => r.durationMs > 0 ));
     for (const [path, rec] of all) {
         const reasons = [];
@@ -616,6 +641,6 @@ function outliers(show, isMovie = false) {
 
 module.exports = {
     effectivePoints, midPoints, strongMid, openingWindow, lengthGroups, positionGroups, countPattern, groupPattern,
-    showPatterns, patternLine, weakerLine, approve, withdraw, applyApproved, outliers, fits, clock,
+    showPatterns, patternLine, weakerLine, approve, withdraw, applyApproved, outliers, fits, clock, patternOf, readPoints, groupFor, moviesOf, scanned,
     constants: { SPAN_S, ONE_BREAK_S, MIN_EPISODES, LENGTH_TOLERANCE, STRONG, EDGE_S, LONG_OPENING_WINDOW_S, LONG_OPENING_MIN_MS },
 };

@@ -33,6 +33,12 @@
  *   create-lineup        Time Slots... (at most one short line about kept rows), Create
  *                        Lineup; kept rows stay; saved
  *   filler               a filler list: drag a clip, delete one, Done; saved
+ *   breaks-page          the Breaks page: the scanner's line and Pause switch, Needs a click in
+ *                        next-airing order, a pattern approved and withdrawn (and the weaker
+ *                        line), a show's list stepped through with the frames either side, a
+ *                        nudge, a typed time, a kind, a break added and taken away, "these have
+ *                        no breaks", theatrical on a movie never scanned, Scan next. Refuses a
+ *                        server whose scanner is not paused by hand; changes the copy's breaks
  *   special-day          a date's own Time Slots: add a day, a row of its own shows,
  *                        Create Lineup, Update Channel; Delete on one of its airings
  *                        refused; the day deleted and regenerated clean after. SKIPs
@@ -1125,6 +1131,361 @@ function makeRunner(opts, page) {
             }
             return `"Workflow test day" (${showName}) added 40 days out, Create Lineup laid ${tagged.length} airings, saved; `
                 + `Delete on ${row.show} at ${row.start}: "${said}", nothing asked; Cancel dropped it; deleted and regenerated clean`;
+        },
+        'breaks-page': async () => {
+            // The Breaks page (NOTES.md, "Rules for every session", workflow 10): the scanner's mode and
+            // its Pause switch, a pattern approved and withdrawn from its line (and the weaker second line),
+            // sorted by when each show next airs, a show opened and its list stepped through with real
+            // clicks and keys (approve, reject, nudge, a typed time, a kind, a break added), the frames
+            // either side of a point, "these have no breaks", theatrical, and "Scan next". It changes the
+            // breaks store of the copy it runs on (approvals, a nudge, a hand break it takes away again);
+            // its scanner must be paused by hand, and it never lets it read a drive.
+            const scanner0 = await api('/api/breaks/scanner');
+            if (!scanner0.pausedByHand) {
+                throw new Check('this server\'s break scanner is running: pause it by hand first (the copy\'s break-scanner.json, {"paused":true,"skipDrives":["E:"]}); a scratch server must not read the real drives');
+            }
+            let list = await api('/api/breaks/shows');
+            for (let i = 0; i < 120 && !list.ready; i++) {
+                await sleep(1000);
+                list = await api('/api/breaks/shows');
+            }
+            if (!list.ready) {
+                throw new Check('the scanner never built its list of what airs (a minute after the server starts)');
+            }
+            const skipped = scanner0.skipDrives;
+            const driveOf = (p) => /^[A-Za-z]:/.test(p) ? p.slice(0, 2).toUpperCase() : null;
+            const detailOf = (key) => api(`/api/breaks/show?key=${encodeURIComponent(key)}`);
+            const out = [];
+
+            const openPage = async () => {
+                await page.goto(opts.url + '/#!/breaks', { waitUntil: 'networkidle2' });
+                await page.reload({ waitUntil: 'networkidle2' });
+                const shown = await page.waitForFunction(() => document.querySelector('.bk-show') !== null, { timeout: 30000, polling: 200 }).catch(() => null);
+                if (shown === null) {
+                    throw new Check('the Breaks page showed no shows');
+                }
+            };
+            // Types into the search box so the show is in the list, whatever the filter.
+            const search = async (name) => {
+                const box = await find('.bk-search', null, 'the search box');
+                // typed in the box, as a person would (a title with a curly apostrophe is set in one go)
+                await box.evaluate((el) => { el.focus(); el.select(); });
+                await page.keyboard.press('Backspace');
+                if (/^[ -~]+$/.test(name)) {
+                    await page.keyboard.type(name);
+                } else {
+                    await box.evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, name);
+                }
+                await page.waitForFunction((n) => [...document.querySelectorAll('.bk-show .bk-name a')].some((a) => a.textContent.trim() === n), { timeout: 10000, polling: 100 }, name)
+                    .catch(() => { throw new Check(`${name} isn't in the list after searching for it`); });
+            };
+            const rowOf = (name) => page.evaluateHandle((n) => [...document.querySelectorAll('.bk-show')].find((r) => r.querySelector('.bk-name a').textContent.trim() === n) || null, name)
+                .then((h) => h.asElement());
+            // A button in a show's own line (not its opened panel) by its text; `nth` among the matches.
+            const lineButton = async (name, text, nth = 0) => {
+                const row = await rowOf(name);
+                if (row === null) {
+                    throw new Check(`${name} isn't in the list`);
+                }
+                const handle = await page.evaluateHandle((r, src, k) => [...r.querySelectorAll('.bk-line button')].filter((b) => new RegExp(src).test(b.textContent.trim()) && b.getClientRects().length > 0)[k] || null, row, text.source, nth);
+                if (handle.asElement() === null) {
+                    throw new Check(`${name} has no ${text} button in its line`);
+                }
+                return handle.asElement();
+            };
+            const panelButton = (text) => find('.bk-panel button', text, `the panel's ${text}`);
+            const lineText = (name) => page.evaluate((n) => {
+                const r = [...document.querySelectorAll('.bk-show')].find((x) => x.querySelector('.bk-name a').textContent.trim() === n);
+                return r ? r.querySelector('.bk-line').textContent.replace(/\s+/g, ' ').trim() : '';
+            }, name);
+            const waitDetail = async (key, landed, what) => {
+                let last = await detailOf(key);
+                for (let i = 0; i < 40 && !landed(last); i++) {
+                    await sleep(250);
+                    last = await detailOf(key);
+                }
+                if (!landed(last)) {
+                    throw new Check(`${what}: the server's show never showed it`);
+                }
+                return last;
+            };
+            const pointsOf = (d, path) => d.episodes.find((e) => e.path === path).points;
+
+            // 1. the scanner's line, its details and its Pause switch (with every drive skipped, so a
+            //    resume can't read anything), and the order of the list
+            await openPage();
+            const mode = await page.$eval('.bk-mode', (el) => el.textContent.trim());
+            if (!/Paused by hand/.test(mode)) {
+                throw new Check(`the scanner's line says "${mode}", not Paused by hand`);
+            }
+            await clickText('.bk-scanner a', 'Details', 'the scanner\'s Details');
+            await find('.bk-details', null, 'the scanner\'s details');
+            const allDrives = [ 'C:', 'D:', 'E:', 'F:', 'G:', 'H:', 'I:', 'J:', 'K:', 'L:', 'M:', 'N:' ];
+            try {
+                await fetch(opts.url + '/api/breaks/scanner', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ skipDrives: allDrives }) });
+                await clickText('.bk-scanner button', 'Resume', 'the Resume switch');
+                await waitForSave('/api/breaks/scanner', (s) => s.pausedByHand === false, 15000);
+                await clickText('.bk-scanner button', 'Pause', 'the Pause switch');
+                const back = await waitForSave('/api/breaks/scanner', (s) => s.pausedByHand === true, 15000);
+                if (!back.pausedByHand) {
+                    throw new Check('Pause did not pause the scanner');
+                }
+            } finally {
+                await fetch(opts.url + '/api/breaks/scanner', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ skipDrives: skipped }) });
+                await fetch(opts.url + '/api/breaks/scanner', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paused: true }) });
+            }
+            out.push('scanner line, Details and the Pause / Resume switch');
+
+            // The page's order against the server's, read back to back; a show can start or end between the
+            // two (the half hour), so a difference is read again before it counts.
+            let domOrder;
+            let apiOrder;
+            let fresh;
+            for (let tries = 0; tries < 3; tries++) {
+                await openPage();
+                domOrder = await page.$$eval('.bk-show .bk-name a', (as) => as.slice(0, 12).map((a) => a.textContent.trim()));
+                fresh = await api('/api/breaks/shows');
+                apiOrder = fresh.shows.filter((s) => s.needsClick).slice(0, 12).map((s) => s.name);
+                if (JSON.stringify(domOrder) === JSON.stringify(apiOrder)) {
+                    break;
+                }
+            }
+            if (JSON.stringify(domOrder) !== JSON.stringify(apiOrder)) {
+                throw new Check(`Needs a click isn't in the order the shows next air: page ${domOrder.slice(0, 4).join(' | ')} ... , server ${apiOrder.slice(0, 4).join(' | ')} ...`);
+            }
+            const times = fresh.shows.filter((s) => s.needsClick && s.nextAt != null).map((s) => s.nextAt);
+            if (times.some((t, i) => i > 0 && t < times[i - 1])) {
+                throw new Check('the shows that air are not in order of when they next air');
+            }
+            list = fresh;
+            out.push('Needs a click in next-airing order');
+
+            // 2. a pattern approved from its line and withdrawn; then the weaker second line
+            const plain = list.shows.find((s) => s.pattern !== null && !s.approved && s.weaker === null && s.kind !== 'movie' && s.toCheck === 0);
+            const weakish = list.shows.find((s) => s.weaker !== null && !s.approved && s.kind !== 'movie');
+            if (!plain) {
+                throw new Check('no show has a plain pattern on offer to approve');
+            }
+            await search(plain.name);
+            await click(await lineButton(plain.name, /^Approve$/), `${plain.name}'s Approve`);
+            let d = await waitDetail(plain.key, (x) => x.line.approved === true, `${plain.name}'s Approve`);
+            const patternApproved = d.episodes.reduce((n, e) => n + e.points.filter((p) => p.status === 'approved' && p.by === 'pattern').length, 0);
+            if (patternApproved === 0) {
+                throw new Check(`${plain.name}: Approve approved no point`);
+            }
+            if (!/Approved/.test(await lineText(plain.name)) || !(await lineButton(plain.name, /^Withdraw$/))) {
+                throw new Check(`${plain.name}'s line doesn't say Approved with a Withdraw`);
+            }
+            await click(await lineButton(plain.name, /^Withdraw$/), `${plain.name}'s Withdraw`);
+            d = await waitDetail(plain.key, (x) => x.line.approved === false, `${plain.name}'s Withdraw`);
+            if (d.episodes.some((e) => e.points.some((p) => p.status === 'approved' && p.by === 'pattern'))) {
+                throw new Check(`${plain.name}: Withdraw left points approved`);
+            }
+            out.push(`${plain.name}: Approve (${patternApproved} points) and Withdraw from its line`);
+            if (weakish) {
+                await search(weakish.name);
+                await click(await lineButton(weakish.name, /^Approve$/, 1), `${weakish.name}'s second Approve`);
+                d = await waitDetail(weakish.key, (x) => x.line.approvedWeaker === true, `${weakish.name}'s weaker Approve`);
+                await click(await lineButton(weakish.name, /^Withdraw$/), `${weakish.name}'s Withdraw`);
+                await waitDetail(weakish.key, (x) => x.line.approved === false, `${weakish.name}'s weaker Withdraw`);
+                out.push(`${weakish.name}: the weaker line approved and withdrawn`);
+            }
+
+            // 3. a show opened: its list stepped through
+            let target = null;
+            for (const s of list.shows.filter((x) => x.needsClick && x.toCheck >= 2 && x.kind !== 'movie').slice(0, 60)) {
+                const det = await detailOf(s.key);
+                const todo = det.toCheck.flatMap((e) => e.points.filter((p) => p.status === 'found').map((p) => ({ path: e.path, at: p.at })));
+                if (todo.length >= 7 && todo.slice(0, 7).every((t) => !skipped.includes(driveOf(t.path)))) {
+                    target = { show: s, det, todo };
+                    break;
+                }
+            }
+            if (!target) {
+                throw new Check('no show with seven points waiting on a drive that is not skipped');
+            }
+            const name = target.show.name;
+            const key = target.show.key;
+            await search(name);
+            await click(await find('.bk-name a', name, `${name} in the list`), `${name}'s name`);
+            await find('.bk-review', null, 'the point in front of you');
+            const pictures = await page.waitForFunction(() => {
+                const imgs = [...document.querySelectorAll('.bk-frames img')];
+                return imgs.length === 2 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+            }, { timeout: 60000, polling: 300 }).catch(() => null);
+            if (pictures === null) {
+                const said = await page.$$eval('.bk-frame-msg', (els) => els.map((e) => e.textContent.trim()).join(' | '));
+                throw new Check(`the two frames either side of the point did not show${said ? ': ' + said : ''}`);
+            }
+            const head = await page.$eval('.bk-review-head', (el) => el.textContent.replace(/\s+/g, ' ').trim());
+            const waiting = parseInt((/of (\d+) waiting/.exec(head) || [])[1], 10);
+            if (waiting !== target.todo.length) {
+                throw new Check(`${name}: the page says ${waiting} points waiting, the server ${target.todo.length}`);
+            }
+            const first = target.todo[0];
+            await click(await panelButton('Approve'), 'Approve');
+            d = await waitDetail(key, (x) => pointsOf(x, first.path).some((p) => Math.abs(p.at - first.at) < 0.03 && p.status === 'approved' && p.by === 'owner'), 'Approve');
+            if (d.toCheck.flatMap((e) => e.points.filter((p) => p.status === 'found')).length !== waiting - 1) {
+                throw new Check('after Approve the number waiting did not drop by one');
+            }
+            const second = target.todo[1];
+            await sleep(600);
+            await click(await panelButton('Reject'), 'Reject');
+            d = await waitDetail(key, (x) => pointsOf(x, second.path).some((p) => Math.abs(p.at - second.at) < 0.03 && p.status === 'rejected'), 'Reject');
+            out.push(`${name}: the list stepped through (${waiting} waiting), two frames shown, Approve and Reject`);
+
+            // nudge a frame, type a time, change the kind - all on the third point
+            const third = target.todo[2];
+            await sleep(600);
+            await click(await find('.bk-buttons button', /frame ›/, 'the frame later button'), 'a frame later');
+            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - (third.at + 0.04)) < 0.03 && p.status === 'approved' && p.by === 'owner' && p.movedFrom !== null), 'a frame later');
+            const shot = await page.evaluate(() => angular.element(document.querySelector('.breaks-page')).scope().focusPoint());
+            if (!shot || Math.abs(shot.at - (third.at + 0.04)) > 0.03) {
+                throw new Check('after a nudge the cursor did not stay on the moved point');
+            }
+            // Times well away from every point of the episode, so no neighbour within 15 s reads as one with them.
+            const epLength = (await detailOf(key)).episodes.find((e) => e.path === third.path).durationMs / 1000;
+            const have = pointsOf(await detailOf(key), third.path);
+            const freeTimes = [];
+            for (let t = 100; t < epLength - 200 && freeTimes.length < 2; t += 31) {
+                if (have.every((p) => Math.abs(p.at - t) > 40) && freeTimes.every((u) => Math.abs(u - t) > 40)) {
+                    freeTimes.push(t);
+                }
+            }
+            if (freeTimes.length < 2) {
+                throw new Check('no stretch of the episode is clear of its points to try a typed time and an added break in');
+            }
+            const [ moveTo, addAt ] = freeTimes;
+            const clockOf = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+            const input = await find('.bk-buttons .bk-time input', null, 'the time box');
+            await input.evaluate((el) => { el.focus(); el.select(); });
+            await page.keyboard.type(clockOf(moveTo));
+            await clickText('.bk-buttons button', 'Move there', 'Move there');
+            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(moveTo)) < 0.5 && p.status === 'approved'), 'Move there');
+            await page.select('.bk-kind', 'story');
+            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(moveTo)) < 0.5 && p.kind === 'story'), 'the kind box');
+            out.push('a frame later, a typed time and a kind change');
+
+            // a break added by hand, then taken away
+            const typed = (await page.$$('.bk-buttons .bk-time input'))[1];
+            await typed.evaluate((el) => { el.focus(); el.select(); });
+            await page.keyboard.type(clockOf(addAt));
+            await clickText('.bk-buttons button', 'Add a break here', 'Add a break here');
+            d = await waitDetail(key, (x) => pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(addAt)) < 0.5 && p.status === 'hand'), 'Add a break here');
+            await sleep(600);
+            await click(await panelButton('Reject'), 'Reject (of the break just added)');
+            d = await waitDetail(key, (x) => !pointsOf(x, third.path).some((p) => Math.abs(p.at - Math.round(addAt)) < 0.5), 'taking the added break away');
+            out.push(`a break added at ${clockOf(addAt)} and taken away`);
+
+            // the keys: A approves the point in front of you
+            const fourth = (await page.evaluate(() => angular.element(document.querySelector('.breaks-page')).scope().focus));
+            await page.mouse.click(5, 5);
+            await page.keyboard.press('a');
+            d = await waitDetail(key, (x) => pointsOf(x, fourth.path).some((p) => (fourth.at == null || Math.abs(p.at - fourth.at) < 0.03) && p.status === 'approved' && p.by === 'owner'), 'the A key');
+            out.push('the A key approves');
+
+            // 4. "these have no breaks": two ticked, then the whole show, then taken back
+            const markedBefore = (await detailOf(key)).episodes.filter((e) => e.noBreaks).map((e) => e.path);
+            await clickText('.bk-section a', /All episodes/, 'All episodes');
+            const boxes = await page.$$('.bk-panel .bk-ep input[type=checkbox]');
+            await boxes[boxes.length - 1].click();
+            await boxes[boxes.length - 2].click();
+            const ticked = await page.$$eval('.bk-panel .bk-ep input[type=checkbox]', (els) => els.filter((e) => e.checked).length);
+            if (ticked < 2) {
+                throw new Check('ticking two episodes ticked ' + ticked);
+            }
+            await clickText('.bk-tickbar button', /^These have no breaks/, 'These have no breaks');
+            d = await waitDetail(key, (x) => x.episodes.filter((e) => e.noBreaks).length >= 1, 'These have no breaks');
+            const marked = d.episodes.filter((e) => e.noBreaks).length;
+            if (marked < 1) {
+                throw new Check('These have no breaks marked nothing');
+            }
+            await clickText('.bk-panel button', 'No breaks in this show', 'No breaks in this show');
+            d = await waitDetail(key, (x) => x.episodes.filter((e) => !e.unscanned).every((e) => e.noBreaks), 'No breaks in this show');
+            if (d.line.noBreaksShow !== true) {
+                throw new Check('No breaks in this show did not mark the show as a whole (files scanned later are meant to be marked as they arrive)');
+            }
+            if (d.line.toCheck !== 0) {
+                throw new Check(`with every episode marked as having none, ${d.line.toCheck} are still on the list to check`);
+            }
+            await clickText('.bk-tickbar a', /the marked ones/, 'tick the marked ones');
+            await clickText('.bk-tickbar button', /^Use their breaks again/, 'Use their breaks again');
+            d = await waitDetail(key, (x) => x.episodes.every((e) => !e.noBreaks), 'Use their breaks again');
+            if (d.line.noBreaksShow !== true) {
+                throw new Check('taking back the ticked episodes cleared the whole-show mark: ticked episodes are meant to stay as they are');
+            }
+            await clickText('.bk-panel button', 'Breaks again in this show', 'Breaks again in this show');
+            d = await waitDetail(key, (x) => x.line.noBreaksShow === false, 'Breaks again in this show');
+            if (markedBefore.length > 0) {
+                await fetch(opts.url + '/api/breaks/none', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key, paths: markedBefore }) });
+            }
+            out.push(`${name}: These have no breaks (${marked} ticked), No breaks in this show (${d.episodes.length}), all taken back`);
+
+            // 5. theatrical: a movie inside a custom show that was never scanned (First Kid, College Road Trip),
+            //    marked from the show's own Movies list and taken back; and a movie's own line
+            let inShow = null;
+            for (const s of list.shows.filter((x) => x.kind === 'custom' && x.movieFiles > 0 && !x.theatrical).slice(0, 30)) {
+                const det = await detailOf(s.key);
+                const m = det.episodes.find((e) => e.movie && e.unscanned && !e.theatrical && /^[\x20-\x7e]+$/.test(e.name))
+                    || det.episodes.find((e) => e.movie && !e.theatrical && /^[\x20-\x7e]+$/.test(e.name));
+                if (m) {
+                    inShow = { show: s, movie: m };
+                    break;
+                }
+            }
+            if (inShow) {
+                const { show: cs, movie } = inShow;
+                await search(cs.name);
+                await click(await find('.bk-name a', cs.name, `${cs.name} in the list`), `${cs.name}'s name`);
+                const moviesRow = async () => (await page.evaluateHandle((n) => [...document.querySelectorAll('.bk-movies .bk-ep')].find((r) => r.textContent.includes(n)) || null, movie.name)).asElement();
+                await find('.bk-movies', null, `${cs.name}'s Movies list`);
+                const rowBefore = await moviesRow();
+                if (rowBefore === null) {
+                    throw new Check(`${movie.name} isn't in ${cs.name}'s Movies list`);
+                }
+                await click((await rowBefore.$$('button'))[0], `${movie.name}'s Theatrical`);
+                d = await waitDetail(cs.key, (x) => x.episodes.find((e) => e.path === movie.path).theatrical === true, `${movie.name}'s Theatrical`);
+                if (!/by hand/.test(await page.evaluate((r) => r.textContent, await moviesRow()))) {
+                    throw new Check(`${movie.name}'s row doesn't say its breaks are only where added by hand`);
+                }
+                await click((await (await moviesRow()).$$('button'))[0], `${movie.name}'s Not theatrical`);
+                d = await waitDetail(cs.key, (x) => x.episodes.find((e) => e.path === movie.path).theatrical === false, `${movie.name}'s Not theatrical`);
+                out.push(`${movie.name} (in ${cs.name}${movie.unscanned ? ', never scanned' : ''}): marked theatrical and back`);
+            } else {
+                out.push('no movie inside a custom show to mark theatrical');
+            }
+            const own = list.shows.find((s) => s.kind === 'movie' && s.moviePath && !s.theatrical && /^[\x20-\x7e]+$/.test(s.name));
+            if (own) {
+                await search(own.name);
+                await click(await lineButton(own.name, /^Theatrical$/), `${own.name}'s Theatrical`);
+                await waitDetail(own.key, (x) => x.line.theatrical === true, `${own.name}'s Theatrical`);
+                if (!/theatrical/.test(await lineText(own.name))) {
+                    throw new Check(`${own.name}'s line doesn't say theatrical`);
+                }
+                await click(await lineButton(own.name, /^Not theatrical$/), `${own.name}'s Not theatrical`);
+                await waitDetail(own.key, (x) => x.line.theatrical === false, `${own.name}'s Not theatrical`);
+                out.push(`${own.name}: its own line's Theatrical and back`);
+            }
+            let scanNext = null;
+            for (const cand of list.shows.filter((s) => s.scanned < s.total && !s.theatrical && s.kind === 'tv').slice(0, 10)) {
+                await search(cand.name);
+                await click(await lineButton(cand.name, /^Scan next$/), `${cand.name}'s Scan next`);
+                const asked = await waitDetail(cand.key, (x) => x.scanFirst !== null, `${cand.name}'s Scan next`);
+                if (asked.scanFirst > 0) {
+                    const queued = (await api('/api/breaks/scanner')).scanFirst.find((s) => s.key === cand.key);
+                    if (!queued || queued.remaining < 1) {
+                        throw new Check('the scanner does not list the show as next');
+                    }
+                    await click(await lineButton(cand.name, /^Next: \d+ left$/), `${cand.name}'s Next: n left`);
+                    await waitDetail(cand.key, (x) => x.scanFirst === null, `${cand.name}'s Scan next taken back`);
+                    scanNext = `${cand.name}: Scan next (${queued.remaining} left) and back`;
+                    break;
+                }
+                // every file left is on a skipped drive: nothing to put first; take the request back
+                await fetch(opts.url + '/api/breaks/scan-first', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: cand.key, value: false }) });
+            }
+            out.push(scanNext || 'no show with files the scanner can reach to put first');
+            return out.join('; ');
         },
     };
     return workflows;

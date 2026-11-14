@@ -285,6 +285,17 @@ module.exports = function ($http, $q) {
             return (await $http.get('/api/nicknames')).data;
         },
 
+        // The Breaks page (src/breaks-api.js, src/break-scan-api.js).
+        getBreakScanner: async () => (await $http.get('/api/breaks/scanner', { headers: { 'Cache-Control': 'no-cache' } })).data,
+        setBreakScanner: async (body) => (await $http.put('/api/breaks/scanner', body)).data,
+        getBreakShows: async () => (await $http.get('/api/breaks/shows', { headers: { 'Cache-Control': 'no-cache' } })).data,
+        getBreakShow: async (key) => (await $http.get('/api/breaks/show', { params: { key }, headers: { 'Cache-Control': 'no-cache' } })).data,
+        breakPattern: async (key, action, weaker) => (await $http.post('/api/breaks/pattern', { key, action, weaker: weaker === true })).data,
+        breakPoint: async (body) => (await $http.post('/api/breaks/point', body)).data,
+        breakNone: async (body) => (await $http.post('/api/breaks/none', body)).data,
+        breakTheatrical: async (body) => (await $http.post('/api/breaks/theatrical', body)).data,
+        breakScanFirst: async (key, value) => (await $http.post('/api/breaks/scan-first', { key, value })).data,
+
         // Generated cards (src/card-api.js).
         getCardTemplates: async () => (await $http.get('/api/cards/templates')).data,
         getCards: async () => (await $http.get('/api/cards', { headers: { 'Cache-Control': 'no-cache' } })).data,

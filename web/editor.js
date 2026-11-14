@@ -52,6 +52,7 @@ app.config(['$provide', ($provide) => {
 }])
 
 app.directive('plexSettings',   require('./directives/plex-settings'))
+app.directive('breaksFrame',    require('./directives/breaks-frame'))
 app.directive('ffmpegSettings', require('./directives/ffmpeg-settings'))
 app.directive('xmltvSettings',  require('./directives/xmltv-settings'))
 app.directive('hdhrSettings',   require('./directives/hdhr-settings'))
@@ -91,6 +92,7 @@ app.controller('playerCtrl',  require('./controllers/player'))
 app.controller('fillerCtrl',  require('./controllers/filler'))
 app.controller('nicknamesCtrl',  require('./controllers/nicknames'))
 app.controller('cardsCtrl',  require('./controllers/cards'))
+app.controller('breaksCtrl',  require('./controllers/breaks'))
 app.controller('customShowsCtrl',  require('./controllers/custom-shows'))
 
 app.config(function ($routeProvider) {
@@ -122,6 +124,10 @@ app.config(function ($routeProvider) {
     .when("/cards", {
         templateUrl: "views/cards.html",
         controller: 'cardsCtrl'
+    })
+    .when("/breaks", {
+        templateUrl: "views/breaks.html",
+        controller: 'breaksCtrl'
     })
     .when("/custom-shows", {
         templateUrl: "views/custom-shows.html",

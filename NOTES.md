@@ -35,7 +35,8 @@ below says what we do and why. **Syndicast innovates.**
 - **Workflows that must keep working.** Every session that changes the editor -
   the channel editor, Swap and Insert, the library dialog, Time Slots, the filler
   editor, their templates, `style.css`, or what the page bundles from `src/`
-  (`kept-rows.js`, `pins.js`, `slot-progress.js`) - runs this whole list with
+  (`kept-rows.js`, `pins.js`, `slot-progress.js`) or from `web/` (the Breaks page among
+  them) - runs this whole list with
   real clicks on a preview on a copy of `.dizquetv-dev` before merging, and its
   report says what each one did. DarkManX16 added this Oct 30, 2026, after the kept-rows
   merge left Cancel and Update Channel unclickable and sent library adds into the
@@ -53,16 +54,27 @@ below says what we do and why. **Syndicast innovates.**
      gone from the list at once), then Create Lineup (added by DarkManX16 Oct 30).
   9. Insert before, and a clip dropped between a Flex and the airing after it
      (added by DarkManX16 Nov 6): `--only insert-before`.
+  10. The Breaks page (added by DarkManX16 Nov 14): the scanner's line and its Pause
+     switch, Needs a click in next-airing order, a pattern approved and withdrawn from
+     its line (and the weaker second line), a show opened and its list stepped through
+     (the frames either side, Approve, Reject, a frame later, a typed time, a kind, a
+     break added and taken away, the A key), "these have no breaks", theatrical on a
+     movie inside a custom show that was never scanned, and Scan next:
+     `--only breaks-page`. It changes the copy's `breaks` store (approvals it makes
+     stay), so run it on a fresh copy; it refuses a server whose scanner is not
+     paused by hand, and its Pause / Resume click is made with every drive skipped, so
+     the resume reads nothing.
 
   `node scripts/editor-workflows.js --url http://localhost:<port> --channel 3`
-  does all nine against a running preview, from a fresh page each, clicking
+  does all ten against a running preview, from a fresh page each, clicking
   each control with the real mouse at its middle after checking nothing covers
   it there (a covered button fails, naming what covers it). It waits for each
   save to land rather than a fixed delay, and when the first screen of the list
   is all kept edits it scrolls on until it finds a plain row. It saves a channel
   and a filler list, so it refuses port 18000. `--only` runs some of them
   (`first-open-silent`, `open-cancel`, `open-update`, `library-add`, `delete`,
-  `add-delete-create`, `swap-drag-put-back`, `insert-before`, `create-lineup`, `filler`);
+  `add-delete-create`, `swap-drag-put-back`, `insert-before`, `create-lineup`, `filler`,
+  `special-day`, `breaks-page`);
   `first-open-silent` only has something to keep on a channel whose list still
   holds pins from before kept rows, so run it on a fresh copy - every other
   workflow's own `openEditor()` fails loudly if the old dialog ever shows, on
@@ -7673,6 +7685,83 @@ ripper's 5-minute chapters among them.
     sit on the list one by one; step 4 gets a "these have no breaks" action.
   - Batman: 9 of 16 picks clear, 6 unclear, 1 doubtful; Family Guy 21 of 22
     clear; Gargoyles 14 of 18; Hannah Montana 14 of 14.
+
+#### Step 4 build record: the Breaks page (`midrolls-step4`, built Nov 14, not merged)
+
+`#!/breaks`, "Breaks" in the top menu: `web/public/views/breaks.html`,
+`web/controllers/breaks.js`, a `breaks-frame` directive, `src/breaks-page.js` (pure: a
+show's line, its list, its episodes), `src/break-edit.js` (pure: one point's approve,
+reject, nudge, typed time, kind, add; "none"; theatrical), `src/break-frames.js` and the
+routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point`, `/none`,
+`/theatrical`, `/scan-first`, `/frame`; the scanner's own routes are as before).
+
+- **One line per show**, details when it is opened: name, how much is scanned and when it
+  next airs, the pattern line with Approve / Approved + Withdraw (the weaker second line
+  under it, with its own), "N to check", "N with none", and Scan next. Lists: Needs a
+  click (the default), Approved, Movies, All, and a search that looks through every show.
+  **Needs a click is in the order the shows next air** (DarkManX16, Nov 14), so what is on
+  this week comes first; a show on no channel comes last. A show just changed stays where
+  it is, saying what it now is, until the list is changed.
+- **Episodes with no breaks found are not on the list to check** (DarkManX16, Nov 14):
+  nothing there can be approved or aired. They are counted on the show's line and stay in
+  its "All episodes". A listed episode leaves the list when every point waiting on it is
+  decided. On the Nov 14 copy (6:35am): 443 shows, 5,998 files scanned, 270 shows with a
+  pattern and 42 with a weaker line, **1,560 episodes on the list in 303 shows** (1,739
+  more counted as having none), 405 shows needing a click, 378 of them airing this week.
+- **An opened show** steps through its waiting points one at a time: the picture just
+  before the point's black and just after it (a point with no black - a chapter's, a
+  hand-placed one, one nudged out of its black - shows either side of the cut), Approve
+  (A), Reject (R), a frame or a second either way (arrows, Shift), a typed time, a kind,
+  a break added at a typed time, "this one has no breaks", Previous / Next. Playback of a
+  few seconds is left out for now (DarkManX16, Nov 14). The list of the show's other
+  episodes, "All episodes", has ticks and **"These have no breaks"** (ticked, or "No
+  breaks in this show" for every scanned one; "the marked ones" ticks them to be taken
+  back), and a Movies list for a show that has any: each movie scanned or not, with its
+  own Theatrical button, so First Kid and College Road Trip, inside their custom show and
+  never scanned, can be marked before the scanner reaches them (a stub holds only the
+  mark, and goes when the mark does).
+- **Frames** (`src/break-frames.js`): one at a time, 480 px wide, cut by ffmpeg at idle CPU
+  and Very Low disk priority through the scanner's own runner, kept in `<data>/breaks-frames`
+  (trimmed to 3,000 when past 4,000). Only files the scanner knows are ever read; a file on a
+  skipped drive says "E: is skipped" instead of being read; while the scanner is paused
+  because a viewer fell behind (not when paused by hand) no frame is cut.
+- **The scanner's strip** is one line (mode and why, this week's count, the whole library's,
+  Pause / Resume, Details). Details: the file being scanned, each live stream's pace, the
+  skipped drives (an empty box changes nothing; "none" scans every drive), and the last
+  eight lines of the pause log. **Scan next** puts a show's files first in the queue, newest
+  request first, kept in `break-scanner.json` so a restart keeps it, and dropped when the
+  show has nothing left to scan.
+- **Calls made beyond DarkManX16's decisions:** (1) Gentle takes a Scan next show on a busy
+  drive ahead of free-drive files, at Very Low disk priority with the pace pause still
+  watching - the same as its last-resort path for a busy drive (Nov 10); waiting for every
+  free drive's file would have been waiting for good. (2) A file whose record is kept under
+  another show's key (a movie scanned as itself and also in a custom show) counts as scanned
+  for both and is acted on where its record is kept. (3) Marking an episode "none", or a
+  movie theatrical, sends the points its pattern approved back to found (his own approvals
+  and hand breaks stay), and taking the mark back lets the approved pattern speak for it
+  again. **Step 5's planner must still read a record with `noBreaks`, or a `theatrical` one
+  (hand points only), as airing nothing from found or approved points.** (4) "No breaks in
+  this show" marks the show as a whole (`noBreaks` on its store file) as well as every
+  scanned episode, so a file with no record yet is marked as it is scanned (DarkManX16,
+  Nov 14; tests first); an episode he ticked stays as he left it, through a rescan or a
+  changed file, and the button, pressed again ("Breaks again in this show"), takes the
+  whole show back.
+  (5) Nothing is said when a change is made: the line or list changes instead.
+- **Proof.** The suite 3,469/3,469 (107 new tests, each new behaviour checked by changing the
+  code and watching a test fail). The workflow checklist, now twelve with `breaks-page`
+  (the Breaks page by real clicks and keys), 12/12 on the final code (7:30am Nov 14), on a copy taken at 7:09am, a
+  scratch server on 18210 with its scanner paused by hand and E: skipped (the page's
+  own workflow found two more bugs on earlier runs, below); the page's own
+  Pause / Resume click is made with every drive skipped. A fresh review of the branch
+  found nine things, all fixed or answered (the scanner's index kept a movie's deleted
+  theatrical mark, a file kept under another key, one show's answer replacing another's
+  open panel, a pattern's approvals surviving "no breaks", an empty drives box un-skipping
+  E:, a timer list that grew, an extra message, and the busy-drive call above). The
+  checklist found a tenth: a break he added 6 s from a rejected point vanished, because
+  points within 15 s are read as one (Cheers); a break he placed himself is now never
+  merged with its neighbour (one he approved, rejected or moved still joins its pair, so
+  rejecting a pair's break rejects the pair and reveals nothing), and a break he moves to
+  within 15 s after the opening no longer joins the opening.
 
 ### Random Slots' Create Lineup restarts the program on air
 

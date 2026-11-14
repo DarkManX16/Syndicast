@@ -37,6 +37,7 @@ const transitions = require('../transitions');
 const paceMeter = require('../pace-meter');
 const { ScanGovernor } = require('../break-scan-governor');
 const { DiskPriority } = require('../io-priority');
+const { FrameGrabber } = require('../break-frames');
 const { MOVIE_MIN_MS } = require('../clip-names');
 
 const FIRST_QUEUE_MS = 60 * 1000;
@@ -147,6 +148,10 @@ class BreakScanService {
         this.switchedByHand = false;
         this.skipDrives = [];
         this.drivesSetByHand = false;
+        this.scanFirstSetByHand = false;
+        this.scanFirst = [];
+        this.airing = { builtAt: null, files: new Map(), shows: new Map(), byKey: new Map() };
+        this.frames = new FrameGrabber(this);
         this.disk = options.diskPriority || new DiskPriority( { log: this.log } );
     }
 
@@ -172,6 +177,9 @@ class BreakScanService {
         }
         if (! this.drivesSetByHand) {
             this.skipDrives = BreakScanService.driveList(saved.skipDrives);
+        }
+        if (! this.scanFirstSetByHand) {
+            this.scanFirst = Array.isArray(saved.scanFirst) ? saved.scanFirst.filter( (k) => typeof(k) === 'string' ) : [];
         }
         this.index = index;
         this.ready = true;
@@ -216,6 +224,7 @@ class BreakScanService {
             clearInterval(t);
         }
         this.timers = [];
+        clearTimeout(this.soonTimer);
         this.abort('stop');
         if (this.worker) {
             await this.worker;
@@ -267,7 +276,7 @@ class BreakScanService {
     }
 
     async saveSettings() {
-        await fs.promises.writeFile(this.settingsFile, JSON.stringify( { paused: this.governor.manualPaused === true, skipDrives: this.skipDrives } ), 'utf8');
+        await fs.promises.writeFile(this.settingsFile, JSON.stringify( { paused: this.governor.manualPaused === true, skipDrives: this.skipDrives, scanFirst: this.scanFirst } ), 'utf8');
     }
 
     isSkipped(drive) {
@@ -369,6 +378,7 @@ class BreakScanService {
             }
         }
         this.markMovies( [ ...byPath ].map( ([file, { program }]) => ({ path: file, movie: isMovie(program) }) ) );
+        this.airing = this.airingOf(byPath, now);
         const entries = [];
         for (const [file, { program, nextAt }] of byPath) {
             const key = transitions.showKey(program);
@@ -381,6 +391,7 @@ class BreakScanService {
                 path: file,
                 // A file reached under two show keys has one record, saved again where it is.
                 key: (found != null) ? found.key : key,
+                showKey: key,
                 nextAt,
                 inWeek: nextAt < now + WEEK_MS,
                 drive: paceMeter.driveOf(file),
@@ -390,6 +401,7 @@ class BreakScanService {
             } );
         }
         entries.sort( (a, b) => (a.inWeek === b.inWeek) ? (a.nextAt - b.nextAt) : (a.inWeek ? -1 : 1) );
+        entries.sort( (a, b) => this.firstRank(a) - this.firstRank(b) );
         const counts = { week: { files: 0, scanned: 0 }, library: { files: 0, scanned: 0 }, skipped: { files: 0 } };
         for (const e of entries) {
             const found = this.index.get(e.path);
@@ -407,6 +419,117 @@ class BreakScanService {
         this.counts = counts;
         this.queue = entries.filter( (e) => ! this.isSkipped(e.drive) && this.needsWork(e, now) && ( (this.current === null) || (this.current.path !== e.path) ) );
         this.queuedAt = now;
+        await this.dropFinishedFirst();
+    }
+
+    /*
+     * What the Breaks page needs from the channels: each file's next airing and name, and per
+     * show key (the program's, and the key its record is stored under, when they differ) how
+     * many files air and when the first of them next does.
+     */
+    airingOf(byPath, now) {
+        const files = new Map();
+        const shows = new Map();
+        const byKey = new Map();
+        for (const [file, { program, nextAt }] of byPath) {
+            const showKey = transitions.showKey(program);
+            const found = this.index.get(file);
+            const storeKey = (found != null) ? found.key : showKey;
+            files.set(file, { showKey, storeKey, nextAt, type: program.type, title: program.title, showTitle: program.showTitle, season: program.season, episode: program.episode, movie: isMovie(program), durationMs: program.duration });
+            for (const k of new Set( [ showKey, storeKey ] )) {
+                if (k == null) {
+                    continue;
+                }
+                const had = shows.get(k) || { total: 0, nextAt: null, movies: 0 };
+                had.total++;
+                if (isMovie(program)) {
+                    had.movies++;
+                }
+                if (k.startsWith('movie.')) {
+                    (had.paths = had.paths || []).push(file);
+                }
+                if ( ! byKey.has(k) ) {
+                    byKey.set(k, []);
+                }
+                byKey.get(k).push(file);
+                if ( (had.nextAt === null) || (nextAt < had.nextAt) ) {
+                    had.nextAt = nextAt;
+                }
+                shows.set(k, had);
+            }
+        }
+        return { builtAt: now, files, shows, byKey };
+    }
+
+    // ---- "scan this show next" ---------------------------------------------------------------
+
+    // Where an entry stands in the list DarkManX16 asked for (newest request first); the rest after it.
+    firstRank(entry) {
+        const at = [ this.scanFirst.indexOf(entry.key), this.scanFirst.indexOf(entry.showKey) ].filter( (i) => i >= 0 );
+        return (at.length > 0) ? Math.min(...at) : this.scanFirst.length;
+    }
+
+    async setScanFirst(key, on) {
+        this.scanFirstSetByHand = true;
+        this.scanFirst = this.scanFirst.filter( (k) => k !== key );
+        if (on === true) {
+            this.scanFirst.unshift(key);
+        }
+        // stable, so the order the rebuild gave is kept inside each rank
+        this.queue = this.queue.map( (e, i) => ({ e, i }) ).sort( (a, b) => (this.firstRank(a.e) - this.firstRank(b.e)) || (a.i - b.i) ).map( (x) => x.e );
+        await this.saveSettings();
+    }
+
+    // How many files of a show are waiting to be scanned.
+    remaining(key) {
+        return this.queue.filter( (e) => (e.key === key) || (e.showKey === key) ).length + ( (this.current !== null) && ( (this.current.key === key) || (this.current.showKey === key) ) ? 1 : 0 );
+    }
+
+    // A show whose files are all scanned (or can't be) is no longer waiting for its turn.
+    async dropFinishedFirst() {
+        const kept = this.scanFirst.filter( (k) => this.remaining(k) > 0 );
+        if (kept.length !== this.scanFirst.length) {
+            this.scanFirst = kept;
+            await this.saveSettings();
+        }
+    }
+
+    // A rebuild a moment from now (a show or movie marked theatrical and back should rejoin the queue).
+    rebuildSoon() {
+        clearTimeout(this.soonTimer);
+        this.soonTimer = setTimeout( () => this.rebuildQueue().catch( (err) => this.log(`Breaks: could not work out what to scan: ${err.stack || err}`) ), AFTER_SAVE_MS );
+    }
+
+    // ---- DarkManX16's changes from the page ------------------------------------------------------
+
+    /*
+     * Changes one show's file in the store: `mutate(show)` edits it in place and may return
+     * { ok: false } to change nothing. Load, change and save are one synchronous step, so
+     * the scanner's own saves never interleave with it; the scanner's index follows.
+     */
+    updateShow(key, mutate) {
+        const show = store.loadShow(this.breaksDir, key);
+        const before = Object.keys(show.files);
+        const result = mutate(show);
+        if ( (result != null) && (result.ok === false) ) {
+            return result;
+        }
+        store.saveShow(this.breaksDir, key, show);
+        for (const p of Object.keys(show.files)) {
+            this.index.set(p, { key, record: show.files[p] });
+        }
+        // a record the change took away (a theatrical mark that was all a movie had) goes from the index too,
+        // or the scanner would still read the movie as marked
+        for (const p of before) {
+            const had = this.index.get(p);
+            if ( (show.files[p] == null) && (had != null) && (had.key === key) ) {
+                this.index.delete(p);
+            }
+        }
+        this.theatrical.delete(key);
+        // a show or movie marked theatrical leaves the queue at once; one marked back waits for the next rebuild
+        this.queue = this.queue.filter( (e) => ! ( (e.key === key) && ( (show.theatrical === true) || ( (show.files[e.path] != null) && (show.files[e.path].theatrical === true) ) ) ) );
+        return result || { ok: true };
     }
 
     // ---- the worker --------------------------------------------------------------------------
@@ -414,6 +537,13 @@ class BreakScanService {
     pickNext(mode) {
         if (mode !== 'gentle') {
             return this.queue[0] || null;
+        }
+        // A show DarkManX16 asked to have scanned next goes first, on a busy drive too: at Very Low disk
+        // priority, with the pace check still watching, that is what Gentle already does for a busy
+        // drive's last files (Nov 10), and waiting for every free drive's files would be waiting for good.
+        const asked = this.queue.find( (e) => this.firstRank(e) < this.scanFirst.length );
+        if (asked !== undefined) {
+            return asked;
         }
         // a drive no viewer is on first; failing that, a busy one, at Very Low
         const busy = this.governor.busyDrives();
@@ -604,6 +734,7 @@ class BreakScanService {
             queued: this.queue.length,
             counts: this.counts,
             skipDrives: this.skipDrives.slice(),
+            scanFirst: this.scanFirst.map( (k) => ({ key: k, remaining: this.remaining(k) }) ),
             diskPriority: this.disk.status(),
             live: this.meter.live().map( (i) => ({ channel: i.channel, title: i.title, drive: i.drive, startedAt: i.startedAt, pace: i.pace, held: i.held }) ),
             pace: g.paceReport(),
