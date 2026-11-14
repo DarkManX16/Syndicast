@@ -7756,7 +7756,7 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
   (Nov 14, a copy of 11:15am, a scratch server from the main checkout on 18212):**
   3,477/3,477 and 12/12 workflows; the first full run had one `breaks-page` failure (the
   show's panel did not open on a click right after `special-day`), which did not come back
-  in four more runs of it, one of them the whole list. A fresh review of the branch
+  in five more runs of it, one of them the whole list. A fresh review of the branch
   found nine things, all fixed or answered (the scanner's index kept a movie's deleted
   theatrical mark, a file kept under another key, one show's answer replacing another's
   open panel, a pattern's approvals surviving "no breaks", an empty drives box un-skipping
