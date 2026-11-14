@@ -1206,7 +1206,21 @@ The main way to approve is **one click per show**.
   strengths; the earlier point is never approved and never listed. The
   opening is read the same way: where two points fall within 15 s there
   (Rupert's 1:03 and 1:09, in 63 of 65 episodes), the later one is the
-  opening.
+  opening. Openings stay as they are for now (DarkManX16, Nov 13): the break
+  after the opening is off by default.
+- **A second line, from weaker points** (DarkManX16, Nov 13). Full House's one
+  mid-episode point is a real act break in 15 of 18 sampled, 7 of the 9 below
+  0.6 among them, but only 44 of 190 episodes have a strong one, so "N breaks
+  an episode" finds nothing. Where a running-length group's strong points give
+  no mid-episode break, and counting every mid-episode point with a black (any
+  strength) gives a steady number by the same rule (at least half the
+  episodes, and three), that count is offered on a line of its own: *"Full
+  House, 190 episodes scanned: 1 break an episode at different times (weaker
+  points, 121 of 190)."* It is never approved by the ordinary click; its own
+  click approves the show with that count wherever it is offered (and the
+  first line's pattern everywhere else), recorded on each approved group as
+  `weak: true` so later episodes are approved the same way. On the Nov 12
+  copy, 25 shows were offered one.
 - **Approve the pattern.** In every scanned episode, the point closest to each
   pattern position (within 45 s) is approved, and for "N breaks an episode",
   the N strong mid-episode points of every episode that has exactly N;

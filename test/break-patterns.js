@@ -277,6 +277,41 @@ module.exports = async () => {
         suite.check('...points 16 s apart stay two', JSON.stringify(far) === '[600,616]', JSON.stringify(far));
     }
 
+    // ---- a count from weaker points, approved only by its own click (Nov 13) ------------------
+    {
+        // Full House: one real act break an episode, mostly weaker than 0.6, at different
+        // times; one episode has two; one a weak chapter-only point as well.
+        const files = {};
+        for (let i = 0; i < 6; i++) {
+            files[`F:\\FH\\e${i + 1}.mkv`] = rec(22.5, [ pt(85, 'opening', 0.65), pt(600 + i * 70, 'act', 0.4 + i * 0.03), pt(1300, 'credits') ]);
+        }
+        files['F:\\FH\\e7.mkv'] = rec(22.5, [ pt(85, 'opening', 0.65), pt(560, 'act', 0.45), pt(1000, 'act', 0.5), pt(1300, 'credits') ]);
+        files['F:\\FH\\e1.mkv'].points.splice(2, 0, pt(900, 'act', 0.15, { chapterOnly: true }));
+        const s = show(files);
+        const line = patterns.patternLine('Full House', s);
+        const weaker = patterns.weakerLine('Full House', s);
+        suite.check('Full House: the strong points give only an opening; the weaker points offer a second line',
+            (line === 'Full House, 7 episodes scanned: opening near 1:25 (100%)')
+            && (weaker === 'Full House, 7 episodes scanned: opening near 1:25 (100%), 1 break an episode at different times (weaker points, 6 of 7)'), `${line} / ${weaker}`);
+        const plain = JSON.parse(JSON.stringify(s));
+        patterns.approve(plain, 1);
+        suite.check('...the ordinary click approves only the openings',
+            Object.values(plain.files).every( (r) => approvedAts(r) === 'opening@85' ), JSON.stringify(Object.values(plain.files).map(approvedAts)));
+        patterns.approve(s, 1, { weaker: true });
+        suite.check('...its own click approves each episode\'s one weaker break too, never a chapter-only point',
+            (approvedAts(s.files['F:\\FH\\e1.mkv']) === 'opening@85 act@600') && (approvedAts(s.files['F:\\FH\\e6.mkv']) === 'opening@85 act@950')
+            && (s.pattern.weaker === true), approvedAts(s.files['F:\\FH\\e1.mkv']));
+        const list = patterns.outliers(s);
+        suite.check('...and the episode with two weaker points is the one on the list',
+            (list.length === 1) && (list[0].path === 'F:\\FH\\e7.mkv') && (list[0].reasons.join() === '2 breaks, not 1'), JSON.stringify(list));
+        s.files['F:\\FH\\e8.mkv'] = rec(22.5, [ pt(85, 'opening', 0.65), pt(777, 'act', 0.38), pt(1300, 'credits') ]);
+        patterns.applyApproved(s, 'F:\\FH\\e8.mkv');
+        suite.check('...a later episode is approved by the weaker count it was approved with',
+            approvedAts(s.files['F:\\FH\\e8.mkv']) === 'opening@85 act@777', approvedAts(s.files['F:\\FH\\e8.mkv']));
+        suite.check('a show whose strong points already give breaks offers no second line',
+            patterns.weakerLine('Gargoyles', gargoyles()) === null);
+    }
+
     // ---- no audio, no breaks, chapter-only ----------------------------------------------------
     {
         const s = happyDays();

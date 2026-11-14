@@ -26,7 +26,10 @@
  *   - theatrical is per movie: a record carries `theatrical: true`, so marking one
  *     movie leaves the rest of its custom show alone;
  *   - a movie inside a custom show (a record with `movie: true`) is a movie: no
- *     part of the show's pattern, its points always on the list to check.
+ *     part of the show's pattern, its points always on the list to check;
+ *   - where the strong points give no mid-episode break but every point with a
+ *     black gives a steady count (Full House), that count is offered on a line
+ *     of its own, approved only by its own click.
  */
 const { FILE_START_S, constants: detectConstants } = require('./break-detect');
 
@@ -132,6 +135,11 @@ function midPoints(record, windowS = OPENING_WINDOW_S) {
 function strongMid(record, windowS = OPENING_WINDOW_S) {
     return midPoints(record, windowS).filter( (p) => (p.black != null) && (p.strength >= STRONG) );
 }
+// The points "N breaks an episode" counts: the strong ones, or for a count from weaker
+// points every mid-episode point with a black, at any strength.
+function countedMid(record, windowS = OPENING_WINDOW_S, weak = false) {
+    return weak ? midPoints(record, windowS).filter( (p) => p.black != null ) : strongMid(record, windowS);
+}
 
 // The opening window for one running-length group (see LONG_OPENING_WINDOW_S).
 function openingWindow(files) {
@@ -209,11 +217,12 @@ function positionGroups(files, windowS = OPENING_WINDOW_S) {
     return out;
 }
 
-// "N breaks an episode": the commonest number of strong mid-episode points, if enough episodes have it.
-function countPattern(files, windowS = OPENING_WINDOW_S) {
+// "N breaks an episode": the commonest number of strong mid-episode points (or, `weak`, of
+// all of them with a black), if enough episodes have it.
+function countPattern(files, windowS = OPENING_WINDOW_S, weak = false) {
     const tally = {};
     for (const [, rec] of files) {
-        const n = strongMid(rec, windowS).length;
+        const n = countedMid(rec, windowS, weak).length;
         tally[n] = (tally[n] || 0) + 1;
     }
     const best = Object.keys(tally).map(Number).filter( (n) => n > 0 ).sort( (a, b) => (tally[b] - tally[a]) || (b - a) )[0];
@@ -248,7 +257,7 @@ function fits(pattern, record) {
         return false;
     }
     if (pattern.count !== null) {
-        return strongMid(record, w).length === pattern.count;
+        return countedMid(record, w, pattern.weak === true).length === pattern.count;
     }
     return true;
 }
@@ -259,9 +268,20 @@ function fits(pattern, record) {
  * count: N | null, countEpisodes, fitting }
  */
 function groupPattern(group) {
+    return groupPatterns(group).pattern;
+}
+
+/*
+ * { pattern, weaker }: the group's pattern, and - only where that gives no
+ * mid-episode break - "N breaks an episode" from weaker points (DarkManX16, Nov 13:
+ * Full House's single point is a real act break in 15 of 18 sampled, 7 of the 9
+ * below 0.6 among them). The weaker one keeps the pattern's openings and carries
+ * `weak: true`; it is offered, never approved by the ordinary click.
+ */
+function groupPatterns(group) {
     const files = group.files;
     if (files.length < MIN_EPISODES) {
-        return null;
+        return { pattern: null, weaker: null };
     }
     const w = openingWindow(files);
     const positions = positionGroups(files, w);
@@ -288,11 +308,17 @@ function groupPattern(group) {
     } else if (positions.length > 0) {
         chosen = byPosition;
     }
-    if (chosen === null) {
-        return null;
+    if (chosen !== null) {
+        chosen.fitting = fitting(chosen);
     }
-    chosen.fitting = fitting(chosen);
-    return chosen;
+    const breaks = (chosen !== null) && ( (chosen.count !== null) || chosen.positions.some( (p) => p.kind !== 'opening' ) );
+    let weaker = null;
+    const weak = breaks ? null : countPattern(files, w, true);
+    if (weak !== null) {
+        weaker = Object.assign( {}, common, { positions: openings, count: weak.n, countEpisodes: weak.episodes, weak: true } );
+        weaker.fitting = fitting(weaker);
+    }
+    return { pattern: chosen, weaker };
 }
 
 // The show's scanned episodes (its movies and theatrical items left out).
@@ -311,13 +337,13 @@ function moviesOf(show) {
 
 /*
  * The show's patterns, one per running-length group: { groups: [{ minMs, maxMs,
- * episodes, pattern | null }] }. A theatrical show has none.
+ * episodes, pattern | null, weaker | null }] }. A theatrical show has none.
  */
 function showPatterns(show) {
     if (show.theatrical === true) {
         return { groups: [] };
     }
-    return { groups: lengthGroups(scanned(show)).map( (g) => ({ minMs: g.minMs, maxMs: g.maxMs, episodes: g.files.length, pattern: groupPattern(g) }) ) };
+    return { groups: lengthGroups(scanned(show)).map( (g) => Object.assign( { minMs: g.minMs, maxMs: g.maxMs, episodes: g.files.length }, groupPatterns(g) ) ) };
 }
 
 function minutesOf(ms) {
@@ -346,21 +372,49 @@ function patternLine(name, show, total = null) {
     const groups = showPatterns(show).groups;
     const several = groups.length > 1;
     const clauses = groups.map( (g) => {
-        const p = g.pattern;
-        const label = several ? `${minutesOf(g.minMs)}${ (minutesOf(g.maxMs) !== minutesOf(g.minMs)) ? '-' + minutesOf(g.maxMs) : '' }-minute episodes (${g.episodes}): ` : '';
-        if (p === null) {
-            return `${label}${ (g.episodes < MIN_EPISODES) ? 'too few to tell' : 'no pattern' }`;
+        if (g.pattern === null) {
+            return `${lengthLabel(g, several)}${ (g.episodes < MIN_EPISODES) ? 'too few to tell' : 'no pattern' }`;
         }
-        const parts = p.positions.map( (pos) => `${pos.kind} near ${clock(pos.at)} (${Math.round(100 * pos.episodes / g.episodes)}%)` );
-        if (p.openingEach != null) {
-            parts.unshift(`opening at ${clock(p.openingEach.from)}-${clock(p.openingEach.to)} (${p.openingEach.episodes} of ${g.episodes})`);
-        }
-        if (p.count !== null) {
-            parts.push(`${p.count} break${ (p.count === 1) ? '' : 's' } an episode at different times (${p.countEpisodes} of ${g.episodes})`);
-        }
-        return label + parts.join(', ');
+        return lengthLabel(g, several) + clauseOf(g.pattern, g.episodes);
     } );
     return `${head}: ${clauses.concat(movies).join('; ')}`;
+}
+
+function lengthLabel(g, several) {
+    return several ? `${minutesOf(g.minMs)}${ (minutesOf(g.maxMs) !== minutesOf(g.minMs)) ? '-' + minutesOf(g.maxMs) : '' }-minute episodes (${g.episodes}): ` : '';
+}
+
+function clauseOf(p, episodes) {
+    const parts = p.positions.map( (pos) => `${pos.kind} near ${clock(pos.at)} (${Math.round(100 * pos.episodes / episodes)}%)` );
+    if (p.openingEach != null) {
+        parts.unshift(`opening at ${clock(p.openingEach.from)}-${clock(p.openingEach.to)} (${p.openingEach.episodes} of ${episodes})`);
+    }
+    if (p.count !== null) {
+        const n = `${p.count} break${ (p.count === 1) ? '' : 's' } an episode at different times`;
+        parts.push(p.weak ? `${n} (weaker points, ${p.countEpisodes} of ${episodes})` : `${n} (${p.countEpisodes} of ${episodes})`);
+    }
+    return parts.join(', ');
+}
+
+/*
+ * The second line, or null: "Full House, 190 episodes scanned: 1 break an episode at
+ * different times (weaker points, 121 of 190)", for the length groups whose strong
+ * points give no mid-episode break but whose weaker points give a steady count.
+ * approve(show, now, { weaker: true }) approves it, with the first line's pattern
+ * for every other length group.
+ */
+function weakerLine(name, show, total = null) {
+    if (show.theatrical === true) {
+        return null;
+    }
+    const groups = showPatterns(show).groups;
+    const offered = groups.filter( (g) => g.weaker !== null );
+    if (offered.length === 0) {
+        return null;
+    }
+    const n = scanned(show).length;
+    const head = `${name}, ${ (total != null) ? `${n} of ${total}` : n } episode${ (n === 1) ? '' : 's' } scanned`;
+    return `${head}: ${offered.map( (g) => lengthLabel(g, groups.length > 1) + clauseOf(g.weaker, g.episodes) ).join('; ')}`;
 }
 
 // The approved pattern's group a record belongs to, by its running length.
@@ -405,9 +459,9 @@ function applyToRecord(approved, record) {
             count += approvePoint(record, o, 'opening');
         }
     }
-    const strong = strongMid(record, w);
-    if ( (g.count !== null) && (strong.length === g.count) ) {
-        for (const p of strong) {
+    const counted = countedMid(record, w, g.weak === true);
+    if ( (g.count !== null) && (counted.length === g.count) ) {
+        for (const p of counted) {
             count += approvePoint(record, p, p.kind);
         }
     }
@@ -416,21 +470,30 @@ function applyToRecord(approved, record) {
 
 /*
  * One click: the show's pattern, every length group's, is approved and applied to
- * every scanned episode. Changes `show` in place (the caller saves it); returns
- * the number of points approved.
+ * every scanned episode. `weaker`: the second line's click, which takes the count
+ * from weaker points where one is offered. Changes `show` in place (the caller
+ * saves it); returns the number of points approved.
  */
-function approve(show, now) {
+function approve(show, now, { weaker = false } = {}) {
     if (show.theatrical === true) {
         return 0;
     }
-    const groups = showPatterns(show).groups.filter( (g) => g.pattern !== null ).map( (g) => ({
-        minMs: g.minMs, maxMs: g.maxMs,
-        positions: g.pattern.positions.map( (p) => ({ at: p.at, kind: p.kind }) ),
-        count: g.pattern.count,
-        openingWindowS: g.pattern.openingWindowS,
-        openingEach: g.pattern.openingEach,
-    }) );
-    show.pattern = { approvedAt: now, groups };
+    const groups = [];
+    for (const g of showPatterns(show).groups) {
+        const p = (weaker && (g.weaker !== null)) ? g.weaker : g.pattern;
+        if (p === null) {
+            continue;
+        }
+        groups.push( {
+            minMs: g.minMs, maxMs: g.maxMs,
+            positions: p.positions.map( (x) => ({ at: x.at, kind: x.kind }) ),
+            count: p.count,
+            weak: p.weak === true,
+            openingWindowS: p.openingWindowS,
+            openingEach: p.openingEach,
+        } );
+    }
+    show.pattern = { approvedAt: now, weaker: weaker === true, groups };
     let n = 0;
     for (const [, rec] of scanned(show)) {
         n += applyToRecord(show.pattern, rec).approved;
@@ -517,9 +580,9 @@ function outliers(show, isMovie = false) {
                 reasons.push('no opening found');
             }
             if (g.count !== null) {
-                const k = strongMid(rec, w).length;
+                const k = countedMid(rec, w, g.weak === true).length;
                 if (k !== g.count) {
-                    reasons.push(`${k} strong break${ (k === 1) ? '' : 's' }, not ${g.count}`);
+                    reasons.push(`${k} ${ (g.weak === true) ? '' : 'strong ' }break${ (k === 1) ? '' : 's' }, not ${g.count}`);
                 }
             }
         }
@@ -538,6 +601,6 @@ function outliers(show, isMovie = false) {
 
 module.exports = {
     effectivePoints, midPoints, strongMid, openingWindow, lengthGroups, positionGroups, countPattern, groupPattern,
-    showPatterns, patternLine, approve, withdraw, applyApproved, outliers, fits, clock,
+    showPatterns, patternLine, weakerLine, approve, withdraw, applyApproved, outliers, fits, clock,
     constants: { SPAN_S, ONE_BREAK_S, MIN_EPISODES, LENGTH_TOLERANCE, STRONG, EDGE_S, LONG_OPENING_WINDOW_S, LONG_OPENING_MIN_MS },
 };
