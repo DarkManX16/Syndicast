@@ -6186,15 +6186,27 @@ of Welcome to Pooh Corner, Holiday For Pooh Bear, Sun Nov 22 at 10:44:50.676pm.
     first). On the live data, the workflow's other pick, tonight's 9:05pm Muppets Tonight
     (Tony Bennett, 10 s longer, moved to Nov 22), puts the Pooh row at **10:49:50pm**,
     5 minutes late, on `blocks`.
-- **Fixed.** An episode that would end past the next kept row by more than SLACK waits for
-  its slot's next airing, and the slot is Flex to its end, as the fill before a kept row
-  already does. With the 9:05pm swap, Nov 22's Fraggle Rock becomes 21 minutes of Flex
-  and the Pooh row stays at 10:44:50.676. Within SLACK the row still follows: with the
-  9:35pm swap it starts 46 ms late, and holding it to the millisecond would cost that
-  night's Fraggle Rock for 46 ms. So `create-lineup` now counts a kept row within SLACK
-  of its instant as kept, and names each such shift in its pass line. On the 4:11pm copy,
-  without the swaps, Create Lineup on channels 1-3 is entry for entry the same as `blocks`
-  (40,000, 35,101 and 37,317 entries), and every kept row is at its saved instant.
+- **Fixed: a kept row stays exactly where DarkManX16 put it, to the millisecond.** An episode
+  that would end past the next kept row by any amount waits for its slot's next airing,
+  and the slot is Flex to its end. That holds whether the episode slides on from an
+  earlier slot or fills the kept row's own slot. Before, the fill allowed SLACK, 9,999 ms.
+  - The cost: when the episode before a kept row comes out even 46 ms longer, that airing
+    moves to its show's next slot. With either swap, Nov 22's Fraggle Rock becomes Flex
+    (26 or 21 minutes) and airs the week after.
+  - `test/kept-generator.js` has three new checks, all failing first: a slide 5 minutes
+    past, a slide 5 s past, and an in-slot episode 5 s past.
+  - The checklist's `create-lineup` still compares kept rows to the millisecond.
+- **Proof, on the copy taken 4:11pm** (channel 3 byte for byte the 12:28pm file), Create
+  Lineup at 4:15pm through `progress-check`, the Pooh Corner entry compared byte for byte
+  (2,495 bytes):
+
+  | | no swap | 9:35pm swap | 9:05pm swap |
+  |---|---|---|---|
+  | `blocks` | same, 0 ms | same entry, +46 ms | same entry, +300,000 ms |
+  | fix | same, 0 ms | same, 0 ms | same, 0 ms |
+
+  With no swaps, Create Lineup's saved channels 1-3 are byte for byte `blocks`' own
+  (40,000, 35,101 and 37,317 entries). Every kept row is at its saved instant.
 - **Not changed, for DarkManX16 to decide.** Swapping tonight's Jim Henson Hour for a
   7.7 s longer episode leaves tonight's 10:25 Fraggle Rock in the list. Create Lineup then
   drops it, because a kept row takes its time and the next slot gets only what fits whole.
