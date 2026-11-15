@@ -1325,12 +1325,13 @@ function makeRunner(opts, page) {
             if (times.some((t, i) => i > 0 && t < times[i - 1])) {
                 throw new Check('the shows that air are not in order of when they next air');
             }
-            list = fresh;
+            // shows approved automatically have no Approve on their line (step 1c covers them)
+            list = Object.assign({}, fresh, { shows: fresh.shows.filter((s) => s.autoApproved !== true) });
             out.push('Needs a click in next-airing order');
 
             // 2. a pattern approved from its line and withdrawn; then the weaker second line
-            const plain = list.shows.find((s) => s.pattern !== null && !s.approved && !s.autoApproved && s.weaker === null && s.kind !== 'movie' && s.toCheck === 0);
-            const weakish = list.shows.find((s) => s.weaker !== null && !s.approved && !s.autoApproved && s.kind !== 'movie');
+            const plain = list.shows.find((s) => s.pattern !== null && !s.approved && s.weaker === null && s.kind !== 'movie' && s.toCheck === 0);
+            const weakish = list.shows.find((s) => s.weaker !== null && !s.approved && s.kind !== 'movie');
             if (!plain) {
                 throw new Check('no show has a plain pattern on offer to approve');
             }
