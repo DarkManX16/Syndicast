@@ -8123,6 +8123,10 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   yet. Earlier runs on the same server failed three Create Lineup workflows with "Your server is
   still running older code than this page": the server code had been edited while it ran. After a
   restart all three passed, and blocks on the same copy passed too.
+- **Merged with blocks 77453a8** (the weaker-line fix and the merging rule) as afb6fb0, plus
+  9296919 (5d's plan, spec only). On that combined result (a copy of 10:46am, server 18250 from
+  the worktree, its scanner paused by hand): every workflow 12/12, `breaks-page` included, then
+  `npm test` 3,657/3,657. Merged into blocks and pushed after it.
 - **What it means on 18000:** after a restart on 5c, with midrolls on, the scanner cuts the
   list's frames as it goes and backfills about 7,500 in its idle time, about 80 MB and, at
   0.2 s a frame on an idle drive, under half an hour of reading, at Very Low disk priority and
