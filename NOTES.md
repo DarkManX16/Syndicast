@@ -7446,7 +7446,12 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
 ### Remove tools keep what is kept, and Swap inside a day changes one airing (Nov 15, 2026)
 
 DarkManX16's brief, Nov 15: two things broke "what you see is what airs". Built on
-`kept-stay-day-swaps` from `blocks` at dc31265 (Opus 5.5); not merged until he confirms.
+`kept-stay-day-swaps` from `blocks` at dc31265 (Opus 5.5). DarkManX16 tried it on the preview and
+it was merged into `blocks` Nov 15 (8aaa988) and pushed (with stage 6 step 5a, 19a17fb). On the
+merge alone, a fresh copy taken 7:15am: `npm test` 3578/3578, the checklist 11 of 12 -
+`breaks-page` stopped at "Breaks again in this show is disabled", a later step than on `blocks`
+at 5:42am, with the copy's own Breaks data; none of its code is in this merge. 18000 needs
+DarkManX16's restart for the generator's part.
 
 **1. Remove shows asked "Remove shows rebuilds the whole list, so the 14 rows you edited by
 hand are no longer kept."** Every whole-list tool went through one wrapper that asked and
