@@ -571,9 +571,17 @@ class BreakScanService {
      */
     async cutSaved(w, key) {
         const drive = paceMeter.driveOf(w.file);
-        const mode = this.governor.mode();
-        if ( this.isSkipped(drive) || (mode === 'off') || (mode === 'paused') ) {
-            return false;
+        // as a scan's own pieces do: a pause or Midrolls off stops it, and in Gentle it waits out its rest
+        for (;;) {
+            const mode = this.governor.mode();
+            if ( this.stopping || this.isSkipped(drive) || (mode === 'off') || (mode === 'paused') ) {
+                return false;
+            }
+            if ( (mode === 'gentle') && (this.restUntil != null) && (this.now() < this.restUntil) ) {
+                await this.sleep(Math.min(1000, this.restUntil - this.now()));
+                continue;
+            }
+            break;
         }
         await fs.promises.mkdir(path.dirname(w.out), { recursive: true });
         const temp = `${w.out}.part.jpg`;
