@@ -1020,9 +1020,16 @@ parts, built in that order:
    empty default, and a per-context setting for how many midrolls an episode
    gets.
 
-**Every saved channel keeps playing exactly as it does.** No context has
-midrolls until one is switched on, and even then only points DarkManX16 has approved
-ever air.
+**Every saved channel keeps playing exactly as it does.** Midrolls are off until
+the one Midrolls switch is turned on (off on a new install), and even then only
+approved points ever air: points a person approved, or, with no setup at all,
+points of a show Syndicast is confident in (see "Approved automatically" below).
+
+**Built for people who never open the Breaks page** (DarkManX16, Nov 14). Most
+people who download Syndicast will not approve hundreds of shows by hand. So
+turning the switch on is the whole setup: the shows Syndicast is confident in
+get midrolls by themselves, everything else plays without them until a person
+approves it, and the Breaks page is optional fine-tuning.
 
 #### What the files offer (measured Oct 15, 2026)
 
@@ -1068,8 +1075,10 @@ episodes, which is what the show pattern below is built on.
   the show pattern lets DarkManX16 relabel a whole cluster once. `credits` is never a
   midroll spot; it is stored for the generated "Up Next" clips, which must
   avoid credits and a cold open.
-- **Only `approved` and `hand` points ever air.** `found` is a suggestion,
-  `rejected` stays recorded so a rescan does not offer it again.
+- **Only `approved` and `hand` points ever air**, and `found` points that
+  automatic approval reads as approved (below; never written to the store).
+  `found` is otherwise a suggestion, `rejected` stays recorded so a rescan does
+  not offer it again.
 - **Part one stops and part two starts at `at`**, the middle of the black, so
   the viewer sees the fade out, the break, and the fade back in. A file sent
   out without re-encoding can only start on a keyframe; there, part two starts
@@ -1247,6 +1256,54 @@ The main way to approve is **one click per show**.
   of playback across it, and approve, reject, nudge (by frames or a typed
   mm:ss), change its kind, add a break, or mark the episode as having none.
 
+#### The Midrolls switch, and approved automatically (DarkManX16, Nov 14)
+
+- **One switch, Midrolls, off on a new install.** It sits at the top of the
+  Breaks page and is kept in `break-scanner.json` as `midrolls: true | false`
+  (missing means off, so an install from before it starts off too). Off:
+  nothing airs, the guide is unchanged, and the scanner does not run - there is
+  no reason to read anyone's drives ("Off: midrolls are off"). On: the scanner
+  runs as before (Paused by hand still wins over it), and every day-part and
+  block gets midrolls with nothing to set up (the setting's default follows the
+  switch; see "The Midroll situation").
+- **Approved automatically.** A running-length group of a show is approved
+  without a click when Syndicast is confident in it:
+  1. it has an "N breaks an episode" line from strong points (not a pattern by
+     position only, and not the weaker second line);
+  2. that count holds in at least 3 of every 4 of the group's scanned episodes;
+  3. at least 5 of the group's episodes are scanned.
+
+  In such a group an episode's points air when it has exactly N strong
+  mid-episode points (strength 0.6 or more, 2 minutes from either end), at
+  least 3 minutes apart. The break after the opening is never approved
+  automatically, and neither is a movie's point (TV-made or theatrical), a
+  record marked `noBreaks`, or a theatrical one. The rule's evidence is in
+  NOTES.md ("No-setup midrolls").
+- **Read, never written.** Automatic approval is worked out from the records
+  each time a plan or the page needs it; the store only ever holds what a
+  person did. So it follows the scan: a show that stops fitting as more
+  episodes are scanned stops being approved, and one that reaches 5 episodes
+  starts.
+- **A person's choices always win**, in this order: a point he approved,
+  rejected, moved or placed; an episode marked "no breaks" or a movie marked
+  theatrical; his click on the show (Approve on either line, or Withdraw);
+  then automatic approval. **Withdraw is remembered** (`show.withdrawn =
+  { at }` beside `show.pattern = null`, which every reader already takes as "not
+  approved"), so a show he took back stays off; Approve clears it.
+- **The Breaks page becomes optional fine-tuning.** One sentence at its top:
+  *"Midrolls only play at approved breaks: Syndicast approves the shows it is
+  sure of, and anything you approve or reject here overrides it."* A show
+  approved this way reads "Approved automatically" where Approve would be, with
+  Withdraw beside it, and leaves Needs a click unless an episode of it is still
+  on its list.
+- **Measured on DarkManX16's store** (a copy of Nov 14, 8:18pm Central): 54 of
+  429 scanned shows approved automatically, 620 episodes, 905 breaks. On the
+  step 3 proof's frame-checked shows it approves no doubtful pick and one
+  unclear one (Family Guy S03E09 7:07), and leaves Batman out (its count holds
+  in 70% of episodes; Family Guy's 84-90%, Cheers 94%, Hannah Montana and
+  Gargoyles 100%). Patterns by position only were never checked in frames, so
+  they are left to a click for now.
+
 #### The scanner, and live streams
 
 A background service in the shape of the card service
@@ -1331,17 +1388,22 @@ files, where most of the time went; step 1 measures what they save.
   step "names the show coming up" picks that show's own WBRB, and a BTTS step
   its own BTTS; `later`, `afterNext` and `tomorrow` resolve from the
   program's end. Default empty: a midroll with no steps is just commercials.
-- **The setting**, per day-part and block, off by default:
+- **The setting**, per day-part and block, optional: by default it follows the
+  Midrolls switch (DarkManX16, Nov 14; it was `count: 0`, off, before the switch
+  existed), so turning the switch on needs nothing set here:
 
   ```js
-  midrolls: { count: 0,            // 0 = off; else at most this many per program
+  midrolls: { count: null,         // null = follow the switch: every approved point the
+                                   //   Flex can pay for; 0 = none here; N = at most N
               minMs: 90000,        // the shortest midroll worth having, steps included
               story: true,         // the join between two stories counts
               opening: false }     // the break after the opening counts
   ```
 
-  `act` points always count; `credits` never do. The break after the opening
-  is available but off, switchable per day-part and block.
+  A context saved before the setting existed reads as the default. With the
+  switch off no context has midrolls, whatever its setting says. `act` points
+  always count; `credits` never do. The break after the opening is available
+  but off, switchable per day-part and block.
 - **The commercials** come from the context's mix, as in a break inside the
   context, with stage 5's shared picks, so every viewer sees the same ones.
 
@@ -1449,14 +1511,67 @@ never on the live data folder and never through the server on port 18000.
    seconds of playback is left for later. **Step 5 must read a record with `noBreaks`,
    or a theatrical one (its hand points only), as airing nothing from found or approved
    points.**
-5. **The Midroll plan** (pure): the fifth situation and its empty default, the
-   `midrolls` setting and its default, save-time cleanup and warnings,
-   `buildMidrollPlan` (points, budget, shares, `minMs`, spacing, the steps
-   through the stage 5 planner keyed on the show on air). Tests, and the Family
-   Guy table above as an acceptance row. **Proof:** a script over a week of all
-   three channels on a copy, with midrolls switched on and a few shows
-   approved: every planned midroll printed, and every next program's start
-   time identical to the lineup's.
+5. **The Midroll plan**, planned Nov 14 around the switch and automatic
+   approval, in four parts, each merged on its own proof (the shape the step
+   took before then: the fifth situation and its empty default, the setting,
+   save-time cleanup and warnings, `buildMidrollPlan`, the Family Guy table as an
+   acceptance row, and a week of all three channels with every next start
+   unchanged):
+   - **5a. Automatic approval and the points that air** (pure).
+     `autoApproval(show)` in `src/break-patterns.js` (the rule above, per
+     running-length group) and `airablePoints(show, path)` in a new
+     `src/break-airable.js`: the one answer to "which points of this file may
+     air", in the order a person's choices win (his point decisions; `noBreaks`
+     and theatrical; his show click or a remembered Withdraw; then automatic),
+     with `withdraw()` recording `show.withdrawn` and `approve()` clearing it.
+     Tests for each clause, each seen failing first: a Batman-like group (the
+     count in 70% of episodes) not approved, two picks 1:45 apart left out, a
+     group of 4 episodes not approved and of 5 approved, the weaker line and a
+     pattern by position not approved, the opening and movies never, a
+     withdrawn show staying off, his approval and rejection beating the rule.
+     **Proof** (read-only, on a fresh copy of the `breaks` folder, its time
+     stated): a script prints every show approved automatically and the totals,
+     which must equal the design's on the Nov 14 8:18pm copy (54 shows, 620
+     episodes, 905 breaks) before the fresh copy's are given; on the step 3
+     proof copy, the frame-checked picks it approves (0 doubtful; Batman out).
+   - **5b. The switch** (server and the Breaks page). `midrolls` in
+     `break-scanner.json` (missing = off), carried by `GET` and `PUT
+     /api/breaks/scanner`; the scanner Off while it is off, with "Off: midrolls
+     are off" as its line, Paused by hand still winning when it is on; on the
+     page, the switch and the one sentence at the top, "Approved automatically"
+     with Withdraw on a show's line, and Needs a click without the shows this
+     approves (unless an episode of theirs is still listed). Tests for the
+     settings file (an old file with no `midrolls` reads off), the scanner's
+     mode, and the page's lines. **Proof:** a scratch server on a fresh copy,
+     its scanner paused by hand: the page with the switch off, then on (the
+     scanner still "Paused by hand", nothing read), a show approved
+     automatically, its Withdraw surviving a restart, Approve on another; with
+     no `break-scanner.json` at all, as on a new install, the switch is off and
+     the scanner does not scan. Screenshots; the full suite and every editor
+     workflow, `breaks-page` extended to the switch and an automatic show.
+   - **5c. The Midroll situation and the setting** (pure). `midroll` in each
+     context's transitions, empty by default, normalized, validated and cleaned
+     at save like the other four, and its generated steps' cards rendered by the
+     card service; the `midrolls` setting with `count: null` its default, and
+     save-time warnings for a bad one. The channel editor keeps its four
+     Transitions rows until step 7 builds the fifth. **Proof:** on a fresh copy,
+     every saved channel loads, and saved again is byte-for-byte what it was;
+     the suite and every editor workflow, the editor's Transitions section
+     unchanged.
+   - **5d. `buildMidrollPlan`** (pure): a program's points from
+     `airablePoints`, the kinds the context's setting allows, 2 minutes from
+     either end and 3 apart, the count (null: every one the budget pays for) and
+     even spacing; the budget from the Flex after it less its end break's
+     steps; equal shares and `minMs`; the steps through the stage 5 planner
+     keyed on the show on air; deterministic. The Family Guy table above as an
+     acceptance row. **Proof:** a script over a week of all three channels on a
+     fresh copy, the switch on and **no approvals by hand**: every planned
+     midroll printed (show, episode, points, share), every show with one among
+     those 5a approves, and every next program's start identical to the
+     lineup's; then on the same copy one point approved, one rejected and one
+     show withdrawn by hand, and the week planned again: the approved point
+     airs, the rejected one does not, the withdrawn show has none, nothing else
+     changes.
 6. **Playing it.** The cursor's parts and midroll phases, the clock path, the
    shared plan, the keyframe start for copied files, the guide. The simulated
    viewer in `test/lineup-cursor.js` and the real router in
@@ -1469,9 +1584,12 @@ never on the live data folder and never through the server on port 18000.
    carrying it, the preview on this week's lineup listing midrolls, and a tag
    on program rows ("2 midrolls"). **Proof:** by hand on the copy, with
    screenshots.
-8. **End to end.** DarkManX16 approves real shows on a copy; a day of a channel walked
+8. **End to end.** A new install's path first: a fresh data folder, the switch
+   turned on, the scanner finding breaks, and the shows it is confident in
+   getting midrolls with no click. Then DarkManX16 approves real shows on a copy; a day of a channel walked
    by script; a TiviMate preview; then the roadmap ticked. The scanner reaches
-   the real library only when DarkManX16 restarts 18000 on the merged code.
+   the real library only when DarkManX16 restarts 18000 on the merged code. From
+   5b on, a restart of 18000 leaves its scanner off until he turns the switch on.
 
 ## Acceptance tests
 

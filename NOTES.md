@@ -1602,7 +1602,8 @@ for the full spec, stages and acceptance tests.
       situation, Midroll, on approved break points, borrowing its time from the
       Flex after the program so the next one starts on time. See Stage 6 in
       the spec and "Chapter and segment detector, and stage 6 midrolls" under
-      Known issues.*
+      Known issues. Nov 14: off by default behind one switch, and with no
+      setup the shows Syndicast is confident in are approved automatically.*
 - [ ] Generated Up Next bumpers (after 1.0, except the Next Time piece below)
 
       Syndicast builds these live at airtime from its own schedule, so they
@@ -7786,6 +7787,65 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
   merged with its neighbour (one he approved, rejected or moved still joins its pair, so
   rejecting a pair's break rejects the pair and reveals nothing), and a break he moves to
   within 15 s after the opening no longer joins the opening.
+
+#### No-setup midrolls: the switch and automatic approval (designed Nov 14)
+
+Designed Nov 14, 2026 (Opus 5.5), with DarkManX16's decisions; not built. The design
+is in the spec's Stage 6, "The Midrolls switch, and approved automatically", and step
+5 of its build order is now four parts (5a-5d) planned around it.
+
+**Why.** Midrolls will mostly be used by people who download Syndicast, and they will
+not approve hundreds of shows by hand. DarkManX16's decisions:
+
+1. Midrolls off by default on a new install: one switch.
+2. When it is turned on, patterns Syndicast is confident in are approved
+   automatically; everything else plays without midrolls until a person approves it.
+3. The Breaks page becomes optional fine-tuning, with one plain sentence at its top
+   saying what approving does.
+4. His own approvals and rejections always win over automatic ones.
+5. At least 5 scanned episodes in a running-length group before it is approved
+   automatically (the measurement below allowed 3, the patterns' own minimum).
+6. Frame-checking the shows whose pattern is by position only is left for later.
+
+**How "confident" was measured.** Read-only: a copy of the real `breaks` folder and
+channels taken Nov 14, 8:18pm Central (443 shows, 429 with an episode scanned, 230
+with a first-line pattern), and the step 3 proof copy of Nov 12 (1,020 files of the
+proof shows scanned in full), whose frame verdicts are the labels: Hannah Montana 14
+of 14 clear; Family Guy 21 clear, 1 unclear; Gargoyles 14 clear, 4 unclear; Cheers 7
+of 7 clear (the break after the card); Full House's weaker line 15 clear, 3 unclear;
+Batman 9 clear, 6 unclear and **1 doubtful** (S01E01 15:47, 1:45 before its other
+pick, while the faint 9:53 looks like the real first break). Each rule was the real
+`approve()` run on a copy of every show, with gates on top. No media was read.
+
+- **What separates Batman** is how many episodes hold the count: Hannah Montana and
+  Gargoyles 100%, Cheers 94%, Family Guy 84% (90% on the real store), Batman 70%
+  (65-70%). Its stray points tell the same story (0.39-0.43 unpicked fades per
+  episode, against 0.06 at most for the others): a dark show. 3 of 4 sits between.
+- **The rule chosen:** "N breaks an episode" from strong points, holding in 3 of 4
+  episodes, 5 or more scanned; per episode exactly N, 3 minutes apart; never the
+  opening or a movie. On the proof copy it approves 28 picks clear by the frames, 32
+  in Hannah Montana and Gargoyles (none wrong), 1 unclear (Family Guy S03E09 7:07),
+  no doubtful one; Batman is not approved.
+- **On the real store: 54 of 429 shows, 620 episodes, 905 breaks.** With 3 episodes
+  it was 84 shows (729 episodes, 1,105 breaks); the 30 dropped have 3-4 scanned and
+  come in as the scanner reaches 5 (Buffy, Charmed, The Boondocks, Young Justice...).
+  Of the 375 not approved: 137 have no pattern or too few episodes, 116 a pattern by
+  position only, 39 only the weaker line, 23 only an opening, 30 a count that holds
+  in under 3 of 4 episodes (Batman among them), and the 30 with only 3-4 episodes.
+- **Rules that approved more and why they lost.** The loosest with no doubtful pick
+  approved 227 shows (every first-line pattern, with picks 3 minutes apart), but only
+  because the one doubtful pick is in the one episode that check removes: it keeps
+  Batman, 7 of its 16 checked picks unclear, and 116 shows whose pattern is by
+  position, never checked in frames, with points as faint as 0.12. Requiring every
+  act to be a sixth of the episode or more removed real breaks (Buffy's and Charmed's
+  teasers, Sealab 2020's 2:40) and was dropped for the 3-minute check. Requiring no
+  stray point in an episode cost about 40 shows for nothing the labels showed.
+- **The labels are kept** in [docs/break-frame-verdicts.json](docs/break-frame-verdicts.json)
+  (show key, then "SxxEyy m:ss" of each checked pick), since they lived only in a
+  session's scratch folder, as does the proof copy they refer to (`proof3-data`, which
+  may be gone by step 5a; its proof then matches them on a fresh copy, where those
+  episodes are scanned). The measuring scripts were scratch; step 5a's proof redoes
+  the measurement with the built code.
 
 ### Random Slots' Create Lineup restarts the program on air
 
