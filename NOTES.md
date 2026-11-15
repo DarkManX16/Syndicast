@@ -8094,6 +8094,17 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
     686); `scripts/saved-frames-proof.js` cut 150 from D:, no viewer on it: median 189 ms, about
     10.7 KB each (1.6 MB). The slowest step took 35 s, probably the first (building the list and
     starting the disk-priority helper); not measured further.
+- **Suite and workflows on the branch (f105091):** `npm test` 3,652/3,652, run on its own. A
+  first suite run, made while the workflows ran, failed one check: "in Gentle each ffmpeg run
+  is followed by a rest twice as long as it ran", because saved frames were cut right after a
+  scan without Gentle's rest. Fixed in f105091 (a saved frame's cut waits out the rest and stops
+  for a pause, as a scan's own pieces do); the check now passes. Every workflow on server 18250
+  after a restart: 10/12. `special-day` once found "Add special day" opening no form, and passed
+  alone at once. `breaks-page` hit the known weaker-line bug (Wizards of Waverly Place has only
+  a weaker line, so no second Approve); that is fixed on claude/gallant-cerf-19a53b, not merged
+  yet. Earlier runs on the same server failed three Create Lineup workflows with "Your server is
+  still running older code than this page": the server code had been edited while it ran. After a
+  restart all three passed, and blocks on the same copy passed too.
 - **What it means on 18000:** after a restart on 5c, with midrolls on, the scanner cuts the
   list's frames as it goes and backfills about 7,500 in its idle time, about 80 MB and, at
   0.2 s a frame on an idle drive, under half an hour of reading, at Very Low disk priority and
