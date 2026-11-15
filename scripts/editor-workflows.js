@@ -1140,6 +1140,8 @@ function makeRunner(opts, page) {
             // either side of a point, "these have no breaks", theatrical, and "Scan next". It changes the
             // breaks store of the copy it runs on (approvals, a nudge, a hand break it takes away again);
             // its scanner must be paused by hand, and it never lets it read a drive.
+            // The frames come from the show's own drive: one that is busy is passed over for another, and
+            // when all are busy the frame check says "skipped: drive busy" and the rest still runs.
             const scanner0 = await api('/api/breaks/scanner');
             if (!scanner0.pausedByHand) {
                 throw new Check('this server\'s break scanner is running: pause it by hand first (the copy\'s break-scanner.json, {"paused":true,"skipDrives":["E:"]}); a scratch server must not read the real drives');
@@ -1291,32 +1293,59 @@ function makeRunner(opts, page) {
                 out.push(`${weakish.name}: the weaker line approved and withdrawn`);
             }
 
-            // 3. a show opened: its list stepped through
-            let target = null;
+            // 3. a show opened: its list stepped through. The two frames either side of the first point
+            //    are cut from the show's own drive on request, and a drive a viewer is using can take
+            //    over 30 s to give one up. So the shows on offer are tried one drive at a time and the
+            //    first drive that gives its two frames is the one used; when every drive is busy the
+            //    frame check is skipped, with a note saying so, and the list is stepped through all the same.
+            const candidates = [];
             for (const s of list.shows.filter((x) => x.needsClick && x.toCheck >= 2 && x.kind !== 'movie').slice(0, 60)) {
                 const det = await detailOf(s.key);
                 const todo = det.toCheck.flatMap((e) => e.points.filter((p) => p.status === 'found').map((p) => ({ path: e.path, at: p.at })));
-                if (todo.length >= 7 && todo.slice(0, 7).every((t) => !skipped.includes(driveOf(t.path)))) {
-                    target = { show: s, det, todo };
-                    break;
+                if (todo.length >= 7 && todo.slice(0, 7).every((t) => !skipped.includes(driveOf(t.path)))
+                    && !candidates.some((c) => c.drive === driveOf(todo[0].path))) {
+                    candidates.push({ show: s, det, todo, drive: driveOf(todo[0].path) });
                 }
             }
-            if (!target) {
+            if (candidates.length === 0) {
                 throw new Check('no show with seven points waiting on a drive that is not skipped');
+            }
+            const openShow = async (c) => {
+                await openPage();
+                await search(c.show.name);
+                await click(await find('.bk-name a', c.show.name, `${c.show.name} in the list`), `${c.show.name}'s name`);
+                await find('.bk-review', null, 'the point in front of you');
+            };
+            const busyDrives = [];
+            let target = null;
+            for (const c of candidates) {
+                await openShow(c);
+                const pictures = await page.waitForFunction(() => {
+                    const imgs = [...document.querySelectorAll('.bk-frames img')];
+                    return imgs.length === 2 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+                }, { timeout: 90000, polling: 300 }).catch(() => null);
+                if (pictures !== null) {
+                    target = c;
+                    break;
+                }
+                const said = await page.$$eval('.bk-frame-msg', (els) => els.map((e) => e.textContent.trim()).join(' | '));
+                if (!/took too long|paused while a viewer/.test(said)) {
+                    throw new Check(`the two frames either side of the point did not show${said ? ': ' + said : ''}`);
+                }
+                busyDrives.push(c.drive);
+            }
+            let framesSaid = 'two frames shown';
+            if (target === null) {
+                // Not asked for at all from here on: the page asks the server for two pictures at every point it
+                // moves to, each held up to 30 s, and six of those waiting stop its own saves from getting through.
+                await page.setRequestInterception(true);
+                page.on('request', (req) => (/\/api\/breaks\/frame/.test(req.url()) ? req.abort() : req.continue()));
+                target = candidates[0];
+                await openShow(target);
+                framesSaid = `frame check skipped: drive busy (${busyDrives.join(', ')})`;
             }
             const name = target.show.name;
             const key = target.show.key;
-            await search(name);
-            await click(await find('.bk-name a', name, `${name} in the list`), `${name}'s name`);
-            await find('.bk-review', null, 'the point in front of you');
-            const pictures = await page.waitForFunction(() => {
-                const imgs = [...document.querySelectorAll('.bk-frames img')];
-                return imgs.length === 2 && imgs.every((i) => i.complete && i.naturalWidth > 0);
-            }, { timeout: 60000, polling: 300 }).catch(() => null);
-            if (pictures === null) {
-                const said = await page.$$eval('.bk-frame-msg', (els) => els.map((e) => e.textContent.trim()).join(' | '));
-                throw new Check(`the two frames either side of the point did not show${said ? ': ' + said : ''}`);
-            }
             const head = await page.$eval('.bk-review-head', (el) => el.textContent.replace(/\s+/g, ' ').trim());
             const waiting = parseInt((/of (\d+) waiting/.exec(head) || [])[1], 10);
             if (waiting !== target.todo.length) {
@@ -1332,7 +1361,7 @@ function makeRunner(opts, page) {
             await sleep(600);
             await click(await panelButton('Reject'), 'Reject');
             d = await waitDetail(key, (x) => pointsOf(x, second.path).some((p) => Math.abs(p.at - second.at) < 0.03 && p.status === 'rejected'), 'Reject');
-            out.push(`${name}: the list stepped through (${waiting} waiting), two frames shown, Approve and Reject`);
+            out.push(`${name}: the list stepped through (${waiting} waiting), ${framesSaid}, Approve and Reject`);
 
             // nudge a frame, type a time, change the kind - all on the third point
             const third = target.todo[2];
@@ -1535,6 +1564,9 @@ function makeRunner(opts, page) {
                 await page.screenshot({ path: shot }).then(() => console.log(`        screenshot: ${shot}`)).catch(() => {});
             }
         }
+        // a workflow that held back requests (breaks-page, with every drive busy) lets them through again
+        page.removeAllListeners('request');
+        await page.setRequestInterception(false).catch(() => {});
         if (errors.length > 0) {
             console.log(`        page errors: ${errors.slice(0, 3).join(' | ')}`);
         }
