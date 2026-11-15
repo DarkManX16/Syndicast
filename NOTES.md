@@ -8065,6 +8065,72 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   12/12, on the same copy after the proof, the switch on and the scanner paused by hand.
 - **What it means on 18000:** its `break-scanner.json` has no `midrolls`, so after the restart
   that picks up 5b the scanner is off until DarkManX16 turns the switch on.
+- **Merged and pushed Nov 15** as blocks 0946b6b, after one change asked for: a show approved
+  automatically leaves Needs a click even with an odd episode listed, which stays on the list
+  inside the show (cea3fd7, test seen failing first). The workflow's filter for automatic
+  shows was moved off the lines the weaker-line fix (claude/gallant-cerf-19a53b) changes, so
+  both merge cleanly (checked with `git merge-tree`). On the combined result (copy of 8:12am,
+  server 18243 from the main checkout): `npm test` 3,628/3,628; the checklist 12/12. A first
+  run, made while the suite ran on the same PC, failed `breaks-page` once at "the kind box"
+  (the kind picked right after Move there landed on the server); it passed alone at once and in
+  the full rerun. Not investigated further; most likely the page had not yet applied the Move's
+  answer under the load.
+
+#### Step 5c: saves never wait behind frames (built Nov 15, not merged)
+
+- **The cause, measured first** (`test/breaks-saves-first.js`: the real page in a real
+  browser against a stand-in server whose frames never answer). Stepping through six points
+  with N left six frame requests open, the browser's limit for one server, and every request
+  after them waited, the Approve included: it never reached the server in 5 s. The page never
+  cancelled a frame request; moving on only ignored the answer. Hypothesis held.
+- **The page** (`web/directives/breaks-frame.js`) keeps at most two frame requests open, the
+  newest first, and cancels the `$http` request of a frame it no longer shows. Same test: A
+  reaches the server in 24-221 ms, at most 2 open, none for a point left behind; with the old
+  directive all four checks fail.
+- **The server** (`src/break-frames.js`): at most two cuts at once (was one after another); a
+  request the page let go of (the response's close; a GET's own close comes as soon as it is
+  read) leaves the queue, or has its ffmpeg stopped; a frame not cut before, on a drive a
+  viewer is playing from, answers "drive busy: a viewer is playing from G:" at once
+  (`test/break-frames.js`, 8 checks, and 2 in `test/breaks-api.js`, each seen failing first).
+- **Saved frames** (`src/break-saved-frames.js`, DarkManX16's call): `breaks-saved-frames/<show
+  key>/`, the two frames of each point waiting in an episode on the list to check of a show in
+  Needs a click. Cut by the scanner through its own runner right after it scans a file, and
+  for files scanned before, in its idle time (nothing left to scan), soonest airing first, one
+  frame a turn; the list of what is missing is worked out again after each queue build (1.1 s
+  over the whole store). Every change through the page sweeps the show: a point approved,
+  rejected or moved, an episode off the list, a changed file (the name carries size and date)
+  lose theirs. The frame route answers a saved frame without reading the drive, a busy drive
+  included. The page's cache pruning never reaches them. 10 checks in
+  `test/break-saved-frames.js`; each seen failing with its piece of the code broken on purpose.
+- **Proof** (a copy of 8:54am, scratch server 18250 from the worktree, scanner paused by hand):
+  - a proxy held every frame request 20 s; the browser pressed A through ten points of Care
+    Bears (1986) in 67 ms: **all ten saved**, each reaching the server 2-702 ms after its key
+    (the page sends one change at a time), the last 769 ms after the first. The same on blocks
+    without 5c (server 18252, same copy, Toonheads): **3 of the 10 arrived** in 11 s; the rest
+    were still waiting behind frame requests;
+  - the store (copied 8:50am) wants **7,546 saved frames** (D: 3,108, G: 1,874, F: 1,854, E:
+    686); `scripts/saved-frames-proof.js` cut 150 from D:, no viewer on it: median 189 ms, about
+    10.7 KB each (1.6 MB). The slowest step took 35 s, probably the first (building the list and
+    starting the disk-priority helper); not measured further.
+- **Suite and workflows on the branch (f105091):** `npm test` 3,652/3,652, run on its own. A
+  first suite run, made while the workflows ran, failed one check: "in Gentle each ffmpeg run
+  is followed by a rest twice as long as it ran", because saved frames were cut right after a
+  scan without Gentle's rest. Fixed in f105091 (a saved frame's cut waits out the rest and stops
+  for a pause, as a scan's own pieces do); the check now passes. Every workflow on server 18250
+  after a restart: 10/12. `special-day` once found "Add special day" opening no form, and passed
+  alone at once. `breaks-page` hit the known weaker-line bug (Wizards of Waverly Place has only
+  a weaker line, so no second Approve); that is fixed on claude/gallant-cerf-19a53b, not merged
+  yet. Earlier runs on the same server failed three Create Lineup workflows with "Your server is
+  still running older code than this page": the server code had been edited while it ran. After a
+  restart all three passed, and blocks on the same copy passed too.
+- **Merged with blocks 77453a8** (the weaker-line fix and the merging rule) as afb6fb0, plus
+  9296919 (5d's plan, spec only). On that combined result (a copy of 10:46am, server 18250 from
+  the worktree, its scanner paused by hand): every workflow 12/12, `breaks-page` included, then
+  `npm test` 3,657/3,657. Merged into blocks and pushed after it.
+- **What it means on 18000:** after a restart on 5c, with midrolls on, the scanner cuts the
+  list's frames as it goes and backfills about 7,500 in its idle time, about 80 MB and, at
+  0.2 s a frame on an idle drive, under half an hour of reading, at Very Low disk priority and
+  with its pace check watching.
 
 ### Random Slots' Create Lineup restarts the program on air
 

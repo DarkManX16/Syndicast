@@ -271,14 +271,30 @@ module.exports = function breaksRoutes(router, service, options = {}) {
         await answer(res, b.key, { ok: true });
     } ) );
 
-    // A frame, as a JPEG: /api/breaks/frame?path=<a file the scanner knows>&t=<seconds>
+    // A frame, as a JPEG: /api/breaks/frame?path=<a file the scanner knows>&t=<seconds>. When the page
+    // lets go of the request (it moved on to another point), the frame is no longer wanted (step 5c).
     router.get('/api/breaks/frame', async (req, res) => {
+        // the response's close, not the request's: a GET's request closes as soon as it has been read
+        const gone = new AbortController();
+        if (typeof(res.on) === 'function') {
+            res.on('close', () => {
+                if (! res.writableEnded) {
+                    gone.abort();
+                }
+            } );
+        }
         try {
-            const file = await service.frames.grab(String(req.query.path || ''), Number(req.query.t));
+            const file = await service.frames.grab(String(req.query.path || ''), Number(req.query.t), { signal: gone.signal });
+            if (gone.signal.aborted) {
+                return;
+            }
             res.set('Cache-Control', 'private, max-age=86400');
             res.type('image/jpeg');
             res.sendFile(file);
         } catch (err) {
+            if ( (err instanceof FrameError) && (err.reason === 'cancelled') ) {
+                return;   // nobody is waiting for the answer
+            }
             if (err instanceof FrameError) {
                 return res.status( (err.reason === 'unknown') ? 404 : 503 ).send( { reason: err.reason, error: err.message } );
             }
