@@ -7527,6 +7527,8 @@ a test that failed first; the Remove tools it found right:
 **The workflow checklist** (fresh copy 5:36am, port 18211, on 289e2ee): 11 of 12 passed.
 `breaks-page` failed ("The Wizard of Oz (1990) has no Approve button in its line") and fails
 the same way on `blocks` itself (dc31265, fresh copy 5:42am, port 18213): not this branch.
+After the review's fixes (5229374, fresh copy 5:47am, port 18214): the same 11 of 12, and
+`npm test` 3578/3578.
 
 ### Chapter and segment detector, and stage 6 midrolls
 
