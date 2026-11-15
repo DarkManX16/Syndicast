@@ -276,8 +276,10 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
      * Edits inside a special day (NOTES.md, "Event tools", feature 4): a row's
      * `changes`, each to its nth airing in the day - `rowCounts` counts what the
      * row has aired so far (from the planner's `counts` on a re-make). A swap airs
-     * its item in place of the nth and moves nothing on, so the row's next airing
-     * has the episode it pushed out; an insert before or after travels with the
+     * its item in place of the nth; saved `inPlace` (every Swap since Nov 15, 2026)
+     * the row moves on as if its own episode had aired, so nothing else in the day
+     * changes, while one saved before moves nothing on, so the row's next airing
+     * has the episode it pushed out. An insert before or after travels with the
      * nth (insertsOf, read by makePadded and pushProgram). A row without changes
      * takes exactly the old path.
      */
@@ -308,6 +310,11 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         if (swap !== null) {
             out = ( (typeof(slot.item) === 'object') && (slot.item !== null) && (itemState.get(slot) === occurrenceStart) )
                 ? null : changedCopy(swap.item.program, slot, 'specialChange', swap.id);
+            // In place of a set-aside holiday episode it takes that episode's turn: the planner
+            // counts it for the holiday position (specialHoliday), as advanceSpecial does.
+            if ( (out !== null) && (swap.inPlace === true) && (typeof(slot.holiday) === 'object') && ! holidayDone(slot.holiday) ) {
+                out.specialHoliday = slot.holiday.key;
+            }
         } else {
             out = plainSpecialItem(slot);
         }
@@ -356,7 +363,10 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         if (Array.isArray(slot.changes) && (slot.changes.length > 0)) {
             let n = (rowCounts.get(slot) || 0) + 1;
             rowCounts.set(slot, n);
-            if (changeAt(slot, n, 'swap') !== null) {
+            let swap = changeAt(slot, n, 'swap');
+            // A swap in place (Swap, Nov 15, 2026) moves the row on as its own airing would
+            // have, so nothing else in the day changes; one from before moves nothing on.
+            if ( (swap !== null) && (swap.inPlace !== true) ) {
                 if ( (typeof(slot.item) === 'object') && (slot.item !== null) ) {
                     itemState.set(slot, occurrenceStart);
                 }
@@ -498,7 +508,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     }
 
     // load the programs
-    const DAY_MARKS = [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN' ];
+    const DAY_MARKS = [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN', 'specialHoliday' ];
     for (let i = 0; i < programs.length; i++) {
         let p = programs[i];
         // An episode enters the pool as itself: a special day's own airing in the

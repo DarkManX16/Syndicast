@@ -5974,7 +5974,9 @@ walk, `carryAt`, `fitAt`, `breaksThatFit`, the clock words) stays there.
   Resolved, "The library's add went into the lineup on a Time Slots channel".
 - The whole-list programming tools (sort, block shuffle, equalize and the rest) still work
   as now on a Time Slots channel and their result isn't kept; on a list with kept rows they
-  say first, in one sentence, that they rebuild the list.
+  say first, in one sentence, that they rebuild the list. **Changed by DarkManX16, Nov 15:**
+  only the tools that reorder or rebuild still ask; the ones that only take rows out keep
+  every other kept row where it is - "Remove tools keep what is kept" below Event tools.
 - A ripple runs to the lineup's end, as stored progress already moves a position.
 
 #### What this doesn't change
@@ -7440,6 +7442,93 @@ browser tool's "type" does nothing; key presses work. A Mix row added in the edi
     kept swap row and inside a marathon day.
   - **Explained and fixed Nov 13:** Resolved, "Deleted episodes kept coming back". The server
     forgot the save; the airings were DarkManX16's own swaps.
+
+### Remove tools keep what is kept, and Swap inside a day changes one airing (Nov 15, 2026)
+
+DarkManX16's brief, Nov 15: two things broke "what you see is what airs". Built on
+`kept-stay-day-swaps` from `blocks` at dc31265 (Opus 5.5); not merged until he confirms.
+
+**1. Remove shows asked "Remove shows rebuilds the whole list, so the 14 rows you edited by
+hand are no longer kept."** Every whole-list tool went through one wrapper that asked and
+then stripped every kept mark. Now a tool that only takes rows out - Remove shows, Remove
+duplicates, Remove Flex, Remove specials, Clear the list (`REMOVES` in channel-config.js) -
+asks nothing: its rows go, and every kept row that stays airs exactly when it did, mark and
+all; the time taken out before a kept row is Flex right in front of it, as Delete leaves it
+(`keptRows.removeRows`). Remove shows and Clear take the removed show's own kept rows (by the
+item a row airs); Duplicates, Flex and Specials never remove a kept row - a hand-placed
+special or a kept Flex stays. Sort, the shuffles, Equalize, Replicate, Reruns, Add breaks,
+Pad times, Night channel, Slide, Restore positions and Frequency tweak still ask: they move
+every row. A list with no kept rows, and a channel without Time Slots, take the old path.
+
+**2. Swap inside a special day re-laid the day and other airings changed.** A saved day
+swap "moved nothing on" (feature 4 above): the episode swapped out aired at the row's next
+airing and each later airing moved one along, so in a Shuffle run the last episode fell out
+of the day. Now:
+- A swap is saved `inPlace: true`: the generator (`advanceSpecial`) moves the row on as if its
+  own airing had aired, so every other airing of the day is the same episode at the same time;
+  only the Flex after it takes the difference in length (an item longer than the airing and
+  its Flex still pushes the rows after it to the day's next mark, as the day's layout does).
+- When the episode swapped in already airs later in the day (any row's own airing, not an
+  insert), the two trade places: a second change on that airing, linked `with` the first.
+  Put back of either - in the list or under the row in Time Slots - takes both off.
+- Swapping an airing an older swap holds keeps that swap's way (no `inPlace`) and keeps the
+  swap it replaced in `was`; Put back gives it back.
+- Swaps saved before Nov 15 keep the old way, so no saved day changes: channels 2 and 3 hold
+  101 and 97 of them, and channel 3's Phil of the Future (Nov 21) has plain airings among older
+  swaps.
+- On an Advance day the episode swapped out is passed over in the show's regular order, as
+  the day aired it, so a swap moves nothing after the day - unless the item's length changes
+  how many airings the day has, when those episodes move along after it as before
+  (`applyRelaid` passes the swapped-out ones to `alongAfter` as left out). None of
+  DarkManX16's 31 days is Advance.
+- A swap in place of a holiday row's set-aside episode takes its turn; the airing carries
+  `specialHoliday`, the holiday position's key, which the planner counts.
+- Sentences: "Wild Child replaces Almost Perfect at 3:00pm. Nothing else in the day moves." /
+  "Shutterbugged and Starstruck trade places: Shutterbugged at 2:00pm, Starstruck at 6:00pm.
+  Nothing else in the day moves." / Put back: "Starstruck is back at 2:00pm and Shutterbugged
+  at 6:00pm. Nothing else in the day moves."
+
+**Tests, failing first:** `test/whole-list-kept.js` (new: `removeRows`, and the page's own
+wrapper lifted from channel-config.js with the real tools - emptied `REMOVES`, it fails with
+the old question word for word); `test/special-day-edits-generator.js` (a swap in place on
+Play Next, a Shuffle row and a Shuffle run until a time, a trade, a longer item, Create Lineup
+at four moments during a Shuffle day); `test/day-edits.js` (`swapIn`, a trade, Put back from
+either airing, an older swap's way kept and given back, an Advance day). Suite 3569/3569.
+
+**On a copy of `.dizquetv-dev` taken 5:30am Nov 15** (port 18210, scanner paused), channel 3:
+- Remove Show(s) → Hannah Montana → Apply, real clicks: no question; 155 airings gone, 37,434
+  rows to 37,279; all 14 kept rows at the same instants with the same marks - Doin' Time in
+  Suite 2330, Fri Nov 20 9:00pm, the swap into a Hannah Montana airing, included. Duplicates,
+  Flex and Specials on the same list: no question, the 14 the same; Sort still asked.
+- Even Stevens (Nov 27, Shuffle until 7:00pm, 14 airings), real Swap dialog: 2:00pm Starstruck
+  for Shutterbugged (6:00pm) traded the two, 12 s to lay the day; 3:00pm Almost Perfect for
+  Wild Child. From now to Mar 1, 2027 only those airings and the Flex after each differed from
+  the saved list. Phil of the Future (Nov 21): 2:00pm Phil of the Garage for Virtu-Date, the
+  older swap at 5:00pm - the two traded, the 5:00pm change kept the old way with `was`, the
+  other 11 airings as they were.
+- Update Channel saved exactly that; Create Lineup then laid every special day and kept row
+  ahead as the list had them, 131 of 131 entries. (7 more differ: Hannah Montana's aired Nov 14
+  day, come round past the lineup's end, which Create Lineup lets go.)
+- Put back (Delete) on the 6:00pm Starstruck took both trade changes off; the day was the
+  original but for Wild Child.
+- Not changed: on a narrow pane a kept or day-changed row's Delete button sits past the list's
+  right edge (the pin pushes the row wider).
+
+**The review (a fresh agent, Nov 15) found two real bugs and a likely third**, each fixed with
+a test that failed first; the Remove tools it found right:
+1. On an Advance day, a swap longer (or shorter) than its airing changed how many airings the
+   day had, and the episodes it pushed out vanished: no `alongAfter` ran for swaps.
+2. One half of a trade kept in a later swap's `was` came back alone on Put back and aired an
+   episode twice (trade 7:00 and 9:00, swap 9:00 again, Put back the trade, then the 9:00
+   swap: S1E3 at both). Put back of either half now takes the other out of every `was` too.
+3. A swap in place on a holiday row's set-aside airing moved the holiday position on, but a
+   Create Lineup during the day didn't count it (`specialHoliday` above).
+
+**The workflow checklist** (fresh copy 5:36am, port 18211, on 289e2ee): 11 of 12 passed.
+`breaks-page` failed ("The Wizard of Oz (1990) has no Approve button in its line") and fails
+the same way on `blocks` itself (dc31265, fresh copy 5:42am, port 18213): not this branch.
+After the review's fixes (5229374, fresh copy 5:47am, port 18214): the same 11 of 12, and
+`npm test` 3578/3578.
 
 ### Chapter and segment detector, and stage 6 midrolls
 

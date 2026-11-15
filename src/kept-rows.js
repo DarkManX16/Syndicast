@@ -837,6 +837,38 @@ function insertMany({ lineup, index, items, now, schedule }) {
  * one line; an episode's says nothing - the list shows it gone. A kept row's
  * Delete is Put back, and the airing on air stays.
  */
+/*
+ * A whole-list tool that only takes rows out - Remove shows, Remove duplicates,
+ * Remove Flex, Remove specials, Clear the list - on a Time Slots channel
+ * (DarkManX16, Nov 15, 2026): the rows `stays(program, index)` passes are kept in
+ * their order, and every kept row among them airs exactly when it did, its mark
+ * on it. The time taken out before a kept row is Flex right in front of it, as
+ * Delete leaves it; rows after the last kept row move earlier. { programs }.
+ */
+function removeRows({ lineup, stays }) {
+    let starts = startsOf(lineup);
+    let out = [];
+    let t = lineup.startTime;
+    lineup.programs.forEach( (p, i) => {
+        if (! stays(p, i)) {
+            return;
+        }
+        let gap = isKept(p) ? starts[i] - t : 0;
+        if (gap > 0) {
+            let last = out.length - 1;
+            if ( (last >= 0) && isBreak(out[last]) ) {
+                out[last] = flex(out[last].duration + gap);
+            } else {
+                out.push(flex(gap));
+            }
+            t += gap;
+        }
+        out.push(p);
+        t += p.duration;
+    } );
+    return { programs: out };
+}
+
 function deleteRow({ lineup, index, now, schedule }) {
     let programs = lineup.programs;
     let p = programs[index];
@@ -1761,6 +1793,7 @@ module.exports = {
     insertManyBefore: insertManyBefore,
     breakBefore: breakBefore,
     deleteRow: deleteRow,
+    removeRows: removeRows,
     handPlaced: handPlaced,
     handPlacedAhead: handPlacedAhead,
     stillAirs: stillAirs,

@@ -11,6 +11,7 @@ const poolSeasons = require('../../src/pool-seasons');
 const catalogKeep = require('../../src/catalog-keep');
 const specialDays = require('../../src/special-days');
 const dateRange = require('../../src/date-range');
+const dayEdits = require('../../src/day-edits');
 
 module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, catalogReader ) {
     const DAY = 24*60*60*1000;
@@ -1127,7 +1128,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     : `Its ${ORDINALS[c.n] || (c.n + 'th')} airing`;
                 return `${when}: ${what} ${how}`;
             };
-            scope.dropDayChange = (row, c) => {
+            // Put back here takes off a swap's trade too, and gives back a swap it replaced (src/day-edits.js).
+            scope.dropDayChange = (day, row, c) => {
+                if (dayEdits.dropFrom(day, c.id)) {
+                    return;
+                }
                 row.changes = (row.changes || []).filter( (x) => x !== c );
                 if (row.changes.length === 0) {
                     delete row.changes;

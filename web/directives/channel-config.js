@@ -2956,23 +2956,16 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             let dayChangeId = () => 'ch_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
             let relayDay = async (schedule) => scope.timeSlots.relayDay( commonProgramTools.slotPool(scope.channel.programs), scope.maxSize,
                 schedule, lineupOnAir, await catalogFor(), scope.channel.blocks, scope.fillerOptions );
-            let relaidWith = async (schedule, dayId, change, undo) => {
+            let relaidWith = async (schedule, dayId, change, undo, trade) => {
                 let before = lineupMs();
                 let day = specialDays.daysOf(schedule).find( (d) => d.id === dayId );
                 let relaid = await relayDay(schedule);
-                let spliced = dayEdits.splice({ lineup: before, relaid: relaid, day: day });
-                if (spliced.refused) {
-                    return { refused: spliced.refused };
+                let got = dayEdits.applyRelaid({ lineup: before, relaid: relaid, day: day, change: change, trade: trade || null, undo: undo,
+                    now: Date.now(), schedule: schedule, catalog: scope.channel.programs });
+                if (! Array.isArray(got.programs)) {
+                    return { refused: got.refused };
                 }
-                let moved = dayEdits.alongAfter({ lineup: before, spliced: spliced, relaid: relaid, now: Date.now(), schedule: schedule,
-                    catalog: scope.channel.programs, id: change.id });
-                let after = { programs: moved.programs, startTime: before.startTime };
-                let text = dayEdits.describe( undo ? { before: before, after: after, day: day, change: change, undo: true }
-                    : { before: before, after: after, day: day, change: change } );
-                if (moved.text && /\.$/.test(text)) {
-                    text = text.slice(0, -1) + moved.text + '.';
-                }
-                return { programs: moved.programs, schedule: schedule, text: text };
+                return { programs: got.programs, schedule: schedule, text: got.text };
             };
             let dayEdit = (index) => {
                 let loc = dayEdits.locate({ lineup: lineupMs(), index: index, schedule: scope.channel.scheduleBackup });
@@ -2983,10 +2976,16 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                             return { refused: tooLong };
                         }
                     }
-                    let program = JSON.parse(JSON.stringify(item));
-                    [ 'kept', 'pin', 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'slotPosition', 'shuffleOrder', 'start', 'stop', '$index' ]
-                        .forEach( (k) => delete program[k] );
-                    let change = { id: dayChangeId(), n: loc.n, kind: kind, item: { program: program } };
+                    // Swap changes only the airing clicked, or trades places with the same episode later in the day.
+                    if (kind === 'swap') {
+                        let got = dayEdits.swapIn({ lineup: lineupMs(), index: index, item: item, schedule: scope.channel.scheduleBackup,
+                            id: dayChangeId(), tradeId: dayChangeId() });
+                        if (typeof(got.refused) === 'string') {
+                            return { refused: got.refused };
+                        }
+                        return relaidWith(got.schedule, loc.day.id, got.change, false, got.trade);
+                    }
+                    let change = { id: dayChangeId(), n: loc.n, kind: kind, item: { program: dayEdits.plainItem(item) } };
                     let schedule = dayEdits.withChange(scope.channel.scheduleBackup, loc.day.id, loc.row, change, change.id);
                     return relaidWith(schedule, loc.day.id, change, false);
                 };
@@ -3000,7 +2999,7 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 if (begun !== null) {
                     return { refused: begun };
                 }
-                return relaidWith(dayEdits.withoutChange(scope.channel.scheduleBackup, id), found.day.id, found.change, true);
+                return relaidWith(dayEdits.withoutChange(scope.channel.scheduleBackup, id), found.day.id, found.change, true, found.trade);
             };
             scope.dayPutBack = dayPutBack;
             /*
@@ -3237,11 +3236,19 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             };
 
             /*
-             * The whole-list tools rebuild the list, so on a Time Slots channel with
-             * hand edits they say so first, in one sentence; their result isn't kept
-             * (the marks come off). A tool that calls another runs it inside the
-             * first's answer.
+             * The whole-list tools on a Time Slots channel with hand edits. A tool that
+             * only takes rows out (REMOVES) asks nothing and rebuilds nothing (DarkManX16,
+             * Nov 15, 2026): the rows it removes go, and every kept row that stays airs
+             * exactly when it did, its mark on it (keptRows.removeRows). Remove shows
+             * and Clear the list take the kept rows of what they remove with them (false);
+             * the others leave every kept row (true). The rest reorder or rebuild the list,
+             * so they say so first, in one sentence; their result isn't kept (the marks
+             * come off). A tool that calls another runs it inside the first's answer.
              */
+            const REMOVES = {
+                removeShows: false, wipeSchedule: false,
+                removeDuplicates: true, removeOffline: true, wipeSpecials: true,
+            };
             const REBUILDS = {
                 sortShows: 'Sort', sortByDate: 'Sort by date', blockShuffle: 'Block shuffle', cyclicShuffle: 'Cyclic shuffle',
                 randomShuffle: 'Shuffle', equalizeShows: 'Equalize', replicate: 'Replicate', shuffleReplicate: 'Shuffle replicate',
@@ -3251,15 +3258,26 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 tweakFrequencies: 'Frequency tweak', wipeSpecials: 'Remove specials', wipeSchedule: 'Clear the list',
             };
             let rebuilding = false;
-            Object.keys(REBUILDS).forEach( (name) => {
-                let tool = scope[name];
-                if (typeof(tool) !== 'function') {
-                    return;
-                }
-                scope[name] = (...args) => {
+            let wholeListTool = (name, tool) => {
+                return (...args) => {
                     let marked = scope.hasTimeSlots() ? scope.channel.programs.filter( (p) => keptRows.isKept(p) ).length : 0;
                     if (rebuilding || (marked === 0)) {
                         return tool(...args);
+                    }
+                    if (typeof(REMOVES[name]) === 'boolean') {
+                        let before = lineupMs();
+                        rebuilding = true;
+                        try {
+                            tool(...args);
+                        } finally {
+                            rebuilding = false;
+                        }
+                        let left = new Set(scope.channel.programs);
+                        scope.channel.programs = keptRows.removeRows({ lineup: before,
+                            stays: (p) => left.has(p) || ( REMOVES[name] && keptRows.isKept(p) ) }).programs;
+                        updateChannelDuration();
+                        $timeout();
+                        return;
                     }
                     scope.undoPrompt = { title: REBUILDS[name] + '?',
                         text: `${REBUILDS[name]} rebuilds the whole list, so the ${marked} ${ (marked === 1) ? 'row' : 'rows' } you edited by hand are no longer kept.`,
@@ -3284,6 +3302,11 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                         } };
                     $timeout();
                 };
+            };
+            Object.keys(REBUILDS).forEach( (name) => {
+                if (typeof(scope[name]) === 'function') {
+                    scope[name] = wholeListTool(name, scope[name]);
+                }
             } );
 
 

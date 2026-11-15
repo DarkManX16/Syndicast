@@ -50,7 +50,7 @@ const change = (n, kind, program, id) => ({ id: id || `ch${n}${kind}`, n, kind, 
 const sched = (d) => Object.assign(daily(), { specialDays: [ d ] });
 
 // Create Lineup as the editor runs it, from the lineup `prev` was (or none).
-async function make(prev, schedule, now) {
+async function make(prev, schedule, now, holidayItems) {
     const s = JSON.parse(JSON.stringify(schedule));
     let carry;
     if (prev !== null) {
@@ -68,7 +68,8 @@ async function make(prev, schedule, now) {
     }
     global.Date = FrozenDate;
     try {
-        const res = await timeSlotsService(pool(), JSON.parse(JSON.stringify(s)), undefined, undefined, carry ? JSON.parse(JSON.stringify(carry)) : undefined);
+        const res = await timeSlotsService(pool(), JSON.parse(JSON.stringify(s)), undefined, undefined, carry ? JSON.parse(JSON.stringify(carry)) : undefined,
+            undefined, holidayItems ? JSON.parse(JSON.stringify(holidayItems)) : undefined);
         return { programs: res.programs, startTime: res.startTime, schedule: s };
     } finally {
         global.Date = RealDate;
@@ -110,6 +111,78 @@ module.exports = async function () {
         suite.check('a longer swap (47 min at 7:00): the rows after it start at the next half hour after it, 8:00',
             d[2].program.title === 'The Short One' && d[2].start === fri(7) && d[3].start === fri(8) && d[3].program.title === 'X S1E3',
             lines(d.slice(2, 4)).join(' / '));
+    }
+
+    suite.log('-- a swap in place (DarkManX16, Nov 15): the row moves on, nothing else in the day changes --');
+    const inPlace = (n, program, id) => Object.assign(change(n, 'swap', program, id), { inPlace: true });
+    const plainOf = (a) => { const c = Object.assign({}, a.program); [ 'specialDay', 'specialRow', 'specialN', 'slotPosition', 'shuffleOrder' ].forEach( (k) => delete c[k] ); return c; };
+    // The day's airings with `swaps` ({ i: title }) applied: what nothing-else-changes means.
+    const sameBut = (d, base, swaps) => (d.length === base.length)
+        && d.every( (a, i) => (a.start === base[i].start) && (a.program.title === ( (i in swaps) ? swaps[i] : base[i].program.title )) );
+    {
+        const res = await make(null, sched(day({ slots: [ { showId: 'tv.X', order: 'next', changes: [ inPlace(3, SAME) ] } ] })), NOW);
+        const d = inside(res);
+        suite.check('Play Next: K S1E1 in place of the 3rd airing, and every other airing of the day as before - X S1E4 next',
+            sameBut(d, p, { 2: 'K S1E1' }), lines(d.slice(1, 5)).join(' / '));
+    }
+    {
+        const shuffled = (changes, until) => day({ slots: [ Object.assign({ showId: 'tv.X', order: 'shuffle', changes }, until ? { until } : {}),
+            { showId: 'tv.A', order: 'next' } ] });
+        for (const until of [ undefined, 12 * HOUR ]) {
+            const label = until ? 'a Shuffle run until 12:00pm' : 'a Shuffle row';
+            const base = inside(await make(null, sched(shuffled(undefined, until)), NOW));
+            // Where row X's own 3rd and 7th airings are in the day.
+            const xAt = base.map( (a, i) => i ).filter( (i) => base[i].program.showTitle === 'X' );
+            const [ third, seventh ] = [ xAt[2], xAt[6] ];
+            const d = inside(await make(null, sched(shuffled([ inPlace(3, SAME) ], until)), NOW));
+            suite.check(`${label}: a swap of the row’s 3rd airing changes that airing only`, sameBut(d, base, { [third]: 'K S1E1' }),
+                lines(d.slice(third - 1, third + 3)).join(' / ') + ' vs ' + lines(base.slice(third - 1, third + 3)).join(' / '));
+            const xs = (list) => list.filter( (a) => a.program.showTitle === 'X' ).map( (a) => a.program.title ).sort();
+            suite.check('...so no episode the day had drops out of it but the one swapped',
+                JSON.stringify(xs(d)) === JSON.stringify(xs(base).filter( (t) => t !== base[third].program.title )), '');
+            // The two trade places: the 3rd airing gets the 7th's episode, the 7th the 3rd's.
+            const traded = inside(await make(null, sched(shuffled([ inPlace(3, plainOf(base[seventh]), 'chA'), inPlace(7, plainOf(base[third]), 'chB') ], until)), NOW));
+            suite.check(`...and swapping in the episode the 7th airing has, the two trade places, nothing else changes`,
+                sameBut(traded, base, { [third]: base[seventh].program.title, [seventh]: base[third].program.title }), lines(traded.slice(third, seventh + 1)).join(' / '));
+        }
+    }
+    {
+        const res = await make(null, sched(day({ slots: [ { showId: 'tv.X', order: 'next', changes: [ inPlace(3, SHORT) ] } ] })), NOW);
+        const d = inside(res);
+        suite.check('a longer swap in place (47 min at 7:00): the rows after it start at 8:00, each the episode it had',
+            d[2].program.title === 'The Short One' && d[3].start === fri(8) && d[3].program.title === 'X S1E4', lines(d.slice(2, 4)).join(' / '));
+    }
+    {
+        const shuffled = day({ slots: [ { showId: 'tv.X', order: 'shuffle', changes: [ inPlace(5, SAME), inPlace(2, HALF) ] } ] });
+        const laid = await make(null, sched(shuffled), NOW);
+        for (const [ label, at ] of [ [ '6:40am (the swap at 6:30 on air)', fri(6, 40) ], [ '7:10am', fri(7, 10) ],
+            [ '8:05am (the swap at 8:00 on air)', fri(8, 5) ], [ '8:40am', fri(8, 40) ] ]) {
+            const again = await make(laid, sched(shuffled), at);
+            const from = Math.max(at - 30 * MIN, inside(again)[0].start);
+            suite.check(`a Shuffle row with swaps in place: Create Lineup at ${label} lays the rest of the day as it was`,
+                JSON.stringify(lines(inside(laid).filter( (a) => a.start >= from ))) === JSON.stringify(lines(inside(again).filter( (a) => a.start >= from ))),
+                lines(inside(again).filter( (a) => (a.start >= fri(8)) && (a.start < fri(9, 30)) )).join(' / ')
+                    + ' vs ' + lines(inside(laid).filter( (a) => (a.start >= fri(8)) && (a.start < fri(9, 30)) )).join(' / '));
+        }
+    }
+
+    {
+        // Review, Nov 15: a holiday row's set-aside episodes - a swap in place of one takes its
+        // turn, and a Create Lineup during the day counts that turn.
+        const xmas = (n) => Object.assign( episode('X', 0, n), { title: `X Christmas ${n}`, key: `/e/X/xmas/${n}` } );
+        const items = { sd_t: { 'tv.X': [ xmas(1), xmas(2), xmas(3) ] } };
+        const hday = (changes) => day({ holiday: 'Christmas', slots: [ { showId: 'tv.X', order: 'next', holidayOnly: true, changes } ] });
+        const base = inside(await make(null, sched(hday(undefined)), NOW, items));
+        const laid = await make(null, sched(hday([ inPlace(2, SAME) ])), NOW, items);
+        suite.check('a holiday row: a swap in place of its 2nd set-aside episode changes that airing only',
+            sameBut(inside(laid), base, { 1: 'K S1E1' }), lines(inside(laid).slice(0, 4)).join(' / '));
+        for (const at of [ fri(6, 40), fri(7, 10), fri(8, 10) ]) {
+            const again = await make(laid, sched(hday([ inPlace(2, SAME) ])), at, items);
+            const from = Math.max(at - 30 * MIN, inside(again)[0].start);
+            suite.check(`...and Create Lineup at ${clock(at)} lays the rest of the day as it was`,
+                JSON.stringify(lines(inside(laid).filter( (a) => a.start >= from ))) === JSON.stringify(lines(inside(again).filter( (a) => a.start >= from ))),
+                lines(inside(again).filter( (a) => a.start >= from ).slice(0, 4)).join(' / ') + ' vs ' + lines(inside(laid).filter( (a) => a.start >= from ).slice(0, 4)).join(' / '));
+        }
     }
 
     suite.log('-- inserts --');
