@@ -533,6 +533,10 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
             //Told how many shows are about to be read, while a re-lay is planned.
             let onReading = null;
             let reading = null;
+            //Which opening of the dialog a read belongs to (NOTES.md, "Step 5d"): one still under way when
+            //the dialog is cancelled and opened again must not end the new opening's read or work its notes
+            //out against lists not read yet - that showed every show as "Couldn't read ... (not read)".
+            let opening = 0;
             let lastRun = null;
             scope.catalog = { state: showCatalog.emptyState(), channelNumber: null, leftOut: [], reading: false, readCount: 0, fresh: [], fellBack: [], toReview: 0 };
             let slottedIds = () => [ ...new Set( (scope.schedule.slots || []).map( (sl) => sl.showId )
@@ -581,12 +585,16 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                     onReading(shows.length);
                 }
                 let into = catalogs;
+                let mine = opening;
                 reading = catalogReader.read(shows).then( (got) => {
                     Object.assign(into, got);
                     keptCatalogs.keep(into, Date.now());
                 } ).catch( (err) => {
-                    shows.forEach( (sh) => { catalogs[sh.showId] = { error: (err && err.message) ? err.message : String(err) }; } );
+                    shows.forEach( (sh) => { into[sh.showId] = { error: (err && err.message) ? err.message : String(err) }; } );
                 } ).then( () => {
+                    if (mine !== opening) {
+                        return;     // the dialog was opened again since: this read is not its read
+                    }
                     scope.catalog.reading = false;
                     refreshCatalogNotes();
                     $timeout();
@@ -1418,6 +1426,7 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                 catalogs = keepCatalogs ? keptCatalogs.catalogs(Date.now()) : {};
                 holidayCatalogs = {};
                 reading = null;
+                opening++;
                 lastRun = null;
                 //A re-roll shows no notes, so its newcomers stay new for next time.
                 scope.catalog = { state: catalogState || showCatalog.emptyState(), channelNumber: (catalogState && catalogState.channelNumber) || null,

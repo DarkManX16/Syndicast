@@ -54,7 +54,7 @@ const SHIFT_WATCH = () => {
 
 (async () => {
     const o = args(process.argv.slice(2));
-    if (! o.url || /:18000\b/.test(o.url) || ! [ 'special-day', 'breaks-panel' ].includes(o.what)) {
+    if (! o.url || /:18000\b/.test(o.url) || ! [ 'special-day', 'special-day-reopen', 'breaks-panel' ].includes(o.what)) {
         console.error('usage: node scripts/click-probe.js --url <a scratch server, not 18000> --what special-day|breaks-panel [--n 300]');
         process.exit(2);
     }
@@ -90,7 +90,7 @@ const SHIFT_WATCH = () => {
     };
 
     const rounds = [];
-    if (o.what === 'special-day') {
+    if (o.what.startsWith('special-day')) {
         const openEditor = async () => {
             await page.goto(o.url + '/#!/channels', { waitUntil: 'networkidle2' });
             await page.reload( { waitUntil: 'networkidle2' } );
@@ -121,6 +121,17 @@ const SHIFT_WATCH = () => {
             const ts = await waitButton('button[title="Time Slots..."]', /Time Slots\.\.\./, 10000);
             await ts.click();
             await waitButton('.modal-footer button', /^Create Lineup$/, 180000);
+            if (o.what === 'special-day-reopen') {
+                // Cancel while the episode lists are still being read, and open it again at once
+                const quit = await page.evaluateHandle( () => {
+                    const m = [ ...document.querySelectorAll('.modal') ].find( (x) => { const t = x.querySelector('.modal-title'); return t && t.textContent.trim() === 'Time Slots' && x.getClientRects().length > 0; } );
+                    return m ? [ ...m.querySelectorAll('.modal-footer button') ].find( (b) => b.textContent.trim() === 'Cancel' ) || null : null;
+                } );
+                await quit.asElement().click();
+                await page.waitForFunction( () => ! [ ...document.querySelectorAll('.modal-title') ].some( (t) => t.textContent.trim() === 'Time Slots' && t.getClientRects().length > 0 ), { timeout: 10000, polling: 50 } ).catch( () => {} );
+                await (await waitButton('button[title="Time Slots..."]', /Time Slots\.\.\./, 10000)).click();
+                await waitButton('.modal-footer button', /^Create Lineup$/, 180000);
+            }
             // the button where it is not usually found: what is above it, as a picture and as text
             const usual = rounds.length ? rounds.map( (x) => x.atFind && x.atFind[1] ).sort()[Math.floor(rounds.length / 2)] : null;
             const r = await probeClick( async () => {
@@ -138,6 +149,17 @@ const SHIFT_WATCH = () => {
             const opened = await page.waitForFunction( () => [ ...document.querySelectorAll('input[ng-model="day.name"]') ].some( (e) => e.getClientRects().length > 0 ), { timeout: 3000, polling: 100 } ).then( () => true, () => false );
             r.ok = opened;
             r.round = i;
+            if (o.what === 'special-day-reopen') {
+                // the "Couldn't read ... (not read)" alert, shown while the lists were still being read
+                r.notReadFlash = false;
+                for (let k = 0; (k < 50) && ! r.notReadFlash; k++) {
+                    r.notReadFlash = await page.evaluate( () => [ ...document.querySelectorAll('.modal-body .alert') ].some( (a) => (a.getClientRects().length > 0) && a.textContent.includes('(not read)') ) );
+                    await sleep(100);
+                }
+                if (r.notReadFlash) {
+                    r.ok = false;
+                }
+            }
             rounds.push(r);
             if (! opened) {
                 console.log(`round ${i}: NO FORM`, JSON.stringify(r));
@@ -165,7 +187,11 @@ const SHIFT_WATCH = () => {
             await page.keyboard.type(name);
             await page.waitForFunction( (n) => [ ...document.querySelectorAll('.bk-show .bk-name a') ].some( (a) => a.textContent.trim() === n ), { timeout: 10000, polling: 100 }, name );
             const r = await probeClick( () => page.evaluateHandle( (n) => [ ...document.querySelectorAll('.bk-name a') ].find( (a) => a.getClientRects().length > 0 && a.textContent.trim() === n ) || null, name ).then( (h) => h.asElement() ) );
-            const opened = await page.waitForFunction( () => document.querySelector('.bk-review') !== null, { timeout: 10000, polling: 100 } ).then( () => true, () => false );
+            // open: this show's panel, its episodes read (a show with nothing waiting has no point in front of you)
+            const opened = await page.waitForFunction( (n) => {
+                const s = angular.element(document.querySelector('.breaks-page')).scope();
+                return (s.detail !== null) && (s.detail.line.name === n) && (s.openKey === s.detail.line.key) && (document.querySelector('.bk-panel') !== null);
+            }, { timeout: 10000, polling: 100 }, name ).then( () => true, () => false );
             const state = await page.evaluate( () => { const s = angular.element(document.querySelector('.breaks-page')).scope(); return { openKey: s.openKey, detail: s.detail !== null, focus: s.focus !== null, error: s.error }; } );
             Object.assign(r, { ok: opened, round: i, name, state });
             rounds.push(r);

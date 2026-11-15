@@ -8076,7 +8076,7 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   the full rerun. Not investigated further; most likely the page had not yet applied the Move's
   answer under the load.
 
-#### Step 5c: saves never wait behind frames (built Nov 15, not merged)
+#### Step 5c: saves never wait behind frames (built Nov 15; merged and pushed as blocks ce4456f)
 
 - **The cause, measured first** (`test/breaks-saves-first.js`: the real page in a real
   browser against a stand-in server whose frames never answer). Stepping through six points
