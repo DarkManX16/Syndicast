@@ -63,7 +63,9 @@ below says what we do and why. **Syndicast innovates.**
      `--only breaks-page`. It changes the copy's `breaks` store (approvals it makes
      stay), so run it on a fresh copy; it refuses a server whose scanner is not
      paused by hand, and its Pause / Resume click is made with every drive skipped, so
-     the resume reads nothing.
+     the resume reads nothing. The frames come from the show's own drive: a busy drive
+     is passed over for another, and with all busy it says "frame check skipped: drive
+     busy" and goes on.
 
   `node scripts/editor-workflows.js --url http://localhost:<port> --channel 3`
   does all ten against a running preview, from a fresh page each, clicking
