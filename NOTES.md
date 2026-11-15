@@ -6207,6 +6207,11 @@ of Welcome to Pooh Corner, Holiday For Pooh Bear, Sun Nov 22 at 10:44:50.676pm.
 
   With no swaps, Create Lineup's saved channels 1-3 are byte for byte `blocks`' own
   (40,000, 35,101 and 37,317 entries). Every kept row is at its saved instant.
+
+  In the browser: a fresh copy taken 4:46pm, port 18334, all 12 workflows passed, and
+  `create-lineup` compared to the millisecond again. Its swap was the 9:05pm one. Across
+  the whole run, channel 3's saved Pooh Corner entry is the same byte for byte, at
+  1795409090676. Suite 3,663/3,663.
 - **Not changed, for DarkManX16 to decide.** Swapping tonight's Jim Henson Hour for a
   7.7 s longer episode leaves tonight's 10:25 Fraggle Rock in the list. Create Lineup then
   drops it, because a kept row takes its time and the next slot gets only what fits whole.
