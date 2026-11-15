@@ -216,6 +216,76 @@ module.exports = async function () {
             rowAt(res, thu(19, 20)) && rowAt(res, thu(19, 20)).title === 'Kept Clip' && ! rowAt(res, thu(19))
                 && rowAt(res, thu(19) + DAY).title === 'A S1E1' && rowAt(res, thu(19, 30)).title === 'B S1E1',
             JSON.stringify(night(res, thu(19), thu(21))));
+
+        // A's 48 minutes run 7:00-7:48, so B's slot starts late at 7:50 with 10 minutes left;
+        // B's 30-minute episode slides on past its slot's end (to 8:20). A row kept at 8:15
+        // is past that slot, yet the episode would run over it: B waits for its next slot
+        // (DarkManX16's Pooh Corner swap of Nov 9 on channel 3, Nov 15, 2026).
+        const long = seasonOf('A', 40).map( (p) => Object.assign({}, p, { duration: 48 * MIN }) )
+            .concat(seasonOf('B', 40).map( (p) => Object.assign({}, p, { duration: 30 * MIN }) ), seasonOf('C', 40), seasonOf('D', 40));
+        const plain = listOf(await generate(long, sched, NOON));
+        const slid = listOf(await generate(long, sched, NOON, [ { at: thu(20, 15), program: clip, kept: true } ]));
+        suite.check('an episode sliding past its own slot\'s end doesn\'t run over a kept row: the kept row at its instant',
+            rowAt(plain, thu(19, 50)).title === 'B S1E1' && rowAt(plain, thu(20, 20)).title === 'C S1E1'
+                && rowAt(slid, thu(20, 15)) && rowAt(slid, thu(20, 15)).title === 'Kept Clip' && ! rowAt(slid, thu(19, 50))
+                && rowAt(slid, thu(19, 50) + DAY) && rowAt(slid, thu(19, 50) + DAY).title === 'B S1E1',
+            JSON.stringify(night(slid, thu(19), thu(21))));
+
+        // ...and says so, in one sentence: the only break before B (7:48-7:50) gives 60 of the
+        // 300 seconds it needs, and A can't start before 7:00, its slot's time. C's 8:00 slot,
+        // with the kept row at 8:15 in it, has no room for C's 22 minutes either.
+        const slidRaw = await generate(long, sched, NOON, [ { at: thu(20, 15), program: clip, kept: true } ]);
+        const said = kept.sayWaited(slidRaw.waited);
+        suite.check('...with no room for it, it waits, and Create Lineup says so in one sentence',
+            Array.isArray(slidRaw.waited) && slidRaw.waited.map( (w) => w.program.title ).join() === 'B S1E1,C S1E1'
+                && said === '"B S1E1" (B) airs at its show\'s next slot instead: no room before your insert at Thu Oct 8, 8:15pm, and 1 more episode the same way.',
+            said);
+        suite.check('...and with room for everything, nothing is said', kept.sayWaited(undefined) === '' && kept.sayWaited([]) === '');
+        // Only news is said: where the list showed the show in that slot before the kept row
+        // (B at 7:50; C's was after 8:15). Where it already didn't, this Create Lineup moves
+        // nothing DarkManX16 sees (his Hannah Montana before his Nov 27 dragged row).
+        const shown = kept.sayWaited(slidRaw.waited, plain);
+        const notShown = kept.sayWaited(slidRaw.waited, listOf(slidRaw));
+        suite.check('...said only where the list had the show in that slot before the kept row; otherwise nothing',
+            shown === '"B S1E1" (B) airs at its show\'s next slot instead: no room before your insert at Thu Oct 8, 8:15pm.'
+                && notShown === '',
+            JSON.stringify([ shown, notShown ]));
+
+        // Exactly, not within SLACK, and without losing the episode: DarkManX16's Pooh Corner swap
+        // followed an episode 46 ms longer than the one before it in the list. The break before
+        // the episode gives up the time (down to a minute), so it ends right on the kept row.
+        const closeRaw = await generate(long, sched, NOON, [ { at: thu(20, 19, 55), program: clip, kept: true } ]);
+        const close = listOf(closeRaw);
+        suite.check('an episode ending 5 s past a kept row: the break before it 5 s shorter, the kept row at its instant to the millisecond',
+            rowAt(close, thu(19, 49, 55)) && rowAt(close, thu(19, 49, 55)).title === 'B S1E1'
+                && rowAt(close, thu(20, 19, 55)) && rowAt(close, thu(20, 19, 55)).title === 'Kept Clip'
+                && rowAt(close, thu(19)).title === 'A S1E1' && ! (closeRaw.waited && closeRaw.waited.length),
+            JSON.stringify(night(close, thu(19), thu(21))));
+
+        // In the kept row's own slot: B (10 minutes) starts late at 7:50 and would end 5 s past
+        // a row kept at 7:59:55.
+        const tens = seasonOf('A', 40).map( (p) => Object.assign({}, p, { duration: 48 * MIN }) )
+            .concat(seasonOf('B', 40).map( (p) => Object.assign({}, p, { duration: 10 * MIN }) ), seasonOf('C', 40), seasonOf('D', 40));
+        const own = listOf(await generate(tens, sched, NOON, [ { at: thu(19, 59, 55), program: clip, kept: true } ]));
+        suite.check('...in the kept row\'s own slot too: B 5 s earlier, ending on the kept row',
+            rowAt(own, thu(19, 49, 55)) && rowAt(own, thu(19, 49, 55)).title === 'B S1E1'
+                && rowAt(own, thu(19, 59, 55)) && rowAt(own, thu(19, 59, 55)).title === 'Kept Clip',
+            JSON.stringify(night(own, thu(19), thu(21))));
+
+        // Never by moving an airing before its slot's time: A starts on 7:00, so a row kept at
+        // 7:21:55 leaves A's 22 minutes no room, and A waits.
+        const inSlot = listOf(await generate(POOL, sched, NOON, [ { at: thu(19, 21, 55), program: clip, kept: true } ]));
+        suite.check('...but never by starting an airing before its slot\'s time: A, on 7:00, waits',
+            rowAt(inSlot, thu(19, 21, 55)) && rowAt(inSlot, thu(19, 21, 55)).title === 'Kept Clip' && ! rowAt(inSlot, thu(19))
+                && rowAt(inSlot, thu(19) + DAY).title === 'A S1E1',
+            JSON.stringify(night(inSlot, thu(19), thu(21))));
+
+        // Nor below a minute a break: from a 2-minute break, 70 s can't come.
+        const tight = listOf(await generate(long, sched, NOON, [ { at: thu(20, 18, 50), program: clip, kept: true } ]));
+        suite.check('...nor by taking a break below a minute: 70 s from a 2-minute break, so B waits',
+            rowAt(tight, thu(20, 18, 50)) && rowAt(tight, thu(20, 18, 50)).title === 'Kept Clip' && ! rowAt(tight, thu(19, 50))
+                && ! rowAt(tight, thu(19, 48, 50)),
+            JSON.stringify(night(tight, thu(19), thu(21))));
     }
 
     suite.log('-- marks stay on their rows --');
