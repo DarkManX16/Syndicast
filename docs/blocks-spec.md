@@ -1298,8 +1298,9 @@ The main way to approve is **one click per show**.
   *"Midrolls only play at approved breaks: Syndicast approves the shows it is
   sure of, and anything you approve or reject here overrides it."* A show
   approved this way reads "Approved automatically" where Approve would be, with
-  Withdraw beside it, and leaves Needs a click unless an episode of it is still
-  on its list.
+  Withdraw beside it, and leaves Needs a click; an odd episode of it (one
+  without the count) stays on the list to check inside the show (DarkManX16,
+  Nov 15).
 - **Measured on DarkManX16's store** (a copy of Nov 14, 8:18pm Central): 54 of
   429 scanned shows approved automatically, 620 episodes, 905 breaks. On the
   step 3 proof's frame-checked shows it approves no doubtful pick and one
@@ -1544,7 +1545,7 @@ never on the live data folder and never through the server on port 18000.
      are off" as its line, Paused by hand still winning when it is on; on the
      page, the switch and the one sentence at the top, "Approved automatically"
      with Withdraw on a show's line, and Needs a click without the shows this
-     approves (unless an episode of theirs is still listed). Tests for the
+     approves (an odd episode of theirs stays on the list inside the show). Tests for the
      settings file (an old file with no `midrolls` reads off), the scanner's
      mode, and the page's lines. **Proof:** a scratch server on a fresh copy,
      its scanner paused by hand: the page with the switch off, then on (the
@@ -1570,16 +1571,36 @@ never on the live data folder and never through the server on port 18000.
      - **a busy drive**: a frame not already cut, on a drive a viewer is
        playing from, is not read; the box says "drive busy" at once (a frame cut
        before still shows). On 18000 G: and F: are busy much of the day, so new
-       frames there will often say this while viewers watch.
+       frames there will often say this while viewers watch;
+     - **the scanner saves the frames of the list to check** (DarkManX16, Nov
+       15), so the page rarely reads a drive at all: when it saves a record, the
+       two frames of each point of an episode on the list to check (Needs a
+       click's episodes, the shows approved automatically left out) are cut
+       there and then, through the scanner's own runner and pause, into a
+       folder of their own (`breaks-saved-frames`), apart from the page's
+       4,000-frame cache. A saved frame is kept while its point is on the list
+       and deleted once the point is approved, rejected or moved, the episode
+       leaves the list, or the file changes. The files scanned before this
+       get theirs in the scanner's idle time, soonest airing first. Measured
+       Nov 14 (NOTES, step 5a): 3,880 points, 7,760 frames, about 95 MB and
+       25 minutes of cutting on an idle drive; under 1 s a file on top of a
+       scan of about 75 s. A nudged point's new frames are still cut on
+       demand, and say "drive busy" on a busy drive.
      Tests, each seen failing first: in a real browser against a stub server
      whose frames never answer, stepping through six points and then Approve
      reaches the server within a second; the page never has more than two frame
      requests open, and a point left behind has none; the grabber runs at most
      two cuts, drops a cancelled one, and answers "drive busy" for a busy drive
-     without running ffmpeg. **Proof:** on a scratch server on a fresh copy, its
+     without running ffmpeg; a scanned record on the list gets its points'
+     frames saved and one off the list none; the frame route answers a saved
+     frame without reading the drive, a busy one included; approving,
+     rejecting or moving a point, the episode leaving the list and the file
+     changing each delete its saved frames, and the page's cache pruning never
+     does. **Proof:** on a scratch server on a fresh copy, its
      scanner paused by hand, the frame route slowed on purpose, A pressed through
      ten points as fast as the keys go: every approval saved, timed from the
-     request log; then `breaks-page` and the full suite.
+     request log; the saved frames' count and size on the copy after a backfill
+     on a drive no viewer is using; then `breaks-page` and the full suite.
    - **5d. The panel that did not open** (DarkManX16, Nov 14). The `breaks-page`
      workflow once failed with the show's panel not opening on a click, right
      after `special-day`, and not again in five runs. First find out whether a

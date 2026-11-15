@@ -130,6 +130,9 @@ function lineCore(key, show, name, total = null) {
     };
     const noneFound = scannedRecs.filter( (r) => (r.noBreaks !== true) && (r.theatrical !== true) && (patterns.readPoints(pattern, r).length === 0) ).length;
     const approved = (show.pattern != null);
+    // Approved automatically (step 5a's rule): only while he has neither approved nor withdrawn it.
+    const autoApproved = ! approved && (show.withdrawn == null) && (show.theatrical !== true) && ! isMovieKey
+        && patterns.autoApproval(show).groups.some( (g) => g.approved );
     return {
         key,
         kind: kindOf(key),
@@ -146,11 +149,14 @@ function lineCore(key, show, name, total = null) {
         weaker: (weakerFull != null) ? clauses(weakerFull) : null,
         approved,
         approvedWeaker: approved && (show.pattern.weaker === true),
+        autoApproved,
+        withdrawn: ! approved && (show.withdrawn != null),
         noBreaksFound: noneFound,
         markedNoBreaks: records.filter( (r) => r.noBreaks === true ).length,
         noBreaksShow: show.noBreaks === true,
         toCheck: list.length,
-        needsClick: ( ! approved && (hasPattern || (weakerFull != null)) && (show.theatrical !== true) ) || (list.length > 0),
+        // A show approved automatically leaves Needs a click, its odd episodes still on the list inside it (DarkManX16, Nov 15).
+        needsClick: ! autoApproved && ( ( ! approved && (hasPattern || (weakerFull != null)) && (show.theatrical !== true) ) || (list.length > 0) ),
     };
 }
 

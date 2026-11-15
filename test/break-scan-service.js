@@ -22,7 +22,13 @@ function program(title, file, minutes, extra = {}) {
 }
 const flex = (minutes) => ({ isOffline: true, duration: minutes * MIN });
 
+// Midrolls are off on a new install, and with them the scanner (Nov 14): every rig turns them on,
+// as DarkManX16 will, unless the test is about the switch itself (`asInstalled`).
 function rig(folder, options = {}) {
+    const settings = path.join(folder, 'break-scanner.json');
+    if ( (options.asInstalled !== true) && ! fs.existsSync(settings) ) {
+        fs.writeFileSync(settings, JSON.stringify( { midrolls: true } ));
+    }
     const state = { now: Date.UTC(2026, 9, 28, 1, 0, 0), calls: [], live: [], cpu: 0.2, runMs: 2000 };
     const channels = options.channels || [];
     const service = new BreakScanService( Object.assign( {
@@ -405,7 +411,7 @@ module.exports = async () => {
         {
             const f = path.join(tmp, 'boot');
             fs.mkdirSync(f);
-            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: true } ));
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { midrolls: true, paused: true } ));
             let fails = 1;
             const { service: s } = rig(f, { channels: [ ch1 ], service: {
                 indexByPath: (dir) => {
@@ -425,7 +431,7 @@ module.exports = async () => {
         {
             const f = path.join(tmp, 'boot2');
             fs.mkdirSync(f);
-            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: true } ));
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { midrolls: true, paused: true } ));
             let fails = 1;
             const { service: s } = rig(f, { channels: [ ch1 ], service: {
                 indexByPath: (dir) => {
@@ -438,7 +444,7 @@ module.exports = async () => {
             await s.init();
             await s.setPaused(false);
             // what a load that read the file just before the switch would see
-            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: true } ));
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { midrolls: true, paused: true } ));
             await s.buildOnce();
             suite.check('a Resume by hand before the store is read is not undone by a Pause read from before it',
                 (s.ready === true) && (s.governor.mode() !== 'off'));
@@ -484,7 +490,7 @@ module.exports = async () => {
             await again.service.building;
             const saved = JSON.parse(fs.readFileSync(path.join(f, 'break-scanner.json'), 'utf8'));
             suite.check('...and an empty list scans every drive again',
-                again.service.queue.some( (e) => e.drive === 'G:' ) && (JSON.stringify(saved) === JSON.stringify( { paused: false, skipDrives: [], scanFirst: [] } )), JSON.stringify(saved));
+                again.service.queue.some( (e) => e.drive === 'G:' ) && (JSON.stringify(saved) === JSON.stringify( { midrolls: true, paused: false, skipDrives: [], scanFirst: [] } )), JSON.stringify(saved));
         }
         {
             const f = path.join(tmp, 'skip-mid');
@@ -560,6 +566,127 @@ module.exports = async () => {
             const r4 = await put( {} );
             suite.check('an empty PUT still resumes, as before',
                 r4.body.pausedByHand === false);
+        }
+
+        // ---- the Midrolls switch (step 5b) ------------------------------------------------------
+        // Runs the worker for `ms` of the rig's clock, then stops it: what it scanned is in state.calls.
+        const runFor = async (s, st, ms) => {
+            const until = st.now + ms;
+            const sleep = s.sleep;
+            s.sleep = async (t) => {
+                await sleep(t);
+                if (st.now >= until) {
+                    s.stopping = true;
+                }
+            };
+            await s.workLoop();
+            s.sleep = sleep;
+            s.stopping = false;
+        };
+        {
+            const f = path.join(tmp, 'new-install');
+            fs.mkdirSync(f);
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ], asInstalled: true });
+            await s.init();
+            await s.buildOnce();
+            suite.check('a new install, with no break-scanner.json: midrolls are off, and the scanner with them',
+                (s.status().midrolls === false) && (s.governor.mode() === 'off') && (s.status().reason === 'Off: midrolls are off'), JSON.stringify( { midrolls: s.status().midrolls, mode: s.governor.mode(), reason: s.status().reason } ));
+            await runFor(s, st, 10 * MIN);
+            suite.check('...ten minutes on, nothing has been read', (st.calls.length === 0) && (s.queue.length > 0), `${st.calls.length} runs, ${s.queue.length} queued`);
+            suite.check('...and nothing was written for it', ! fs.existsSync(path.join(f, 'break-scanner.json')));
+        }
+        {
+            const f = path.join(tmp, 'old-file');
+            fs.mkdirSync(f);
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: false, skipDrives: [ 'E:' ] } ));
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            await runFor(s, st, 10 * MIN);
+            suite.check('a settings file from before the switch (no "midrolls") reads off: nothing is scanned',
+                (s.status().midrolls === false) && (s.status().reason === 'Off: midrolls are off') && (st.calls.length === 0), `${s.status().reason}, ${st.calls.length} runs`);
+            if (typeof(s.setMidrolls) === 'function') {
+                await s.setMidrolls(true);
+            }
+            const saved = JSON.parse(fs.readFileSync(path.join(f, 'break-scanner.json'), 'utf8'));
+            suite.check('turning midrolls on starts the scanner and keeps the drives', (s.governor.mode() !== 'off') && (saved.midrolls === true) && (JSON.stringify(saved.skipDrives) === '["E:"]'), JSON.stringify(saved));
+            await runFor(s, st, 10 * MIN);
+            suite.check('...and it scans', st.calls.length > 0);
+            const again = rig(f, { channels: [ ch1 ] });
+            await again.service.init();
+            suite.check('...on across a restart', (again.service.status().midrolls === true) && (again.service.governor.mode() !== 'off'));
+        }
+        {
+            const f = path.join(tmp, 'both');
+            fs.mkdirSync(f);
+            fs.writeFileSync(path.join(f, 'break-scanner.json'), JSON.stringify( { paused: true } ));
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            suite.check('off and paused by hand: the line says midrolls are off, and Pause by hand is kept',
+                (s.status().reason === 'Off: midrolls are off') && (s.status().pausedByHand === true), s.status().reason);
+            if (typeof(s.setMidrolls) === 'function') {
+                await s.setMidrolls(true);
+            }
+            await runFor(s, st, 10 * MIN);
+            suite.check('turned on while paused by hand: Paused by hand still wins, nothing read',
+                (s.status().midrolls === true) && (s.status().reason === 'Paused by hand') && (st.calls.length === 0), `${s.status().reason}, ${st.calls.length} runs`);
+        }
+        {
+            const f = path.join(tmp, 'off-mid');
+            fs.mkdirSync(f);
+            const { service: s, state: st } = rig(f, { channels: [ ch1 ] });
+            await s.init();
+            await s.buildOnce();
+            st.durationS = 900;
+            let stoppedAtOnce = false;
+            st.during = async (call, opts) => {
+                if (call.args.join(' ').includes('silencedetect') && ! stoppedAtOnce && (typeof(s.setMidrolls) === 'function')) {
+                    await s.setMidrolls(false);
+                    stoppedAtOnce = opts.signal.aborted;
+                    return { code: null, stderr: '', aborted: true };
+                }
+                return null;
+            };
+            // the scan waits while midrolls are off: give it a few seconds of the rig's clock, then stop it
+            const sleep = s.sleep;
+            let slept = 0;
+            s.sleep = async (t) => {
+                slept += t;
+                if (slept > 5000) {
+                    s.stopping = true;
+                }
+                await sleep(t);
+            };
+            const entry = s.queue[0];
+            await s.scanOne(entry).catch( () => {} );
+            s.sleep = sleep;
+            s.stopping = false;
+            suite.check('turning midrolls off mid-file stops its ffmpeg at once', stoppedAtOnce === true);
+            const kept = store.indexByPath(path.join(f, 'breaks')).get(entry.path);
+            suite.check('...and the file waits, not failed', kept == null, JSON.stringify(kept && kept.record.error));
+        }
+        {
+            const f = path.join(tmp, 'api-midrolls');
+            fs.mkdirSync(f);
+            const { service: s } = rig(f, { channels: [ ch1 ], asInstalled: true });
+            await s.init();
+            const routes = {};
+            require('../src/break-scan-api')( { get: (p, h) => { routes['GET ' + p] = h; }, put: (p, h) => { routes['PUT ' + p] = h; } }, s );
+            const call = async (method, body) => {
+                const res = { code: 200, body: null, status(c) { this.code = c; return this; }, send(b) { this.body = b; return this; } };
+                await routes[`${method} /api/breaks/scanner`]( { body }, res );
+                return res;
+            };
+            suite.check('GET says midrolls are off on a new install', (await call('GET')).body.midrolls === false);
+            await call('PUT', { paused: true });
+            const on = await call('PUT', { midrolls: true });
+            suite.check('PUT { midrolls: true } turns them on and leaves Pause by hand alone',
+                (on.code === 200) && (on.body.midrolls === true) && (on.body.pausedByHand === true), JSON.stringify( { midrolls: on.body.midrolls, pausedByHand: on.body.pausedByHand } ));
+            const bad = await call('PUT', { midrolls: 'yes' });
+            suite.check('...anything but true or false is refused and changes nothing', (bad.code === 400) && (s.status().midrolls === true));
+            const off = await call('PUT', { midrolls: false });
+            suite.check('PUT { midrolls: false } turns them off', (off.body.midrolls === false) && (off.body.reason === 'Off: midrolls are off'));
         }
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });

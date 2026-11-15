@@ -8010,6 +8010,61 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   minute of video, Oct 15). Not measured: cuts on E:, F: and G: while viewers
   watched them (they were, the whole time). The frame folder keeps 4,000 frames
   today and prunes to 3,000, so saved frames would need their own keeping rule.
+- **Merged and pushed Nov 15.** 5a merged into blocks as 19a17fb, on top of
+  kept-stay-day-swaps (8aaa988), and pushed after the combined result's own runs: on a copy
+  of 7:16am, scratch server 18241 from the main checkout, `npm test` 3,606/3,606 and the
+  checklist 12/12 (`breaks-page` passed on this copy; its weaker-line step trips on a show
+  with only a weaker line, The Wizard of Oz (1990), on other copies, which is being fixed
+  separately).
+- **DarkManX16's call for 5c (Nov 15):** the scanner saves the two frames of each point on the
+  list to check, in a folder of their own, kept while the point is listed and deleted
+  once it is approved, rejected or moved, the episode leaves the list, or the file changes;
+  apart from the 4,000-frame cache. Written into the spec's 5c.
+
+#### Step 5b: the Midrolls switch (built Nov 15)
+
+- **What it is.** `midrolls` in `break-scanner.json` (missing = off), read at load and
+  written with the rest; `setMidrolls()` on the service and `{ midrolls }` on `PUT
+  /api/breaks/scanner` (anything but true or false is refused; a body with only
+  `midrolls` no longer counts as "resume"). The governor's mode is `off` while midrolls
+  are off, its line "Off: midrolls are off"; Paused by hand still wins when they are on,
+  and turning them off stops a scan at once, as a pause does (the file waits, not
+  failed). The Breaks page: the switch ("Midrolls on/off") and the sentence at the top; a
+  show's line says "Approved automatically" with Withdraw and no Approve, and "withdrawn"
+  once withdrawn; such a show leaves Needs a click, its odd episodes still on the list
+  inside it (DarkManX16, Nov 15, after the proof below kept 47 of 64 of them in Needs a click);
+  the Approved filter counts them. The frames on the page are unchanged (a person asked).
+- **Tests, all but one seen failing first** ("...and it scans" once turned on, which is how the scanner already behaved): 15 new checks in `test/break-scan-service.js` (a new
+  install and an old settings file read off and read nothing in ten minutes; on, off,
+  both switches, mid-file, across a restart; the API), 6 in `test/breaks-page.js`. The
+  "waits, not failed" check passed against both stand-ins at first because it looked
+  under the wrong show; fixed, then seen failing with the abort made a time-limit one.
+  The test rig now turns midrolls on unless a test is about the switch.
+- **`breaks-page` workflow** gains two steps: the sentence and the switch (off reads "Off:
+  midrolls are off"; on while paused by hand reads "Paused by hand", nothing scanning;
+  left as found), and a show approved automatically (its line, no Approve, Withdraw kept
+  over a reload, Approve, Withdraw). Against blocks' server it fails at the sentence; on 5b
+  it passed (Caitlin's Way, 64 shows approved automatically on the copy). Its old Approve
+  step now skips shows approved automatically, which have no Approve.
+- **Proof** (a copy of 7:29am, scratch server 18242 from the worktree, scanner paused by
+  hand, E: skipped):
+  - midrolls off on the copy's old settings file: "Midrolls off", "Off: midrolls are off";
+  - turned on by a click: "Midrolls on", still "Paused by hand", nothing scanning, the
+    file now `{"midrolls":true,"paused":true,...}`;
+  - 66 shows approved automatically on this copy, 64 airing (Cheers and Family Guy by his
+    own click); 47 of the 64 stay in Needs a click because an episode of theirs is still
+    on the list (an episode without the count), 17 leave it;
+  - Caitlin's Way withdrawn by the workflow stayed withdrawn after a restart (stored
+    `withdrawn: { at }`, pattern null, airs nothing); Unfabulous airs 5 episodes
+    automatically; Super Friends approved by a click: Withdraw cleared, 15 points air by
+    its pattern and 3 by hand;
+  - **as a new install**, the settings file taken away: midrolls off, the queue built
+    (21,620 files), nothing read for 4.5 minutes (no ffmpeg or ffprobe under the server),
+    and no settings file written.
+- **Suite and checklist on the branch (72f7def):** `npm test` 3,627/3,627; every workflow,
+  12/12, on the same copy after the proof, the switch on and the scanner paused by hand.
+- **What it means on 18000:** its `break-scanner.json` has no `midrolls`, so after the restart
+  that picks up 5b the scanner is off until DarkManX16 turns the switch on.
 
 ### Random Slots' Create Lineup restarts the program on air
 
