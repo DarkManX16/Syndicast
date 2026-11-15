@@ -13,6 +13,11 @@ below says what we do and why. **Syndicast innovates.**
   Never stop or signal any process you didn't start.
 - Docs and code describe our designs on their own terms and never name other
   playout programs.
+- **Before merging into `blocks`, check that no other session is merging** (no
+  `MERGE_HEAD` in the main checkout, `git log origin/blocks..blocks` empty, the other
+  sessions idle or asked). If `blocks` has moved since your branch, merge it in and
+  rerun the suite and the workflow checklist on the combined result before pushing.
+  DarkManX16 added this Nov 15, 2026.
 - Never use `preview_start` from a worktree: it resolves `.claude/launch.json`
   against the main checkout, not the worktree, and can start a second server
   against the real `.dizquetv-dev` while the other one is live. Start a
