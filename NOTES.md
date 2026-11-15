@@ -7850,6 +7850,55 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   episodes are scanned). The measuring scripts were scratch; step 5a's proof redoes
   the measurement with the built code.
 
+#### Step 5a: automatic approval and the points that air (built Nov 14)
+
+- **What it is.** `autoApproval(show)` and `autoPoints(auto, record)` in
+  `src/break-patterns.js`, and `airablePoints(show, path)` in the new
+  `src/break-airable.js`, the one answer to "which points of this file may air":
+  his hand, approved, moved and rejected points first; then "no breaks" and
+  theatrical; then his click on the show (Approve, or a remembered Withdraw); then
+  automatic. `withdraw(show, now)` now records `show.withdrawn = { at }` (the API
+  passes the time); `approve()` clears it. Nothing reads `airablePoints` yet: 5f's
+  plan will. Pure; nothing is written to the store.
+- **Tests, each seen failing first** (`test/break-airable.js`, 27 checks, and one in
+  `test/breaks-api.js`). Each check was run against two wrong stand-ins, "nothing
+  approved" and "everything airs", so each failed at least once; the two that
+  neither caught ("Approve clears it", "writes nothing") were broken by hand and
+  seen failing. The whole suite: 3,546 of 3,546.
+- **The proof found one difference, now fixed.** The first build gave 55 shows,
+  624 episodes, 909 breaks on the 8:18pm copy, not 54/620/905. The extra show was
+  American Dragon: Jake Long: in S01E12 a faint 1:44 (0.14) is read as the opening
+  and the strong 2:44 as an act, but the show's opening position is about 2:35, so
+  the click (which the measurement used) takes 2:44 as the opening and never a
+  midroll; the build had aired it. Now a point the click reads as the opening is
+  left out, and the count "holds" in an episode only when a pick is left: American
+  Dragon is 3 of 5, not approved. Spec updated to say so.
+- **Proof, read-only** (`scripts/auto-approval-report.js <breaks copy>`):
+  - Nov 14 8:18pm copy: **54 of 429 shows, 620 episodes, 905 breaks**, the same 54
+    shows as the design's measurement. Once his own choices win, 52 shows, 586
+    episodes, 853 breaks air automatically: Cheers (16) and Family Guy (36) air by
+    his own click instead.
+  - A fresh copy, Nov 14 10:18pm Central: **53 shows, 623 episodes, 898 breaks** (51,
+    587, 843 airing automatically). Ten shows gained an episode; Sealab 2020 left,
+    because with 9 episodes scanned its pattern became one by position (an act at
+    2:40 in all 9), which is never automatic. It follows the scan, as designed.
+  - The step 3 proof copy (`scripts/auto-approval-verdicts.js`): 0 doubtful picks,
+    1 unclear (Family Guy S03E09 7:07), 28 clear, Hannah Montana's 14 and
+    Gargoyles' 18 checked per show; Batman out at 75 of 107 episodes (70%), Full
+    House has no strong-point line.
+- **Measured for 5c: the scanner saving each listed point's two frames.** On the
+  10:18pm copy, 6,372 files scanned: the list to check has 3,880 points (7,760
+  frames), every scanned file 11,699 (23,398). Frames cut with the grabber's own
+  arguments on D: and H: while no viewer used them (20 + 8 files, 82 frames): about
+  12 KB each (median 11 KB, largest 32 KB), 0.2 s each (median 195 ms cold, 159 ms
+  just after a read; the slowest 0.9 s). So the list's frames are about 95 MB and
+  25 minutes of cutting today; every point's, 285 MB and 75 minutes. Over the
+  library's 26,300 files at the same rates, about 390 MB for the list, 1.2 GB for
+  every point. Per file that is under 1 s on top of a scan of about 75 s (3.1 s a
+  minute of video, Oct 15). Not measured: cuts on E:, F: and G: while viewers
+  watched them (they were, the whole time). The frame folder keeps 4,000 frames
+  today and prunes to 3,000, so saved frames would need their own keeping rule.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time

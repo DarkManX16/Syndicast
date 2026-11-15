@@ -1276,7 +1276,11 @@ The main way to approve is **one click per show**.
   In such a group an episode's points air when it has exactly N strong
   mid-episode points (strength 0.6 or more, 2 minutes from either end), at
   least 3 minutes apart. The break after the opening is never approved
-  automatically, and neither is a movie's point (TV-made or theatrical), a
+  automatically, and a strong point the click would read as the opening (the
+  one nearest the group's opening position) is that opening, not a midroll;
+  the count "holds" in an episode with exactly N strong points, at least one of
+  them not the opening (as built in 5a, Nov 14: American Dragon S01E12's 2:44,
+  a minute after a faint 1:44, is its opening). Neither is a movie's point (TV-made or theatrical), a
   record marked `noBreaks`, or a theatrical one. The rule's evidence is in
   NOTES.md ("No-setup midrolls").
 - **Read, never written.** Automatic approval is worked out from the records

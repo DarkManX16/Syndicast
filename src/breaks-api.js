@@ -173,7 +173,7 @@ module.exports = function breaksRoutes(router, service, options = {}) {
         }
         const result = service.updateShow(b.key, (show) => {
             if (b.action === 'withdraw') {
-                patterns.withdraw(show);
+                patterns.withdraw(show, Date.now());
                 return { ok: true };
             }
             const offered = (b.weaker === true) ? (patterns.weakerLine('x', show) !== null) : patterns.showPatterns(show).groups.some( (g) => g.pattern !== null );
