@@ -8076,7 +8076,7 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   the full rerun. Not investigated further; most likely the page had not yet applied the Move's
   answer under the load.
 
-#### Step 5c: saves never wait behind frames (built Nov 15, not merged)
+#### Step 5c: saves never wait behind frames (built Nov 15; merged and pushed as blocks ce4456f)
 
 - **The cause, measured first** (`test/breaks-saves-first.js`: the real page in a real
   browser against a stand-in server whose frames never answer). Stepping through six points
@@ -8131,6 +8131,53 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   list's frames as it goes and backfills about 7,500 in its idle time, about 80 MB and, at
   0.2 s a frame on an idle drive, under half an hour of reading, at Very Low disk priority and
   with its pace check watching.
+
+#### Step 5d: can a real click fail? (built Nov 15, not merged)
+
+The question for two clicks that once failed in the checklist: the Breaks page's show panel
+(Nov 14, right after `special-day`) and "+ Add special day" in Time Slots (Nov 15, "the special
+day's Name field didn't show", the focus left in the Filter slots box). `scripts/click-probe.js`
+clicks the way the workflows do (found, scrolled into view, checked uncovered, a real mouse
+click at its middle) and records, each round, where the control was when found, just before
+and just after the click, what was under the pointer, the layout shifts the browser reported,
+and whether the click did its job. A scratch server on 18260 from the worktree, on the copy of
+10:46am, its scanner paused by hand.
+
+- **"+ Add special day": yes, a real click can fail, for two reasons, both fixed.**
+  1. **The Reading line** (the main one). Time Slots shows its controls 3.1-3.4 s after it is
+     clicked, and "Reading N shows' episode lists..." then stays at the top of its body for
+     another 2.3-3.7 s (8 openings timed). When it went, everything below rose 25 px. Clicking
+     the moment the controls show: **202 of 300 clicks landed on the Filter slots box**, the
+     button 25 px higher by the time the click arrived. Any click in those seconds could miss.
+     **The line is now in the footer**, beside Cancel and Create Lineup
+     (`test/time-slots-no-jump.js`, seen failing first): 299 of 300 after it.
+  2. **A read from an earlier opening** (the one in 300 left). Cancelling Time Slots while it
+     read and opening it again let the old read finish during the new opening: it ended the new
+     opening's reading and worked out its notes against lists not read yet, so a 451 px
+     "Couldn't read Mighty Ducks ... (not read), Quack Pack (not read), ..." alert showed at the
+     top for about 2 s, then went, moving everything below by 457 px (caught in a screenshot,
+     round 126 of a second 300). Opening, cancelling and reopening at once
+     (`--what special-day-reopen`): **8 of 40 missed**, each with that alert at the click.
+     **A read now belongs to one opening of the dialog** (`opening` in
+     time-slots-schedule-editor.js; a stale read's failure is no longer written into the new
+     opening's lists either): **0 of 40.**
+- **The Breaks panel: no, not on 5c.** **300 of 300 clicks opened their show**, nothing moving
+  under the pointer (the list keeps its order once it shows; the shift the probe saw was its own
+  typing filtering the list). The first probe counted 30 "failures": three shows with nothing
+  waiting, whose panel opened with no point in front of you; the probe's check was wrong and now
+  asks for the show's panel. Of the spec's two explanations, the page moving under the click is
+  not supported; the other, the show's own request waiting, is: with one show's frames hanging,
+  clicking another show, **before 5c the browser never even sent the request for it (not open in
+  5 s), with 5c it opens in 87 ms** (`test/breaks-saves-first.js`, a fifth check). Nov 14 ran
+  before 5c, right after special-day, with real frames on busy drives: the likeliest cause, and
+  5c removed it.
+- **Proof** (the same server after a restart on the final code): 300 "+ Add special day" clicks,
+  **0 missed**; 300 Breaks-panel clicks, **0 missed**; `special-day` then `breaks-page`, **ten times
+  in a row, 20 of 20 passed**. `npm test`: one failure on the first run, in 5c's own test "a
+  request cancelled while its ffmpeg runs stops that ffmpeg": its two cuts start together, and it
+  read the first one recorded as e1's; most likely the other started first that time. The check
+  now finds e1's run by its file (15 runs of the file, all passed); the full suite then
+  3,660/3,660.
 
 ### Random Slots' Create Lineup restarts the program on air
 

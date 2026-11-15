@@ -95,7 +95,10 @@ module.exports = async () => {
             a.abort();
             const stopped = await Promise.race( [ first, sleep(2000).then( () => ({ ok: true, v: 'still running' }) ) ] );
             suite.check('a request cancelled while its ffmpeg runs stops that ffmpeg',
-                ! stopped.ok && (stopped.e.reason === 'cancelled') && state.runs[0].stopped && ! fs.readdirSync(grabber.dir).some( (f) => f.endsWith('.part.jpg') ), `${stopped.e && stopped.e.reason}`);
+                // the two cuts start together: e1's run is found by its file, not by which started first
+                ! stopped.ok && (stopped.e.reason === 'cancelled') && (state.runs.find( (r) => r.args.includes('G:\\A\\e1.mkv') ) || {}).stopped === true
+                    && ! fs.readdirSync(grabber.dir).some( (f) => f.endsWith('.part.jpg') ),
+                `${stopped.e && stopped.e.reason}, runs ${state.runs.map( (r) => r.args[r.args.indexOf('-i') + 1] + (r.stopped ? ' (stopped)' : '') ).join(', ')}`);
             // let everything still held go, the serial chain's turns included
             let kept = null;
             for (let i = 0; i < 4 && kept === null; i++) {
