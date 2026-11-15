@@ -2723,8 +2723,16 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     delete scope.channel.scheduleBackup;
                 } else {
                     scope.channel.scheduleBackup = slotsResult.schedule;
+                    let listBefore = { programs: scope.channel.programs, startTime: scope.channel.startTime };
                     readSlotsResult(slotsResult);
                     queueCatalogOps(slotsResult.catalogOps);
+                    // An episode with no room before a kept row, even with the breaks before it
+                    // shortened, airs at its show's next slot: one sentence says so when the list
+                    // had that show there (Nov 15, 2026).
+                    let waitedSaid = keptRows.sayWaited(slotsResult.waited, listBefore);
+                    if (waitedSaid !== '') {
+                        scope.lastChange = waitedSaid;
+                    }
                 }
             }
 

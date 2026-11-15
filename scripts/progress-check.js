@@ -385,6 +385,8 @@ async function main() {
     }
     let res = await generate(pool, schedule, at, history, pins.length ? pins : undefined, carry || undefined, fillerPools);
     if (typeof(res.userError) !== 'undefined') throw new Error(res.userError);
+    // Create Lineup's one sentence when an episode had no room before a kept row (Nov 15, 2026).
+    console.log(`waited: ${ (res.waited || []).length } - ${ keptRows.sayWaited(res.waited, { programs: channel.programs, startTime: savedStart }) || "nothing said" }`);
     seasonConstraints.clearStartSeasons(schedule);
 
     // The editor's readSlotsResult: startTime moved back whole cycles, then rotated to now.

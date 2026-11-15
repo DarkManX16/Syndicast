@@ -6156,6 +6156,90 @@ copy of `.dizquetv-dev` taken Thu Oct 29 at 5:23pm Central (identical to the liv
     does the same on the list with nothing kept, so it predates this and isn't chased here.
   - Not tried in the browser: the dialog's part is checked in step 4's preview proof.
 
+**A late episode slid past a kept row, Nov 15, 2026** (branch `claude/gracious-leavitt-7f6307`).
+The checklist's `create-lineup` failed on channel 3 in runs at 3:16pm, 3:31pm and 4:15pm and
+passed in runs from 7:23am to 10:49am: "1 kept rows moved or went", DarkManX16's Nov 9 swap
+of Welcome to Pooh Corner, Holiday For Pooh Bear, Sun Nov 22 at 10:44:50.676pm.
+
+- **What happened.** The row started 46 ms late (10:44:50.722); nothing else about it
+  changed. Sunday's slots are Jim Henson Hour 9:30 (a 48-minute show), Fraggle Rock 10:00,
+  Pooh Corner 10:30, so Fraggle Rock airs late and the Pooh swap sits right after it. The
+  workflow first swaps a plain row of its own, the third without a kept icon at the top of
+  the list. From 3pm today's Wizards of Waverly Place special day rows carry a change
+  mark (a kept icon), so at 4:15pm it swapped tonight's 9:35pm Jim Henson Hour (Monster Maker for
+  Outer Space, 7.7 s longer). In the morning it swapped Babar, Care Bears, Raccoons or Kirby
+  rows, which touch nothing near the Pooh row. Create Lineup then gave tonight's 10:00 slot
+  Flex (the slot after a kept row takes only what fits whole), so Fraggle Rock's next
+  episode, The Thirty-Minute Work Week (1,490,722 ms), moved to Nov 22 in place of The
+  Preachification of Convincing John (1,490,676 ms). That episode is 46 ms longer, and the
+  Pooh row followed its end.
+- **Which candidate held, measured with `progress-check` at 4:15pm:**
+  - Not DarkManX16's data. He did change channel 3 between 10:46am and 3:25pm: 5 swaps on Fri
+    Nov 27 at 11:18-11:22am, a re-lay at 11am, a save at 12:28pm, kept rows 14 to 75 (54 of
+    the 61 new ones `late` marks, which keep nothing). The Nov 14 9pm backup gives the same answer as
+    the 12:28pm file: 0 ms without the 9:35pm swap, +46 ms with it.
+  - Not a horizon. Without the swap, at the same moment, the row stays to the millisecond.
+  - **The generator.** An episode longer than its slot's time left is laid whole (the
+    Slide in `time-slots-service.js`) without looking at the next kept row. Rule 1 then
+    places the kept row wherever the episode ended. A row kept at 8:15pm aired at 8:20pm
+    behind a 30-minute episode running late from 7:50 (`test/kept-generator.js`, failing
+    first). On the live data, the workflow's other pick, tonight's 9:05pm Muppets Tonight
+    (Tony Bennett, 10 s longer, moved to Nov 22), puts the Pooh row at **10:49:50pm**,
+    5 minutes late, on `blocks`.
+- **Fixed: a kept row stays exactly where DarkManX16 put it, to the millisecond, and the
+  episode before it still airs** (his rule, Nov 15). The fill before a kept row used to
+  allow SLACK (9,999 ms).
+  - **Room from the breaks.** An episode that would end past a kept row by any amount,
+    sliding on from an earlier slot or in the kept row's own slot, first takes the time
+    from the Flex laid before it, nearest break first, each down to 60 seconds. The
+    airings after a shortened break move earlier with it.
+  - **Limits.** No airing moves before the slot time it starts in, nor before now. A
+    kept, pinned or special-day row stops the search (`makeRoom` in
+    `time-slots-service.js`).
+  - **No room.** Only then does the episode wait for its show's next slot, and the line
+    under the list says so in one sentence (`keptRows.sayWaited`): '"The Thirty-Minute Work
+    Week" (Fraggle Rock) airs at its show's next slot instead: no room before your swap at
+    Sun Nov 22, 10:44pm.'
+  - **When the sentence shows.** Only where the list showed that show in that slot before
+    the kept row. On channel 3 two episodes wait with no swap at all: the Hannah Montana he
+    swapped out on Nov 27 at 11:18am, which his list already has on Dec 4, with Flex and
+    his dragged Even Stevens before 9:05pm. Nothing changes there, so nothing is said.
+  - `test/kept-generator.js`, failing first:
+    - room from one break (5 s);
+    - room in the kept row's own slot;
+    - never before the slot's time;
+    - never a break below a minute;
+    - no room, and the sentence;
+    - the sentence only where the list had the show.
+  - The checklist's `create-lineup` compares kept rows to the millisecond.
+- **Proof, on the copy taken 4:11pm** (channel 3 byte for byte the 12:28pm file). Create
+  Lineup ran at 4:15pm through `progress-check`, and the Pooh Corner entry (2,495 bytes)
+  was compared byte for byte.
+
+  | | no swap | 9:35pm swap | 9:05pm swap |
+  |---|---|---|---|
+  | `blocks` | same, 0 ms | same entry, +46 ms | same entry, +300,000 ms |
+  | fix | same, 0 ms | same, 0 ms | same, 0 ms |
+  | Nov 22 Fraggle Rock, fix | 10:20:00pm | 10:19:59.954pm | 10:20:00pm |
+
+  - **9:35pm swap.** The 1:16.7 break before Fraggle Rock gave 46 ms.
+  - **9:05pm swap.** Three breaks gave 5 minutes, down to 60 s, 60 s and 2:33.9. Muppets
+    Tonight starts at 9:04:06 instead of 9:05 and Jim Henson Hour at 9:30:25 instead of
+    9:35, both still after their slot times.
+  - **No swaps.** Create Lineup's saved channels 1-3 are byte for byte `blocks`' own
+    (40,000, 35,101 and 37,317 entries), and nothing is said. Suite 3,668/3,668.
+  - **In the browser.** A fresh copy taken 5:31pm, port 18335, all 12 workflows passed,
+    with `create-lineup` making the 9:05pm swap. After the whole run, channel 3's saved Nov
+    22 is the same as the table's: Fraggle Rock at 10:20:00 after breaks of 60 s, 60 s and
+    2:33.9, and the Pooh Corner entry byte for byte the same at 1795409090676. The line
+    under the list kept the swap's own text, so no sentence showed.
+- **Not changed, for DarkManX16 to decide.** Swapping tonight's Jim Henson Hour for a
+  7.7 s longer episode leaves tonight's 10:25 Fraggle Rock in the list. Create Lineup then
+  drops it (Pooh Corner moves up to 10:30). This is a different rule: the slot that starts
+  while a kept swap is still on is the swap's, Flex to its end ("take"). Unkept, the same
+  hour runs late and Fraggle Rock airs. Shortening breaks before a kept row can't reach
+  it, since the episode comes after the kept row.
+
 ### Special days
 
 Designed Oct 28-29, 2026 (Opus 5.5) from DarkManX16's brief and agreed Oct 29, with
