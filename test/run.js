@@ -94,6 +94,7 @@ const suites = [
     './break-scan-service',
     './io-priority',
     './break-patterns',
+    './break-airable',
     './break-edit',
     './breaks-page',
     './breaks-api',
