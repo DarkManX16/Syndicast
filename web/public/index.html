@@ -3,7 +3,12 @@
 <head>
     <title>Syndicast</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" href="/favicon.svg" ></link>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
     <link rel="stylesheet" href="bootstrap-4.4.1-dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="fontawesome-free-5.15.4-web/css/all.css">
     <link href="style.css" rel="stylesheet">
@@ -15,8 +20,7 @@
 <body ng-app="myApp" style="min-width: 340px;">
     <div class="container-fluid">
         <h1>
-            <a href="#!/guide"><img id='dizquetv-logo' src="images/dizquetv.png" alt="logo" ></a>
-            Syndicast
+            <a href="#!/guide"><img id="syndicast-logo" src="syndicast-logo.svg" alt="Syndicast" ></a>
             <small class="pull-right" style="padding: 5px;">
                 <a href="https://github.com/DarkManX16/syndicast" title='Git Repository'> 
                     <span class="fab fa-github text-sm"></span>
@@ -28,6 +32,7 @@
                 </a>
             </small>
         </h1>
+        <span id="top-menu">
         <a href="#!/guide">{{'topMenu.guide' | i18next}}</a> - 
         <a href="#!/channels">{{'topMenu.channels' | i18next}}</a> - 
         <a href="#!/library">{{'topMenu.library' | i18next}}</a> - 
@@ -36,6 +41,7 @@
         <a href="#!/player">{{'topMenu.player' | i18next}}</a> - 
         <a href="#!/settings">{{'topMenu.settings' | i18next}}</a> - 
         <a href="#!/version">{{'topMenu.version' | i18next}}</a>
+        </span>
         <span class="pull-right">
             <span style="margin-right: 15px;">
                 <a href="/api/xmltv.xml">XMLTV <span class="far fa-file-code"></span></a>

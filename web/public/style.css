@@ -637,10 +637,34 @@ div.programming-programs div.list-group-item {
   opacity: 0.0;
 }
 
-#dizquetv-logo {
-  width: 1em;
-  height: 1em;
-  margin-bottom: 0.25em;
+/* The wordmark is as big as the word it replaced (28px capitals, 170px wide at 40px type): 70px tall. */
+#syndicast-logo {
+  height: 1.75em;
+  width: auto;
+}
+
+/* The top menu and the tab strips are set in the wordmark's own font, Bricolage Grotesque (SIL OFL, fonts/OFL.txt). */
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url(fonts/BricolageGrotesque-600.woff2) format('woff2');
+}
+
+#top-menu,
+.nav-tabs .nav-link {
+  font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+}
+
+/* On a phone the two icons stay beside it, so the logo takes the width they leave. */
+@media (max-width: 480px) {
+  #syndicast-logo {
+    height: auto;
+    width: calc(100vw - 130px);
+    max-width: 6.8em;
+  }
 }
 
 .list-group-item .library-item-hover:hover {

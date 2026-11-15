@@ -121,7 +121,8 @@ async function _writeProgramme(channel, program, xw, xmlSettings, cacheImageServ
     if (typeof program.icon !== 'undefined') {
         xw.startElement('icon');
         let icon = program.icon;
-        if (xmlSettings.enableImageCache === true) {
+        // A {{host}} address is our own file, filled in per request: not for the cache to fetch.
+        if (xmlSettings.enableImageCache === true && !String(icon).startsWith('{{host}}')) {
             const imgUrl = cacheImageService.registerImageOnDatabase(icon);
             icon = `{{host}}/cache/images/${imgUrl}`;
         }

@@ -1,8 +1,11 @@
 const events = require('events')
 const constants = require("../constants");
 const dayParts = require('../day-parts');
-const  FALLBACK_ICON = "https://raw.githubusercontent.com/vexorain/dizquetv/main/resources/dizquetv.png";
+// Syndicast's own icon, served from web/public. A stored path, like every channel image
+// (see image-url.js), so each client gets an address it can reach.
+const FALLBACK_ICON = "/icons/icon-512.png";
 const throttle = require('./throttle');
+const imageUrl = require('../image-url');
 
 class TVGuideService extends events.EventEmitter
 {
@@ -419,7 +422,7 @@ class TVGuideService extends events.EventEmitter
                         start: t0 - t0 % (30 * 60*1000),
                         program: {
                             duration: 24*60*60*1000,
-                            icon: FALLBACK_ICON,
+                            icon: imageUrl.forClient(FALLBACK_ICON),
                             showTitle: this.i18next.t("tvGuide.no_channels"),
                             date: formatDateYYYYMMDD(new Date()),
                             summary : this.i18next.t("tvGuide.no_channels_summary")
