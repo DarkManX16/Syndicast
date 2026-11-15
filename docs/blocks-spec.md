@@ -1619,6 +1619,16 @@ never on the live data folder and never through the server on port 18000.
      the workflow's way of clicking can, the workflow is fixed instead. **Proof:**
      the same few hundred clicks with no failure, and `breaks-page` run ten
      times in a row, after `special-day` each time.
+     **The same question for "Add special day"** (DarkManX16, Nov 15): on Nov 15
+     the `special-day` workflow once clicked "+ Add special day" in the Time
+     Slots dialog and no form opened ("the special day's Name field didn't
+     show"); it passed alone at once. Measured the same way (a few hundred real
+     clicks, the element under the point and the button's position just before
+     and at the click, whether the form opened), telling apart the dialog moving
+     under the click (its list of special days and slots still filling in) from
+     a click that lands but opens nothing; fixed with a test that fails first
+     if a real click can fail, the workflow otherwise. **Proof:** the same clicks
+     with no failure, and `special-day` run ten times in a row.
    - **5e. The Midroll situation and the setting** (pure). `midroll` in each
      context's transitions, empty by default, normalized, validated and cleaned
      at save like the other four, and its generated steps' cards rendered by the
