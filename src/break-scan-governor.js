@@ -62,6 +62,9 @@ class ScanGovernor {
         this.now = options.now || ( () => Date.now() );
         this.force = options.force || null;
         this.manualPaused = false;
+        // The Midrolls switch (Nov 14): off, the scanner does not run at all. The service sets it
+        // from break-scanner.json; a governor on its own (the tests') starts with it on.
+        this.midrollsOff = false;
         this.pausedUntil = 0;
         this.pauseReason = '';
         this.lastPauseAt = null;
@@ -102,6 +105,14 @@ class ScanGovernor {
         }
         this.manualPaused = paused;
         this.addLog(paused ? 'off' : 'on', paused ? 'Paused by hand' : 'Resumed by hand');
+    }
+
+    setMidrollsOff(off) {
+        if (off === this.midrollsOff) {
+            return;
+        }
+        this.midrollsOff = off;
+        this.addLog(off ? 'off' : 'on', off ? 'Midrolls turned off' : 'Midrolls turned on');
     }
 
     cpuAverage(windowMs) {
@@ -258,7 +269,7 @@ class ScanGovernor {
     }
 
     mode() {
-        if (this.manualPaused) {
+        if (this.midrollsOff || this.manualPaused) {
             return 'off';
         }
         if (this.isPaused()) {
@@ -287,7 +298,7 @@ class ScanGovernor {
         const cpuText = (cpu === null) ? '' : `CPU ${Math.round(cpu * 100)}%`;
         const forced = this.force ? ' (forced)' : '';
         if (mode === 'off') {
-            return 'Paused by hand';
+            return this.midrollsOff ? 'Off: midrolls are off' : 'Paused by hand';
         }
         if (mode === 'paused') {
             return `Paused until ${clockText(this.pausedUntil)}: ${this.pauseReason}`;

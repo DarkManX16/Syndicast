@@ -111,6 +111,16 @@ module.exports = function ($scope, $timeout, $document, dizquetv) {
         $timeout();
     };
 
+    // The Midrolls switch (Nov 14): off on a new install; the scanner does not run while it is off.
+    $scope.toggleMidrolls = async () => {
+        try {
+            $scope.scanner = await dizquetv.setBreakScanner( { midrolls: ! $scope.scanner.midrolls } );
+        } catch (err) {
+            fail(err);
+        }
+        $timeout();
+    };
+
     $scope.saveDrives = async () => {
         try {
             const text = String($scope.ui.drives || '').trim();
@@ -156,7 +166,7 @@ module.exports = function ($scope, $timeout, $document, dizquetv) {
     const isMovieLine = (s) => (s.kind === 'movie') || (s.movieFiles > 0);
     const FILTERS = {
         click: (s) => s.needsClick,
-        approved: (s) => s.approved,
+        approved: (s) => s.approved || s.autoApproved,
         movies: isMovieLine,
         all: () => true,
     };
