@@ -95,6 +95,7 @@ const suites = [
     './io-priority',
     './break-patterns',
     './break-airable',
+    './breaks-saves-first',
     './break-edit',
     './breaks-page',
     './breaks-api',
