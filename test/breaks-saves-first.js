@@ -46,10 +46,10 @@ function pt(at, kind, strength = 0.5) {
 }
 
 // One show, two episodes with four points waiting each: eight points to step through.
-function showRecord() {
+function showRecord(folder = 'Slow', name = 'Slow Show') {
     const files = {};
     for (let i = 1; i <= 2; i++) {
-        files[`G:\\Slow\\Slow Show S01E0${i}.mkv`] = { ratingKey: String(i), size: 1, mtimeMs: 1, durationMs: 22 * 60000, scannedAt: 1, scanner: 1, chapters: [],
+        files[`G:\\${folder}\\${name} S01E0${i}.mkv`] = { ratingKey: String(i), size: 1, mtimeMs: 1, durationMs: 22 * 60000, scannedAt: 1, scanner: 1, chapters: [],
             points: [ pt(200 + i, 'act'), pt(420 + i, 'act'), pt(640 + i, 'act'), pt(860 + i, 'act') ], noBreaks: false, error: null };
     }
     return { theatrical: false, pattern: null, files };
@@ -58,24 +58,29 @@ function showRecord() {
 function stubServer() {
     const key = 'tv.Slow Show';
     const show = showRecord();
+    // a second show, opened after the first one's frames hang (step 5d: the panel that did not open)
+    const shows = { [key]: { show, name: 'Slow Show' }, 'tv.Other Show': { show: showRecord('Other', 'Other Show'), name: 'Other Show' } };
     const state = { frames: [], open: new Set(), maxOpen: 0, saves: [] };
     const app = express();
     app.use(express.json());
     app.get('/version.js', (req, res) => res.type('application/javascript').send(''));
-    const detail = () => page.detail(key, show, 'Slow Show');
+    const detail = (k = key) => page.detail(k, shows[k].show, shows[k].name);
     const scanner = { ready: true, mode: 'off', reason: 'Paused by hand', pausedByHand: true, midrolls: true, working: false, current: null, queued: 0,
         counts: { week: { files: 2, scanned: 2 }, library: { files: 2, scanned: 2 }, skipped: { files: 0 } }, skipDrives: [], scanFirst: [], live: [], log: [], pace: [], diskPriority: { level: 'very low' } };
     app.get('/api/breaks/scanner', (req, res) => res.send(scanner));
-    app.get('/api/breaks/shows', (req, res) => res.send( { ready: true, counts: { shows: 1 }, shows: [ detail().line ] } ));
-    app.get('/api/breaks/show', (req, res) => res.send(detail()));
+    app.get('/api/breaks/shows', (req, res) => res.send( { ready: true, counts: { shows: 2 }, shows: Object.keys(shows).map( (k) => detail(k).line ) } ));
+    app.get('/api/breaks/show', (req, res) => {
+        state.showAsked = (state.showAsked || []).concat( [ { key: req.query.key, at: Date.now() } ] );
+        res.send(detail(String(req.query.key)));
+    } );
     app.post('/api/breaks/point', (req, res) => {
         const b = req.body || {};
         state.saves.push( { at: Date.now(), action: b.action, index: b.index } );
-        const r = edit.editPoint(show.files[b.path], Number(b.index), b.action, Number(b.value));
+        const r = edit.editPoint(shows[b.key].show.files[b.path], Number(b.index), b.action, Number(b.value));
         if (r.ok === false) {
             return res.status(400).send( { error: r.error } );
         }
-        res.send(detail());
+        res.send(detail(b.key));
     } );
     // A drive that never answers: every frame request is held open until the page lets go of it.
     app.get('/api/breaks/frame', (req, res) => {
@@ -133,7 +138,8 @@ module.exports = async () => {
         tab.on('requestfailed', ended);
         await tab.goto(url + '/#!/breaks', { waitUntil: 'domcontentloaded' });
         await tab.waitForSelector('.bk-show .bk-name a', { timeout: 20000 });
-        await tab.click('.bk-show .bk-name a');
+        const nameLink = (n) => tab.evaluateHandle( (x) => [ ...document.querySelectorAll('.bk-show .bk-name a') ].find( (a) => a.textContent.trim() === x ) || null, n ).then( (h) => h.asElement() );
+        await (await nameLink('Slow Show')).click();
         await tab.waitForFunction( () => document.querySelectorAll('breaks-frame').length === 2, { timeout: 10000 } );
         const sleep = (ms) => new Promise( (r) => setTimeout(r, ms) );
         await sleep(300);
@@ -163,6 +169,18 @@ module.exports = async () => {
         } );
         const stale = [ ...state.open ].filter( (f) => ! now.includes(f.t) );
         suite.check('...and none for a point it has left', stale.length === 0, `${stale.length} still open for other points (open now: ${[ ...state.open ].map( (f) => f.t ).join(', ')}; on screen: ${now.join(', ')})`);
+
+        // Step 5d: the panel that did not open (Nov 14, breaks-page, right after special-day). With one
+        // show's frames hanging, another show is clicked: its panel must open with its points, at once.
+        const clicked = Date.now();
+        await (await nameLink('Other Show')).click();
+        const opened = await tab.waitForFunction( () => {
+            const s = angular.element(document.querySelector('.breaks-page')).scope();
+            return (s.openKey === 'tv.Other Show') && (s.detail !== null) && (s.detail.line.key === 'tv.Other Show') && (document.querySelector('.bk-review') !== null);
+        }, { timeout: 5000, polling: 50 } ).then( () => Date.now() - clicked, () => null );
+        const asked = (state.showAsked || []).filter( (a) => a.key === 'tv.Other Show' );
+        suite.check('with one show\'s frames hanging, clicking another show opens its panel with its points at once',
+            (opened !== null) && (opened < 2000), (opened === null) ? `not open in 5 s; the server was asked for it ${asked.length ? `${asked[0].at - clicked} ms after the click` : 'never'}` : `${opened} ms`);
     } finally {
         await closeBrowser(browser, 10000).catch( () => {} );
         server.closeAllConnections && server.closeAllConnections();

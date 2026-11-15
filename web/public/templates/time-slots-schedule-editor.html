@@ -19,9 +19,8 @@
                         episodes already in the lineup and saves no reviews, new episodes or never-air changes. Try again
                         when the server answers.
                     </div>
-                    <div class="small text-muted" ng-show="catalog.reading" style="margin-bottom: 6px;">
-                        <span class='loader'></span> Reading {{catalog.readCount}} shows' episode lists...
-                    </div>
+                    <!-- "Reading N shows' episode lists..." is in the footer: up here, its going moved everything
+                         below it 25 px under a click (NOTES.md, "Step 5d"). -->
                     <div class="alert alert-warning py-1 px-2 small" ng-show="catalog.fellBack.length > 0" style="margin-bottom: 6px;">
                         Couldn't read
                         <span ng-repeat="f in catalog.fellBack">{{f.name}} ({{f.reason}}){{$last ? '' : ', '}}</span>
@@ -577,6 +576,9 @@
                 </div>
 
                 <div class="modal-footer" ng-show='!loading'>
+                    <div class="small text-muted mr-auto" ng-show="catalog.reading">
+                        <span class='loader'></span> Reading {{catalog.readCount}} shows' episode lists...
+                    </div>
                     <div class='text-danger small'>{{error}}</div>
                     <button type="button" class="btn btn-sm btn-link" ng-click="finished(true)">Cancel</button>
                     <button ng-show='! hideCreateLineup()' ng-disabled='disableCreateLineup()' type="button" class="btn btn-sm btn-primary" ng-click="finished(false);">Create Lineup</button>
