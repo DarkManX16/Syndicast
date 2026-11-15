@@ -1512,7 +1512,7 @@ never on the live data folder and never through the server on port 18000.
    or a theatrical one (its hand points only), as airing nothing from found or approved
    points.**
 5. **The Midroll plan**, planned Nov 14 around the switch and automatic
-   approval, in four parts, each merged on its own proof (the shape the step
+   approval, in six parts, each merged on its own proof (the shape the step
    took before then: the fifth situation and its empty default, the setting,
    save-time cleanup and warnings, `buildMidrollPlan`, the Family Guy table as an
    acceptance row, and a week of all three channels with every next start
@@ -1549,7 +1549,52 @@ never on the live data folder and never through the server on port 18000.
      no `break-scanner.json` at all, as on a new install, the switch is off and
      the scanner does not scan. Screenshots; the full suite and every editor
      workflow, `breaks-page` extended to the switch and an automatic show.
-   - **5c. The Midroll situation and the setting** (pure). `midroll` in each
+   - **5c. Saves never wait behind frames** (DarkManX16, Nov 14). Approve, Reject,
+     a nudge, a typed time and every other change go to the server at once,
+     whatever frames are still being cut. What holds them today, as read in the
+     code (to be confirmed by the failing test before anything changes): the
+     page never cancels a frame request - moving to the next point only ignores
+     the answer - and the server cuts frames one after another, each allowed
+     30 s, so stepping through points quickly leaves a queue of requests
+     waiting; once the browser has six requests open to the server it holds
+     every further one, a save included, until one finishes. The fix:
+     - **the page** keeps at most two frame requests open at once, the point on
+       screen first, and cancels the requests for a point he has moved past
+       (the `$http` request itself, not just its answer);
+     - **the server** cuts at most two frames at once, and a request the page
+       cancelled is dropped from the queue or its ffmpeg stopped;
+     - **a busy drive**: a frame not already cut, on a drive a viewer is
+       playing from, is not read; the box says "drive busy" at once (a frame cut
+       before still shows). On 18000 G: and F: are busy much of the day, so new
+       frames there will often say this while viewers watch.
+     Tests, each seen failing first: in a real browser against a stub server
+     whose frames never answer, stepping through six points and then Approve
+     reaches the server within a second; the page never has more than two frame
+     requests open, and a point left behind has none; the grabber runs at most
+     two cuts, drops a cancelled one, and answers "drive busy" for a busy drive
+     without running ffmpeg. **Proof:** on a scratch server on a fresh copy, its
+     scanner paused by hand, the frame route slowed on purpose, A pressed through
+     ten points as fast as the keys go: every approval saved, timed from the
+     request log; then `breaks-page` and the full suite.
+   - **5d. The panel that did not open** (DarkManX16, Nov 14). The `breaks-page`
+     workflow once failed with the show's panel not opening on a click, right
+     after `special-day`, and not again in five runs. First find out whether a
+     real click can fail to open a show: run the open step a few hundred times
+     with the real mouse, recording at each click the element under the point,
+     the line's position just before and at the click, and what is open after.
+     Two causes the code makes possible, to be told apart: the page moving under
+     the click (the scanner strip is read again every 5 s and changes height as
+     streams and log lines come and go; the list is read again every 60 s and
+     can reorder by next airing), so the click lands on another line or on
+     nothing; or the panel opening but staying empty because the show's own
+     request waited (behind frames, before 5c, or a slow `/api/breaks/show`).
+     Whichever holds is named in NOTES with its numbers. If a real click can
+     fail, it is fixed with a test that fails first (the page not moving under
+     a line while it is pointed at, or the panel saying it is loading); if only
+     the workflow's way of clicking can, the workflow is fixed instead. **Proof:**
+     the same few hundred clicks with no failure, and `breaks-page` run ten
+     times in a row, after `special-day` each time.
+   - **5e. The Midroll situation and the setting** (pure). `midroll` in each
      context's transitions, empty by default, normalized, validated and cleaned
      at save like the other four, and its generated steps' cards rendered by the
      card service; the `midrolls` setting with `count: null` its default, and
@@ -1558,7 +1603,7 @@ never on the live data folder and never through the server on port 18000.
      every saved channel loads, and saved again is byte-for-byte what it was;
      the suite and every editor workflow, the editor's Transitions section
      unchanged.
-   - **5d. `buildMidrollPlan`** (pure): a program's points from
+   - **5f. `buildMidrollPlan`** (pure): a program's points from
      `airablePoints`, the kinds the context's setting allows, 2 minutes from
      either end and 3 apart, the count (null: every one the budget pays for) and
      even spacing; the budget from the Flex after it less its end break's

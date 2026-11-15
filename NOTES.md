@@ -7792,7 +7792,8 @@ routes in `src/breaks-api.js` (`/api/breaks/shows`, `/show`, `/pattern`, `/point
 
 Designed Nov 14, 2026 (Opus 5.5), with DarkManX16's decisions; not built. The design
 is in the spec's Stage 6, "The Midrolls switch, and approved automatically", and step
-5 of its build order is now four parts (5a-5d) planned around it.
+5 of its build order is now six parts (5a-5f) planned around it; two Breaks page fixes
+(5c, 5d) were added on Nov 14, before the timing work.
 
 **Why.** Midrolls will mostly be used by people who download Syndicast, and they will
 not approve hundreds of shows by hand. DarkManX16's decisions:
