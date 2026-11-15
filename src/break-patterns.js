@@ -39,6 +39,11 @@ const MIN_EPISODES = 3;
 const LENGTH_TOLERANCE = 1.15;      // a running-length group spans at most 15%
 const STRONG = 0.6;                 // a mid-episode point counted by "N breaks an episode"
 const EDGE_S = 120;                 // midrolls never come within 2 minutes of either end
+// Approved automatically (Nov 14): at least 5 scanned episodes in the group, the count in
+// 3 of every 4, and an episode's breaks at least 3 minutes apart.
+const AUTO_MIN_EPISODES = 5;
+const AUTO_HOLD_SHARE = 0.75;
+const AUTO_GAP_S = 180;
 const OPENING_WINDOW_S = detectConstants.OPENING_WINDOW_S;
 // A half-hour show's cold open and titles can run past 3:00: Hannah Montana's break
 // after the title card falls at 2:16-4:42 (frames, Nov 12). A running-length group of
@@ -499,8 +504,9 @@ function approve(show, now, { weaker = false } = {}) {
         return 0;
     }
     // What an earlier click approved goes back first, so the second line's breaks do not
-    // stay approved after the first line is chosen instead.
-    withdraw(show);
+    // stay approved after the first line is chosen instead. Approving clears a Withdraw.
+    release(show);
+    show.withdrawn = null;
     const groups = [];
     for (const g of showPatterns(show).groups) {
         const p = (weaker && (g.weaker !== null)) ? g.weaker : g.pattern;
@@ -524,8 +530,8 @@ function approve(show, now, { weaker = false } = {}) {
     return n;
 }
 
-// Withdraw: every pattern-approved point back to found; DarkManX16's own approvals stay.
-function withdraw(show) {
+// Every pattern-approved point back to found; DarkManX16's own approvals stay.
+function release(show) {
     let n = 0;
     for (const rec of Object.values(show.files || {})) {
         if (! Array.isArray(rec.points)) {
@@ -540,6 +546,17 @@ function withdraw(show) {
         } );
     }
     show.pattern = null;
+    return n;
+}
+
+/*
+ * Withdraw: what the click approved goes back to found, and the show is remembered as
+ * withdrawn (`show.withdrawn = { at }` beside `show.pattern = null`), so automatic
+ * approval stays off it until he approves it again (DarkManX16, Nov 14).
+ */
+function withdraw(show, now = null) {
+    const n = release(show);
+    show.withdrawn = { at: now };
     return n;
 }
 
@@ -639,8 +656,97 @@ function outliers(show, isMovie = false) {
     return out;
 }
 
+/*
+ * Approved automatically (docs/blocks-spec.md, "The Midrolls switch, and approved
+ * automatically"; DarkManX16, Nov 14): a running-length group is approved without a
+ * click when it has an "N breaks an episode" line from strong points (not a pattern by
+ * position, not the weaker second line), that count holds in at least 3 of every 4 of
+ * its scanned episodes, and at least 5 are scanned. Worked out from the records each
+ * time and never written: { groups: [{ minMs, maxMs, count, openingWindowS, episodes,
+ * holding, approved }] }, every group the first line offers, so a record finds its own
+ * group the way a click's would (groupFor). Movies and theatrical shows get none.
+ * Measured on a copy of his store (Nov 14, 8:18pm): 54 of 429 shows.
+ */
+function autoApproval(show, { isMovie = false } = {}) {
+    if ( isMovie || (show.theatrical === true) ) {
+        return { groups: [] };
+    }
+    const groups = showPatterns(show).groups.filter( (g) => g.pattern !== null ).map( (g) => ({
+        minMs: g.minMs, maxMs: g.maxMs, count: g.pattern.count, positions: g.pattern.positions, openingEach: g.pattern.openingEach,
+        openingWindowS: g.pattern.openingWindowS, episodes: 0, holding: 0, approved: false,
+    }) );
+    const auto = { groups };
+    for (const [, rec] of scanned(show)) {
+        const g = groupFor(auto, rec);
+        if ( (g === null) || (g.count === null) ) {
+            continue;
+        }
+        g.episodes++;
+        if (autoPicks(g, rec).length > 0) {
+            g.holding++;
+        }
+    }
+    for (const g of groups) {
+        g.approved = (g.count !== null) && (g.episodes >= AUTO_MIN_EPISODES) && (g.holding >= g.episodes * AUTO_HOLD_SHARE);
+    }
+    return auto;
+}
+
+/*
+ * The points automatic approval airs in one record: its N strong mid-episode points when
+ * its group is approved, it has exactly N, and they are at least 3 minutes apart; else
+ * none. Never the opening (only act and story points are counted), never a movie.
+ */
+function autoPoints(auto, record) {
+    if (! episode(record)) {
+        return [];
+    }
+    const g = groupFor(auto, record);
+    if ( (g === null) || ! g.approved ) {
+        return [];
+    }
+    const picks = autoPicks(g, record);
+    for (let i = 1; i < picks.length; i++) {
+        if (picks[i].at - picks[i - 1].at < AUTO_GAP_S) {
+            return [];
+        }
+    }
+    return picks;
+}
+
+/*
+ * One record's picks in a group, as the click would approve them: its N strong
+ * mid-episode points when it has exactly N, less any the click reads as the opening (the
+ * point nearest the group's opening position, or the episode's own opening where it
+ * moves). American Dragon (Nov 14 copy): a weak point at 1:44 and a strong one at 2:44,
+ * where the show's opening is - the click takes 2:44 for the opening, and so does this.
+ * The group's count "holds" in an episode that has a pick.
+ */
+function autoPicks(g, record) {
+    const w = g.openingWindowS || OPENING_WINDOW_S;
+    const counted = countedMid(record, w);
+    if (counted.length !== g.count) {
+        return [];
+    }
+    const pts = effectivePoints(record, w).filter( (p) => p.kind !== 'credits' );
+    const opening = new Set();
+    for (const pos of g.positions || []) {
+        const p = nearest(pts, pos.at);
+        if (p !== null) {
+            opening.add(p.index);
+        }
+    }
+    if (g.openingEach != null) {
+        const o = openingOf(record, w);
+        if (o !== null) {
+            opening.add(o.index);
+        }
+    }
+    return counted.filter( (p) => ! opening.has(p.index) );
+}
+
 module.exports = {
     effectivePoints, midPoints, strongMid, openingWindow, lengthGroups, positionGroups, countPattern, groupPattern,
-    showPatterns, patternLine, weakerLine, approve, withdraw, applyApproved, outliers, fits, clock, patternOf, readPoints, groupFor, moviesOf, scanned,
-    constants: { SPAN_S, ONE_BREAK_S, MIN_EPISODES, LENGTH_TOLERANCE, STRONG, EDGE_S, LONG_OPENING_WINDOW_S, LONG_OPENING_MIN_MS },
+    showPatterns, patternLine, weakerLine, approve, withdraw, applyApproved, autoApproval, autoPoints, outliers, fits, clock, patternOf, readPoints, groupFor, moviesOf, scanned,
+    constants: { SPAN_S, ONE_BREAK_S, MIN_EPISODES, AUTO_MIN_EPISODES, AUTO_HOLD_SHARE, AUTO_GAP_S, LENGTH_TOLERANCE, STRONG, EDGE_S, LONG_OPENING_WINDOW_S, LONG_OPENING_MIN_MS },
 };

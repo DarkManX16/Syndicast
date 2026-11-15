@@ -128,7 +128,9 @@ module.exports = async () => {
         const weaker = await call(router, 'POST', '/api/breaks/pattern', { body: { key: 'tv.Happy Days', action: 'approve', weaker: true } });
         suite.check('...nor can a weaker line that is not offered', weaker.code === 400);
         const withdrawn = await call(router, 'POST', '/api/breaks/pattern', { body: { key: 'tv.Happy Days', action: 'withdraw' } });
-        suite.check('Withdraw returns it', (withdrawn.body.line.approved === false) && ! store.loadShow(breaksDir, 'tv.Happy Days').files['G:\\HD\\e1.mkv'].points.some( (p) => p.status === 'approved' ));
+        const kept = store.loadShow(breaksDir, 'tv.Happy Days').withdrawn;
+        suite.check('Withdraw is remembered, with the time, so automatic approval stays off the show', (kept != null) && Number.isFinite(kept.at), JSON.stringify(kept));
+        suite.check('Withdraw returns it',(withdrawn.body.line.approved === false) && ! store.loadShow(breaksDir, 'tv.Happy Days').files['G:\\HD\\e1.mkv'].points.some( (p) => p.status === 'approved' ));
 
         // ---- a point ---------------------------------------------------------------------------
         const e6 = 'G:\\HD\\e6.mkv';
