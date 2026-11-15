@@ -2725,6 +2725,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     scope.channel.scheduleBackup = slotsResult.schedule;
                     readSlotsResult(slotsResult);
                     queueCatalogOps(slotsResult.catalogOps);
+                    // An episode with no room before a kept row, even with the breaks before it
+                    // shortened, airs at its show's next slot: one sentence says so (Nov 15, 2026).
+                    let waitedSaid = keptRows.sayWaited(slotsResult.waited);
+                    if (waitedSaid !== '') {
+                        scope.lastChange = waitedSaid;
+                    }
                 }
             }
 

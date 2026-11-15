@@ -700,6 +700,60 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     };
 
     /*
+     * Room before a kept row (DarkManX16, Nov 15, 2026): an episode that would end `need` ms
+     * past a kept row first takes the time from the breaks laid before it, nearest first,
+     * each down to a minute, so it ends right on the row instead of waiting for its show's
+     * next slot. Only Flex shrinks; the airings after it move earlier with it, but none
+     * before the slot time it starts in (the episode's own: `earliest`), nor before now.
+     * A kept, pinned or special-day row stops the search. False, and nothing changed,
+     * when that can't make all of it; `waited` then says which episode waited.
+     */
+    const MIN_BREAK = 60 * 1000;
+    let waited = [];
+    let makeRoom = (need, earliest) => {
+        let minRoom = t - Math.max(earliest, ts);
+        let cuts = [];
+        let got = 0;
+        let start = t;
+        for (let i = p.length - 1; (i >= 0) && (got < need) && (minRoom > 0); i--) {
+            let e = p[i];
+            start -= e.duration;
+            if ( e.pin || (keptKindOf(e) !== null) || (typeof(e.specialDay) === 'string') || (e.type === 'redirect') ) {
+                break;
+            }
+            if (e.isOffline) {
+                let r = Math.min(e.duration - MIN_BREAK, minRoom, need - got);
+                if (r > 0) {
+                    cuts.push({ i: i, r: r, end: start + e.duration });
+                    got += r;
+                    minRoom -= r;
+                }
+            } else {
+                let found = findSlot(localMsIntoPeriod(start));
+                let slotStart = (found === null) ? start : start - found.late;
+                minRoom = Math.min(minRoom, start - Math.max(slotStart, ts));
+            }
+        }
+        if (got < need) {
+            return false;
+        }
+        cuts.forEach( (c) => {
+            p[c.i].duration -= c.r;
+            aired.forEach( (a) => {
+                if (a.start >= c.end) {
+                    a.start -= c.r;
+                }
+            } );
+        } );
+        t -= need;
+        return true;
+    };
+    let waits = (pin, item) => {
+        waited.push({ at: pin.at, kind: keptKindOf(pin.program),
+            program: { title: item.title, showTitle: item.showTitle, type: item.type, customShowName: item.customShowName } });
+    };
+
+    /*
      * A slot's programs with their pads, and what is left of it shared out as
      * Flex - between them, or after the last ("end") - then laid down.
      */
@@ -1402,6 +1456,14 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             let total = 0;
             let split = false;
             let fits = (x) => ! pins[nextPin].kept || (total + x.duration <= remaining);
+            // The slot's first episode, short of room before a kept row: from the breaks before it.
+            if ( pins[nextPin].kept && (item !== null) && ! item.isOffline && (unit.duration > remaining) ) {
+                if (makeRoom(unit.duration - remaining, occStart)) {
+                    remaining = pins[nextPin].at - t;
+                } else {
+                    waits(pins[nextPin], item);
+                }
+            }
             while ( (item !== null) && ! item.isOffline && (total < remaining - SLACK) && fits(unit) ) {
                 pads.push(makePadded(item));
                 advanceSlot(slot);
@@ -1422,10 +1484,13 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             continue;
         }
         if (unit.duration > remaining) {
-            // A kept row never waits: an episode that would slide on past the next one waits
-            // for its slot's next airing, and the slot is Flex to its end - by even a millisecond:
-            // DarkManX16's kept rows stay exactly where he put them (Nov 15, 2026).
-            if ( (nextPin < pins.length) && pins[nextPin].kept && (t + unit.duration > pins[nextPin].at) ) {
+            // A kept row never waits, by even a millisecond: DarkManX16's kept rows stay exactly
+            // where he put them (Nov 15, 2026). An episode that would slide on past the next one
+            // takes the time from the breaks before it; with no room there it waits for its
+            // slot's next airing, and the slot is Flex to its end.
+            if ( (nextPin < pins.length) && pins[nextPin].kept && (t + unit.duration > pins[nextPin].at)
+                && ! makeRoom(t + unit.duration - pins[nextPin].at, occStart) ) {
+                waits(pins[nextPin], item);
                 pushFlex(remaining);
                 continue;
             }
@@ -1464,10 +1529,14 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     }
 
 
-    return {
+    let res = {
         programs: p,
         startTime: (new Date(t0)).toISOString(),
+    };
+    if (waited.length > 0) {
+        res.waited = waited;
     }
+    return res;
 
 }
 

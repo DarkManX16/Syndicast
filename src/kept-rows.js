@@ -1729,6 +1729,25 @@ function sayKept(rows) {
 }
 
 /*
+ * Create Lineup's one sentence when an episode had no room before a kept row, even with
+ * the breaks before it shortened, and airs at its show's next slot instead (DarkManX16,
+ * Nov 15, 2026). `waited`, the generator's [{ at, program, kind }], soonest first; '' for none.
+ * '"The Thirty-Minute Work Week" (Fraggle Rock) airs at its show's next slot instead: no
+ * room before your swap at Sun Nov 22, 10:44pm.'
+ */
+const KIND_SAID = { swap: 'swap', insert: 'insert', moved: 'dragged row', shifted: 'dragged row', remove: 'removal' };
+function sayWaited(waited) {
+    if (! Array.isArray(waited) || (waited.length === 0)) {
+        return '';
+    }
+    let x = waited[0];
+    let show = pins.showName(x.program);
+    let name = `"${title(x.program)}"` + ( (show !== x.program.title) ? ` (${show})` : '' );
+    let more = (waited.length > 1) ? `, and ${plural(waited.length - 1, 'more episode')} the same way` : '';
+    return `${name} airs at its show's next slot instead: no room before your ${KIND_SAID[x.kind] || 'kept row'} at ${pins.dayClock(x.at)}${more}.`;
+}
+
+/*
  * Takes off the marks no edit of DarkManX16's still to air accounts for (DarkManX16, Oct 30:
  * only real swaps, inserts and drags are kept). Nothing moves; only marks come
  * off:
@@ -1805,6 +1824,7 @@ module.exports = {
     moveAlong: moveAlong,
     keptAhead: keptAhead,
     sayKept: sayKept,
+    sayWaited: sayWaited,
     clearWrong: clearWrong,
     clockAm: clockAm,
 };
