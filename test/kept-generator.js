@@ -216,6 +216,20 @@ module.exports = async function () {
             rowAt(res, thu(19, 20)) && rowAt(res, thu(19, 20)).title === 'Kept Clip' && ! rowAt(res, thu(19))
                 && rowAt(res, thu(19) + DAY).title === 'A S1E1' && rowAt(res, thu(19, 30)).title === 'B S1E1',
             JSON.stringify(night(res, thu(19), thu(21))));
+
+        // A's 48 minutes run 7:00-7:48, so B's slot starts late at 7:50 with 10 minutes left;
+        // B's 30-minute episode slides on past its slot's end (to 8:20). A row kept at 8:15
+        // is past that slot, yet the episode would run over it: B waits for its next slot
+        // (DarkManX16's Pooh Corner swap of Nov 9 on channel 3, Nov 15, 2026).
+        const long = seasonOf('A', 40).map( (p) => Object.assign({}, p, { duration: 48 * MIN }) )
+            .concat(seasonOf('B', 40).map( (p) => Object.assign({}, p, { duration: 30 * MIN }) ), seasonOf('C', 40), seasonOf('D', 40));
+        const plain = listOf(await generate(long, sched, NOON));
+        const slid = listOf(await generate(long, sched, NOON, [ { at: thu(20, 15), program: clip, kept: true } ]));
+        suite.check('an episode sliding past its own slot\'s end doesn\'t run over a kept row: the kept row at its instant',
+            rowAt(plain, thu(19, 50)).title === 'B S1E1' && rowAt(plain, thu(20, 20)).title === 'C S1E1'
+                && rowAt(slid, thu(20, 15)) && rowAt(slid, thu(20, 15)).title === 'Kept Clip' && ! rowAt(slid, thu(19, 50))
+                && rowAt(slid, thu(19, 50) + DAY) && rowAt(slid, thu(19, 50) + DAY).title === 'B S1E1',
+            JSON.stringify(night(slid, thu(19), thu(21))));
     }
 
     suite.log('-- marks stay on their rows --');

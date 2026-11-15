@@ -1422,6 +1422,13 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             continue;
         }
         if (unit.duration > remaining) {
+            // A kept row never waits: an episode that would slide on past the next one waits
+            // for its slot's next airing, and the slot is Flex to its end (within SLACK, as
+            // the fill before a kept row above allows).
+            if ( (nextPin < pins.length) && pins[nextPin].kept && (t + unit.duration > pins[nextPin].at + SLACK) ) {
+                pushFlex(remaining);
+                continue;
+            }
             // Slide - a split episode whole
             pushProgram(item);
             advanceSlot(slot);
