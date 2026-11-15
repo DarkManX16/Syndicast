@@ -909,7 +909,19 @@ function makeRunner(opts, page) {
             const after = await api(`/api/channel/${opts.channel}`);
             const keptBefore = airings(before, 21).filter((a) => a.endsWith('}'));
             const keptAfter = airings(after, 21).filter((a) => a.endsWith('}'));
-            const lost = keptBefore.filter((a) => keptAfter.indexOf(a) === -1);
+            // The same row (item, length, marks) within the generator's SLACK of its instant: the
+            // episode before a kept row may end up to that much past it, and the row follows
+            // (DarkManX16's Pooh Corner swap, 46 ms on Nov 15, 2026). Each such shift is named.
+            const SLACK = require('../src/constants').SLACK;
+            const rest = (a) => a.slice(a.indexOf('\t'));
+            const shifts = [];
+            const lost = keptBefore.filter((a) => {
+                const m = keptAfter.find((b) => rest(b) === rest(a) && Math.abs(parseInt(b, 10) - parseInt(a, 10)) <= SLACK);
+                if (m && m !== a) {
+                    shifts.push(`${a.split('\t')[1]} ${parseInt(m, 10) - parseInt(a, 10)} ms`);
+                }
+                return !m;
+            });
             if (lost.length > 0) {
                 throw new Check(`${lost.length} kept rows moved or went: ${lost[0]}`);
             }
@@ -918,7 +930,8 @@ function makeRunner(opts, page) {
                 throw new Check(`the swap (${swappedIn}, at ${swap.row.start}) isn't kept after Create Lineup and Update Channel`);
             }
             return `swapped first: "${swap.text}"; the dialog said ${notes.length ? `"${notes[0]}"` : 'nothing about kept rows'}; Create Lineup ran${said ? `, "${said}"` : ''}; saved ${after.programs.length} entries; `
-                + `the swap still kept at ${new Date(parseInt(kept, 10)).toLocaleString()}; ${keptAfter.length} kept rows in the next 3 weeks, every earlier one where it was`;
+                + `the swap still kept at ${new Date(parseInt(kept, 10)).toLocaleString()}; ${keptAfter.length} kept rows in the next 3 weeks, every earlier one where it was`
+                + (shifts.length ? ` (within SLACK: ${shifts.join(', ')})` : '');
         },
         'filler': async () => {
             const lists = await api('/api/fillers');
