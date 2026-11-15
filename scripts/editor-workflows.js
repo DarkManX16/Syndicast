@@ -1264,7 +1264,8 @@ function makeRunner(opts, page) {
 
             // 2. a pattern approved from its line and withdrawn; then the weaker second line
             const plain = list.shows.find((s) => s.pattern !== null && !s.approved && s.weaker === null && s.kind !== 'movie' && s.toCheck === 0);
-            const weakish = list.shows.find((s) => s.weaker !== null && !s.approved && s.kind !== 'movie');
+            const weakPick = require('./lib/weaker-line')(list.shows);
+            const weakish = weakPick === null ? null : weakPick.show;
             if (!plain) {
                 throw new Check('no show has a plain pattern on offer to approve');
             }
@@ -1286,7 +1287,7 @@ function makeRunner(opts, page) {
             out.push(`${plain.name}: Approve (${patternApproved} points) and Withdraw from its line`);
             if (weakish) {
                 await search(weakish.name);
-                await click(await lineButton(weakish.name, /^Approve$/, 1), `${weakish.name}'s second Approve`);
+                await click(await lineButton(weakish.name, /^Approve$/, weakPick.nth), `${weakish.name}'s weaker Approve`);
                 d = await waitDetail(weakish.key, (x) => x.line.approvedWeaker === true, `${weakish.name}'s weaker Approve`);
                 await click(await lineButton(weakish.name, /^Withdraw$/), `${weakish.name}'s Withdraw`);
                 await waitDetail(weakish.key, (x) => x.line.approved === false, `${weakish.name}'s weaker Withdraw`);

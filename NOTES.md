@@ -7530,6 +7530,19 @@ the same way on `blocks` itself (dc31265, fresh copy 5:42am, port 18213): not th
 After the review's fixes (5229374, fresh copy 5:47am, port 18214): the same 11 of 12, and
 `npm test` 3578/3578.
 
+**The `breaks-page` failure above was the script's lookup, not the page (Nov 15).** The
+weaker-line step took the second Approve button in the first weaker-line show's line. A show
+with no main pattern (The Wizard of Oz, and 15 others on the copy) has only the weaker line,
+so one Approve, which is the first button. Which show came first depended on the time of day
+(next airing), so it passed at 7:17am (The Wuzzles, both lines) and failed at 5:40am (The
+Wizard of Oz). The page's line is right: one enabled outline Approve, nothing disabled.
+Forcing the old second-button lookup on The Wizard of Oz on a fresh copy gave the exact
+message; the first button passed. `scripts/lib/weaker-line.js` now picks the show and the
+button (`test/weaker-line-pick.js`, written first). Fresh copy 7:42am: `npm test` 3583/3583,
+12/12 workflows. Seen and not explained: on two earlier scratch servers the first two runs
+of `breaks-page` died with `fetch failed` (ECONNRESET on the scanner PUT, 4 times in 6 runs
+on those two); later runs and the fresh copy's did not.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with DarkManX16's
