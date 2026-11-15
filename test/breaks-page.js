@@ -157,5 +157,43 @@ module.exports = async function() {
             (page.nameOf('custom.abc', { abc: 'Saturday movies' }) === 'Saturday movies') && (page.nameOf('tv.Cheers') === 'Cheers') && (page.nameOf('movie.First Kid') === 'First Kid'));
     }
 
+    // ---- approved automatically (step 5b) -------------------------------------------------------
+    {
+        // Futurama-like: an opening at 1:10 and two strong breaks that move from episode to
+        // episode, in all six; `odd` adds a seventh with only one strong break.
+        const futurama = (odd) => {
+            const files = {};
+            for (let i = 0; i < 6; i++) {
+                const a = 400 + i * 53;
+                files[`G:\\Futurama\\e${i + 1}.mkv`] = rec(22, [ pt(70, 'opening', 0.7), pt(a, 'act', 0.85), pt(a + 300, 'act', 0.88), pt(1300, 'credits', 0.8) ]);
+            }
+            if (odd) {
+                files['G:\\Futurama\\e7.mkv'] = rec(22, [ pt(70, 'opening', 0.7), pt(500, 'act', 0.85), pt(800, 'act', 0.4), pt(1300, 'credits', 0.8) ]);
+            }
+            return { theatrical: false, pattern: null, files };
+        };
+        const show = futurama(false);
+        const line = page.lineCore('tv.Futurama', show, 'Futurama', 6);
+        suite.check('a show Syndicast is sure of reads "approved automatically", not approved by him',
+            (line.autoApproved === true) && (line.approved === false), JSON.stringify( { autoApproved: line.autoApproved, approved: line.approved } ));
+        suite.check('...and leaves Needs a click', line.needsClick === false);
+        const odd = page.lineCore('tv.Futurama', futurama(true), 'Futurama', 7);
+        suite.check('...even with an odd episode on its list to check (DarkManX16, Nov 15)',
+            (odd.autoApproved === true) && (odd.toCheck === 1) && (odd.needsClick === false), JSON.stringify( { autoApproved: odd.autoApproved, toCheck: odd.toCheck, needsClick: odd.needsClick } ));
+        const oddDetail = page.detail('tv.Futurama', futurama(true), 'Futurama', () => null, { total: 7 }, NOW);
+        suite.check('...the odd episode is still shown inside the show, on its list to check',
+            (oddDetail.toCheck.length === 1) && /e7/.test(oddDetail.toCheck[0].path) && (oddDetail.line.needsClick === false), JSON.stringify(oddDetail.toCheck.map( (e) => e.path )));
+        patterns.withdraw(show, NOW);
+        const taken = page.lineCore('tv.Futurama', show, 'Futurama', 6);
+        suite.check('Withdraw on it: no longer automatic, withdrawn, and on offer for a click again',
+            (taken.autoApproved === false) && (taken.withdrawn === true) && (taken.approved === false) && (taken.needsClick === true), JSON.stringify( { autoApproved: taken.autoApproved, withdrawn: taken.withdrawn, needsClick: taken.needsClick } ));
+        patterns.approve(show, NOW);
+        const his = page.lineCore('tv.Futurama', show, 'Futurama', 6);
+        suite.check('Approve on it: approved by him, not automatically, not withdrawn',
+            (his.approved === true) && (his.autoApproved === false) && (his.withdrawn === false));
+        const asMovie = page.lineCore('movie.Futurama', futurama(false), 'Futurama', 6);
+        suite.check('a movie key is never approved automatically', asMovie.autoApproved === false);
+    }
+
     return suite;
 };

@@ -1113,6 +1113,9 @@ div.programming-programs div.list-group-item {
 .nicknames-page .nr-slot-label { flex: 0 0 8rem; }
 
 /* the Breaks page (web/public/views/breaks.html) */
+.breaks-page .bk-midrolls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 8px; }
+.breaks-page .bk-midrolls .custom-switch { font-weight: 600; }
+.breaks-page .bk-midrolls-says { margin: 0; flex: 1 1 20rem; }
 .breaks-page .bk-scanner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 10px; margin-bottom: 10px; border: 1px solid rgba(128,128,128,0.35); border-radius: 4px; }
 .breaks-page .bk-mode { font-weight: 600; }
 .breaks-page .bk-mode-paused, .breaks-page .bk-mode-off { color: #a94442; }

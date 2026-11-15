@@ -1,6 +1,15 @@
 <div class='container breaks-page'>
     <h5>Breaks</h5>
 
+    <!-- ------------------------------------------------------------ the Midrolls switch -->
+    <div class="bk-midrolls" ng-if="scanner">
+        <div class="custom-control custom-switch">
+            <input type="checkbox" class="custom-control-input" id="bk-midrolls-switch" ng-checked="scanner.midrolls" ng-click="toggleMidrolls()">
+            <label class="custom-control-label" for="bk-midrolls-switch">Midrolls {{scanner.midrolls ? 'on' : 'off'}}</label>
+        </div>
+        <p class="bk-midrolls-says">Midrolls only play at approved breaks: Syndicast approves the shows it is sure of, and anything you approve or reject here overrides it.</p>
+    </div>
+
     <!-- ------------------------------------------------------------ the scanner -->
     <div class="bk-scanner" ng-if="scanner">
         <span class="bk-mode" ng-class="'bk-mode-' + scanner.mode">{{scanner.reason}}</span>
@@ -68,8 +77,10 @@
                             <span class="bk-pat-text" title="{{s.pattern}}">{{s.pattern}}</span>
                             <span class="bk-pat-actions">
                                 <span class="text-success" ng-if="s.approved &amp;&amp; !s.approvedWeaker"><span class="fa fa-check"></span> Approved</span>
-                                <button type="button" class="btn btn-sm btn-primary" ng-if="!(s.approved &amp;&amp; !s.approvedWeaker)" ng-click="pattern(s, 'approve', false)" ng-disabled="busy">Approve</button>
-                                <button type="button" class="btn btn-sm btn-link" ng-if="s.approved" ng-click="pattern(s, 'withdraw')" ng-disabled="busy">Withdraw</button>
+                                <span class="text-success bk-auto" ng-if="s.autoApproved"><span class="fa fa-check"></span> Approved automatically</span>
+                                <span class="text-muted" ng-if="s.withdrawn">withdrawn</span>
+                                <button type="button" class="btn btn-sm btn-primary" ng-if="!(s.approved &amp;&amp; !s.approvedWeaker) &amp;&amp; !s.autoApproved" ng-click="pattern(s, 'approve', false)" ng-disabled="busy">Approve</button>
+                                <button type="button" class="btn btn-sm btn-link" ng-if="s.approved || s.autoApproved" ng-click="pattern(s, 'withdraw')" ng-disabled="busy">Withdraw</button>
                             </span>
                         </div>
                         <div class="bk-pat" ng-if="s.weaker !== null">

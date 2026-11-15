@@ -25,8 +25,10 @@
  *   limits   a file whose ffmpeg runs add up to 15 minutes is stopped and tried
  *            again a day later, as is one that fails.
  *
- * The hand switch and the skipped drives are kept in
- * <data>/break-scanner.json, so a restart does not undo them. BREAK_SCAN_FORCE_MODE (normal|gentle) pins the mode for a proof.
+ * The Midrolls switch, the hand switch and the skipped drives are kept in
+ * <data>/break-scanner.json, so a restart does not undo them. Midrolls are off on a
+ * new install (no file, or one from before the switch): the scanner then reads
+ * nothing at all, whatever the hand switch says (DarkManX16, Nov 14). BREAK_SCAN_FORCE_MODE (normal|gentle) pins the mode for a proof.
  */
 
 const fs = require('fs');
@@ -146,6 +148,9 @@ class BreakScanService {
         this.indexByPath = options.indexByPath || store.indexByPath;
         this.ready = false;
         this.switchedByHand = false;
+        this.midrolls = false;
+        this.midrollsSetByHand = false;
+        this.governor.midrollsOff = true;
         this.skipDrives = [];
         this.drivesSetByHand = false;
         this.scanFirstSetByHand = false;
@@ -174,6 +179,10 @@ class BreakScanService {
         const index = this.indexByPath(this.breaksDir);
         if (! this.switchedByHand) {
             this.governor.manualPaused = (saved.paused === true);
+        }
+        if (! this.midrollsSetByHand) {
+            this.midrolls = (saved.midrolls === true);
+            this.governor.midrollsOff = ! this.midrolls;
         }
         if (! this.drivesSetByHand) {
             this.skipDrives = BreakScanService.driveList(saved.skipDrives);
@@ -255,6 +264,17 @@ class BreakScanService {
         await this.saveSettings();
     }
 
+    // The Midrolls switch: off stops a scan at once (it waits, like a pause) and reads nothing more.
+    async setMidrolls(on) {
+        this.midrollsSetByHand = true;
+        this.midrolls = (on === true);
+        this.governor.setMidrollsOff(! this.midrolls);
+        if (! this.midrolls) {
+            this.abort('pause');
+        }
+        await this.saveSettings();
+    }
+
     /*
      * Drives the scanner must not read ("E:"): their files leave the queue, a
      * scan on one stops at once without counting as a failure, and nothing is
@@ -276,7 +296,7 @@ class BreakScanService {
     }
 
     async saveSettings() {
-        await fs.promises.writeFile(this.settingsFile, JSON.stringify( { paused: this.governor.manualPaused === true, skipDrives: this.skipDrives, scanFirst: this.scanFirst } ), 'utf8');
+        await fs.promises.writeFile(this.settingsFile, JSON.stringify( { midrolls: this.midrolls === true, paused: this.governor.manualPaused === true, skipDrives: this.skipDrives, scanFirst: this.scanFirst } ), 'utf8');
     }
 
     isSkipped(drive) {
@@ -729,6 +749,7 @@ class BreakScanService {
             reason: this.ready ? g.reason() : 'Starting: the store is read before the first scan',
             pausedUntil: g.isPaused() ? g.pausedUntil : null,
             pausedByHand: g.manualPaused,
+            midrolls: this.midrolls === true,
             working: g.working,
             current: this.current,
             queued: this.queue.length,

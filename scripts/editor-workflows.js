@@ -33,8 +33,9 @@
  *   create-lineup        Time Slots... (at most one short line about kept rows), Create
  *                        Lineup; kept rows stay; saved
  *   filler               a filler list: drag a clip, delete one, Done; saved
- *   breaks-page          the Breaks page: the scanner's line and Pause switch, Needs a click in
- *                        next-airing order, a pattern approved and withdrawn (and the weaker
+ *   breaks-page          the Breaks page: the scanner's line and Pause switch, the Midrolls switch
+ *                        and the sentence at the top, a show approved automatically (Withdraw
+ *                        kept over a reload, then Approve), Needs a click in next-airing order, a pattern approved and withdrawn (and the weaker
  *                        line), a show's list stepped through with the frames either side, a
  *                        nudge, a typed time, a kind, a break added and taken away, "these have
  *                        no breaks", theatrical on a movie never scanned, Scan next. Refuses a
@@ -1217,8 +1218,9 @@ function makeRunner(opts, page) {
             //    resume can't read anything), and the order of the list
             await openPage();
             const mode = await page.$eval('.bk-mode', (el) => el.textContent.trim());
-            if (!/Paused by hand/.test(mode)) {
-                throw new Check(`the scanner's line says "${mode}", not Paused by hand`);
+            // with midrolls off (a copy of a server from before the switch) the line says that instead
+            if (!/^(Paused by hand|Off: midrolls are off)$/.test(mode)) {
+                throw new Check(`the scanner's line says "${mode}", not Paused by hand or Off: midrolls are off`);
             }
             await clickText('.bk-scanner a', 'Details', 'the scanner\'s Details');
             await find('.bk-details', null, 'the scanner\'s details');
@@ -1237,6 +1239,70 @@ function makeRunner(opts, page) {
                 await fetch(opts.url + '/api/breaks/scanner', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paused: true }) });
             }
             out.push('scanner line, Details and the Pause / Resume switch');
+
+            // 1b. the Midrolls switch and its sentence (step 5b): off, the scanner's line says so; on, Paused
+            //     by hand still wins and nothing is read. Left as it was found.
+            const SAYS = 'Midrolls only play at approved breaks: Syndicast approves the shows it is sure of, and anything you approve or reject here overrides it.';
+            await openPage();
+            const says = await page.$eval('.bk-midrolls-says', (el) => el.textContent.replace(/\s+/g, ' ').trim()).catch(() => null);
+            if (says !== SAYS) {
+                throw new Check(`the sentence at the top of the Breaks page reads "${says}"`);
+            }
+            const midrolls0 = (await api('/api/breaks/scanner')).midrolls === true;
+            try {
+                if (midrolls0) {
+                    await clickText('.bk-midrolls label', /^Midrolls (on|off)$/, 'the Midrolls switch');
+                    await waitForSave('/api/breaks/scanner', (s) => s.midrolls === false, 15000);
+                }
+                await page.waitForFunction(() => /Off: midrolls are off/.test(document.querySelector('.bk-mode').textContent), { timeout: 15000, polling: 200 })
+                    .catch(() => { throw new Check('with midrolls off, the scanner\'s line does not say "Off: midrolls are off"'); });
+                await clickText('.bk-midrolls label', /^Midrolls (on|off)$/, 'the Midrolls switch');
+                const on = await waitForSave('/api/breaks/scanner', (s) => s.midrolls === true, 15000);
+                if ((on.midrolls !== true) || (on.pausedByHand !== true) || (on.reason !== 'Paused by hand') || (on.current !== null)) {
+                    throw new Check(`turning midrolls on while paused by hand: ${JSON.stringify({ midrolls: on.midrolls, pausedByHand: on.pausedByHand, reason: on.reason, current: on.current })}`);
+                }
+                await page.waitForFunction(() => /Paused by hand/.test(document.querySelector('.bk-mode').textContent) && /Midrolls on/.test(document.querySelector('.bk-midrolls label').textContent), { timeout: 15000, polling: 200 })
+                    .catch(() => { throw new Check('with midrolls on and the scanner paused by hand, the page does not say "Midrolls on" and "Paused by hand"'); });
+            } finally {
+                await fetch(opts.url + '/api/breaks/scanner', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ midrolls: midrolls0 }) });
+            }
+            out.push(`the Midrolls switch off and on (left ${midrolls0 ? 'on' : 'off'}) and its sentence`);
+
+            // 1c. a show approved automatically: its line says so, with Withdraw and no Approve; it is out of
+            //     Needs a click unless an episode of it is still listed; Withdraw is remembered, Approve after it is his
+            const autoShows = (await api('/api/breaks/shows')).shows.filter((s) => s.autoApproved === true && s.kind !== 'movie');
+            const auto = autoShows.find((s) => s.toCheck === 0) || autoShows[0];
+            if (!auto) {
+                throw new Check('no show is approved automatically on this copy');
+            }
+            if (autoShows.some((s) => s.needsClick)) {
+                throw new Check(`a show approved automatically is in Needs a click: ${autoShows.filter((s) => s.needsClick).map((s) => s.name).slice(0, 3).join(', ')}`);
+            }
+            await search(auto.name);
+            if (!/Approved automatically/.test(await lineText(auto.name))) {
+                throw new Check(`${auto.name}'s line does not say "Approved automatically": ${await lineText(auto.name)}`);
+            }
+            if (await lineButton(auto.name, /^Approve$/).then(() => true, () => false)) {
+                throw new Check(`${auto.name} is approved automatically but its line offers Approve`);
+            }
+            await click(await lineButton(auto.name, /^Withdraw$/), `${auto.name}'s Withdraw`);
+            let ad = await waitDetail(auto.key, (x) => x.line.withdrawn === true, `${auto.name}'s Withdraw`);
+            if (ad.line.autoApproved !== false) {
+                throw new Check(`${auto.name}: withdrawn, but still approved automatically`);
+            }
+            await openPage();
+            await search(auto.name);
+            if (!/withdrawn/.test(await lineText(auto.name))) {
+                throw new Check(`${auto.name}'s line does not say withdrawn after a reload`);
+            }
+            await click(await lineButton(auto.name, /^Approve$/), `${auto.name}'s Approve`);
+            ad = await waitDetail(auto.key, (x) => x.line.approved === true, `${auto.name}'s Approve`);
+            if ((ad.line.withdrawn !== false) || (ad.line.autoApproved !== false)) {
+                throw new Check(`${auto.name}: Approve after Withdraw left ${JSON.stringify({ withdrawn: ad.line.withdrawn, autoApproved: ad.line.autoApproved })}`);
+            }
+            await click(await lineButton(auto.name, /^Withdraw$/), `${auto.name}'s Withdraw`);
+            await waitDetail(auto.key, (x) => x.line.approved === false && x.line.withdrawn === true, `${auto.name}'s second Withdraw`);
+            out.push(`${auto.name}: approved automatically (${autoShows.length} shows), Withdraw kept over a reload, Approve, Withdraw (left withdrawn)`);
 
             // The page's order against the server's, read back to back; a show can start or end between the
             // two (the half hour), so a difference is read again before it counts.
@@ -1259,7 +1325,8 @@ function makeRunner(opts, page) {
             if (times.some((t, i) => i > 0 && t < times[i - 1])) {
                 throw new Check('the shows that air are not in order of when they next air');
             }
-            list = fresh;
+            // shows approved automatically have no Approve on their line (step 1c covers them)
+            list = Object.assign({}, fresh, { shows: fresh.shows.filter((s) => s.autoApproved !== true) });
             out.push('Needs a click in next-airing order');
 
             // 2. a pattern approved from its line and withdrawn; then the weaker second line
