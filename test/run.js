@@ -97,6 +97,7 @@ const suites = [
     './break-airable',
     './breaks-saves-first',
     './break-frames',
+    './break-saved-frames',
     './break-edit',
     './breaks-page',
     './breaks-api',

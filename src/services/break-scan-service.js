@@ -39,7 +39,8 @@ const transitions = require('../transitions');
 const paceMeter = require('../pace-meter');
 const { ScanGovernor } = require('../break-scan-governor');
 const { DiskPriority } = require('../io-priority');
-const { FrameGrabber } = require('../break-frames');
+const { FrameGrabber, frameArgs } = require('../break-frames');
+const { SavedFrames } = require('../break-saved-frames');
 const { MOVIE_MIN_MS } = require('../clip-names');
 
 const FIRST_QUEUE_MS = 60 * 1000;
@@ -157,6 +158,9 @@ class BreakScanService {
         this.scanFirst = [];
         this.airing = { builtAt: null, files: new Map(), shows: new Map(), byKey: new Map() };
         this.frames = new FrameGrabber(this);
+        this.savedFrames = new SavedFrames(options.folder);
+        this.backfillJobs = [];
+        this.backfillStale = true;
         this.disk = options.diskPriority || new DiskPriority( { log: this.log } );
     }
 
@@ -383,6 +387,7 @@ class BreakScanService {
         if (! this.ready) {
             await this.load();
         }
+        this.backfillStale = true;   // the saved frames still missing are worked out again
         const now = this.now();
         this.theatrical = new Map();
         const byPath = new Map();
@@ -549,7 +554,102 @@ class BreakScanService {
         this.theatrical.delete(key);
         // a show or movie marked theatrical leaves the queue at once; one marked back waits for the next rebuild
         this.queue = this.queue.filter( (e) => ! ( (e.key === key) && ( (show.theatrical === true) || ( (show.files[e.path] != null) && (show.files[e.path].theatrical === true) ) ) ) );
+        // his say on a point, an episode off the list, a changed file: their saved frames go
+        try {
+            this.savedFrames.sweep(key, show);
+        } catch (err) {
+            this.log(`Breaks: could not tidy the saved frames of ${key}: ${err.message}`);
+        }
         return result || { ok: true };
+    }
+
+    // ---- saved frames (step 5c) --------------------------------------------------------------
+
+    /*
+     * Cuts one saved frame through the scanner's own runner (idle CPU, Very Low disk, stopped at
+     * once by a pause or Midrolls off). Returns true when it was cut.
+     */
+    async cutSaved(w, key) {
+        const drive = paceMeter.driveOf(w.file);
+        const mode = this.governor.mode();
+        if ( this.isSkipped(drive) || (mode === 'off') || (mode === 'paused') ) {
+            return false;
+        }
+        await fs.promises.mkdir(path.dirname(w.out), { recursive: true });
+        const temp = `${w.out}.part.jpg`;
+        const ffmpegPath = (this.options.getFfmpegSettings() || {}).ffmpegPath || 'ffmpeg';
+        const hadCurrent = this.current;
+        if (hadCurrent === null) {
+            this.current = { path: w.file, title: 'a frame to check', key, drive, startedAt: this.now(), step: 'frames' };
+            this.fileRunMs = 0;
+        }
+        let result = null;
+        try {
+            result = await this.run(ffmpegPath, frameArgs(w.file, w.t, temp));
+        } catch (err) {
+            result = null;
+        } finally {
+            if (hadCurrent === null) {
+                this.current = null;
+            }
+        }
+        if ( (result == null) || result.aborted || (result.code !== 0) || ! fs.existsSync(temp) ) {
+            await fs.promises.rm(temp, { force: true }).catch( () => {} );
+            return false;
+        }
+        await fs.promises.rename(temp, w.out);
+        return true;
+    }
+
+    // After a file is scanned: the frames of its points waiting on the list to check.
+    async saveListedFrames(key, file) {
+        const show = store.loadShow(this.breaksDir, key);
+        this.savedFrames.sweep(key, show);
+        let n = 0;
+        for (const w of this.savedFrames.missing(key, show, file)) {
+            if (await this.cutSaved(w, key)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /*
+     * The files scanned before saved frames existed get theirs in the scanner's idle time,
+     * soonest airing first, one frame a call. Returns true when it cut one. The list of what is
+     * missing is worked out again after each queue build.
+     */
+    async backfillFrames() {
+        for (;;) {
+            if (this.backfillJobs.length === 0) {
+                if (! this.backfillStale) {
+                    return false;
+                }
+                this.backfillStale = false;
+                const keys = store.listShowKeys(this.breaksDir);
+                const next = (k) => { const a = this.airing.shows.get(k); return (a && (a.nextAt != null)) ? a.nextAt : Infinity; };
+                keys.sort( (a, b) => next(a) - next(b) );
+                for (const key of keys) {
+                    const show = store.loadShow(this.breaksDir, key);
+                    for (const w of this.savedFrames.missing(key, show)) {
+                        this.backfillJobs.push( { key, w } );
+                    }
+                }
+                if (this.backfillJobs.length === 0) {
+                    return false;
+                }
+            }
+            const { key, w } = this.backfillJobs.shift();
+            if (fs.existsSync(w.out) || this.isSkipped(paceMeter.driveOf(w.file))) {
+                continue;
+            }
+            // still wanted? (he may have decided the point since the list was made)
+            const show = store.loadShow(this.breaksDir, key);
+            if (! this.savedFrames.missing(key, show, w.file).some( (x) => x.out === w.out )) {
+                continue;
+            }
+            return this.cutSaved(w, key);
+        }
     }
 
     // ---- the worker --------------------------------------------------------------------------
@@ -579,7 +679,14 @@ class BreakScanService {
             }
             const entry = this.pickNext(mode);
             if (entry === null) {
-                await this.sleep(IDLE_POLL_MS);
+                // nothing to scan: a saved frame the list still wants, if any
+                const cut = await this.backfillFrames().catch( (err) => {
+                    this.log(`Breaks: saved frames: ${err.message}`);
+                    return false;
+                } );
+                if (! cut) {
+                    await this.sleep(IDLE_POLL_MS);
+                }
                 continue;
             }
             this.queue = this.queue.filter( (e) => e !== entry );
@@ -706,6 +813,8 @@ class BreakScanService {
                 this.verifiedAt.set(entry.path, this.now());
                 this.bumpCounts(entry);
                 this.log(`Breaks: scanned ${entry.title} (${result.points.length} points, ${Math.round(this.fileRunMs / 100) / 10}s of ffmpeg)`);
+                // while the file was just read: the frames of its points waiting on the list to check
+                await this.saveListedFrames(entry.key, entry.path).catch( (err) => this.log(`Breaks: frames of ${entry.title}: ${err.message}`) );
                 return 'scanned';
             } catch (err) {
                 if (err && err.stopping) {

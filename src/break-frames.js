@@ -29,6 +29,21 @@ const PRUNE_TO = 3000;
 const PRUNE_EVERY = 200;
 const MAX_CUTS = 2;
 
+// A frame's file name: what it shows (the file, its size and date, the time), so the same point is cut once.
+function frameName(file, record, t) {
+    const key = [ file, record.size, record.mtimeMs, t.toFixed(1) ].join('|');
+    return crypto.createHash('sha1').update(key).digest('hex') + '.jpg';
+}
+
+// ffmpeg's arguments for one frame of `file` at `t`, written to `out` (the saved frames use the same).
+function frameArgs(file, t, out) {
+    return [
+        '-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '1',
+        '-ss', t.toFixed(3), '-i', file, '-frames:v', '1',
+        '-vf', `scale=${FRAME_WIDTH}:-2`, '-q:v', '5', '-y', out,
+    ];
+}
+
 class FrameError extends Error {
     constructor(reason, message) {
         super(message);
@@ -50,8 +65,7 @@ class FrameGrabber {
     }
 
     nameFor(file, record, t) {
-        const key = [ file, record.size, record.mtimeMs, t.toFixed(1) ].join('|');
-        return crypto.createHash('sha1').update(key).digest('hex') + '.jpg';
+        return frameName(file, record, t);
     }
 
     /*
@@ -67,6 +81,11 @@ class FrameGrabber {
         const out = path.join(this.dir, this.nameFor(file, found.record, t));
         if (fs.existsSync(out)) {
             return out;
+        }
+        // one the scanner saved for the list to check: no drive read at all, a busy one included
+        const saved = (this.service.savedFrames != null) ? this.service.savedFrames.existing(found.key, file, found.record, t) : null;
+        if (saved !== null) {
+            return saved;
         }
         const drive = paceMeter.driveOf(file);
         if (this.service.isSkipped(drive)) {
@@ -136,11 +155,7 @@ class FrameGrabber {
         // two cuts of the same frame may run at once: each writes its own part file
         const temp = `${out}.${crypto.randomBytes(4).toString('hex')}.part.jpg`;
         const ffmpegPath = (this.service.options.getFfmpegSettings() || {}).ffmpegPath || 'ffmpeg';
-        const args = [
-            '-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '1',
-            '-ss', t.toFixed(3), '-i', file, '-frames:v', '1',
-            '-vf', `scale=${FRAME_WIDTH}:-2`, '-q:v', '5', '-y', temp,
-        ];
+        const args = frameArgs(file, t, temp);
         const controller = new AbortController();
         job.controller = controller;
         const limit = setTimeout( () => controller.abort(), LIMIT_MS );
@@ -180,4 +195,4 @@ class FrameGrabber {
     }
 }
 
-module.exports = { FrameGrabber, FrameError, FRAME_WIDTH, LIMIT_MS, KEEP_FRAMES, PRUNE_TO };
+module.exports = { FrameGrabber, FrameError, frameName, frameArgs, FRAME_WIDTH, LIMIT_MS, KEEP_FRAMES, PRUNE_TO };
