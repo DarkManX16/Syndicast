@@ -34,9 +34,9 @@ function fakeRouter() {
         put: (p, h) => { routes['PUT ' + p] = h; },
     };
 }
-async function call(router, method, url, { query = {}, body = {} } = {}) {
-    const res = { code: 200, body: null, sent: null, headers: {}, status(c) { this.code = c; return this; }, send(b) { this.body = b; return this; },
-        set(k, v) { this.headers[k] = v; return this; }, type(t) { this.contentType = t; return this; }, sendFile(f) { this.sent = f; return this; } };
+async function call(router, method, url, { query = {}, body = {}, res: extra = {} } = {}) {
+    const res = Object.assign( { code: 200, body: null, sent: null, headers: {}, status(c) { this.code = c; return this; }, send(b) { this.body = b; return this; },
+        set(k, v) { this.headers[k] = v; return this; }, type(t) { this.contentType = t; return this; }, sendFile(f) { this.sent = f; return this; } }, extra );
     await router.routes[`${method} ${url}`]( { query, body }, res );
     return res;
 }
@@ -296,6 +296,18 @@ module.exports = async () => {
         await service.setPaused(true);
         const byHand = await call(router, 'GET', '/api/breaks/frame', { query: { path: 'G:\\HD\\e2.mkv', t: '10' } });
         suite.check('...paused by hand is not a reason: DarkManX16 is looking at the page', byHand.code === 200, JSON.stringify(byHand.body));
+        // the page let go before the frame was cut (it moved on): nothing is cut and nothing sent
+        const runsBefore = state.runs.length;
+        const gone = await call(router, 'GET', '/api/breaks/frame', { query: { path: 'G:\\HD\\e4.mkv', t: '10' }, res: { writableEnded: false, on(ev, f) { if (ev === 'close') { f(); } } } });
+        suite.check('a frame the page cancelled before it was cut is not cut, and nothing is sent',
+            (state.runs.length === runsBefore) && (gone.body === null) && (gone.sent === null), JSON.stringify( { runs: state.runs.length - runsBefore, body: gone.body, sent: gone.sent } ));
+        service.meter = { live: () => [ { id: 1, channel: 3, title: 'x', drive: 'G:', pace: 1, held: false } ] };
+        service.tick();
+        const busy = await call(router, 'GET', '/api/breaks/frame', { query: { path: 'G:\\HD\\e5.mkv', t: '10' } });
+        suite.check('a frame on a drive a viewer is playing from: "drive busy" at once, nothing read',
+            (busy.code === 503) && (busy.body.reason === 'busy') && /drive busy/.test(busy.body.error) && (state.runs.length === runsBefore), JSON.stringify(busy.body));
+        service.meter = { live: () => [] };
+        service.tick();
         state.failFrames = true;
         const failed = await call(router, 'GET', '/api/breaks/frame', { query: { path: 'G:\\HD\\e3.mkv', t: '10' } });
         suite.check('a picture ffmpeg cannot cut is a 503 with its reason, and leaves no half-written file',
