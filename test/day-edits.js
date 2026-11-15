@@ -284,6 +284,43 @@ module.exports = async function () {
             (sig(four.list, LA.startTime, LA.startTime + 3 * DAY) === sig(four.R, LA.startTime, LA.startTime + 3 * DAY))
                 && (but(shows(four.list).map( (a) => [ a.start, a.program.title ] ), {}) === but(shows(LA).map( (a) => [ a.start, a.program.title ] ), { [fri(7)]: 'K S1E1' })),
             four.text);
+
+        // Review, Nov 15: a longer item pushes episodes out of an Advance day; they air after it.
+        const LONG = movie('The Long One', 100 * MIN);
+        const five = await edit(LA, adv, indexAt(LA, fri(7)), LONG, 'chL');
+        suite.check('on an Advance day a longer swap: the episodes it pushes out of the day air after it, as Create Lineup makes them',
+            sig(five.list, LA.startTime, LA.startTime + 3 * DAY) === sig(five.R, LA.startTime, LA.startTime + 3 * DAY),
+            shows(five.list).filter( (a) => (a.start >= fri(12)) && (a.program.showTitle === 'A') ).slice(0, 3).map( (a) => a.program.title ).join(', ')
+                + ' vs ' + shows(five.R).filter( (a) => (a.start >= fri(12)) && (a.program.showTitle === 'A') ).slice(0, 3).map( (a) => a.program.title ).join(', '));
+        const offL = dayEdits.withoutChange(five.schedule, 'chL');
+        const backL = dayEdits.applyRelaid({ lineup: five.list, relaid: await make(offL), day: offL.specialDays[0], change: five.change, trade: null,
+            undo: true, now: NOW, schedule: offL, catalog: pool() });
+        suite.check('...and its Put back gives the list back exactly', sig({ programs: backL.programs, startTime: LA.startTime }, LA.startTime, LA.startTime + 3 * DAY)
+            === sig(LA, LA.startTime, LA.startTime + 3 * DAY), backL.text);
+
+        const a9 = shows(LA).find( (a) => a.start === fri(9) ).program;
+        const six = await edit(LA, adv, indexAt(LA, fri(7)), a9, 'chW');
+        suite.check('on an Advance day a trade: only the two airings change, before, in and after the day, as Create Lineup makes it',
+            (six.trade !== null) && (sig(six.list, LA.startTime, LA.startTime + 3 * DAY) === sig(six.R, LA.startTime, LA.startTime + 3 * DAY))
+                && (but(shows(six.list).map( (a) => [ a.start, a.program.title ] ), {})
+                    === but(shows(LA).map( (a) => [ a.start, a.program.title ] ), { [fri(7)]: a9.title, [fri(9)]: titleAt(LA, fri(7)) })),
+            six.text);
+
+        // Review, Nov 15: one half of a trade kept inside a later swap's `was` never comes back alone.
+        const W = movie('W', 22 * MIN);
+        const V = movie('V', 22 * MIN);
+        const x9b = shows(LS).find( (a) => a.start === fri(9) ).program;
+        const t1 = await edit(LS, sS, indexAt(LS, fri(7)), x9b, 'cA');
+        const t2 = await edit(t1.list, t1.schedule, indexAt(t1.list, fri(9)), W, 'cB');
+        const afterA = dayEdits.withoutChange(t2.schedule, 'cA');
+        const afterB = dayEdits.withoutChange(afterA, 'cB');
+        suite.check('a trade, its later airing swapped again, then Put back of each: the day is as it was, no episode twice',
+            JSON.stringify(afterB) === JSON.stringify(sS), JSON.stringify(afterB.specialDays[0].slots[0].changes));
+        const t3 = await edit(t1.list, t1.schedule, indexAt(t1.list, fri(7)), V, 'cC');
+        const afterAt = dayEdits.withoutChange(t3.schedule, 'cAt');
+        const afterC = dayEdits.withoutChange(afterAt, 'cC');
+        suite.check('...and the other way round: its first airing swapped again, Put back of the airing it traded with, then of the new swap',
+            JSON.stringify(afterC) === JSON.stringify(sS), JSON.stringify(afterC.specialDays[0].slots[0].changes));
     }
     return suite;
 };

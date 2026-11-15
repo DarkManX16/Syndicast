@@ -50,7 +50,7 @@ const change = (n, kind, program, id) => ({ id: id || `ch${n}${kind}`, n, kind, 
 const sched = (d) => Object.assign(daily(), { specialDays: [ d ] });
 
 // Create Lineup as the editor runs it, from the lineup `prev` was (or none).
-async function make(prev, schedule, now) {
+async function make(prev, schedule, now, holidayItems) {
     const s = JSON.parse(JSON.stringify(schedule));
     let carry;
     if (prev !== null) {
@@ -68,7 +68,8 @@ async function make(prev, schedule, now) {
     }
     global.Date = FrozenDate;
     try {
-        const res = await timeSlotsService(pool(), JSON.parse(JSON.stringify(s)), undefined, undefined, carry ? JSON.parse(JSON.stringify(carry)) : undefined);
+        const res = await timeSlotsService(pool(), JSON.parse(JSON.stringify(s)), undefined, undefined, carry ? JSON.parse(JSON.stringify(carry)) : undefined,
+            undefined, holidayItems ? JSON.parse(JSON.stringify(holidayItems)) : undefined);
         return { programs: res.programs, startTime: res.startTime, schedule: s };
     } finally {
         global.Date = RealDate;
@@ -162,6 +163,25 @@ module.exports = async function () {
                 JSON.stringify(lines(inside(laid).filter( (a) => a.start >= from ))) === JSON.stringify(lines(inside(again).filter( (a) => a.start >= from ))),
                 lines(inside(again).filter( (a) => (a.start >= fri(8)) && (a.start < fri(9, 30)) )).join(' / ')
                     + ' vs ' + lines(inside(laid).filter( (a) => (a.start >= fri(8)) && (a.start < fri(9, 30)) )).join(' / '));
+        }
+    }
+
+    {
+        // Review, Nov 15: a holiday row's set-aside episodes - a swap in place of one takes its
+        // turn, and a Create Lineup during the day counts that turn.
+        const xmas = (n) => Object.assign( episode('X', 0, n), { title: `X Christmas ${n}`, key: `/e/X/xmas/${n}` } );
+        const items = { sd_t: { 'tv.X': [ xmas(1), xmas(2), xmas(3) ] } };
+        const hday = (changes) => day({ holiday: 'Christmas', slots: [ { showId: 'tv.X', order: 'next', holidayOnly: true, changes } ] });
+        const base = inside(await make(null, sched(hday(undefined)), NOW, items));
+        const laid = await make(null, sched(hday([ inPlace(2, SAME) ])), NOW, items);
+        suite.check('a holiday row: a swap in place of its 2nd set-aside episode changes that airing only',
+            sameBut(inside(laid), base, { 1: 'K S1E1' }), lines(inside(laid).slice(0, 4)).join(' / '));
+        for (const at of [ fri(6, 40), fri(7, 10), fri(8, 10) ]) {
+            const again = await make(laid, sched(hday([ inPlace(2, SAME) ])), at, items);
+            const from = Math.max(at - 30 * MIN, inside(again)[0].start);
+            suite.check(`...and Create Lineup at ${clock(at)} lays the rest of the day as it was`,
+                JSON.stringify(lines(inside(laid).filter( (a) => a.start >= from ))) === JSON.stringify(lines(inside(again).filter( (a) => a.start >= from ))),
+                lines(inside(again).filter( (a) => a.start >= from ).slice(0, 4)).join(' / ') + ' vs ' + lines(inside(laid).filter( (a) => a.start >= from ).slice(0, 4)).join(' / '));
         }
     }
 

@@ -1077,6 +1077,9 @@ function specialDaysPlan({ programs, start, now, placesFrom, schedule, groups, p
                         if ( (parsed !== null) && (parsed.tag === 'holiday:' + day.id) ) {
                             let key = labelKey(getShowData(p).showId, parsed);
                             holidayAired[key] = (holidayAired[key] || 0) + 1;
+                        } else if (typeof(p.specialHoliday) === 'string') {
+                            // A swap in place of a set-aside episode took its turn (time-slots-service specialItem).
+                            holidayAired[p.specialHoliday] = (holidayAired[p.specialHoliday] || 0) + 1;
                         }
                     }
                     t += p.duration;

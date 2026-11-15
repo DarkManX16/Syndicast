@@ -113,13 +113,57 @@ function dropFrom(day, id) {
     if (goes.indexOf(found) === -1) {
         goes.push(found);
     }
+    // Every swap of the trade that goes, by id and by the one it traded with: a later swap
+    // keeps the other half in its `was` (review, Nov 15), and it must never come back alone.
+    let gone = new Set();
+    goes.forEach( (x) => {
+        gone.add(x.change.id);
+        if (typeof(x.change.with) === 'string') {
+            gone.add(x.change.with);
+        }
+    } );
+    let prune = (was) => {
+        if ( (typeof(was) !== 'object') || (was === null) ) {
+            return null;
+        }
+        if ( gone.has(was.id) || gone.has(was.with) ) {
+            return prune(was.was);
+        }
+        let kept = Object.assign({}, was);
+        let earlier = prune(was.was);
+        if (earlier === null) {
+            delete kept.was;
+        } else {
+            kept.was = earlier;
+        }
+        return kept;
+    };
     goes.forEach( (x) => {
         x.row.changes = x.row.changes.filter( (c) => c !== x.change );
-        if ( (typeof(x.change.was) === 'object') && (x.change.was !== null) ) {
-            x.row.changes.push(x.change.was);
+        let back = prune(x.change.was);
+        if (back !== null) {
+            x.row.changes.push(back);
         }
-        if (x.row.changes.length === 0) {
-            delete x.row.changes;
+    } );
+    rowsOf(day).forEach( (r) => {
+        if (! Array.isArray(r.changes)) {
+            return;
+        }
+        r.changes = r.changes.map( (c) => {
+            if ( (c == null) || (typeof(c.was) !== 'object') || (c.was === null) ) {
+                return c;
+            }
+            let copy = Object.assign({}, c);
+            let earlier = prune(c.was);
+            if (earlier === null) {
+                delete copy.was;
+            } else {
+                copy.was = earlier;
+            }
+            return copy;
+        } );
+        if (r.changes.length === 0) {
+            delete r.changes;
         }
     } );
     return true;
@@ -159,7 +203,7 @@ function findChange(schedule, id) {
 }
 
 // An item as a change keeps it: none of a list row's own marks.
-const MARKS = [ 'kept', 'pin', 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN', 'slotPosition', 'shuffleOrder',
+const MARKS = [ 'kept', 'pin', 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN', 'specialHoliday', 'slotPosition', 'shuffleOrder',
     'start', 'stop', '$index', '$$hashKey' ];
 function plainItem(p) {
     let copy = JSON.parse(JSON.stringify(p));
@@ -305,13 +349,14 @@ function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id, leftO
     // An episode moved past the day airs in a regular slot: none of the day's marks (review, Nov 8).
     let plain = (p) => {
         let c = Object.assign({}, p);
-        [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN' ].forEach( (k) => delete c[k] );
+        [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN', 'specialHoliday' ].forEach( (k) => delete c[k] );
         return c;
     };
-    // An episode left out (Delete: never air) goes nowhere.
+    // An episode left out (Delete: never air), or passed over by a swap in place, goes nowhere -
+    // and comes back from nowhere when that swap is put back.
     let gone = new Set( (leftOut || []).map(fileKey) );
     let pushed = before.filter( (p) => ! had.has(fileKey(p)) && ! gone.has(fileKey(p)) ).map(plain);
-    let taken = now_.filter( (p) => ! has.has(fileKey(p)) );
+    let taken = now_.filter( (p) => ! has.has(fileKey(p)) && ! gone.has(fileKey(p)) );
     if ( (pushed.length === 0) && (taken.length === 0) ) {
         return { programs: spliced.programs, text: '' };
     }
@@ -327,19 +372,35 @@ function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id, leftO
 
 /*
  * The day laid again for a change (or its Put back) in the list, and its
- * sentence: { programs, text } or { refused }. A swap moves nothing outside the
- * day - in place, or in an earlier swap's place, the row moves on just as before
- * - and nor does Put back of one; anything else on an Advance day moves the
- * show's later episodes along (alongAfter).
+ * sentence: { programs, text } or { refused }. On an Advance day the show's
+ * episodes the day no longer airs, or now airs, move along after it
+ * (alongAfter) - except an episode a swap in place passes over: the row moved on
+ * past it, as Create Lineup lays it, so it goes nowhere (and Put back brings it
+ * from nowhere).
  */
 function applyRelaid({ lineup, relaid, day, change, trade, undo, now, schedule, catalog }) {
     let spliced = splice({ lineup, relaid, day });
     if (spliced.refused) {
         return { refused: spliced.refused };
     }
-    let stays = (change.kind === 'swap') && ( ! undo || (change.inPlace === true) || (typeof(change.was) === 'object') );
-    let moved = stays ? { programs: spliced.programs, text: '' }
-        : alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id: change.id });
+    let withIt = undo ? lineup.programs : spliced.programs;
+    let without = undo ? spliced.programs : lineup.programs;
+    let passed = [];
+    [ change, trade ].forEach( (c) => {
+        if ( (c == null) || (c.kind !== 'swap') || (c.inPlace !== true) ) {
+            return;
+        }
+        let airing = withIt.find( (p) => isDays(p, day.id) && (p.specialChange === c.id) );
+        if (typeof(airing) === 'undefined') {
+            return;
+        }
+        let seen = 0;
+        let out = without.find( (p) => ownAiring(p, day.id, airing.specialRow) && (++seen === c.n) );
+        if (typeof(out) !== 'undefined') {
+            passed.push(out);
+        }
+    } );
+    let moved = alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id: change.id, leftOut: passed });
     let after = { programs: moved.programs, startTime: lineup.startTime };
     let text = describe({ before: lineup, after: after, day: day, change: change, trade: trade || null, undo: undo === true });
     if (moved.text && /\.$/.test(text)) {

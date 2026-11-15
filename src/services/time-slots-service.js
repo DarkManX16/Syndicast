@@ -310,6 +310,11 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         if (swap !== null) {
             out = ( (typeof(slot.item) === 'object') && (slot.item !== null) && (itemState.get(slot) === occurrenceStart) )
                 ? null : changedCopy(swap.item.program, slot, 'specialChange', swap.id);
+            // In place of a set-aside holiday episode it takes that episode's turn: the planner
+            // counts it for the holiday position (specialHoliday), as advanceSpecial does.
+            if ( (out !== null) && (swap.inPlace === true) && (typeof(slot.holiday) === 'object') && ! holidayDone(slot.holiday) ) {
+                out.specialHoliday = slot.holiday.key;
+            }
         } else {
             out = plainSpecialItem(slot);
         }
@@ -503,7 +508,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
     }
 
     // load the programs
-    const DAY_MARKS = [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN' ];
+    const DAY_MARKS = [ 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN', 'specialHoliday' ];
     for (let i = 0; i < programs.length; i++) {
         let p = programs[i];
         // An episode enters the pool as itself: a special day's own airing in the
