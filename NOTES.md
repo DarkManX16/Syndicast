@@ -13,6 +13,11 @@ below says what we do and why. **Syndicast innovates.**
   Never stop or signal any process you didn't start.
 - Docs and code describe our designs on their own terms and never name other
   playout programs.
+- **Before merging into `blocks`, check that no other session is merging** (no
+  `MERGE_HEAD` in the main checkout, `git log origin/blocks..blocks` empty, the other
+  sessions idle or asked). If `blocks` has moved since your branch, merge it in and
+  rerun the suite and the workflow checklist on the combined result before pushing.
+  DarkManX16 added this Nov 15, 2026.
 - Never use `preview_start` from a worktree: it resolves `.claude/launch.json`
   against the main checkout, not the worktree, and can start a second server
   against the real `.dizquetv-dev` while the other one is live. Start a
@@ -7534,6 +7539,19 @@ a test that failed first; the Remove tools it found right:
 the same way on `blocks` itself (dc31265, fresh copy 5:42am, port 18213): not this branch.
 After the review's fixes (5229374, fresh copy 5:47am, port 18214): the same 11 of 12, and
 `npm test` 3578/3578.
+
+**The `breaks-page` failure above was the script's lookup, not the page (Nov 15).** The
+weaker-line step took the second Approve button in the first weaker-line show's line. A show
+with no main pattern (The Wizard of Oz, and 15 others on the copy) has only the weaker line,
+so one Approve, which is the first button. Which show came first depended on the time of day
+(next airing), so it passed at 7:17am (The Wuzzles, both lines) and failed at 5:40am (The
+Wizard of Oz). The page's line is right: one enabled outline Approve, nothing disabled.
+Forcing the old second-button lookup on The Wizard of Oz on a fresh copy gave the exact
+message; the first button passed. `scripts/lib/weaker-line.js` now picks the show and the
+button (`test/weaker-line-pick.js`, written first). Fresh copy 7:42am: `npm test` 3583/3583,
+12/12 workflows. Seen and not explained: on two earlier scratch servers the first two runs
+of `breaks-page` died with `fetch failed` (ECONNRESET on the scanner PUT, 4 times in 6 runs
+on those two); later runs and the fresh copy's did not.
 
 ### Chapter and segment detector, and stage 6 midrolls
 

@@ -103,6 +103,7 @@ const suites = [
     './breaks-api',
     './branding',
     './close-browser',
+    './weaker-line-pick',
 ];
 
 (async () => {
