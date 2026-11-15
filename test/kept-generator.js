@@ -241,6 +241,15 @@ module.exports = async function () {
                 && said === '"B S1E1" (B) airs at its show\'s next slot instead: no room before your insert at Thu Oct 8, 8:15pm, and 1 more episode the same way.',
             said);
         suite.check('...and with room for everything, nothing is said', kept.sayWaited(undefined) === '' && kept.sayWaited([]) === '');
+        // Only news is said: where the list showed the show in that slot before the kept row
+        // (B at 7:50; C's was after 8:15). Where it already didn't, this Create Lineup moves
+        // nothing DarkManX16 sees (his Hannah Montana before his Nov 27 dragged row).
+        const shown = kept.sayWaited(slidRaw.waited, plain);
+        const notShown = kept.sayWaited(slidRaw.waited, listOf(slidRaw));
+        suite.check('...said only where the list had the show in that slot before the kept row; otherwise nothing',
+            shown === '"B S1E1" (B) airs at its show\'s next slot instead: no room before your insert at Thu Oct 8, 8:15pm.'
+                && notShown === '',
+            JSON.stringify([ shown, notShown ]));
 
         // Exactly, not within SLACK, and without losing the episode: DarkManX16's Pooh Corner swap
         // followed an episode 46 ms longer than the one before it in the list. The break before

@@ -748,8 +748,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         t -= need;
         return true;
     };
-    let waits = (pin, item) => {
-        waited.push({ at: pin.at, kind: keptKindOf(pin.program),
+    let waits = (pin, item, from) => {
+        waited.push({ at: pin.at, from: from, kind: keptKindOf(pin.program),
             program: { title: item.title, showTitle: item.showTitle, type: item.type, customShowName: item.customShowName } });
     };
 
@@ -1461,7 +1461,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
                 if (makeRoom(unit.duration - remaining, occStart)) {
                     remaining = pins[nextPin].at - t;
                 } else {
-                    waits(pins[nextPin], item);
+                    waits(pins[nextPin], item, occStart);
                 }
             }
             while ( (item !== null) && ! item.isOffline && (total < remaining - SLACK) && fits(unit) ) {
@@ -1490,7 +1490,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             // slot's next airing, and the slot is Flex to its end.
             if ( (nextPin < pins.length) && pins[nextPin].kept && (t + unit.duration > pins[nextPin].at)
                 && ! makeRoom(t + unit.duration - pins[nextPin].at, occStart) ) {
-                waits(pins[nextPin], item);
+                waits(pins[nextPin], item, occStart);
                 pushFlex(remaining);
                 continue;
             }

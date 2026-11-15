@@ -1731,12 +1731,21 @@ function sayKept(rows) {
 /*
  * Create Lineup's one sentence when an episode had no room before a kept row, even with
  * the breaks before it shortened, and airs at its show's next slot instead (DarkManX16,
- * Nov 15, 2026). `waited`, the generator's [{ at, program, kind }], soonest first; '' for none.
+ * Nov 15, 2026). `waited`, the generator's [{ at, from, program, kind }], soonest first; '' for none.
  * '"The Thirty-Minute Work Week" (Fraggle Rock) airs at its show's next slot instead: no
  * room before your swap at Sun Nov 22, 10:44pm.'
+ * `lineup`, the list as it was before ({ programs, startTime }), when given: it is news only
+ * where the list showed that show airing in that slot before the kept row (`from`, the
+ * slot's time, to `at`). Where it already didn't - DarkManX16's own Flex or dragged row
+ * there - this Create Lineup moves nothing he sees, so nothing is said.
  */
 const KIND_SAID = { swap: 'swap', insert: 'insert', moved: 'dragged row', shifted: 'dragged row', remove: 'removal' };
-function sayWaited(waited) {
+function sayWaited(waited, lineup) {
+    if (Array.isArray(waited) && lineup && Array.isArray(lineup.programs)) {
+        let rows = rowsOf({ programs: lineup.programs, startTime: Number(new Date(lineup.startTime)) });
+        waited = waited.filter( (w) => rows.some( (r) => (r.start >= w.from) && (r.start < w.at) && ! r.program.isOffline
+            && (pins.showName(r.program) === pins.showName(w.program)) ) );
+    }
     if (! Array.isArray(waited) || (waited.length === 0)) {
         return '';
     }
