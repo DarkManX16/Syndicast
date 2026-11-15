@@ -8132,7 +8132,7 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   0.2 s a frame on an idle drive, under half an hour of reading, at Very Low disk priority and
   with its pace check watching.
 
-#### Step 5d: can a real click fail? (built Nov 15, not merged)
+#### Step 5d: can a real click fail? (built Nov 15; merged and pushed as blocks 801bc0c)
 
 The question for two clicks that once failed in the checklist: the Breaks page's show panel
 (Nov 14, right after `special-day`) and "+ Add special day" in Time Slots (Nov 15, "the special
@@ -8178,6 +8178,48 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   read the first one recorded as e1's; most likely the other started first that time. The check
   now finds e1's run by its file (15 runs of the file, all passed); the full suite then
   3,660/3,660.
+- **Merged Nov 15.** blocks was ce4456f, as on origin, with no other session merging, so the
+  combined result was 4464c9e itself. On a copy of 3:13pm Central (server 18260, scanner paused by
+  hand): every workflow but one, 11/12, then `npm test` 3,660/3,660. `create-lineup` failed: "1 kept
+  rows moved or went: ... Welcome to Pooh Corner Holiday For Pooh Bear" (DarkManX16's swap of Nov 9
+  for Sun Nov 22, 10:44pm). Two identical copies of 3:25pm, one served by blocks without 5d (ce4456f,
+  18270), one by 5d (18271): **the same failure on both**, so not 5d. It passed on the copies of
+  8:12am and 10:46am, so something since (his channel 3, or the row now being a week out) brings it
+  out. Not investigated here: proposed as its own task. Merged as 801bc0c and pushed. 5d changes only
+  the page (the Time Slots directive and template), not `index.js` or `src/` (the code fingerprint
+  the editor's guard checks), so 18000 needs no restart: the next page load gets it.
+
+#### Step 5e: the Midroll situation and its setting (built Nov 15, not merged)
+
+- **What it is.** `'midroll'` is a fifth situation in `SITUATIONS` (transitions.js): read with the
+  step defaults, counted by `hasSteps` and `stepListIds`, accepted and checked at save
+  (channel-db's transition warnings), copied by the editor's Copy. Breaks pick their own situation
+  by name in `buildPlan`, so a midroll never plays at a break. The channel editor keeps its four
+  rows (its own list in web/directives/transitions-editor.js), and its `serialize` writes no
+  empty midroll, so a channel saved from it is what it was before. `normalizeMidrolls(context)`
+  reads the setting (`count: null` follows the switch, `minMs` 90000, `story` true, `opening`
+  false; a bad field reads as its default); `midrollsProblems` and channel-db's
+  `warnAboutMidrolls` warn at save, naming the day-part or block, rewriting nothing. The card
+  service counts a midroll's card steps (`CardService.cardSteps`); rendering them ahead needs a
+  midroll's plan, so it moved to 5f (spec updated).
+- **Tests.** `test/midroll-situation.js`, 30 checks, each seen failing with its piece of the code
+  broken on purpose (no fifth situation, no defaults, bad fields kept, no warning at save, the
+  card steps not counted, the editor writing an empty midroll), except two guards on what was
+  already so (the four editor rows; a good setting warns nothing). Two editor tests that compared
+  the saved keys with `SITUATIONS` now compare with the four the editor writes; one transitions
+  test counts `SITUATIONS.length` instead of 4.
+- **Proof** (`scripts/midroll-save-proof.js`, read-only, a copy of 3:30pm against the main
+  checkout at 801bc0c, without 5e): 3 channels, each loaded and saved again byte-for-byte as its
+  file; the same save warnings as blocks; all 47 day-parts and blocks saved from 5e's editor exactly
+  as from blocks', and read the same four situations as before plus an empty midroll and the
+  default setting. With the editor's empty-midroll skip removed on purpose it reports 0 of 47 the
+  same, so it would have caught that.
+- **Suite, workflows, the editor** (35159ea, merged with blocks 801bc0c; server 18280 from the
+  worktree on the same 3:30pm copy, scanner paused by hand): `npm test` 3,690/3,690; every workflow
+  11/12, `create-lineup` failing on DarkManX16's Nov 22 swap exactly as on blocks itself (see Step
+  5d's merge above, its own task); in the channel editor, channel 3's first day-part's Transitions
+  section open shows the same four rows, Leaving, Entering, Between episodes and Between shows,
+  and the editor's own row list is those four ids. Nothing was saved from it.
 
 ### Random Slots' Create Lineup restarts the program on air
 
