@@ -3614,6 +3614,9 @@ channels the guide uses `/icons/icon-512.png` instead of a GitHub link, and the 
 cache skips any `{{host}}` address. `test/branding.js` pins it. Left alone on purpose: the
 Unraid templates' icon URL and `src/svg/`.
 
+Merged into `blocks` Nov 14 (7b65e19), not pushed. Restart 18000 for the guide icon only; an existing
+install keeps its old `images/generic-music-screen.png`.
+
 ### Branding script counts the same file more than once
 
 `syndicast-branding/apply-branding.js` tracks written files in a `Set`, but
