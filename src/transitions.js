@@ -32,7 +32,9 @@ const showMatch = require('./show-match');
 const clipNames = require('./clip-names');
 const dateRange = require('./date-range');
 
-const SITUATIONS = ['leaving', 'entering', 'betweenEpisodes', 'betweenShows'];
+// 'midroll' (stage 6, step 5e): inside a program, at an approved point its context's midroll setting
+// allows. Breaks pick their situation by name (buildPlan), so a midroll never plays at a break.
+const SITUATIONS = ['leaving', 'entering', 'betweenEpisodes', 'betweenShows', 'midroll'];
 const KINDS = ['list', 'generated'];
 const MATCHES = ['any', 'show', 'pair'];
 const KEYED_ON = ['now', 'next', 'later', 'afterNext', 'tomorrow'];
@@ -117,6 +119,69 @@ function normalizeTransitions(context) {
         }
     }
     return all;
+}
+
+/*
+ * The midroll setting of a day-part or block (docs/blocks-spec.md, Stage 6, "The Midroll
+ * situation"), as the rest of the code should see it. Stored as `midrolls`, optional:
+ *   count    null = follow the Midrolls switch, every approved point the Flex can pay for;
+ *            0 = none here; N = at most N
+ *   minMs    the shortest midroll worth having, steps included
+ *   story    the join between two stories counts
+ *   opening  the break after the opening counts
+ * A context saved before the setting existed reads as the default, and a bad field reads as
+ * its default (channel-db.js says so at save). With the switch off no context has midrolls,
+ * whatever this says: that is the plan's to apply (5f). A fresh object on every call;
+ * nothing is written back.
+ */
+const MIDROLL_DEFAULTS = { count: null, minMs: 90000, story: true, opening: false };
+const MIDROLL_FIELDS = {
+    count: (v) => (v === null) || (Number.isInteger(v) && (v >= 0)),
+    minMs: (v) => (typeof(v) === 'number') && Number.isFinite(v) && (v > 0),
+    story: (v) => typeof(v) === 'boolean',
+    opening: (v) => typeof(v) === 'boolean',
+};
+
+function normalizeMidrolls(context) {
+    const out = Object.assign( {}, MIDROLL_DEFAULTS );
+    const stored = (context != null) ? context.midrolls : undefined;
+    if ( (stored == null) || (typeof(stored) !== 'object') || Array.isArray(stored) ) {
+        return out;
+    }
+    for (const key of Object.keys(MIDROLL_FIELDS)) {
+        if ( (typeof(stored[key]) !== 'undefined') && MIDROLL_FIELDS[key](stored[key]) ) {
+            out[key] = stored[key];
+        }
+    }
+    return out;
+}
+
+// What is wrong with a stored midroll setting, in words, for channel-db.js's save-time warnings.
+function midrollsProblems(stored) {
+    if (typeof(stored) === 'undefined') {
+        return [];
+    }
+    if ( (stored === null) || (typeof(stored) !== 'object') || Array.isArray(stored) ) {
+        return [ `midrolls is not an object with count, minMs, story and opening, so the default is used (${JSON.stringify(stored)})` ];
+    }
+    const problems = [];
+    const said = {
+        count: 'count must be empty (follow the Midrolls switch), 0 (none here) or a whole number of midrolls',
+        minMs: 'minMs must be a length in milliseconds above 0',
+        story: 'story must be true or false',
+        opening: 'opening must be true or false',
+    };
+    for (const key of Object.keys(MIDROLL_FIELDS)) {
+        if ( (typeof(stored[key]) !== 'undefined') && ! MIDROLL_FIELDS[key](stored[key]) ) {
+            problems.push(`midrolls: ${said[key]}, not ${JSON.stringify(stored[key])}; the default is used`);
+        }
+    }
+    for (const key of Object.keys(stored)) {
+        if (typeof(MIDROLL_FIELDS[key]) === 'undefined') {
+            problems.push(`midrolls: "${key}" is not a setting (count, minMs, story, opening); it is ignored`);
+        }
+    }
+    return problems;
 }
 
 // Every day-part and block of the channel, each a context that may carry steps.
@@ -1183,6 +1248,9 @@ function buildPlan(channel, brk, env) {
 
 module.exports = {
     SITUATIONS: SITUATIONS,
+    MIDROLL_DEFAULTS: MIDROLL_DEFAULTS,
+    normalizeMidrolls: normalizeMidrolls,
+    midrollsProblems: midrollsProblems,
     KINDS: KINDS,
     MATCHES: MATCHES,
     KEYED_ON: KEYED_ON,

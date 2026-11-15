@@ -240,11 +240,11 @@ module.exports = async function run() {
     // ---- stored shape and its defaults --------------------------------------
     {
         const empty = transitions.normalizeTransitions(undefined);
-        suite.check('no transitions field reads as four empty situations',
+        suite.check('no transitions field reads as every situation, empty (five since the Midroll, 5e)',
             transitions.SITUATIONS.every((s) => Array.isArray(empty[s].out) && empty[s].out.length === 0
                 && Array.isArray(empty[s].in) && empty[s].in.length === 0)
-            && Object.keys(empty).length === 4, Object.keys(empty).join());
-        suite.check('a null context reads the same', Object.keys(transitions.normalizeTransitions(null)).length === 4);
+            && Object.keys(empty).length === transitions.SITUATIONS.length, Object.keys(empty).join());
+        suite.check('a null context reads the same', Object.keys(transitions.normalizeTransitions(null)).length === transitions.SITUATIONS.length);
 
         const a = transitions.normalizeTransitions(undefined);
         a.leaving.out.push('x');

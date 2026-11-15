@@ -738,6 +738,11 @@ function cleanStep(step) {
 function serialize(draft) {
     const out = {};
     for (const name of transitions.SITUATIONS) {
+        // The Midroll (5e) has no row in the editor until step 7: an empty one is not written, so a
+        // channel saved from the editor is what it was before the fifth situation existed.
+        if ( (name === 'midroll') && (draft[name].out.length === 0) && (draft[name].in.length === 0) ) {
+            continue;
+        }
         out[name] = { out: draft[name].out.map(cleanStep), in: draft[name].in.map(cleanStep) };
     }
     return out;
