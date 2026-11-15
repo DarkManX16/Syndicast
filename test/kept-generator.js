@@ -230,6 +230,18 @@ module.exports = async function () {
                 && rowAt(slid, thu(20, 15)) && rowAt(slid, thu(20, 15)).title === 'Kept Clip' && ! rowAt(slid, thu(19, 50))
                 && rowAt(slid, thu(19, 50) + DAY) && rowAt(slid, thu(19, 50) + DAY).title === 'B S1E1',
             JSON.stringify(night(slid, thu(19), thu(21))));
+
+        // Exactly, not within SLACK: DarkManX16's Pooh Corner swap followed an episode 46 ms
+        // longer than the one before it in the list. Here a row kept 5 s before an episode's end.
+        const close = listOf(await generate(long, sched, NOON, [ { at: thu(20, 19, 55), program: clip, kept: true } ]));
+        suite.check('...nor one ending a few seconds past it: the kept row at its instant to the millisecond',
+            rowAt(close, thu(20, 19, 55)) && rowAt(close, thu(20, 19, 55)).title === 'Kept Clip' && ! rowAt(close, thu(19, 50)),
+            JSON.stringify(night(close, thu(19), thu(21))));
+        const inSlot = listOf(await generate(POOL, sched, NOON, [ { at: thu(19, 21, 55), program: clip, kept: true } ]));
+        suite.check('...and in its own slot, an episode ending 5 s past a kept row waits too',
+            rowAt(inSlot, thu(19, 21, 55)) && rowAt(inSlot, thu(19, 21, 55)).title === 'Kept Clip' && ! rowAt(inSlot, thu(19))
+                && rowAt(inSlot, thu(19) + DAY).title === 'A S1E1',
+            JSON.stringify(night(inSlot, thu(19), thu(21))));
     }
 
     suite.log('-- marks stay on their rows --');

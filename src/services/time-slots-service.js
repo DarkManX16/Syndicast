@@ -1401,7 +1401,7 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             let pads = [];
             let total = 0;
             let split = false;
-            let fits = (x) => ! pins[nextPin].kept || (total + x.duration <= remaining + SLACK);
+            let fits = (x) => ! pins[nextPin].kept || (total + x.duration <= remaining);
             while ( (item !== null) && ! item.isOffline && (total < remaining - SLACK) && fits(unit) ) {
                 pads.push(makePadded(item));
                 advanceSlot(slot);
@@ -1423,9 +1423,9 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         }
         if (unit.duration > remaining) {
             // A kept row never waits: an episode that would slide on past the next one waits
-            // for its slot's next airing, and the slot is Flex to its end (within SLACK, as
-            // the fill before a kept row above allows).
-            if ( (nextPin < pins.length) && pins[nextPin].kept && (t + unit.duration > pins[nextPin].at + SLACK) ) {
+            // for its slot's next airing, and the slot is Flex to its end - by even a millisecond:
+            // DarkManX16's kept rows stay exactly where he put them (Nov 15, 2026).
+            if ( (nextPin < pins.length) && pins[nextPin].kept && (t + unit.duration > pins[nextPin].at) ) {
                 pushFlex(remaining);
                 continue;
             }
