@@ -91,30 +91,133 @@ function withChange(schedule, dayId, row, change, id) {
         .concat([ Object.assign({ id: id }, JSON.parse(JSON.stringify(change))) ]);
     return copy;
 }
-// The schedule, copied, without change `id`; a row left with none loses the key.
-function withoutChange(schedule, id) {
-    let copy = JSON.parse(JSON.stringify(schedule));
-    specialDays.daysOf(copy).forEach( (day) => rowsOf(day).forEach( (r) => {
-        if (Array.isArray(r.changes)) {
-            r.changes = r.changes.filter( (c) => c.id !== id );
-            if (r.changes.length === 0) {
-                delete r.changes;
-            }
+/*
+ * Put back of change `id` on `day`, in place: it comes off its row, and so does
+ * the swap it traded places with, either way round (`with`); a swap that took the
+ * place of an earlier one on the same airing (`was`) gives it back. A row left
+ * with none loses the key. False when the day has no such change.
+ */
+function dropFrom(day, id) {
+    let all = [];
+    rowsOf(day).forEach( (r) => (r.changes || []).forEach( (c) => {
+        if (c != null) {
+            all.push({ row: r, change: c });
         }
     } ) );
+    let found = all.find( (x) => x.change.id === id );
+    if (typeof(found) === 'undefined') {
+        return false;
+    }
+    let main = ( (typeof(found.change.with) === 'string') && all.find( (x) => x.change.id === found.change.with ) ) || found;
+    let goes = [ main ].concat(all.filter( (x) => (x.change.with === main.change.id) && (x !== main) ));
+    if (goes.indexOf(found) === -1) {
+        goes.push(found);
+    }
+    goes.forEach( (x) => {
+        x.row.changes = x.row.changes.filter( (c) => c !== x.change );
+        if ( (typeof(x.change.was) === 'object') && (x.change.was !== null) ) {
+            x.row.changes.push(x.change.was);
+        }
+        if (x.row.changes.length === 0) {
+            delete x.row.changes;
+        }
+    } );
+    return true;
+}
+// The schedule, copied, with change `id` put back (dropFrom).
+function withoutChange(schedule, id) {
+    let copy = JSON.parse(JSON.stringify(schedule));
+    specialDays.daysOf(copy).some( (day) => dropFrom(day, id) );
     return copy;
 }
-// The change `id` on the schedule, with its day and row, or null.
+/*
+ * The change `id` on the schedule, with its day and row, or null. For a swap that
+ * traded places it is the main one either way round - `change` the swap made,
+ * `trade` the airing it traded with (its `with` the change's id) - else `trade`
+ * is null.
+ */
 function findChange(schedule, id) {
-    let found = null;
+    let all = [];
     specialDays.daysOf(schedule).forEach( (day) => rowsOf(day).forEach( (r, k) => {
         (r.changes || []).forEach( (c) => {
-            if (c.id === id) {
-                found = { day: day, row: k, change: c };
+            if (c != null) {
+                all.push({ day: day, row: k, change: c });
             }
         } );
     } ) );
-    return found;
+    let found = all.find( (x) => x.change.id === id );
+    if (typeof(found) === 'undefined') {
+        return null;
+    }
+    let main = (typeof(found.change.with) === 'string') ? all.find( (x) => x.change.id === found.change.with ) : found;
+    if (typeof(main) === 'undefined') {
+        // Its swap was swapped again since: it stands alone.
+        return Object.assign({}, found, { trade: null });
+    }
+    let partner = all.find( (x) => x.change.with === main.change.id );
+    return Object.assign({}, main, { trade: (typeof(partner) === 'undefined') ? null : partner.change });
+}
+
+// An item as a change keeps it: none of a list row's own marks.
+const MARKS = [ 'kept', 'pin', 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN', 'slotPosition', 'shuffleOrder',
+    'start', 'stop', '$index', '$$hashKey' ];
+function plainItem(p) {
+    let copy = JSON.parse(JSON.stringify(p));
+    MARKS.forEach( (k) => delete copy[k] );
+    return copy;
+}
+const fileKey = (p) => `${p.serverKey}|${p.key}`;
+
+/*
+ * Swap on a day's airing (DarkManX16, Nov 15, 2026): only that airing changes. The
+ * change is saved in place of it - the row moves on as its own airing would
+ * have, so every other airing of the day stays the same episode at the same
+ * time, and only the Flex after it takes the difference in length. When the
+ * episode swapped in already airs later in the day, the two trade places: that
+ * airing gets the episode swapped out, a second change linked to the first
+ * (`with`), and Put back takes both off. An airing an older swap holds (from
+ * before Nov 15: it moved nothing on) keeps that swap's way, so the airings after
+ * it stay as they are too. { schedule, change, trade } - trade null when there
+ * is none - or { refused }.
+ */
+function swapIn({ lineup, index, item, schedule, id, tradeId }) {
+    let loc = locate({ lineup, index, schedule });
+    if ( (loc === null) || (typeof(loc.insert) === 'string') ) {
+        return { refused: 'Pick an airing of the day to swap.' };
+    }
+    // The way of the swap an airing already holds - in place, unless an older one says
+    // otherwise - and that swap itself, for Put back to give back.
+    let wayAt = (k, n) => {
+        let held = (rowsOf(loc.day)[k].changes || []).find( (c) => (c != null) && (c.n === n) && (c.kind === 'swap') );
+        if (typeof(held) === 'undefined') {
+            return { inPlace: true };
+        }
+        return Object.assign( (held.inPlace === true) ? { inPlace: true } : {}, { was: JSON.parse(JSON.stringify(held)) } );
+    };
+    let change = Object.assign({ n: loc.n, kind: 'swap', item: { program: plainItem(item) } }, wayAt(loc.row, loc.n));
+    let next = withChange(schedule, loc.day.id, loc.row, change, id);
+    change = Object.assign({ id: id }, change);
+    // The same episode later in the day: one of its rows' own airings (an insert is none).
+    let w = specialDays.windowOf(loc.day);
+    let starts = startsOf(lineup);
+    let later = -1;
+    for (let i = index + 1; i < lineup.programs.length; i++) {
+        if ( (w !== null) && (starts[i] >= w.to) ) {
+            break;
+        }
+        let p = lineup.programs[i];
+        if ( isDays(p, loc.day.id) && (typeof(p.specialInsert) === 'undefined') && (fileKey(p) === fileKey(item)) ) {
+            later = i;
+            break;
+        }
+    }
+    if (later === -1) {
+        return { schedule: next, change: change, trade: null };
+    }
+    let there = locate({ lineup, index: later, schedule });
+    let trade = Object.assign({ n: there.n, kind: 'swap', item: { program: plainItem(lineup.programs[index]) }, with: id }, wayAt(there.row, there.n));
+    next = withChange(next, loc.day.id, there.row, trade, tradeId);
+    return { schedule: next, change: change, trade: Object.assign({ id: tradeId }, trade) };
 }
 
 /*
@@ -222,6 +325,29 @@ function alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id, leftO
     return { programs: moved.programs, text: moved.text };
 }
 
+/*
+ * The day laid again for a change (or its Put back) in the list, and its
+ * sentence: { programs, text } or { refused }. A swap moves nothing outside the
+ * day - in place, or in an earlier swap's place, the row moves on just as before
+ * - and nor does Put back of one; anything else on an Advance day moves the
+ * show's later episodes along (alongAfter).
+ */
+function applyRelaid({ lineup, relaid, day, change, trade, undo, now, schedule, catalog }) {
+    let spliced = splice({ lineup, relaid, day });
+    if (spliced.refused) {
+        return { refused: spliced.refused };
+    }
+    let stays = (change.kind === 'swap') && ( ! undo || (change.inPlace === true) || (typeof(change.was) === 'object') );
+    let moved = stays ? { programs: spliced.programs, text: '' }
+        : alongAfter({ lineup, spliced, relaid, now, schedule, catalog, id: change.id });
+    let after = { programs: moved.programs, startTime: lineup.startTime };
+    let text = describe({ before: lineup, after: after, day: day, change: change, trade: trade || null, undo: undo === true });
+    if (moved.text && /\.$/.test(text)) {
+        text = text.slice(0, -1) + moved.text + '.';
+    }
+    return { programs: moved.programs, text: text };
+}
+
 // "30 minutes", "1 minute", or minutes and seconds.
 function minutes(ms) {
     let m = Math.round(Math.abs(ms) / MINUTE);
@@ -239,7 +365,7 @@ const count = (n) => (n < NUMBERS.length) ? NUMBERS[n] : String(n);
  * of each show. "The Short One replaces X S1E3 at 7:00am. The rows after it
  * start 30 minutes later; X airs one fewer episode."
  */
-function describe({ before, after, day, change, undo }) {
+function describe({ before, after, day, change, undo, trade }) {
     let bS = startsOf(before);
     let aS = startsOf(after);
     // The list holding the change, and the one without it: Put back (undo) goes the other way.
@@ -265,21 +391,39 @@ function describe({ before, after, day, change, undo }) {
     }
     let lead;
     let pivot;
+    // The airing a swap traded places with, in the list holding it and in the one without.
+    let tradeAt = -1;
+    let tradeThere = -1;
     if (change.kind === 'swap') {
         let old = (nth !== -1) ? title(without.programs[nth]) : 'its airing';
-        lead = undo ? `${old} is back at ${keptRows.clockAm( (nth !== -1) ? oS[nth] : wS[at] )}`
-            : `${title(item)} replaces ${old} at ${keptRows.clockAm(wS[at])}`;
+        let clock = keptRows.clockAm;
+        if ( (typeof(trade) === 'object') && (trade !== null) ) {
+            tradeAt = withIt.programs.findIndex( (p) => isDays(p, day.id) && (p.specialChange === trade.id) );
+            tradeThere = (tradeAt === -1) ? -1 : without.programs.findIndex( (p, i) => (i > nth) && isDays(p, day.id)
+                && (typeof(p.specialInsert) === 'undefined') && (fileKey(p) === fileKey(item)) );
+        }
+        if (undo) {
+            lead = `${old} is back at ${clock( (nth !== -1) ? oS[nth] : wS[at] )}`;
+            if (tradeAt !== -1) {
+                lead += ` and ${title(item)} at ${clock( (tradeThere !== -1) ? oS[tradeThere] : wS[tradeAt] )}`;
+            }
+        } else if (tradeAt !== -1) {
+            lead = `${title(item)} and ${old} trade places: ${title(item)} at ${clock(wS[at])}, ${old} at ${clock(wS[tradeAt])}`;
+        } else {
+            lead = `${title(item)} replaces ${old} at ${clock(wS[at])}`;
+        }
         pivot = (nth !== -1) ? oS[nth] : wS[at];
-        // The episodes too: the one swapped out airs at the row's next airing, and Put back
-        // takes each later airing back an episode.
-        let fileKey = (p) => `${p.serverKey}|${p.key}`;
-        if ( (nth !== -1) && ! undo ) {
+        // A swap from before Nov 15 moved nothing on: the one swapped out aired at the row's
+        // next airing, and Put back takes each later airing back an episode. One in place,
+        // or one that took an earlier swap's place, leaves the rest of the day as it is.
+        let pushes = (change.inPlace !== true) && (typeof(change.was) !== 'object');
+        if ( (nth !== -1) && ! undo && pushes ) {
             let oldKey = fileKey(without.programs[nth]);
             let later = withIt.programs.findIndex( (p, i) => (i > at) && ownAiring(p, day.id, k) && (fileKey(p) === oldKey) );
             if (later !== -1) {
                 lead += `; it airs at ${keptRows.clockAm(wS[later])} instead`;
             }
-        } else if (undo) {
+        } else if (undo && pushes && (tradeAt === -1)) {
             let rowAfter = (list, starts) => list.programs.map( (p, i) => ({ p, t: starts[i] }) )
                 .filter( (x) => ownAiring(x.p, day.id, k) && (x.t > pivot) && ! marked(x.p) ).map( (x) => fileKey(x.p) );
             let was = rowAfter(withIt, wS);
@@ -302,19 +446,24 @@ function describe({ before, after, day, change, undo }) {
         }
         pivot = targetAt;
     }
-    return withRest({ before, after, bS, aS, day, pivot, marked, lead });
+    // The airing traded with is named in the lead, not counted in the rest.
+    let skip = { withIt: new Set([ tradeAt ]), without: new Set([ tradeThere ]) };
+    return withRest({ before, after, bS, aS, day, pivot, marked, lead,
+        skipBefore: undo ? skip.withIt : skip.without, skipAfter: undo ? skip.without : skip.withIt });
 }
 
 /*
  * The lead sentence, then one on the rest of the day: the day's airings after
- * `pivot`, before and after (the changed or left-out one aside), their starts
- * and how many of each show, and whether the day now runs past its end.
+ * `pivot`, before and after (the changed or left-out one aside, and the indexes
+ * in `skipBefore` / `skipAfter`), their starts and how many of each show, and
+ * whether the day now runs past its end.
  */
-function withRest({ before, after, bS, aS, day, pivot, marked, lead }) {
-    let rest = (programs, starts) => programs.map( (p, i) => ({ p, start: starts[i] }) )
-        .filter( (x) => isDays(x.p, day.id) && (x.start > pivot) && ! marked(x.p) && (typeof(x.p.specialInsert) === 'undefined') );
-    let was = rest(before.programs, bS);
-    let now = rest(after.programs, aS);
+function withRest({ before, after, bS, aS, day, pivot, marked, lead, skipBefore, skipAfter }) {
+    let rest = (programs, starts, skip) => programs.map( (p, i) => ({ p, start: starts[i], i }) )
+        .filter( (x) => isDays(x.p, day.id) && (x.start > pivot) && ! marked(x.p) && (typeof(x.p.specialInsert) === 'undefined')
+            && ! ( skip && skip.has(x.i) ) );
+    let was = rest(before.programs, bS, skipBefore);
+    let now = rest(after.programs, aS, skipAfter);
     let deltas = [];
     for (let i = 0; i < Math.min(was.length, now.length); i++) {
         if (now[i].start !== was[i].start) {
@@ -376,9 +525,13 @@ module.exports = {
     beforeFits: beforeFits,
     withChange: withChange,
     withoutChange: withoutChange,
+    dropFrom: dropFrom,
     findChange: findChange,
+    swapIn: swapIn,
+    plainItem: plainItem,
     splice: splice,
     alongAfter: alongAfter,
+    applyRelaid: applyRelaid,
     describe: describe,
     leftOutSentence: leftOutSentence,
 };

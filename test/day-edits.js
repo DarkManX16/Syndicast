@@ -193,5 +193,97 @@ module.exports = async function () {
         suite.check('...Put back gives the list back exactly as it was', sig({ programs: back.programs, startTime: LA.startTime }, LA.startTime, LA.startTime + 3 * DAY)
             === sig(LA, LA.startTime, LA.startTime + 3 * DAY), '');
     }
+
+    suite.log('-- Swap changes only the airing clicked (DarkManX16, Nov 15) --');
+    {
+        // A shuffled run until 10:00am, then A: X's episodes in a shuffle's order.
+        const sS = sched(day({ slots: [ { showId: 'tv.X', order: 'shuffle', until: 10 * HOUR }, { showId: 'tv.A', order: 'next' } ] }));
+        const dayS = sS.specialDays[0];
+        const LS = await make(sS);
+        const inDay = (l) => shows(l).filter( (a) => (a.start >= FRI6) && (a.start < fri(12)) ).map( (a) => [ a.start, a.program.title ] );
+        const was = inDay(LS);
+        const titleAt = (l, t) => shows(l).find( (a) => a.start === t ).program.title;
+        const but = (list, swaps) => JSON.stringify(list.map( ([ t, title ]) => [ t, (t in swaps) ? swaps[t] : title ] ));
+        // The editor's whole path: the change on the row, the day laid again, the list and its sentence.
+        const edit = async (lineup, schedule, index, item, id) => {
+            const got = dayEdits.swapIn({ lineup, index, item, schedule, id, tradeId: id + 't' });
+            const R = await make(got.schedule);
+            const done = dayEdits.applyRelaid({ lineup, relaid: R, day: got.schedule.specialDays[0], change: got.change, trade: got.trade,
+                now: NOW, schedule: got.schedule, catalog: pool() });
+            return Object.assign({ R, list: { programs: done.programs, startTime: lineup.startTime } }, got, { text: done.text });
+        };
+
+        const x7 = titleAt(LS, fri(7));
+        const one = await edit(LS, sS, indexAt(LS, fri(7)), SAME, 'chS');
+        suite.check('a swap of the 7:00am airing, in a Shuffle run: the change is in place, and no trade', one.change.inPlace === true && one.trade === null,
+            JSON.stringify(one.change) + ' ' + JSON.stringify(one.trade));
+        suite.check('...in the list, only 7:00am changes: every other airing of the day is the same episode at the same time',
+            but(inDay(one.list), {}) === but(was, { [fri(7)]: 'K S1E1' }), JSON.stringify(inDay(one.list).slice(0, 4)));
+        suite.check('...outside the day nothing changes, and the list is what Create Lineup makes',
+            sig(one.list, LS.startTime, LS.startTime + 3 * DAY) === sig(one.R, LS.startTime, LS.startTime + 3 * DAY), '');
+        suite.check(`...and it says "K S1E1 replaces ${x7} at 7:00am. Nothing else in the day moves."`,
+            one.text === `K S1E1 replaces ${x7} at 7:00am. Nothing else in the day moves.`, one.text);
+
+        // The episode swapped in already airs later in the day: the two trade places.
+        const x9 = titleAt(LS, fri(9));
+        const later = shows(LS).find( (a) => a.start === fri(9) ).program;
+        const two = await edit(LS, sS, indexAt(LS, fri(7)), later, 'chT');
+        suite.check(`swapping ${x9} (9:00am) into 7:00am: a second change gives 9:00am the episode swapped out`,
+            (two.trade !== null) && (two.trade.with === 'chT') && (two.trade.n === dayEdits.locate({ lineup: LS, index: indexAt(LS, fri(9)), schedule: sS }).n),
+            JSON.stringify(two.trade && { n: two.trade.n, with: two.trade.with, title: two.trade.item.program.title }));
+        suite.check('...in the list the two trade places; every other airing of the day stays',
+            but(inDay(two.list), {}) === but(was, { [fri(7)]: x9, [fri(9)]: x7 }), JSON.stringify(inDay(two.list).slice(0, 7)));
+        suite.check('...and the list is what Create Lineup makes', sig(two.list, LS.startTime, LS.startTime + 3 * DAY) === sig(two.R, LS.startTime, LS.startTime + 3 * DAY), '');
+        suite.check(`...and it says "${x9} and ${x7} trade places: ${x9} at 7:00am, ${x7} at 9:00am. Nothing else in the day moves."`,
+            two.text === `${x9} and ${x7} trade places: ${x9} at 7:00am, ${x7} at 9:00am. Nothing else in the day moves.`, two.text);
+
+        // Put back, from either of the two: both come off, and the day is as it was.
+        for (const id of [ 'chT', 'chTt' ]) {
+            const off = dayEdits.withoutChange(two.schedule, id);
+            const RB = await make(off);
+            const found = dayEdits.findChange(two.schedule, id);
+            const back = dayEdits.applyRelaid({ lineup: two.list, relaid: RB, day: off.specialDays[0], change: found.change, trade: found.trade,
+                undo: true, now: NOW, schedule: off, catalog: pool() });
+            suite.check(`Put back of ${ (id === 'chT') ? 'the swap' : 'the airing it traded with' } takes both off the row, and the day is as it was`,
+                (typeof(off.specialDays[0].slots[0].changes) === 'undefined') && (but(inDay({ programs: back.programs, startTime: LS.startTime }), {}) === but(was, {})),
+                JSON.stringify(off.specialDays[0].slots[0].changes));
+            suite.check(`...and says "${x7} is back at 7:00am and ${x9} at 9:00am. Nothing else in the day moves."`,
+                back.text === `${x7} is back at 7:00am and ${x9} at 9:00am. Nothing else in the day moves.`, back.text);
+        }
+        {
+            const off = dayEdits.withoutChange(one.schedule, 'chS');
+            const found = dayEdits.findChange(one.schedule, 'chS');
+            const back = dayEdits.applyRelaid({ lineup: one.list, relaid: await make(off), day: off.specialDays[0], change: found.change, trade: found.trade,
+                undo: true, now: NOW, schedule: off, catalog: pool() });
+            suite.check(`Put back of a swap in place says "${x7} is back at 7:00am. Nothing else in the day moves."`,
+                back.text === `${x7} is back at 7:00am. Nothing else in the day moves.`, back.text);
+        }
+
+        // A swap on an airing an older swap holds keeps that swap's way: the airings after it stay too.
+        const old = dayEdits.withChange(sS, 'sd_t', 0, { n: 2, kind: 'swap', item: { program: SAME } }, 'chOld');
+        const LO = await make(old);
+        const wasO = inDay(LO);
+        const three = await edit(LO, old, indexAt(LO, fri(6, 30)), episode('K', 1, 2), 'chN');
+        suite.check('swapping an airing an older swap holds (one that moved nothing on): it stays that kind of change',
+            (three.change.inPlace === undefined) && (three.schedule.specialDays[0].slots[0].changes.length === 1), JSON.stringify(three.change));
+        suite.check('...and only that airing changes', but(inDay(three.list), {}) === but(wasO, { [fri(6, 30)]: 'K S1E2' }), JSON.stringify(inDay(three.list).slice(0, 4)));
+        const undone = dayEdits.withoutChange(three.schedule, 'chN');
+        suite.check('...and its Put back gives back the swap it took the place of', JSON.stringify(undone) === JSON.stringify(old),
+            JSON.stringify(undone.specialDays[0].slots[0].changes));
+        const backO = dayEdits.applyRelaid({ lineup: three.list, relaid: await make(undone), day: undone.specialDays[0], change: three.change, trade: null,
+            undo: true, now: NOW, schedule: undone, catalog: pool() });
+        suite.check('...the day as it was, saying "K S1E1 is back at 6:30am. Nothing else in the day moves."',
+            (but(inDay({ programs: backO.programs, startTime: LO.startTime }), {}) === but(wasO, {})) && (backO.text === 'K S1E1 is back at 6:30am. Nothing else in the day moves.'),
+            backO.text);
+
+        // An Advance day: nothing after the day moves either.
+        const adv = sched(day({ positions: 'advance', slots: [ { showId: 'tv.A', order: 'next' } ] }));
+        const LA = await make(adv);
+        const four = await edit(LA, adv, indexAt(LA, fri(7)), SAME, 'chV');
+        suite.check('on an Advance day a swap changes that airing only, before, in and after the day, as Create Lineup makes it',
+            (sig(four.list, LA.startTime, LA.startTime + 3 * DAY) === sig(four.R, LA.startTime, LA.startTime + 3 * DAY))
+                && (but(shows(four.list).map( (a) => [ a.start, a.program.title ] ), {}) === but(shows(LA).map( (a) => [ a.start, a.program.title ] ), { [fri(7)]: 'K S1E1' })),
+            four.text);
+    }
     return suite;
 };
