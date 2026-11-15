@@ -155,7 +155,8 @@ function lineCore(key, show, name, total = null) {
         markedNoBreaks: records.filter( (r) => r.noBreaks === true ).length,
         noBreaksShow: show.noBreaks === true,
         toCheck: list.length,
-        needsClick: ( ! approved && ! autoApproved && (hasPattern || (weakerFull != null)) && (show.theatrical !== true) ) || (list.length > 0),
+        // A show approved automatically leaves Needs a click, its odd episodes still on the list inside it (DarkManX16, Nov 15).
+        needsClick: ! autoApproved && ( ( ! approved && (hasPattern || (weakerFull != null)) && (show.theatrical !== true) ) || (list.length > 0) ),
     };
 }
 

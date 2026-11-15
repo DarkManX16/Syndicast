@@ -8008,7 +8008,8 @@ pick, while the faint 9:53 looks like the real first break). Each rule was the r
   and turning them off stops a scan at once, as a pause does (the file waits, not
   failed). The Breaks page: the switch ("Midrolls on/off") and the sentence at the top; a
   show's line says "Approved automatically" with Withdraw and no Approve, and "withdrawn"
-  once withdrawn; such a show leaves Needs a click unless an episode of it is still listed;
+  once withdrawn; such a show leaves Needs a click, its odd episodes still on the list
+  inside it (DarkManX16, Nov 15, after the proof below kept 47 of 64 of them in Needs a click);
   the Approved filter counts them. The frames on the page are unchanged (a person asked).
 - **Tests, all but one seen failing first** ("...and it scans" once turned on, which is how the scanner already behaved): 15 new checks in `test/break-scan-service.js` (a new
   install and an old settings file read off and read nothing in ten minutes; on, off,

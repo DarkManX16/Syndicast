@@ -1275,8 +1275,8 @@ function makeRunner(opts, page) {
             if (!auto) {
                 throw new Check('no show is approved automatically on this copy');
             }
-            if (autoShows.some((s) => s.needsClick !== (s.toCheck > 0))) {
-                throw new Check('a show approved automatically is in Needs a click with nothing of it on the list to check');
+            if (autoShows.some((s) => s.needsClick)) {
+                throw new Check(`a show approved automatically is in Needs a click: ${autoShows.filter((s) => s.needsClick).map((s) => s.name).slice(0, 3).join(', ')}`);
             }
             await search(auto.name);
             if (!/Approved automatically/.test(await lineText(auto.name))) {

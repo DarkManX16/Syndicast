@@ -178,8 +178,11 @@ module.exports = async function() {
             (line.autoApproved === true) && (line.approved === false), JSON.stringify( { autoApproved: line.autoApproved, approved: line.approved } ));
         suite.check('...and leaves Needs a click', line.needsClick === false);
         const odd = page.lineCore('tv.Futurama', futurama(true), 'Futurama', 7);
-        suite.check('...unless an episode of it is still on the list to check',
-            (odd.autoApproved === true) && (odd.toCheck === 1) && (odd.needsClick === true), JSON.stringify( { autoApproved: odd.autoApproved, toCheck: odd.toCheck, needsClick: odd.needsClick } ));
+        suite.check('...even with an odd episode on its list to check (DarkManX16, Nov 15)',
+            (odd.autoApproved === true) && (odd.toCheck === 1) && (odd.needsClick === false), JSON.stringify( { autoApproved: odd.autoApproved, toCheck: odd.toCheck, needsClick: odd.needsClick } ));
+        const oddDetail = page.detail('tv.Futurama', futurama(true), 'Futurama', () => null, { total: 7 }, NOW);
+        suite.check('...the odd episode is still shown inside the show, on its list to check',
+            (oddDetail.toCheck.length === 1) && /e7/.test(oddDetail.toCheck[0].path) && (oddDetail.line.needsClick === false), JSON.stringify(oddDetail.toCheck.map( (e) => e.path )));
         patterns.withdraw(show, NOW);
         const taken = page.lineCore('tv.Futurama', show, 'Futurama', 6);
         suite.check('Withdraw on it: no longer automatic, withdrawn, and on offer for a click again',

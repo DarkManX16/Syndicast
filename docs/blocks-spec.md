@@ -1298,8 +1298,9 @@ The main way to approve is **one click per show**.
   *"Midrolls only play at approved breaks: Syndicast approves the shows it is
   sure of, and anything you approve or reject here overrides it."* A show
   approved this way reads "Approved automatically" where Approve would be, with
-  Withdraw beside it, and leaves Needs a click unless an episode of it is still
-  on its list.
+  Withdraw beside it, and leaves Needs a click; an odd episode of it (one
+  without the count) stays on the list to check inside the show (DarkManX16,
+  Nov 15).
 - **Measured on DarkManX16's store** (a copy of Nov 14, 8:18pm Central): 54 of
   429 scanned shows approved automatically, 620 episodes, 905 breaks. On the
   step 3 proof's frame-checked shows it approves no doubtful pick and one
@@ -1544,7 +1545,7 @@ never on the live data folder and never through the server on port 18000.
      are off" as its line, Paused by hand still winning when it is on; on the
      page, the switch and the one sentence at the top, "Approved automatically"
      with Withdraw on a show's line, and Needs a click without the shows this
-     approves (unless an episode of theirs is still listed). Tests for the
+     approves (an odd episode of theirs stays on the list inside the show). Tests for the
      settings file (an old file with no `midrolls` reads off), the scanner's
      mode, and the page's lines. **Proof:** a scratch server on a fresh copy,
      its scanner paused by hand: the page with the switch off, then on (the
