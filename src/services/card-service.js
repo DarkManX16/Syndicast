@@ -654,4 +654,7 @@ class CardService {
     }
 }
 
+// Whether a channel has any generated card step, in any situation, a midroll's included (5e).
+CardService.cardSteps = cardSteps;
+
 module.exports = CardService;

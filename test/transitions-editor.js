@@ -21,6 +21,8 @@
  */
 const { MIN, HOUR, at, flex, mix, Suite } = require('./support');
 const transitions = require('../src/transitions');
+// The situations the editor writes: an empty Midroll (5e) is left out until step 7 gives it a row.
+const WRITTEN = transitions.SITUATIONS.filter( (n) => n !== 'midroll' );
 const editor = require('../src/transitions-editor');
 const ChannelDB = require('../src/dao/channel-db');
 
@@ -488,7 +490,7 @@ module.exports = async function run() {
         const s = editor.addStep(d, 'betweenShows', 'out', Object.assign(editor.newStep(d), { listId: 'wbrb' }));
         editor.commit(bare, d, false);
         suite.check('committing one step writes all four situations',
-            same(Object.keys(bare.transitions), transitions.SITUATIONS) && bare.transitions.betweenShows.out.length === 1);
+            same(Object.keys(bare.transitions), WRITTEN) && bare.transitions.betweenShows.out.length === 1);
         editor.removeStep(d, 'betweenShows', s);
         editor.commit(bare, d, false);
         suite.check('adding a step and deleting it again leaves the context as it was', ! ('transitions' in bare));
@@ -887,7 +889,7 @@ module.exports = async function run() {
         const target = { name: 'Target', fillerCollections: [], starts: [] };
         const done = editor.copySituations(source, target, ['betweenShows']);
         suite.check('copying one row to a card with nothing says what it did', same(done, { copied: 2, replaced: 0, leftOut: 0 }));
-        suite.check('only the chosen row arrived', same(Object.keys(target.transitions), transitions.SITUATIONS)
+        suite.check('only the chosen row arrived', same(Object.keys(target.transitions), WRITTEN)
             && target.transitions.leaving.out.length === 0 && target.transitions.betweenShows.out.length === 1 && target.transitions.betweenShows.in.length === 1);
         const [ca, cb] = [target.transitions.betweenShows.out[0], target.transitions.betweenShows.in[0]];
         suite.check('the copies carry every setting', ca.listId === 'wbrb' && ca.chance === 40 && cb.listId === 'btts');

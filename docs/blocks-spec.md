@@ -1631,10 +1631,13 @@ never on the live data folder and never through the server on port 18000.
      with no failure, and `special-day` run ten times in a row.
    - **5e. The Midroll situation and the setting** (pure). `midroll` in each
      context's transitions, empty by default, normalized, validated and cleaned
-     at save like the other four, and its generated steps' cards rendered by the
-     card service; the `midrolls` setting with `count: null` its default, and
+     at save like the other four, and its generated card steps counted by the
+     card service (rendering them ahead needs a midroll's plan, so it is 5f's:
+     the card service walks the coming week's midroll plans as it walks breaks');
+     the `midrolls` setting with `count: null` its default, and
      save-time warnings for a bad one. The channel editor keeps its four
-     Transitions rows until step 7 builds the fifth. **Proof:** on a fresh copy,
+     Transitions rows until step 7 builds the fifth, and writes no empty midroll
+     until then, so a channel saved from it is what it was (built Nov 15). **Proof:** on a fresh copy,
      every saved channel loads, and saved again is byte-for-byte what it was;
      the suite and every editor workflow, the editor's Transitions section
      unchanged.
@@ -1643,8 +1646,9 @@ never on the live data folder and never through the server on port 18000.
      either end and 3 apart, the count (null: every one the budget pays for) and
      even spacing; the budget from the Flex after it less its end break's
      steps; equal shares and `minMs`; the steps through the stage 5 planner
-     keyed on the show on air; deterministic. The Family Guy table above as an
-     acceptance row. **Proof:** a script over a week of all three channels on a
+     keyed on the show on air; deterministic; and the card service rendering a
+     midroll's generated cards ahead from the coming week's plans (moved from
+     5e). The Family Guy table above as an acceptance row. **Proof:** a script over a week of all three channels on a
      fresh copy, the switch on and **no approvals by hand**: every planned
      midroll printed (show, episode, points, share), every show with one among
      those 5a approves, and every next program's start identical to the

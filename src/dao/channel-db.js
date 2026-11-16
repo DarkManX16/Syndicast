@@ -467,6 +467,30 @@ function warnAboutTransitions(json) {
 }
 
 /*
+ * The midroll setting of each day-part and block (stage 6, step 5e; docs/blocks-spec.md, "The
+ * Midroll situation"): warn-only, like transitions above. transitions.js's normalizeMidrolls
+ * reads a bad field as its default, so this only says so.
+ */
+function warnAboutMidrolls(json) {
+    const check = (kind, list) => {
+        if (! Array.isArray(list) ) {
+            return;
+        }
+        list.forEach( (context, i) => {
+            if (context == null) {
+                return;
+            }
+            const owner = `${kind} ${i}` + ( context.name ? ` ("${context.name}")` : '' );
+            for (const problem of transitions.midrollsProblems(context.midrolls)) {
+                console.error(`Channel ${json.number}: ${owner} ${problem}.`);
+            }
+        } );
+    };
+    check('day-part', json.dayParts);
+    check('block', json.blocks);
+}
+
+/*
  * Warned about at the same write boundary and for the same reason as
  * day-parts and blocks above: the one place every channel write passes
  * through, whatever wrote it. Warn-only, and it rewrites nothing - the
@@ -567,6 +591,7 @@ class ChannelDB {
         warnAboutBlocks(json);
         warnAboutSpecialDays(json);
         warnAboutTransitions(json);
+        warnAboutMidrolls(json);
         warnAboutMixDates(json);
         warnAboutAspect(json);
     }
