@@ -739,6 +739,15 @@ function sayRunsLong(found, now) {
     return text + '.';
 }
 
+// The Swap's sentences say each time to the nearest minute (DarkManX16, Nov 15, 2026): an
+// airing 46 ms before 10:20 after a break gave room reads "10:20pm", not "10:19pm".
+const nearestMinute = (t) => Math.round(t / MINUTE) * MINUTE;
+const roundedLate = (x) => Object.assign({}, x, { start: nearestMinute(x.start) },
+    (typeof(x.onTime) === 'number') ? { onTime: nearestMinute(x.onTime) } : {});
+const roundedRunLate = (late) => Object.assign({}, late,
+    { onTime: Object.assign({}, late.onTime, { start: nearestMinute(late.onTime.start) }) },
+    (late.first === null) ? {} : { first: Object.assign({}, late.first, { start: nearestMinute(late.first.start) }) });
+
 /*
  * The item for the airing at `index`, in place. The Flex after it takes the
  * difference; when the item is longer than the row and its Flex, `choice`
@@ -777,15 +786,16 @@ function swap({ lineup, index, item, choice, now, schedule }) {
         swapped.kept.edits.push(edit);
         pushed.push(row.program);
     }
-    let text = `${title(item)} replaces ${title(row.program)} at ${clockAm(row.start)}`;
+    let text = `${title(item)} replaces ${title(row.program)} at ${clockAm(nearestMinute(row.start))}`;
     let head = programs.slice(0, row.index).concat([ swapped ]);
     let moveAlong = (list, said, taken) => {
         let r = rippleOut({ lineup: { programs: list, startTime: lineup.startTime }, at: row.index, was: row.program, into: swapped, pushed, id, now, schedule });
         if (r.off.length > 0) {
             edit.off = (edit.off || []).concat(r.off);
         }
-        let waitSaid = sayWaited(r.waited);
-        let out = { programs: r.programs, text: text + sayLanded(r.landed) + '.' + said + sayRunsLong(r.late, now) + (waitSaid ? ' ' + waitSaid : ''), edit: id };
+        let waitSaid = sayWaited(r.waited.map( (w) => Object.assign({}, w, { at: nearestMinute(w.at) }) ));
+        let landed = r.landed.map( (x) => Object.assign({}, x, (x.start === null) ? {} : { start: nearestMinute(x.start) }) );
+        let out = { programs: r.programs, text: text + sayLanded(landed) + '.' + said + sayRunsLong(r.late.map(roundedLate), now) + (waitSaid ? ' ' + waitSaid : ''), edit: id };
         if (taken) {
             out.taken = taken;
         }
@@ -800,7 +810,7 @@ function swap({ lineup, index, item, choice, now, schedule }) {
         if (late === null) {
             return { refused: `${title(item)} is too long to catch up before the list ends.` };
         }
-        return moveAlong(head.concat(late.entries), ' ' + sayLate(overrun, late));
+        return moveAlong(head.concat(late.entries), ' ' + sayLate(overrun, roundedRunLate(late)));
     }
     let taken = [];
     let j = k + 1;
@@ -810,13 +820,13 @@ function swap({ lineup, index, item, choice, now, schedule }) {
             return { refused: `${title(item)} is too long for what is left of the list.` };
         }
         if (keepsItem(q.program)) {
-            return { refused: `${title(item)} would run into ${title(q.program)} at ${clockAm(q.start)}, which you placed there. Choose Run late instead.` };
+            return { refused: `${title(item)} would run into ${title(q.program)} at ${clockAm(nearestMinute(q.start))}, which you placed there. Choose Run late instead.` };
         }
         taken.push(q);
         room += blockOf(q);
     }
     let rest = (room - item.duration > 0) ? [ flex(room - item.duration) ] : [];
-    let names = taken.map( (q) => `${possessive(pins.showName(q.program))} ${clockAm(q.start)}` ).join(' and ');
+    let names = taken.map( (q) => `${possessive(pins.showName(q.program))} ${clockAm(nearestMinute(q.start))}` ).join(' and ');
     text += ` and takes ${names}`;
     // Each row taken comes back with Put back: its room, and its episode as the swap's.
     edit.took = (edit.took || []).concat(taken.map( (q) => {

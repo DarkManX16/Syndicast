@@ -336,7 +336,7 @@ module.exports = async function () {
                 return kept.keptKind(p) === 'shifted' && p.kept.edits[0].id === late.programs[i].kept.edits[0].id;
             } ) && ! late.programs.find( (x) => x.title === 'Aqua Teen Hunger Force 1' ).kept, '');
         suite.check('...and says so',
-            late.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am; Futurama 1 airs Fri Nov 6, 12:00am. Runs 14:09 long: Family Guy starts 12:44:09am, back on time at 1:30am.",
+            late.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am; Futurama 1 airs Fri Nov 6, 12:00am. Runs 14:09 long: Family Guy starts 12:44am, back on time at 1:30am.",
             late.text);
 
         const take = kept.swap({ lineup: base, index: i, item: special, choice: 'take', now: NOW });
@@ -852,6 +852,18 @@ module.exports = async function () {
         const wback = kept.putBack({ lineup: wl, index: atB(wl, 0), now: NOW, schedule: nightSched });
         suite.check('...and Put back gives that list back exactly too, JSON for JSON',
             wback.programs && JSON.stringify(wback.programs) === JSON.stringify(tight.programs), wback.text || wback.refused);
+
+        // The Swap's sentences round each time to the nearest minute (DarkManX16, Nov 15, 2026):
+        // B 3, swapped out of day 2, lands on day 3 at 10:19:40 after the break gives 20 s -
+        // "10:20pm", not "10:19pm"; and a swap of that row, at 10:19:40, "at 10:20pm".
+        const near = nights(20 * SEC);
+        const n1 = kept.swap({ lineup: near, index: atB(near, 2), item: bSpecial, now: NOW, schedule: nightSched });
+        const nl = lineOf(n1, near);
+        const n2 = kept.swap({ lineup: nl, index: indexAt(nl, nightOf(3, 22, 19, 40)), item: Object.assign({}, bSpecial, { title: 'B Special 2', key: '/e/bs2' }), now: NOW, schedule: nightSched });
+        suite.check('the Swap\'s sentences round times to the nearest minute: 10:19:40 reads 10:20pm',
+            n1.text === 'B Special replaces B 3 at 10:20pm; B 3 airs Sun Nov 1, 10:20pm.'
+                && /^B Special 2 replaces B 3 at 10:20pm; B 3 airs /.test(n2.text || ''),
+            JSON.stringify([ n1.text, n2.text ]));
     }
 
     suite.log('-- what the Time Slots dialog says, and clearing marks no edit of DarkManX16\'s made --');
