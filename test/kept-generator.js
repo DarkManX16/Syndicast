@@ -220,6 +220,19 @@ module.exports = async function () {
         suite.check('...and the same while the swap is on air',
             rowAt(onAir, thu(19)).title === 'A Longer' && rowAt(onAir, thu(19, 50)) && rowAt(onAir, thu(19, 50)).title === 'B S1E1',
             JSON.stringify(night(onAir, thu(19), thu(21))));
+
+        // Only where the list still shows it: where the list has Flex after the swap instead of
+        // B (an earlier Create Lineup's; DarkManX16's Nov 22 Pooh Corner swap and Dumbo's Circus),
+        // B's slot stays Flex to its end and C airs on its slot, as before.
+        const bAt = indexAt(list, thu(19, 50));
+        const flexed = { programs: list.programs.map( (p, i) => (i === bAt) ? { isOffline: true, duration: p.duration } : p ), startTime: list.startTime };
+        const kept2 = await createLineup(flexed, sched, NOON, long);
+        suite.check('...only where the list still shows that show there: a list with Flex after the swap keeps it',
+            rowAt(kept2, thu(19)).title === 'A Longer' && ! rowAt(kept2, thu(19, 50)) && rowAt(kept2, thu(20)).title === 'C S1E1',
+            JSON.stringify(night(kept2, thu(19), thu(21))));
+        const kept3 = await createLineup(flexed, sched, thu(19, 40), long);
+        suite.check('...and so while the swap is on air', rowAt(kept3, thu(19)).title === 'A Longer' && ! rowAt(kept3, thu(19, 50)) && rowAt(kept3, thu(20)).title === 'C S1E1',
+            JSON.stringify(night(kept3, thu(19), thu(21))));
     }
 
     suite.log('-- a removal --');
