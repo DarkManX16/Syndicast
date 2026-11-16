@@ -51,6 +51,7 @@
  * first-open dialog ever shows - it never should, on any channel, any more.
  */
 const fs = require('fs');
+const { customShowsWithMovies, movieIn } = require('./lib/custom-movie-show');
 
 function parseArgs(argv) {
     const out = { channel: 3, show: 'House of Mouse', headful: false, only: null };
@@ -1519,18 +1520,21 @@ function makeRunner(opts, page) {
             out.push(`${name}: These have no breaks (${marked} ticked), No breaks in this show (${d.episodes.length}), all taken back`);
 
             // 5. theatrical: a movie inside a custom show that was never scanned (First Kid, College Road Trip),
-            //    marked from the show's own Movies list and taken back; and a movie's own line
+            //    marked from the show's own Movies list and taken back; and a movie's own line.
+            //    The custom show is the first by name that has a movie it can use, not the first in the list,
+            //    which is in the order the shows next air and so changes with the time of day. And the page is
+            //    opened afresh: a click on the name of a show that is already open closes it, and step 3 may
+            //    have left this very show open (Sunday Disney Movies, Nov 15, 2026 at 8:20pm).
             let inShow = null;
-            for (const s of list.shows.filter((x) => x.kind === 'custom' && x.movieFiles > 0 && !x.theatrical).slice(0, 30)) {
-                const det = await detailOf(s.key);
-                const m = det.episodes.find((e) => e.movie && e.unscanned && !e.theatrical && /^[\x20-\x7e]+$/.test(e.name))
-                    || det.episodes.find((e) => e.movie && !e.theatrical && /^[\x20-\x7e]+$/.test(e.name));
+            for (const s of customShowsWithMovies(list.shows).slice(0, 30)) {
+                const m = movieIn(await detailOf(s.key));
                 if (m) {
                     inShow = { show: s, movie: m };
                     break;
                 }
             }
             if (inShow) {
+                await openPage();
                 const { show: cs, movie } = inShow;
                 await search(cs.name);
                 await click(await find('.bk-name a', cs.name, `${cs.name} in the list`), `${cs.name}'s name`);
@@ -1547,7 +1551,7 @@ function makeRunner(opts, page) {
                 }
                 await click((await (await moviesRow()).$$('button'))[0], `${movie.name}'s Not theatrical`);
                 d = await waitDetail(cs.key, (x) => x.episodes.find((e) => e.path === movie.path).theatrical === false, `${movie.name}'s Not theatrical`);
-                out.push(`${movie.name} (in ${cs.name}${movie.unscanned ? ', never scanned' : ''}): marked theatrical and back`);
+                out.push(`${movie.name} (in ${cs.name}${movie.unscanned ? ', never scanned' : ''}): marked theatrical and back; the custom show is the first by name with a movie to use, whatever airs next`);
             } else {
                 out.push('no movie inside a custom show to mark theatrical');
             }

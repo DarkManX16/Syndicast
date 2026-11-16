@@ -106,6 +106,7 @@ const suites = [
     './branding',
     './close-browser',
     './weaker-line-pick',
+    './custom-movie-pick',
 ];
 
 (async () => {
