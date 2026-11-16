@@ -336,7 +336,7 @@ module.exports = async function () {
                 return kept.keptKind(p) === 'shifted' && p.kept.edits[0].id === late.programs[i].kept.edits[0].id;
             } ) && ! late.programs.find( (x) => x.title === 'Aqua Teen Hunger Force 1' ).kept, '');
         suite.check('...and says so',
-            late.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am; Futurama 1 airs Fri Nov 6, 12:00am. Runs 14:09 long: Family Guy starts 12:44:09am, back on time at 1:30am.",
+            late.text === "'Twas the Fight Before Christmas replaces Futurama 1 at 12:00am; Futurama 1 airs Fri Nov 6, 12:00am. Runs 14:09 long: Family Guy starts 12:44am, back on time at 1:30am.",
             late.text);
 
         const take = kept.swap({ lineup: base, index: i, item: special, choice: 'take', now: NOW });
@@ -781,6 +781,89 @@ module.exports = async function () {
             JSON.stringify(starts(lineOf(r, base))) === JSON.stringify(starts(base))
                 && wa.length === wb.length - 1 && wa.slice(k0).every( (a, k) => a.slice(0, 21) === wb[k0 + k + 1].slice(0, 21) && a.slice(22) === wb[k0 + k].slice(22) ),
             JSON.stringify(wa.slice(k0, k0 + 6)));
+    }
+
+    suite.log('-- a swap never moves a kept row: the breaks before make room --');
+    {
+        // Channel 3's Sunday night (DarkManX16, Nov 15, 2026), every day: A at 9:30 runs 48
+        // minutes, so B starts late at 10:20 after a 2-minute break; C follows at 10:45. Day 3's C
+        // is DarkManX16's kept swap. A swap of day 0's B moves each B along a day, and B 3 is
+        // `extra` longer than day 3's B was: it lands right before the kept C.
+        const nightOf = (d, h, m, sec) => new Date(2026, 9, 29 + d, h, m || 0, sec || 0).getTime();
+        const nightSched = { period: DAY, lateness: DAY, pad: 5 * MIN, slots: [
+            { time: 21 * HOUR + 30 * MIN, showId: 'tv.A', order: 'next' }, { time: 22 * HOUR, showId: 'tv.B', order: 'next' },
+            { time: 22 * HOUR + 30 * MIN, showId: 'tv.C', order: 'next' }, { time: 23 * HOUR, showId: 'flex.', order: 'next' } ] };
+        const nights = (extra) => {
+            let programs = [];
+            let t = THU;
+            let add = (p) => { programs.push(p); t += p.duration; };
+            for (let d = 0; d < 10; d++) {
+                add(flex(nightOf(d, 21, 30) - t));
+                add(episode('A', d + 1, 48 * MIN));
+                add(flex(2 * MIN));
+                add(episode('B', d + 1, 25 * MIN + ( (d === 2) ? extra : 0 )));
+                let c = episode('C', d + 1, 25 * MIN);
+                if (d === 3) {
+                    c = Object.assign(c, { title: 'C Special', kept: { edits: [ { id: 'eC', kind: 'swap', was: 'C 4', show: 'tv.C', made: 'x' } ] } });
+                }
+                add(c);
+            }
+            add(flex(nightOf(10, 0) - t));
+            return { programs, startTime: THU };
+        };
+        const bSpecial = { type: 'episode', showTitle: 'B', title: 'B Special', season: 0, episode: 9, duration: 25 * MIN, serverKey: 'srv', key: '/e/bs' };
+        const keptC = (l) => {
+            let i = l.programs.findIndex( (p) => p.title === 'C Special' );
+            return { start: starts(l)[i], json: JSON.stringify(l.programs[i]) };
+        };
+        const atB = (l, d) => indexAt(l, nightOf(d, 22, 20));
+
+        // B 3, on day 2, is 30 s longer than the others: moved to day 3, the 2-minute break
+        // before B gives the 30 s, and B 3 ends right on the kept C.
+        const base = nights(30 * SEC);
+        const r = kept.swap({ lineup: base, index: atB(base, 0), item: bSpecial, now: NOW, schedule: nightSched });
+        const l = lineOf(r, base);
+        suite.check('a longer episode moved along toward a kept row: the break before it gives the time, the kept row byte for byte as it was',
+            JSON.stringify(keptC(l)) === JSON.stringify(keptC(base))
+                && rowAt(l, nightOf(3, 22, 19, 30)) && rowAt(l, nightOf(3, 22, 19, 30)).title === 'B 3' && rowAt(l, nightOf(3, 22, 45)).title === 'C Special',
+            JSON.stringify(airs(l).filter( (a) => a.startsWith('Sun Nov 01') )));
+        suite.check('...nothing runs late, and the sentence says only where the episode airs',
+            r.text === 'B Special replaces B 1 at 10:20pm; B 1 airs Fri Oct 30, 10:20pm.', r.text);
+        const back = kept.putBack({ lineup: l, index: atB(l, 0), now: NOW, schedule: nightSched });
+        suite.check('...and Put back gives the list back exactly, JSON for JSON',
+            back.programs && JSON.stringify(back.programs) === JSON.stringify(base.programs), back.text || back.refused);
+
+        // B 3 90 s longer: the 2-minute break gives only 60 s, and A starts on its slot's
+        // time, so there is no room. B 3 waits for B's next slot: that night's B row is Flex
+        // to the kept C, B 3 airs the next night, and day 3's own B 4 the night after.
+        const tight = nights(90 * SEC);
+        const w = kept.swap({ lineup: tight, index: atB(tight, 0), item: bSpecial, now: NOW, schedule: nightSched });
+        const wl = lineOf(w, tight);
+        const flexAt = wl.programs[starts(wl).findIndex( (t, i) => (t === nightOf(3, 22, 20)) )];
+        suite.check('with no room before the kept row, the episode waits for its show\'s next slot: the row is Flex to the kept row, which is byte for byte as it was',
+            JSON.stringify(keptC(wl)) === JSON.stringify(keptC(tight))
+                && flexAt && flexAt.isOffline && (flexAt.duration === 25 * MIN) && kept.isKept(flexAt)
+                && rowAt(wl, nightOf(4, 22, 20)).title === 'B 3' && rowAt(wl, nightOf(5, 22, 20)).title === 'B 4',
+            JSON.stringify(airs(wl).filter( (a) => /^(Sun Nov 01|Mon Nov 02|Tue Nov 03) 2026 22:[24]/.test(a) )));
+        // (On Monday B 3 runs long with no kept row after it, so it runs late as before, and says so.)
+        suite.check('...in one sentence',
+            w.text === 'B Special replaces B 1 at 10:20pm; B 1 airs Fri Oct 30, 10:20pm. B 3 runs 1:30 long at Mon Nov 2, 10:20pm, back on time at Tue Nov 3, 9:30pm. "B 3" (B) airs at its show\'s next slot instead: no room before your swap at Sun Nov 1, 10:45pm.',
+            w.text);
+        const wback = kept.putBack({ lineup: wl, index: atB(wl, 0), now: NOW, schedule: nightSched });
+        suite.check('...and Put back gives that list back exactly too, JSON for JSON',
+            wback.programs && JSON.stringify(wback.programs) === JSON.stringify(tight.programs), wback.text || wback.refused);
+
+        // The Swap's sentences round each time to the nearest minute (DarkManX16, Nov 15, 2026):
+        // B 3, swapped out of day 2, lands on day 3 at 10:19:40 after the break gives 20 s -
+        // "10:20pm", not "10:19pm"; and a swap of that row, at 10:19:40, "at 10:20pm".
+        const near = nights(20 * SEC);
+        const n1 = kept.swap({ lineup: near, index: atB(near, 2), item: bSpecial, now: NOW, schedule: nightSched });
+        const nl = lineOf(n1, near);
+        const n2 = kept.swap({ lineup: nl, index: indexAt(nl, nightOf(3, 22, 19, 40)), item: Object.assign({}, bSpecial, { title: 'B Special 2', key: '/e/bs2' }), now: NOW, schedule: nightSched });
+        suite.check('the Swap\'s sentences round times to the nearest minute: 10:19:40 reads 10:20pm',
+            n1.text === 'B Special replaces B 3 at 10:20pm; B 3 airs Sun Nov 1, 10:20pm.'
+                && /^B Special 2 replaces B 3 at 10:20pm; B 3 airs /.test(n2.text || ''),
+            JSON.stringify([ n1.text, n2.text ]));
     }
 
     suite.log('-- what the Time Slots dialog says, and clearing marks no edit of DarkManX16\'s made --');
