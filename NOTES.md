@@ -6290,6 +6290,14 @@ of Welcome to Pooh Corner, Holiday For Pooh Bear, Sun Nov 22 at 10:44:50.676pm.
     18339, all 12 run on each). The fix's copy was taken 8:23pm.
   - The failure comes from tonight's data: the checklist picked Sunday Disney Movies for
     the first time after 5:47pm, when all 12 had passed.
+  - **On the combined result.** `blocks` had moved to 98d2925 (5e merged), so it was merged
+    into the branch (75b605f, clean). Suite 3,702/3,702. All 12 workflows passed on a copy
+    taken 8:33pm (port 18340), `breaks-page` included.
+  - In that run `create-lineup` swapped exactly tonight's 9:35pm Jim Henson Hour (Outer
+    Space for Monster Maker). After Create Lineup and Update Channel, the saved channel 3
+    has Fraggle Rock at 10:25pm and Pooh Corner at 10:49:50, as before the swap. Nov 22
+    keeps its Flex and Adventures in Wonderland at 11:30, and the Pooh Corner entry is the
+    same byte for byte.
 
 ### Special days
 
