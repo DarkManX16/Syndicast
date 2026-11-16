@@ -6344,7 +6344,14 @@ after blocks 64bdd03).
     shorter (76,688 ms).
   - Put back gives the whole list back JSON for JSON (37,392 entries).
   - With no swaps, Create Lineup on channels 1-3 is byte for byte `blocks`' own.
-- The Swap's sentence names that airing "10:19pm", since it starts 46 ms before 10:20.
+- **The Swap's sentences say times to the nearest minute** (DarkManX16's ask). That Fraggle
+  Rock read "10:19pm" when the time was cut to the minute; it now reads "airs Sun Nov 22,
+  10:20pm".
+  - Rounded: what the swap replaces, where each episode airs, a run-late's start and
+    back-on-time, a wait's time, and what Take takes. A Run late's "Family Guy starts
+    12:44:09am" now reads "12:44am".
+  - Other edits' sentences are as they were.
+  - Test, failing first: "the Swap's sentences round times to the nearest minute".
 
 ### Special days
 
