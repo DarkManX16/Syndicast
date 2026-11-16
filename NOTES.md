@@ -6233,12 +6233,63 @@ of Welcome to Pooh Corner, Holiday For Pooh Bear, Sun Nov 22 at 10:44:50.676pm.
     22 is the same as the table's: Fraggle Rock at 10:20:00 after breaks of 60 s, 60 s and
     2:33.9, and the Pooh Corner entry byte for byte the same at 1795409090676. The line
     under the list kept the swap's own text, so no sentence showed.
-- **Not changed, for DarkManX16 to decide.** Swapping tonight's Jim Henson Hour for a
-  7.7 s longer episode leaves tonight's 10:25 Fraggle Rock in the list. Create Lineup then
-  drops it (Pooh Corner moves up to 10:30). This is a different rule: the slot that starts
-  while a kept swap is still on is the swap's, Flex to its end ("take"). Unkept, the same
-  hour runs late and Fraggle Rock airs. Shortening breaks before a kept row can't reach
-  it, since the episode comes after the kept row.
+- **Followed up the same day** (below): swapping tonight's Jim Henson Hour for a 7.7 s
+  longer episode left tonight's 10:25 Fraggle Rock in the list, and Create Lineup dropped it.
+
+**A kept swap's next slot runs late where the list shows it, Nov 15, 2026** (branch
+`claude/gracious-leavitt-7f6307`, after blocks 0a9e2c1).
+
+- **The rule that dropped it.** Rule 3 with "take": a slot that starts while a kept row is
+  on air is the row's, Flex to its end. Every kept row is laid with take. A swap that fits
+  its room, though, leaves the airings after it as they were. Outer Space replaced Monster
+  Maker with 7.7 s to spare in its break, so the list kept Fraggle Rock at 10:25 running
+  late, as unswapped. Create Lineup then made Fraggle Rock's 10:00 slot Flex and moved Pooh
+  Corner up to 10:30.
+- **Measured first, then DarkManX16's decision.** Running late after every swap that took
+  no rows changed 87 airings on channel 3 with no swap at all.
+  - His own Nov 22 Pooh Corner swap runs past its 10:30 slot into Dumbo's Circus's 11:00
+    slot. When he made it on Nov 9 the list had Dumbo's Circus at 11:15 right after it
+    (the swap's `room` ends at 11:15:00).
+  - A later Create Lineup under the take rule left that slot Flex, and his list has shown
+    it so since.
+  - Bringing it back moved that night's Adventures in Wonderland, MMC and Kids
+    Incorporated 15-25 minutes later. Every later Dumbo's Circus was one episode earlier
+    for a year (50 airings), with a few 2027 knock-ons.
+  - DarkManX16: keep Nov 22 as the list shows it, and run late only where the list still
+    shows that show there.
+- **What shipped.**
+  - `keptRows.keptAhead` records, for each kept swap, the list's next airing after it:
+    `next`, its start and show. The editor and `progress-check` hand it on with a swap
+    that is on air.
+  - In the generator, a slot a kept swap runs into runs late after it, as unswapped, only
+    when that next airing is the slot's own show and starts inside the slot. Otherwise
+    the slot stays as the list has it.
+  - A swap made with Take (its edit records `took`), a slot a kept row covers whole, and
+    the old pins keep rule 3 as before.
+  - `test/kept-generator.js` has four new checks, all failing first: the next slot runs
+    late when the list shows it there, and so while the swap is on air; where the list has
+    Flex there it stays Flex, and so while the swap is on air.
+- **Proof.** Copies taken at 4:11pm (channel 3 the 12:28pm file) and at 8:15pm (channel 3
+  saved again at 6:12pm, only its day parts changed). `progress-check` Create Lineup ran
+  at 4:15pm and at 8:20pm, before tonight's 9:35pm.
+  - After the 9:35pm swap, tonight is Jim Henson Hour 9:35, Fraggle Rock "The Thirty-Minute
+    Work Week" 10:25, Pooh Corner 10:49:50, exactly as the list showed after the swap.
+    `blocks` gave Pooh Corner at 10:30 and no Fraggle Rock.
+  - Over the next three weeks Create Lineup gives all 1,079 airings of the list after the
+    swap; `blocks` changes 10. Nov 22 keeps its Flex after Pooh Corner and Adventures in
+    Wonderland at 11:30.
+  - With no swaps, channels 1-3 are byte for byte `blocks` 0a9e2c1's own output at both
+    moments.
+  - The Nov 22 Pooh Corner entry (`e1794223670064`) is byte for byte the same at
+    1795409090676 in every run.
+  - Suite 3,672/3,672.
+  - Workflows on the copy taken 8:15pm (port 18337): 11 of 12. `create-lineup` passed, and
+    the Pooh Corner entry was unchanged after the whole run.
+  - `breaks-page` failed: "Sunday Disney Movies's Movies list didn't show". `blocks`
+    0a9e2c1 fails it the same way on an identical copy taken 8:22pm (ports 18338 and
+    18339, all 12 run on each). The fix's copy was taken 8:23pm.
+  - The failure comes from tonight's data: the checklist picked Sunday Disney Movies for
+    the first time after 5:47pm, when all 12 had passed.
 
 ### Special days
 
