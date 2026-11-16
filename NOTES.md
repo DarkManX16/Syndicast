@@ -8273,7 +8273,7 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   the page (the Time Slots directive and template), not `index.js` or `src/` (the code fingerprint
   the editor's guard checks), so 18000 needs no restart: the next page load gets it.
 
-#### Step 5e: the Midroll situation and its setting (built Nov 15, not merged)
+#### Step 5e: the Midroll situation and its setting (built Nov 15; merged and pushed)
 
 - **What it is.** `'midroll'` is a fifth situation in `SITUATIONS` (transitions.js): read with the
   step defaults, counted by `hasSteps` and `stepListIds`, accepted and checked at save
@@ -8304,6 +8304,14 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   5d's merge above, its own task); in the channel editor, channel 3's first day-part's Transitions
   section open shows the same four rows, Leaving, Entering, Between episodes and Between shows,
   and the editor's own row list is those four ids. Nothing was saved from it.
+- **Merged Nov 15, after the kept-row fix** (blocks 0a9e2c1, "A late episode slid past a kept row";
+  DarkManX16 held 5e until it was in, so 5e merges with 12 of 12). blocks merged into the branch as
+  6496671, clean. On that combined result (a copy of 5:55pm Central, server 18280 from the
+  worktree, scanner paused by hand): every workflow **12/12** (`create-lineup` made the 9:05pm swap,
+  the one that put the Pooh row 5 minutes late before the fix), then `npm test` 3,698/3,698. The Nov
+  22 Pooh Corner swap entry on channel 3, read before and after the run: start 1795409090676 (Sun
+  Nov 22, 10:44:50pm), 1,679,179 ms, 2,495 bytes, sha1 ed96f9c07fc6 both times. 5e changes `src/`,
+  so 18000 needs a restart to run it.
 
 ### Random Slots' Create Lineup restarts the program on air
 
