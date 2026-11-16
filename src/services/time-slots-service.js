@@ -629,6 +629,14 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
      */
     const SLACK = constants.SLACK;
     let keptKindOf = keptRows.keptKind;
+    // A kept swap that took no rows (DarkManX16, Nov 15, 2026): a slot it runs into runs late after
+    // it, as it would unswapped, rather than being taken (rule 3) - but only where the list still
+    // shows that slot's show right after it (`next`, from keptRows.keptAhead); otherwise the slot
+    // stays as the list has it. A swap made with Take recorded the rows it took (`took`).
+    let listShowsAfter = (pin, slot, occEnd) => (typeof(pin.next) === 'object') && (pin.next !== null)
+        && (pin.next.show === slot.showId) && (pin.next.at >= pin.end - SLACK) && (pin.next.at < occEnd);
+    let runsOnAfter = (program) => ! program.pin && ! program.isOffline && (keptKindOf(program) === 'swap')
+        && ! program.kept.edits.some( (e) => Array.isArray(e.took) && (e.took.length > 0) );
     let pins = (Array.isArray(pinsIn) ? pinsIn : [])
         .filter( (x) => (x !== null) && (typeof(x) === 'object') && (typeof(x.at) === 'number')
             && (typeof(x.program) === 'object') && (x.program !== null) && (x.at + x.program.duration > ts) )
@@ -1169,7 +1177,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         }
         // `ownEnd`: where it would end from its own time - take covers no slot past it (pushedPast).
         lastPin = { start: start, end: t, then: ( ! pin.kept && (pin.then === 'late') ) ? 'late' : 'take',
-            kind: program.pin ? program.pin.kind : (keptKindOf(program) || undefined), ownEnd: pin.at + (t - start) };
+            kind: program.pin ? program.pin.kind : (keptKindOf(program) || undefined), ownEnd: pin.at + (t - start),
+            runsOn: runsOnAfter(program), next: pin.next };
         runningLate = false;
     };
 
@@ -1236,7 +1245,8 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
             ? { start: carry.start, end: t, then: (carriedPin.then === 'late') ? 'late' : 'take', kind: carriedPin.kind,
                 ownEnd: carriedPin.at + carry.program.duration }
             : ( (carriedKind !== null) && (carriedKind !== 'shifted') )
-                ? { start: carry.start, end: t, then: 'take', kind: carriedKind, ownEnd: t }
+                ? { start: carry.start, end: t, then: 'take', kind: carriedKind, ownEnd: t, runsOn: runsOnAfter(carry.program),
+                    next: carry.next || (pins.find( (x) => x.kept && (x.program === carry.program || Math.abs(x.at - carry.start) <= SLACK) ) || {}).next }
                 : { start: carry.start, end: t, then: 'carry' };
         // A pin the program on air is itself was carried, not placed again; nor a kept row.
         pins = pins.filter( (x) => ! ( x.program.pin && carry.program.pin && (x.program.pin.at === carry.program.pin.at) )
@@ -1382,7 +1392,10 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
         let pinInside = (nextPin < pins.length) && (pins[nextPin].at < occEnd);
         let ownSlot = (lastPin !== null) && (occStart <= lastPin.start + SLACK) && (lastPin.start < occEnd);
         // rule 3: a slot that began while the last pin was on
-        if ( (lastPin !== null) && (lastPin.then !== 'carry') && (occStart > lastPin.start + SLACK) && (occStart < lastPin.end - SLACK) ) {
+        // ...except a slot a kept swap only runs into, where the list still shows that slot's show
+        // right after it: it runs late after the swap, as unswapped (runsOnAfter)
+        if ( (lastPin !== null) && (lastPin.then !== 'carry') && (occStart > lastPin.start + SLACK) && (occStart < lastPin.end - SLACK)
+            && ! ( lastPin.runsOn && (occEnd > lastPin.end + SLACK) && listShowsAfter(lastPin, slot, occEnd) ) ) {
             if ( (occEnd <= lastPin.end + SLACK) || ( (lastPin.then === 'take') && (occStart < lastPin.ownEnd - SLACK) ) ) {
                 pushFlex( pinInside ? Math.max(0, pins[nextPin].at - t) : remaining );
                 continue;

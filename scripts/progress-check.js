@@ -369,7 +369,12 @@ async function main() {
         console.log(`pin: ${when(t)} ${program.title} (${Math.round(program.duration / 1000)}s), ${program.pin.then}`);
     } );
     if (total0 <= 0) pins = [];
-    if (carry && (carry.program.pin || keptRows.keptKind(carry.program))) pins = pins.filter( (x) => x.program !== carry.program );
+    if (carry && (carry.program.pin || keptRows.keptKind(carry.program))) {
+        // A swap on air keeps what the list airs after it (keptAhead's `next`), as the editor hands it.
+        let onAir = pins.find( (x) => x.program === carry.program );
+        if (onAir && onAir.next) carry = Object.assign( {}, carry, { next: onAir.next } );
+        pins = pins.filter( (x) => x.program !== carry.program );
+    }
     // Special days: the same run without them first, for --outside.
     let specials = (args.special || []).map( (f) => JSON.parse(fs.readFileSync(f, 'utf8')) );
     let base = null;

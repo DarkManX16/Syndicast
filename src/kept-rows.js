@@ -1683,24 +1683,34 @@ function keptAhead({ programs, startTime, now, neverAir }) {
     let lineup = { programs, startTime };
     let end = pins.loopEnd(lineup, now);
     let out = [];
-    rowsOf(lineup)
-        .filter( (r) => (r.start + r.program.duration > now) && (r.start < end) && ( (keptKind(r.program) !== null) || r.program.pin ) )
-        .forEach( (r) => {
-            let x = { at: r.start, program: r.program, kept: true };
-            let deleted = (typeof(neverAir) === 'function') && (keptKind(r.program) !== 'shifted') && ! r.program.isOffline
-                && (handPlaced(r.program) === null) && neverAir(r.program);
-            let key = ( (keptKind(r.program) === 'shifted') || deleted ) ? positionOf(r.program) : null;
-            if (key !== null) {
-                x.key = key;
-                if (deleted) {
-                    // With nothing of its position to air there, the generator lets it go.
-                    x.orNothing = true;
-                }
-            } else if (deleted) {
-                return;
+    let rows = rowsOf(lineup);
+    rows.forEach( (r, k) => {
+        if ( ! ( (r.start + r.program.duration > now) && (r.start < end) && ( (keptKind(r.program) !== null) || r.program.pin ) ) ) {
+            return;
+        }
+        let x = { at: r.start, program: r.program, kept: true };
+        // What the list airs right after a swap (DarkManX16, Nov 15, 2026): a slot the swap
+        // runs into runs late after it only where the list still shows that slot's show there.
+        if (keptKind(r.program) === 'swap') {
+            let n = rows.slice(k + 1).find( (q) => ! q.program.isOffline );
+            if (typeof(n) !== 'undefined') {
+                x.next = { at: n.start, show: showOf(n.program) };
             }
-            out.push(x);
-        } );
+        }
+        let deleted = (typeof(neverAir) === 'function') && (keptKind(r.program) !== 'shifted') && ! r.program.isOffline
+            && (handPlaced(r.program) === null) && neverAir(r.program);
+        let key = ( (keptKind(r.program) === 'shifted') || deleted ) ? positionOf(r.program) : null;
+        if (key !== null) {
+            x.key = key;
+            if (deleted) {
+                // With nothing of its position to air there, the generator lets it go.
+                x.orNothing = true;
+            }
+        } else if (deleted) {
+            return;
+        }
+        out.push(x);
+    } );
     return out;
 }
 

@@ -1355,6 +1355,11 @@ module.exports = function ($timeout, dizquetv, getShowData, seasonConstraints, c
                         neverAir: (p) => showCatalog.isNeverAir(listed, p) });
                 }
                 if ( (carry !== null) && (carry.program.pin || keptRows.keptKind(carry.program)) ) {
+                    //A swap on air keeps what the list airs after it (keptAhead's `next`) - Nov 15, 2026.
+                    let onAir = keep.find( (x) => x.program === carry.program );
+                    if ( (typeof(onAir) !== 'undefined') && (typeof(onAir.next) !== 'undefined') ) {
+                        carry = Object.assign( {}, carry, { next: onAir.next } );
+                    }
                     keep = keep.filter( (x) => x.program !== carry.program );
                 }
                 let res = await dizquetv.calculateTimeSlots(run.pool, scope.schedule, history, keep, carry, holidayItemsNow() );
