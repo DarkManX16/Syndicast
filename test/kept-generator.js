@@ -64,14 +64,15 @@ const listOf = (res) => ({ programs: res.programs, startTime: Date.parse(res.sta
 
 // Create Lineup as the editor runs it on `list` at `now`: places read from the list,
 // the program on air carried, the kept rows ahead handed to the generator.
-async function createLineup(list, schedule, now) {
+async function createLineup(list, schedule, now, pool) {
+    pool = pool || POOL;
     const s = JSON.parse(JSON.stringify(schedule));
     const carry = pinTools.carryAt({ programs: list.programs, startTime: list.startTime, now, schedule: s });
     s.progress = slotProgress.planProgress({ programs: list.programs, startTime: list.startTime, now,
         placesFrom: carry ? Math.max(now, carry.start + carry.program.duration) : undefined,
-        openedSchedule: s, schedule: s, pool: POOL, getShowData });
+        openedSchedule: s, schedule: s, pool: pool, getShowData });
     const keep = kept.keptAhead({ programs: list.programs, startTime: list.startTime, now });
-    return listOf(await generate(commonProgramTools.slotPool(list.programs).concat(POOL), s, now, keep, carry));
+    return listOf(await generate(commonProgramTools.slotPool(list.programs).concat(pool), s, now, keep, carry));
 }
 
 // Every program and kept row from..to, as "7:30:00 PM B S1E1 [swap]".
@@ -196,6 +197,29 @@ module.exports = async function () {
             suite.check(`${choice}: the night as the list has it`,
                 sameNight(made, list, ...DAYS), JSON.stringify(night(made, thu(19), thu(21))) + ' vs ' + JSON.stringify(night(list, thu(19), thu(21))));
         }
+    }
+
+    suite.log('-- a kept swap past its own slot --');
+    {
+        // A's 48 minutes run past 7:30, so B's slot runs late after it: B at 7:50, as unswapped.
+        // A swap of A's 7:00 airing for an episode 7.7 s longer fits A's room (its Flex
+        // shrinks), and the list keeps B at 7:50 - so Create Lineup does too, instead of
+        // making B's slot Flex. DarkManX16's Jim Henson Hour and 10:25 Fraggle Rock, Nov 15, 2026.
+        const long = seasonOf('A', 40).map( (p) => Object.assign({}, p, { duration: 48 * MIN }) )
+            .concat(seasonOf('B', 40).map( (p) => Object.assign({}, p, { duration: 25 * MIN }) ), seasonOf('C', 40), seasonOf('D', 40));
+        const plain = listOf(await generate(long, sched, NOON));
+        const r = kept.swap({ lineup: plain, index: indexAt(plain, thu(19)), item: item('A Longer', 48 * MIN + 7700, 'A'), now: NOON, schedule: sched });
+        const list = listOf({ programs: r.programs, startTime: new Date(plain.startTime).toISOString() });
+        const made = await createLineup(list, sched, NOON, long);
+        suite.check('a kept swap running past its slot: the next slot runs late after it, as the list has it',
+            rowAt(plain, thu(19, 50)).title === 'B S1E1' && ! r.choices && rowAt(list, thu(19, 50)).title === 'B S1E1'
+                && rowAt(made, thu(19)).title === 'A Longer' && rowAt(made, thu(19, 50)) && rowAt(made, thu(19, 50)).title === 'B S1E1'
+                && sameNight(made, list, ...DAYS),
+            JSON.stringify(night(made, thu(19), thu(21))) + ' vs ' + JSON.stringify(night(list, thu(19), thu(21))));
+        const onAir = await createLineup(list, sched, thu(19, 40), long);
+        suite.check('...and the same while the swap is on air',
+            rowAt(onAir, thu(19)).title === 'A Longer' && rowAt(onAir, thu(19, 50)) && rowAt(onAir, thu(19, 50)).title === 'B S1E1',
+            JSON.stringify(night(onAir, thu(19), thu(21))));
     }
 
     suite.log('-- a removal --');
