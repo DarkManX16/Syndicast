@@ -6299,6 +6299,53 @@ of Welcome to Pooh Corner, Holiday For Pooh Bear, Sun Nov 22 at 10:44:50.676pm.
     keeps its Flex and Adventures in Wonderland at 11:30, and the Pooh Corner entry is the
     same byte for byte.
 
+**A swap never moves a kept row, Nov 15, 2026** (branch `claude/gracious-leavitt-7f6307`,
+after blocks 64bdd03).
+
+- **Found by the checklist on 64bdd03 at 9pm.** `create-lineup` swapped tonight's 10:25pm
+  Fraggle Rock ("Beginnings" for "The Thirty-Minute Work Week"). The Swap moves the
+  replaced episode to the show's next airing. That put The Thirty-Minute Work Week
+  (1,490,722 ms) on Nov 22 at 10:20 in place of The Preachification of Convincing John
+  (1,490,676 ms).
+  - `layout` ran it 46 ms late into DarkManX16's kept Pooh Corner swap. The row moved to
+    10:44:50.722 and gained a `late` mark of 46 ms, growing its entry from 2,495 to 2,576
+    bytes.
+  - `blocks` 0a9e2c1 does the same, so it predates today's merges. Create Lineup only
+    kept what the list then showed.
+- **What shipped (`src/kept-rows.js`).**
+  - `roomBeforeKept`: an episode an edit moves along that is longer than its row's room,
+    and would run late into a kept row before a break absorbs it, takes the time from the
+    breaks before it instead. It takes the nearest break first, each down to 60 s. The
+    rows between start earlier, never before their slot's time or now. A kept, pinned or
+    special-day row, or another changed row, stops the search. These are the limits of
+    Create Lineup's `makeRoom`.
+  - `layout` marks each break that gave time, and the episode that took it, with its
+    `cut`, as run-late rows already are, so Put back restores them.
+  - With no room, the episode waits for its show's next slot. Its row becomes Flex to the
+    kept row, marked `wait` with its position, so it keeps its time and Create Lineup lays
+    it as a kept Flex. The row's own episode moves along behind the waiting one.
+  - Put back fills a waiting row again: `pullBack` with `waits`, and what fell off comes
+    back in the order it fell.
+  - The Swap's sentence ends with `sayWaited`'s line: '"B 3" (B) airs at its show's next
+    slot instead: no room before your swap at Sun Nov 1, 10:45pm.'
+  - A kept row never moves and never gains a `late` mark from a swap.
+- **Tests, failing first** (`test/kept-rows.js`, "a swap never moves a kept row"): a fixture
+  shaped like channel 3's Sunday night.
+  - 30 s longer: the break gives it, the kept row is byte for byte the same, nothing runs
+    late, and Put back is exact.
+  - 90 s longer: no room. The row is Flex to the kept row and the episode airs the next
+    night. One sentence says so, and Put back is exact.
+- **Proof on DarkManX16's 6:12pm channel 3,** Swap of tonight's 10:25pm Fraggle Rock at 9pm
+  through `progress-check`, with "The Lost Treasure of the Fraggles", which fits as
+  "Beginnings" did.
+  - `blocks` moves Pooh Corner 46 ms with a late mark.
+  - The fix leaves the entry byte for byte the same at 1795409090676, after the Swap and
+    after Create Lineup. Nov 22's Fraggle Rock starts at 10:19:59.954 after a break 46 ms
+    shorter (76,688 ms).
+  - Put back gives the whole list back JSON for JSON (37,392 entries).
+  - With no swaps, Create Lineup on channels 1-3 is byte for byte `blocks`' own.
+- The Swap's sentence names that airing "10:19pm", since it starts 46 ms before 10:20.
+
 ### Special days
 
 Designed Oct 28-29, 2026 (Opus 5.5) from DarkManX16's brief and agreed Oct 29, with
