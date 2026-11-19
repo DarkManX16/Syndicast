@@ -263,15 +263,15 @@ module.exports = async function run() {
             suite.check('...and goes on: WBRB, BTTS, part 3, Robot Chicken from its start',
                 JSON.stringify(names( { items: after } ).slice(1)) === JSON.stringify( [ 'WBRB', 'BTTS', 'Death Is a Bitch 948000+409000', 'Robot Chicken 0+660000' ] ), names( { items: after } ).join(', '));
 
-            // A hint from an item playing Family Guy whole (start 15:45, 18 s ahead of the clock),
+            // A hint 12 s old from an item playing Family Guy whole (15:40 then, 20 s ahead of the clock),
             // the clock now in part 2's last 16 s: the hint lies past the part, so the clock decides -
             // the part's own last 16 s, never a second beyond it. (A part's own hint cannot: the
             // channel cache drops a hint that would land past the end of its item.)
             const t1 = S + ms(45) + 1080000;   // the next airing's part 2, 16 s before it ends (file 15:32)
             channelCache.clear();
             channelCache.forgetFrozenLayouts();
-            channelCache.recordPlayback(freshStore(), 7, t1 - 5 * SEC, { type: 'program', title: FG.title, key: FG.key, serverKey: FG.serverKey,
-                start: 945000, streamDuration: FG.duration - 945000, duration: FG.duration, redirectChannels: [ { number: 7 } ] });
+            channelCache.recordPlayback(freshStore(), 7, t1 - 12 * SEC, { type: 'program', title: FG.title, key: FG.key, serverKey: FG.serverKey,
+                start: 940000, streamDuration: FG.duration - 940000, duration: FG.duration, redirectChannels: [ { number: 7 } ] });
             channelCache.saveChannelConfig(7, channel);
             fakeNow = t1;
             const before = played.length;
