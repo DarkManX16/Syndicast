@@ -524,10 +524,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
                 + ` instead of ${prog.timeElapsed}ms.`
             );
             // the cursor keeps to the lineup's own schedule, not the resumed position
-            // (a part's timeElapsed is a second of its file, and it carries its airing's start)
-            if (prog.part == null) {
-                prog.lineupStart = t0 + (prog.startsIn || 0) - prog.timeElapsed;
-            }
+            prog.lineupStart = t0 + (prog.startsIn || 0) - prog.timeElapsed;
             prog.timeElapsed = resumeAt;
             prog.startsIn = 0;
             // the bound pushed for this program above was measured from the

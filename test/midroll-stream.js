@@ -194,7 +194,19 @@ module.exports = async function run() {
         // ---- two viewers ------------------------------------------------------------------------
         {
             const A = { id: 'viewerA', at: S - 20 * SEC, items: [] };
-            const B = { id: 'viewerB', at: S + ms(6), items: [], first: true };
+            // A into midroll 1 until it has a commercial of 25 s or more on the air; B tunes in 12 s
+            // into it, past the replay cache's 10 s "reconnect" window, with 10 s still to go, so
+            // it joins that commercial partway (channel-cache.js, shared-breaks.js)
+            let onAir = null;
+            for (let until = S + 333000; onAir === null; ) {
+                until = A.at + 1;
+                await run( [ A ], until );
+                const last = A.items[A.items.length - 1];
+                if ( (last.type === 'commercial') && (last.at >= S + 333000) && (last.streamDuration >= 25 * SEC) ) {
+                    onAir = last;
+                }
+            }
+            const B = { id: 'viewerB', at: onAir.at + 12 * SEC, items: [], first: true };
             await run( [ A, B ], S + ms(30, 20) );
             suite.check('viewer A from 12:29:40: part 1, WBRB, BTTS, part 2, WBRB, BTTS, part 3, Robot Chicken from its start',
                 JSON.stringify(names(A)) === JSON.stringify( [ 'Death Is a Bitch 0+328000', 'WBRB', 'BTTS', 'Death Is a Bitch 328000+620000', 'WBRB', 'BTTS', 'Death Is a Bitch 948000+409000', 'Robot Chicken 0+660000' ] ),
@@ -203,14 +215,14 @@ module.exports = async function run() {
             suite.check('...Robot Chicken at 1:00:00, within today\'s 30 s early / 10 s late', (rc != null) && (rc.at >= S + ms(30) - 30 * SEC) && (rc.at <= S + ms(30) + SLACK),
                 rc ? `${(rc.at - S - ms(30)) / 1000}s` : 'never');
             const bFirst = B.items[0];
-            const aThen = A.items.filter( (i) => i.at <= S + ms(6) ).pop();
-            suite.check('viewer B tuning in at 12:36:00, in midroll 1: the commercial on the air, joined partway',
-                (bFirst != null) && (bFirst.type === 'commercial') && (aThen != null) && (bFirst.title === aThen.title) && (bFirst.start === aThen.start + (S + ms(6) - aThen.at)),
+            const aThen = onAir;
+            suite.check("viewer B tuning in during midroll 1: the commercial on the air, joined 12 s in",
+                (bFirst != null) && (bFirst.type === 'commercial') && (aThen.type === 'commercial') && (aThen.at > S + 328000) && (bFirst.title === aThen.title) && (bFirst.start === aThen.start + 12 * SEC),
                 `${describe(bFirst)} / A's ${describe(aThen)} at ${aThen ? aThen.at - S : ''}`);
             suite.check('...then the same as A: BTTS, part 2, WBRB, BTTS, part 3, Robot Chicken',
                 JSON.stringify(names(B)) === JSON.stringify(names(A).slice(2)), names(B).join(', '));
-            const m1a = commercialsIn(A, S + ms(6), S + 476000);
-            const m1b = commercialsIn(B, S + ms(6), S + 476000);
+            const m1a = commercialsIn(A, B.items[0].at, S + 476000);
+            const m1b = commercialsIn(B, B.items[0].at, S + 476000);
             const m2a = commercialsIn(A, S + 1096000, S + 1244000);
             const m2b = commercialsIn(B, S + 1096000, S + 1244000);
             suite.check('...and the same commercials in both midrolls', (m1a.length > 0) && (JSON.stringify(m1a) === JSON.stringify(m1b)) && (m2a.length > 0) && (JSON.stringify(m2a) === JSON.stringify(m2b)),
@@ -274,9 +286,28 @@ module.exports = async function run() {
             switchOn = true;
         }
 
+        // ---- the switch turned on during an airing that started without midrolls ---------------------
+        {
+            const S = S1 + ms(225);
+            channelCache.clear();
+            channelCache.forgetFrozenLayouts();
+            switchOn = false;
+            const A = { id: 'offFirst', at: S - 5 * SEC, items: [] };
+            await run( [ A ], S + ms(1) );
+            switchOn = true;
+            const B = { id: 'onLater', at: S + ms(10), items: [], first: true };
+            channelCache.clearPlayback(7);   // B by the clock, not A's replay cache
+            await run( [ B ], S + ms(10) + 1 );
+            const a = A.items.find( (i) => i.title === FG.title );
+            const b = B.items[0];
+            suite.check('switch off when Family Guy starts, then on: a viewer tuning in 10 minutes in gets it whole, as the first viewer has it',
+                (a != null) && (a.streamDuration === FG.duration) && (b != null) && (b.type === 'program') && (b.start === ms(10)) && (b.part == null),
+                `${describe(a)} / ${describe(b)}`);
+        }
+
         // ---- /m3u8: no stream id, every item by the clock, two airings on ----------------------------------
         {
-            const S = S1 + ms(180);
+            const S = S1 + ms(270);
             channelCache.clear();
             channelCache.forgetFrozenLayouts();
             const M = { id: null, at: S - 5 * SEC, items: [] };
