@@ -8498,6 +8498,10 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   Lineup (`progress-check --save`, channels 1-3 at Nov 19 1:30am) with the switch off and on: the
   same file each (615675ceaa02, 02a67efea358, c39e41dd7c06). The Nov 22 Pooh Corner entry is no
   longer in channel 3's lineup, so it was not checked; every kept row is among the 2,269.
+- **Suite and workflows** (2dccebc; blocks still 752e300): `npm test` 3,792/3,792; a second copy
+  of 1:30am, server 18431 from the worktree, scanner paused by hand (and off, the copy's switch
+  off): every workflow **12/12**. Channel 3's editor opened by hand afterwards, its list as before,
+  no console errors.
 - **Gotcha:** a mutation check's `git checkout` threw away the uncommitted reader (the trap in
   "Preview driving quirks"); the proof script caught it (`pointsFor is not a function`). Commit
   before mutating.
