@@ -262,6 +262,21 @@ module.exports = async function run() {
                 describe(first));
             suite.check('...and goes on: WBRB, BTTS, part 3, Robot Chicken from its start',
                 JSON.stringify(names( { items: after } ).slice(1)) === JSON.stringify( [ 'WBRB', 'BTTS', 'Death Is a Bitch 948000+409000', 'Robot Chicken 0+660000' ] ), names( { items: after } ).join(', '));
+
+            // A stream 13 s ahead of the layout, saved 16 s before part 2 ends: its hint is past
+            // the part, so the clock decides - the part's own last 16 s, not a second beyond it.
+            const t1 = S + ms(45) + 1080000;   // the next airing's part 2, 16 s before it ends (file 15:32)
+            channelCache.clear();
+            channelCache.forgetFrozenLayouts();
+            channelCache.recordPlayback(freshStore(), 7, t1 - 5 * SEC, { type: 'program', title: FG.title, key: FG.key, serverKey: FG.serverKey,
+                start: 940000, streamDuration: 8000, duration: FG.duration, redirectChannels: [ { number: 7 } ], part: { k: 1, of: 3 } });
+            channelCache.saveChannelConfig(7, channel);
+            fakeNow = t1;
+            const before = played.length;
+            await get(port, `/stream?channel=7&session=${session++}&stream=hinted`);
+            const back = played[before];
+            suite.check('a save\'s resume hint past the end of the part is not used: the clock\'s second of part 2, to its end',
+                (back != null) && (back.start === 932000) && (back.streamDuration === 16000), describe(back));
         }
 
         // ---- the switch turned off during the airing, the one after ---------------------------------------
