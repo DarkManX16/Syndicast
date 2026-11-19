@@ -8508,6 +8508,94 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
 - **For DarkManX16:** the live `break-scanner.json` already has `midrolls: true`, so once step 6
   is merged and 18000 restarts, midrolls play at once.
 
+#### Step 6 build record: playing midrolls (built Nov 19, branch `claude/midroll-play`)
+
+- **DarkManX16's answers, Nov 19:** merge step 6 when it passes, but 18000's restart waits for step 7,
+  so midrolls with no steps (no channel has a midroll step yet) never air live; part 1 keeps the 30 s
+  rewind; the layout is frozen even with the switch off; keyframes are found at play time.
+- **What it is.** `src/midroll-cursor.js` wraps `lineup-cursor.js`: a program whose layout has
+  midrolls plays as parts (the program's item with a start and a stop, `part` on the entry), and
+  after part k midroll k's out steps, commercials up to where its in steps begin (from the clock),
+  its in steps, then part k+1 from where part k stopped; after the last part, the end break at the
+  Flex run's own place in the lineup (`lineupCursor.afterEntry`, split out of `nextEntry`
+  unchanged). Anything else is `lineup-cursor.js`'s answer, the same object. The clock path finds
+  the airing (the program on air, or the one before the Flex the clock is in) and lands where its
+  layout says. A midroll's steps are built once per channel (`context()`, channel-cache's plans);
+  its commercials share a list keyed by the program and the midroll's start (`shared-breaks.js`);
+  its mix is the program's own context (`dayParts.resolveMidrollCollections`). `video.js` gets
+  the break scan service from `index.js`, asks every decision through the wrapper (switch off
+  included: a program's start freezes its layout, "none" with the switch off), and logs "Midroll
+  layout", "Midroll plan", "! Part" and "! Stream". `src/part-cuts.js` and `ffmpeg.js`: a copied
+  part's start and stop move to keyframes (the black's first, else the one before the point),
+  only once `spawn` knows the video is copied; the black travels from `pointsFor` through the
+  layout to the item.
+- **Beyond DarkManX16's answers, for his OK:** a later part's first 10 s (SLACK) play from its start.
+  Without it, `/m3u8` (no cursor) lost up to 10 s of the episode after every midroll: the in step
+  it played from its start ends that late, and the next request lands inside the part (the router
+  test found it, part 3 from 15:52 instead of 15:48). Viewers tuning in stay within the 10 s shared
+  commercials already allow. Taking it out is one line in `createLineup`.
+- **Tests, each rule broken on purpose and caught** (`scratchpad/mutate.js` over committed code):
+  `test/midroll-cursor.js` 20 checks (the spec's Family Guy table tuned into at every second from
+  12:29:30 to 1:00:30 and a millisecond either side of each boundary, 1,921 tune-ins, against a hand
+  oracle, each part's time left exact; a viewer with and without jitter, 51 tune-in moments; the
+  switch off giving exactly `lineup-cursor.js`'s answers over 464 decisions; frozen with the switch
+  off then on, on then off, a restart; two in steps; the program's own mix);
+  `test/midroll-stream.js` 16 checks through the real router (two viewers sharing steps and
+  commercials, B joining by the replay cache; a save mid-part; a resume hint past its part; the
+  switch off mid-airing and on mid-airing; `/m3u8`); `test/part-cuts.js` 16 checks (the keyframe
+  rule, `spawn`'s `-ss` and `-t` moved only for copied video). Mutations that got through at first
+  and the checks added for them: a part's time left too large (now checked exactly), the in-step
+  window with one in step (two in steps added), the resume guard (a whole-program hint), the black's
+  keyframe equal to the one before the point (one after the point added). One check was flaky as
+  first written: a tune-in joins the commercial on the air only with 10 s of it left, and within
+  10 s of an item the replay cache hands back the item unchanged; B now tunes in 12 s into a
+  commercial of 25 s or more.
+- **Proof on a fresh copy** (`copy-a`, taken Nov 19 5:27:54am Central; `node scripts/midroll-week.js
+  --play`, 14 days from 5:30am): A = B as in 5f (2,269 rows, sha1 187f7e186c33; 190 airings with
+  277 midrolls); `--frozen` every row where the lineup has it, every layout held a minute in;
+  `--clock` 2,266 rows tuned into at their start, every one from 0:00, and 11 s before each never a
+  part or midroll; `--sweep` 342,000 tune-ins, one a second through all 190 airings, every part on
+  the layout's second of the file and every midroll and end break where the layout has it, and
+  against a viewer following its cursor from 10 minutes before, the same part or midroll every one
+  of 319,778 seconds away from the boundaries, parts within 11 s in the file, 0 fallbacks (the
+  fast clock agreed with `getCurrentProgramAndTimeElapsed` at 1,200 of 1,200 instants);
+  `--viewer` (each item its length plus 0.42 s, 0.1-0.8 s, 2% of them 2-5.5 s more): off -9.9 s to
+  +34.9 s against the lineup, on -9.9 s to +34.4 s, off again -9.7 s to +31.3 s, none more than 30 s
+  early in any run, 9-10 rows more than 16 s late in every run (today's); **on against off row by
+  row: largest early difference -19.3 s, largest late +23.1 s, against off against off again's
+  -19.3 s and +24.4 s** (commercials are picked at random); the 186 rows after an airing with
+  midrolls started -8.9 s to +13.4 s. Channel files unchanged.
+- **Copied video, on a real file** (All Dogs Go to Heaven S1E6, H.264, its 7:54.0 point, black
+  7:52.64-7:55.40; `ffmpeg.js` with video copying on, no server): keyframes 7:52.60 (just before the
+  black) and 7:55.27 (inside it); the part played from 7:55.27, its first packet a keyframe, its end
+  where it was asked.
+- **Watched on a scratch server** (`copy-b`, taken 5:36:59am; server 18461 from the worktree,
+  scanner paused by hand, E: skipped; a channel 900 of three D: episodes with midrolls approved
+  automatically - All Dogs Go to Heaven S1E6, The Ultimate Book of Spells S1E8, Rupert S4E9 - and
+  the Bounce WBRB and BTTS as its midroll steps; two `/video` viewers recorded by ffmpeg; 18000's
+  paces read every 2 s). Set up so as not to touch 18000: **the GPU (RTX 3060) already had 7 NVENC
+  sessions** from 18000 and the other server, so the copy encoded with `mpeg2video` at 640x360 on
+  the CPU; and since a card's key carries the encoder and size, channels 1-3 were set aside on the
+  copy (no card re-renders reading the drives). The server's "Midroll layout" matched the layout
+  worked out offline. Part 1 started 0.02 s early; midroll 1 was commercials only - both Bounce
+  steps match the show and name other shows (Kim Possible, The Weekenders...), so they found
+  nothing, as in a break; viewer B tuned in at 5:51:34 and joined A's commercial at the same second
+  (10.64 s in), played the same ones, and both started part 2 within 0.07 s of each other; the last
+  commercial ran 7.4 s past the midroll (a clip may run SLACK over, as in a break), so part 2 started
+  7.4 s late, for midroll 2 and the end break to absorb. Frames: 1.5 s into part 2 the recording
+  shows the source's own frame at 7:55.5 (the fade-in); before the midroll, black.
+- **Stopped by the guard, twice, on 18000's own swings.** 6:00:21: channel 1's item on G: ("Bride of
+  the Pastmaster", two viewers) read 0.9842, every stream stopped. A second watch of short windows
+  stopped at 6:07:21 the moment its first stream connected; over the 10 s that reading covers,
+  nothing of mine ran. With nothing of mine running, that item read below 0.99 in 23 of 147
+  readings (16%, down to 0.9778), swinging 0.98-1.009; channels 2 and 3 never below 0.996. So
+  steps inside a midroll, the end of an airing and the tune-ins later in an airing were not
+  watched live; the router test and `--sweep`/`--viewer` cover them.
+- **Suite and workflows on the branch** (blocks still e3295bc, so the branch is the combined
+  result): `npm test` 3,844/3,844; every workflow **12/12** (`copy-d`, taken 6:09:48am, server
+  18463 from the worktree, scanner paused by hand). 18000's channel 1 read below 0.99 in 16% of
+  readings during them, as when idle.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time
