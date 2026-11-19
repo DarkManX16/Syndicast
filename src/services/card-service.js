@@ -5,6 +5,7 @@ const childProcess = require('child_process');
 const request = require('request');
 const Plex = require('../plex');
 const transitions = require('../transitions');
+const midrollPlan = require('../midroll-plan');
 const cards = require('../card-templates');
 const cardMoment = require('../card-moment');
 const cardRender = require('../card-render');
@@ -22,7 +23,9 @@ const cardRender = require('../card-render');
  *            from env.card exactly which cards would play (a real clip that
  *            wins means no card is wanted), then render the ones not on disk.
  *            Runs a minute after start, every half hour, and soon after a
- *            channel is saved.
+ *            channel is saved. With the Midrolls switch on, the coming week's
+ *            midrolls too (midroll-plan.js), through the scan service's points
+ *            (options.midrolls()).
  *   render   one at a time, at low priority: the movie's file (or, failing
  *            that, the file through Plex), measured once for a lively moment
  *            unless one was chosen by hand; Plex's poster, art and logo for the
@@ -190,6 +193,12 @@ class CardService {
         return { key, template: t, format, when, movieKey, chosen, title: want.program.title || '' };
     }
 
+    // A card template's length in ms, or null: what a midroll's layout keeps for a card step.
+    cardMsOf(templateId) {
+        const template = this.templateDB.template(templateId);
+        return (template === null) ? null : Math.round(cards.totalSeconds(template) * 1000);
+    }
+
     // The card for this want if it is on disk, else null. Synchronous, for buildPlan's env.card.
     cardFor(want, channel) {
         const d = this.describe(want, channel);
@@ -257,6 +266,15 @@ class CardService {
             };
             for (const brk of transitions.breaksBetween(channel, now, now + LOOKAHEAD_MS)) {
                 transitions.buildPlan(channel, brk, env);
+            }
+            const reader = (typeof(this.options.midrolls) === 'function') ? this.options.midrolls() : null;
+            if ( (reader != null) && reader.midrollsOn() ) {
+                const menv = Object.assign( {}, env, { on: true, pointsFor: (p) => reader.pointsFor(p), cardMs: (id) => this.cardMsOf(id) } );
+                for (const airing of midrollPlan.midrollsBetween(channel, now, now + LOOKAHEAD_MS, menv)) {
+                    for (let k = 0; k < airing.layout.midrolls.length; k++) {
+                        midrollPlan.buildMidrollPlan(channel, airing.layout, k, menv);
+                    }
+                }
             }
         }
         const list = Array.from(wants.values()).sort( (a, b) => a.want.breakStart - b.want.breakStart );

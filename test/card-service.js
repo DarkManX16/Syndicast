@@ -310,6 +310,28 @@ module.exports = async () => {
             }
             suite.check('... and saving over it is refused rather than losing what is in it', refused);
         }
+        {
+            // a midroll's card (5f): wanted a week ahead from the coming midroll layouts
+            const s = await setup({});
+            cleanups.push(s.folder);
+            const beta = s.channel.programs[2];
+            beta.file = path.join(s.folder, 'beta.mkv');
+            s.channel.dayParts[0].transitions = { midroll: { out: [ { id: 'mcard', kind: 'generated', templateId: 'tpl_ct', keyedOn: 'next' } ], in: [] } };
+            const switchOn = { on: true };
+            s.service.options.midrolls = () => ({
+                midrollsOn: () => switchOn.on,
+                pointsFor: (p) => (p === beta) ? { durationMs: beta.duration, points: [ { index: 0, at: 600, kind: 'act', by: 'auto', strength: 0.9 } ] } : null,
+            });
+            await s.service.scanOnce();
+            const betaStart = MON + 65 * MIN;
+            const mine = (s.service.lastWants || []).filter( (w) => w.want.stepId === 'mcard' );
+            suite.check('a midroll\'s card is wanted a week ahead: Beta\'s, for its midroll 10 minutes in',
+                (mine.length === 1) && (mine[0].want.program === beta) && (mine[0].want.airStart === betaStart) && (mine[0].want.breakStart === betaStart + 10 * MIN),
+                JSON.stringify(mine.map( (w) => ({ p: w.want.program.title, a: w.want.airStart - MON, b: w.want.breakStart - MON }) )));
+            switchOn.on = false;
+            await s.service.scanOnce();
+            suite.check('...and not with the Midrolls switch off', ! (s.service.lastWants || []).some( (w) => w.want.stepId === 'mcard' ));
+        }
     } finally {
         for (const f of cleanups) {
             fs.rmSync(f, { recursive: true, force: true });
