@@ -1483,13 +1483,17 @@ As built in step 6 (Nov 19, `src/midroll-cursor.js`, wrapping `lineup-cursor.js`
 - **Every viewer the same.** A midroll's steps are chosen once per channel and
   kept as a break's are; its commercials have a list of their own, shared as a
   break's are (a viewer more than 10 s behind the one who picked a commercial
-  picks its own for the rest, as in a break).
+  picks its own for the rest, as in a break). Unlike a break, a tune-in into a
+  midroll's commercials never takes a clip of its own partway: it joins the one
+  on the air, or with none makes the next shared pick from its start (Nov 19,
+  after the scratch watch showed a tune-in and the viewer watching with
+  different commercials).
 - **Tuning in by the clock** lands where the layout says, even when the lineup
   already says Flex (the parts run on into it): in a part, at the second of the
-  file the clock is at; in a midroll, its commercials, or within its in steps
-  plus 10 s the in step on the air from its start (its out steps are in the
-  past, as in a break); in a part's last 10 s, what follows it, as the clock
-  hands a program over; in the end break, as today.
+  file the clock is at; in a midroll, within its out steps the out step on the
+  air from its start (Nov 19), then its commercials, or within its in steps
+  plus 10 s the in step on the air from its start; in a part's last 10 s, what
+  follows it, as the clock hands a program over; in the end break, as today.
 - **Rewinds.** Part 1 keeps a program's 30-second rule. A later part starts at
   the exact second, except in its first 10 s, which play from its start: a
   stream with no cursor (`/m3u8`) reaches it up to that late after an in step
@@ -1737,6 +1741,12 @@ never on the live data folder and never through the server on port 18000.
    carrying it, the preview on this week's lineup listing midrolls, and a tag
    on program rows ("2 midrolls"). **Proof:** by hand on the copy, with
    screenshots.
+   **Also (DarkManX16, Nov 19):** a midroll step that must name the show and
+   finds no clip naming it leaves the midroll with no steps (step 6's scratch
+   watch: both Bounce steps found nothing for All Dogs Go to Heaven). Step 7
+   makes such a step fall back to any clip in its own list. (`match: 'any'`
+   does not: it takes a clip naming nothing or naming the show. A list marked
+   "clips feature shows" already does, for every step drawing from it.)
 8. **End to end.** A new install's path first: a fresh data folder, the switch
    turned on, the scanner finding breaks, and the shows it is confident in
    getting midrolls with no click. Then DarkManX16 approves real shows on a copy; a day of a channel walked

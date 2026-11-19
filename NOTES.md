@@ -8529,7 +8529,7 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   part's start and stop move to keyframes (the black's first, else the one before the point),
   only once `spawn` knows the video is copied; the black travels from `pointsFor` through the
   layout to the item.
-- **Beyond DarkManX16's answers, for his OK:** a later part's first 10 s (SLACK) play from its start.
+- **Beyond DarkManX16's answers, OK'd by him Nov 19:** a later part's first 10 s (SLACK) play from its start.
   Without it, `/m3u8` (no cursor) lost up to 10 s of the episode after every midroll: the in step
   it played from its start ends that late, and the next request lands inside the part (the router
   test found it, part 3 from 15:52 instead of 15:48). Viewers tuning in stay within the 10 s shared
@@ -8591,10 +8591,61 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   readings (16%, down to 0.9778), swinging 0.98-1.009; channels 2 and 3 never below 0.996. So
   steps inside a midroll, the end of an airing and the tune-ins later in an airing were not
   watched live; the router test and `--sweep`/`--viewer` cover them.
+- **The guard from then on (DarkManX16, Nov 19):** the break scanner's own rule on the drives the
+  streams read (D: episodes, C: commercials and steps): a channel's items there below 0.99 for
+  10 s, counted per channel as `break-scan-governor.js` counts; and a safety net, any 18000
+  channel on any drive below 0.98 for 10 s straight. Either stops every stream at once.
+- **Third watch** (`copy-e`, 7:19:29am, the steps marked `match: 'any'`): **no steps played** -
+  `'any'` takes a clip naming nothing or naming the show, and every clip of the two Bounce lists
+  names another show; marking the lists "clips feature shows" is what plays any clip after the
+  named ones (the offline plan, `why-plan2.js`, then gave WBRB and BTTS). Midroll 1: viewer B,
+  tuning in during the last commercial, joined it 20.21 s in, as A had it; part 2 started 6.8 s
+  late for both (104.7 s of commercials in 98 s). The safety net stopped it at 7:43:38, 54 s
+  into the end-of-airing viewer, on channel 1 (G:, "Farm Frolics", 0.9678 after 10 s below
+  0.98); idle, that item read below 0.98 in 172 of 910 readings and stayed there 10 s or more
+  four times. Channel 3's item on D:, the drive the viewer read, never below 0.9876 while armed.
+- **Fourth watch** (`copy-f`, 7:50:00am, `scratchpad/e2e6.js`): each moment its own short airing,
+  started once 18000 had read clean for 30 s, the lists marked "clips feature shows" on the
+  copy. All three ran first time, no stop. Steps in a midroll: A by cursor part 1 (+0.02 s),
+  WBRB 0.30 s into the midroll, three commercials, BTTS, part 2 (+2.14 s); a tune-in during the
+  BTTS played it from its start and part 2 0.4 s after A. Into the end break by cursor: part 3
+  on its second (+0.02 s), the end break's first commercial 0.04 s early. A tune-in 40 s before
+  the next row: a commercial partway (a break's tune-in, as today), the in step "Disney Channel
+  ID Igloo", Rupert's part 1 1.66 s early against the lineup, its own layout frozen with one
+  midroll. **Found: a tune-in 2 s into the midroll, A still in its WBRB, got a commercial of its
+  own partway** (a break's tune-in rule: `createLineup` starts a first request's clip at a
+  random point, so `shared-breaks.js` keeps it off the list), and A then picked a different one.
+- **Fixed (1753ef7):** in a midroll a tune-in picks as a stream already watching does - it
+  joins the commercial on the air, or with none makes the next shared pick from its start
+  (`video.js`, `pickAsFirst`; a break's tune-in unchanged) - and within a midroll's out steps
+  the clock plays the out step on the air from its start, as within its in steps
+  (`midroll-cursor.js`), so the tune-in reaches the commercials with the viewer watching
+  rather than ahead of it. `test/midroll-stream.js`: a tune-in during A's WBRB, and one 1 s
+  into the commercials with A 9 s behind; each fails with its change taken out, 30/30 runs
+  pass (in 1 of 30 the viewer a second behind ended a commercial short, the spec's "a late
+  stream gets fewer"). The oracle's out steps changed; 1,924 tune-ins, all where it says. Real
+  channels have no midroll steps yet, and the 14-day proof's viewer does not go through
+  `video.js`'s shared picks, so its numbers stand.
+- **Re-watched live on the fix** (`copy-k`, 5:18:02pm, the same guard, no stop, armed minimum
+  0.9709): C tuning in 2.66 s into the midroll, A in its WBRB, played the WBRB from its start,
+  then A's first commercial from its start, 2.6 s behind A; A part 1 (+0.06 s), WBRB, three
+  commercials, BTTS, part 2 (-0.57 s); a tune-in during the BTTS, part 2 at +2.63 s.
 - **Suite and workflows on the branch** (blocks still e3295bc, so the branch is the combined
-  result): `npm test` 3,844/3,844; every workflow **12/12** (`copy-d`, taken 6:09:48am, server
-  18463 from the worktree, scanner paused by hand). 18000's channel 1 read below 0.99 in 16% of
-  readings during them, as when idle.
+  result): before the fix, `npm test` 3,844/3,844 and the workflows 12/12 (`copy-d`, 6:09:48am).
+  On the fix: `npm test` **3,849/3,849 as one run** (one earlier run stopped inside
+  `test/names-seasons-anyof.js` on a missing temp file, `filler/a.json`; it did not happen again).
+  The workflows on `copy-g` (4:51:30pm): **11/12, `add-delete-create` failed** - "Delete named 0
+  of DarkManX16's own swaps and inserts still ahead, but 2 air". DarkManX16's House of Mouse
+  swaps ran 1:00-8:30pm that day; after the run the first eight of them sat four hours later
+  (Big Bad Wolf Daddy at 5:00pm, Mickey and the Culture Clash 6:30pm, House of Genius 8:00pm),
+  so a Create Lineup at about 4:53pm carried swaps that had already aired into the evening, and
+  Delete had rightly named none. Not this branch: the page bundles one file step 6 touches,
+  `src/day-parts.js`, which only gains `resolveMidrollCollections`. On `copy-i` and `copy-j`
+  (one copy, 5:04:19pm) this branch and `blocks` (a detached worktree, 18464) ran at the same
+  moment: **12/12 each**, tonight's swaps left where they were. The move at 4:53pm is not
+  explained; it may be the one the "Create Lineup moves a kept swap on channel 3" session
+  looked at. 18000 during the workflows: one reading at 5:08:08pm with every item at about
+  0.42 (all drives at once, the next reading normal), while both runs went at once.
 
 ### Random Slots' Create Lineup restarts the program on air
 
