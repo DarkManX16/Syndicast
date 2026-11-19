@@ -8462,6 +8462,52 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   Nov 22, 10:44:50pm), 1,679,179 ms, 2,495 bytes, sha1 ed96f9c07fc6 both times. 5e changes `src/`,
   so 18000 needs a restart to run it.
 
+#### Step 5f: the midroll layout (built Nov 19; merged and pushed)
+
+- **DarkManX16's answers, Nov 19:** the end break's steps held back at their longest clip (fixed
+  times everyone agrees on); no midroll over 4 minutes, the rest staying in the end break, no
+  setting; the switch turned off during an episode lets it finish its midrolls. He accepted that
+  the frozen layouts live in memory only, so a restart during an airing can pick up the new
+  layout, as long as no start ever moves (a test shows it doesn't).
+- **What it is.** `src/midroll-plan.js`, pure: `midrollLayout` splits the Flex run after a
+  program into equal whole-second shares (one fewer below `minMs`, or when the end break would
+  keep under `minMs` of commercials), from `airablePoints` filtered by kind, 2 min from the ends,
+  3 apart, nearest even spacing then the stronger; none for a file whose scanned length is over
+  2 s off. `layoutAt` freezes the layout of the program on air the first time it is asked for
+  while it is on (`channel-cache` `frozenLayouts`, kept through saves and cache clears, used only
+  while it still ends where the next row starts). This replaces the plan's "freeze before every
+  change": no hook into every writer, and a change made on disk by anything is covered too.
+  `buildMidrollPlan` runs `buildPlan` on a midroll break (`assemble`'s new `midroll` branch: the
+  program's context, now = next = the show on air; `later`, `afterNext`, `tomorrow` from the end
+  break). The scan service's `pointsFor` reads the store through a per-show cache (size and time
+  of the show's file, cleared by its own writes). The card service walks the coming week's
+  midrolls for card wants when the switch is on. Nothing plays a midroll until step 6.
+- **Tests.** `test/midroll-plan.js` 70 checks, `test/card-service.js` 2 more. Each rule was broken
+  on purpose and caught: no cap, the frozen layout ignored or kept after the Flex changed, later
+  keyed on the midroll, watcher steps summed, no end-break minimum (a 4:31.5 Flex case added for
+  it), no length check, a cache clear dropping frozen layouts, no reader.
+- **Proof** (copy of Nov 19, 1:28am Central; `scripts/midroll-week.js`, 14 days from 1:30am): 2,269
+  rows on channels 1-3, A (switch off, 0 layouts built) and B (switch on, each airing walked
+  through its parts, midrolls and end break from where the one before ended) the same file, sha1
+  b2c02cf892cd. 279 midrolls on 196 airings, 57 shows, 257 approved automatically and 22 by a
+  show click. No midrolls: 1,780 airings with no point that may air, 262 not scanned, 31 with too
+  little Flex. Holding the end break's steps at their longest cost 11 midrolls on 11 airings.
+  `--edits` on the same copy: The PJs S02E17's point at 7:41 approved now airs (3:07), Home
+  Movies S03E04's 14:16 rejected does not, Mission Hill withdrawn loses all 8 airings' midrolls;
+  nothing else changed (265 midrolls), rows still identical. Channel files unchanged. Create
+  Lineup (`progress-check --save`, channels 1-3 at Nov 19 1:30am) with the switch off and on: the
+  same file each (615675ceaa02, 02a67efea358, c39e41dd7c06). The Nov 22 Pooh Corner entry is no
+  longer in channel 3's lineup, so it was not checked; every kept row is among the 2,269.
+- **Suite and workflows** (2dccebc; blocks still 752e300): `npm test` 3,792/3,792; a second copy
+  of 1:30am, server 18431 from the worktree, scanner paused by hand (and off, the copy's switch
+  off): every workflow **12/12**. Channel 3's editor opened by hand afterwards, its list as before,
+  no console errors.
+- **Gotcha:** a mutation check's `git checkout` threw away the uncommitted reader (the trap in
+  "Preview driving quirks"); the proof script caught it (`pointsFor is not a function`). Commit
+  before mutating.
+- **For DarkManX16:** the live `break-scanner.json` already has `midrolls: true`, so once step 6
+  is merged and 18000 restarts, midrolls play at once.
+
 ### Random Slots' Create Lineup restarts the program on air
 
 Found Oct 12, 2026 with "Swaps, inserts and Flex that keeps time", Task 4b. Time

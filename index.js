@@ -174,6 +174,8 @@ let cardService = new CardService( {
     fillerService: fillerService,
     getFfmpegSettings: () => db['ffmpeg-settings'].find()[0],
     getPlexServer: (name) => db['plex-servers'].find( { name: name } )[0] || null,
+    // the coming week's midrolls (Stage 6, 5f): their points, and the Midrolls switch
+    midrolls: () => breakScanService,
 } );
 cardTemplateDB.load()
     .then( () => cardService.init() )

@@ -1420,18 +1420,33 @@ followed by a median of 6-7½ minutes of Flex, shorts by about 3, movies by 2½-
 (measured Oct 15 on the saved lineups).
 
 - **The budget** is that Flex run, less the steps its own break plays (stage
-  5's out and in steps).
+  5's out and in steps), each counted at the longest clip it could play
+  (DarkManX16, Nov 19), so the times are fixed before anything is picked.
 - **Shares.** The midrolls and the break at the end get equal shares of the
-  budget, each midroll's steps coming out of its own share. If a share would be
-  under `minMs`, the program gets one fewer midroll, down to none; with no
-  Flex after it, a program has none.
-- **Which points.** The program's approved and hand points of kinds the
-  setting allows, at least 2 minutes from its start and end and 3 from each
+  budget, in whole seconds, each midroll's steps (also at their longest) coming
+  out of its own share. If a share would be under `minMs`, or the end break
+  would keep less than `minMs` of commercials, the program gets one fewer
+  midroll, down to none; with no Flex after it, a program has none.
+- **No midroll runs over 4 minutes** (DarkManX16, Nov 19; or `minMs`, if that
+  is longer): the rest stays in the end break. No setting.
+- **Which points.** What `airablePoints` (5a) allows, of kinds the setting
+  allows, at least 2 minutes from the program's start and end and 3 from each
   other. When there are more than `count`, the set nearest even spacing wins,
-  then the stronger.
-- **The plan** for an airing is built once, when a viewer's stream reaches the
-  program, and kept in the channel cache like a break's, so every viewer sees
-  the same midrolls. It is deterministic: built twice, it is the same.
+  then the stronger. None when the file's scanned length is more than 2
+  seconds off the program's (a changed file not scanned yet).
+- **The layout** (Nov 19, replacing "built when a stream reaches the
+  program"): where each part, midroll and the end break sits is worked out
+  from saved data alone - the lineup, the store, the switch, the setting and
+  the step lists - so playback, the guide and the editor always agree. It is
+  deterministic: worked out twice, it is the same. Which clips play inside a
+  midroll is still picked when a stream reaches it, as a break's are.
+- **The program on air keeps its layout.** The first time a layout is asked
+  for while its program is on, it is frozen until its end break ends: an
+  approval, a scan, the switch turned off or a save after that changes the
+  next program, not this one. Frozen layouts are kept in memory only, so a
+  restart during an airing can pick up the new layout for the rest of it
+  (DarkManX16 accepted this, Nov 19). Either way every row starts exactly
+  when the lineup says: any layout ends where the next program starts.
 - **Bending.** As in stage 5, steps play whole and only commercials bend: a
   late stream gets a shorter midroll, and whatever lateness is left carries to
   the end break, which ends where the next program starts.
@@ -1656,6 +1671,16 @@ never on the live data folder and never through the server on port 18000.
      show withdrawn by hand, and the week planned again: the approved point
      airs, the rejected one does not, the withdrawn show has none, nothing else
      changes.
+     **Built Nov 19** (`src/midroll-plan.js`): DarkManX16's three answers (the steps
+     held back at their longest clip, the 4-minute cap, the program on air finishing
+     its midrolls) and the layout in place of a plan built at the program's start (see
+     "Keeping the schedule on time"). The proof, `scripts/midroll-week.js`, runs 14
+     days, compares every row with the switch off and on, and its `--edits` makes the
+     three hand changes. **What 6 and 7 take from it:** `layoutAt` (parts, midrolls and
+     the end break, frozen for the program on air; with the switch off, a frozen layout
+     still plays, so step 6's gate is "the switch on, or a frozen layout"); `whereAt`
+     for the clock path; `buildMidrollPlan` for a midroll's steps (keyed like a break's
+     plan, with its own shared picks); `midrollsBetween` for the editor's tag and preview.
 6. **Playing it.** The cursor's parts and midroll phases, the clock path, the
    shared plan, the keyframe start for copied files, the guide. The simulated
    viewer in `test/lineup-cursor.js` and the real router in

@@ -376,6 +376,15 @@ function assemble(channel, brk) {
         }
     };
 
+    // A midroll (midroll-plan.js's midrollBreak): inside one program, so one context, the
+    // program's, resolved at its start.
+    if (brk.midroll != null) {
+        plan.situation = 'midroll';
+        add('out', 'midroll', from);
+        add('in', 'midroll', from);
+        return plan;
+    }
+
     if (hasPrev && hasNext && (from === to) ) {
         plan.situation = (showKey(brk.prev.program) === showKey(brk.next.program))
             ? 'betweenEpisodes'
@@ -896,6 +905,8 @@ function buildPlan(channel, brk, env) {
         }
         return sequence;
     };
+    // A midroll's later, afterNext and tomorrow resolve from the program's end: its end break.
+    const ahead = (brk.after != null) ? brk.after : brk;
     // The program a step keyed on now, next or later is about, and when it starts.
     const keyedAiring = (keyedOn, context) => {
         if (keyedOn === 'next') {
@@ -905,13 +916,13 @@ function buildPlan(channel, brk, env) {
             return (brk.prev != null) ? { program: brk.prev.program, startTime: brk.prev.startTime } : null;
         }
         if (keyedOn === 'later') {
-            return laterAiring(channel, brk, context);
+            return laterAiring(channel, ahead, context);
         }
         if (keyedOn === 'afterNext') {
-            return afterNextAiring(channel, brk, context);
+            return afterNextAiring(channel, ahead, context);
         }
         if (keyedOn === 'tomorrow') {
-            return tomorrowAiring(channel, brk, context);
+            return tomorrowAiring(channel, ahead, context);
         }
         return undefined;
     };
@@ -923,7 +934,7 @@ function buildPlan(channel, brk, env) {
             return { singles: [prevProgram], order: null };
         }
         if (keyedOn === 'later') {
-            return { singles: [laterProgram(channel, brk, context)], order: null };
+            return { singles: [laterProgram(channel, ahead, context)], order: null };
         }
         if ( (keyedOn === 'afterNext') || (keyedOn === 'tomorrow') ) {
             const airing = keyedAiring(keyedOn, context);
@@ -1269,6 +1280,7 @@ module.exports = {
     laterAiring: laterAiring,
     afterNextAiring: afterNextAiring,
     tomorrowAiring: tomorrowAiring,
+    watchOf: watchOf,
     watchProblem: watchProblem,
     daysProblem: daysProblem,
     chanceProblem: chanceProblem,

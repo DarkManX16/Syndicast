@@ -68,6 +68,40 @@ function setPlan(channelId, brk, plan, now) {
 }
 
 /*
+ * The midroll layout of each program on air (midroll-plan.js's layoutAt), per channel:
+ * frozen the first time it is asked for while the program is on, so a change made during
+ * the airing reaches the next one. Unlike the plans above, a save keeps them (layoutAt
+ * checks each against the lineup it is asked with, and drops one that no longer ends where
+ * the next row starts); held until the end break ends. In memory only: a restart forgets
+ * them (DarkManX16 accepted this, Nov 19).
+ */
+let frozenLayouts = {};
+
+function getFrozenLayout(channelId, index, start) {
+    let held = frozenLayouts[channelId];
+    let found = (typeof(held) === 'undefined') ? undefined : held[`${index}|${start}`];
+    return (typeof(found) === 'undefined') ? null : found;
+}
+
+function freezeLayout(channelId, index, start, held, now) {
+    if (typeof(frozenLayouts[channelId]) === 'undefined') {
+        frozenLayouts[channelId] = {};
+    }
+    let all = frozenLayouts[channelId];
+    for (let key of Object.keys(all)) {
+        if (all[key].end < now) {
+            delete all[key];
+        }
+    }
+    all[`${index}|${start}`] = held;
+}
+
+// A restart, for tests.
+function forgetFrozenLayouts() {
+    frozenLayouts = {};
+}
+
+/*
  * Each Flex entry's shared list of picks (shared-breaks.js), per channel and
  * keyed by the entry and where it starts this time round the cycle, so every
  * viewer of a break sees the same commercials. Dropped for a channel when it
@@ -486,6 +520,11 @@ module.exports = {
     dropCursor: dropCursor,
     getPlan: getPlan,
     setPlan: setPlan,
+    getFrozenLayout: getFrozenLayout,
+    freezeLayout: freezeLayout,
+    forgetFrozenLayouts: forgetFrozenLayouts,
+    // midroll-plan.js's env.frozen
+    frozenLayouts: { get: getFrozenLayout, set: freezeLayout },
     getFlexLog: getFlexLog,
     addFlexPick: addFlexPick,
 }
