@@ -671,6 +671,10 @@ function video( channelService, fillerService, db, programmingService, activeCha
         console.log("=========================================================");
         console.log("! Start playback");
         console.log(`! Channel: ${channel.name} (${channel.number})`);
+        if (streamId !== null) {
+            // which viewer's stream, when two watch one channel
+            console.log(`! Stream: ${streamId}`);
+        }
         if (typeof(lineupItem.title) === 'undefined') {
             lineupItem.title = 'Unknown';
         }

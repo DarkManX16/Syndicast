@@ -335,7 +335,13 @@ async function run( { args, channels, service, envFor, rowsOf, label, when, from
                 const { obj, at } = byClock(channel, t, pb, current);
                 const where = midrollPlan.whereAt(layout, t);
                 // the layout: a part on its second of the file, the rest where the layout has them
-                if (obj.part != null) {
+                if ( (obj.part != null) && (obj.part.airing !== layout.start) ) {
+                    // handed over to the next row, itself an airing with midrolls: its part 1, from 0:00
+                    const item = helperFuncs.createLineup(store, obj, channel, pb.fillers, false, at)[0];
+                    if ( (t < layout.end - SLACK - 1) || (obj.part.k !== 0) || (item.start !== 0) ) {
+                        layoutWrong.push(`${channel.number} ${when(t)} ${label(channel.programs[layout.index])}: another airing's part ${obj.part.k + 1} from ${item.start}`);
+                    }
+                } else if (obj.part != null) {
                     const item = helperFuncs.createLineup(store, obj, channel, pb.fillers, false, at)[0];
                     const part = layout.parts[obj.part.k];
                     const fileMs = part.fromMs + (at - part.start);
