@@ -34,6 +34,8 @@
 const fs = require('fs');
 const path = require('path');
 const store = require('../breaks-store');
+const patterns = require('../break-patterns');
+const { airablePoints } = require('../break-airable');
 const breakScan = require('../break-scan');
 const transitions = require('../transitions');
 const paceMeter = require('../pace-meter');
@@ -134,6 +136,7 @@ class BreakScanService {
         this.index = new Map();
         this.verifiedAt = new Map();
         this.theatrical = new Map();
+        this.showsRead = new Map();
         this.counts = { week: { files: 0, scanned: 0 }, library: { files: 0, scanned: 0 } };
         this.current = null;
         this.controller = null;
@@ -358,6 +361,7 @@ class BreakScanService {
                     }
                 }
                 store.saveShow(this.breaksDir, key, show);
+                this.showsRead.delete(key);
             } catch (err) {
                 this.log(`Breaks: could not mark the movies of ${key}: ${err.message || err}`);
             }
@@ -540,6 +544,7 @@ class BreakScanService {
             return result;
         }
         store.saveShow(this.breaksDir, key, show);
+        this.showsRead.delete(key);
         for (const p of Object.keys(show.files)) {
             this.index.set(p, { key, record: show.files[p] });
         }
@@ -818,6 +823,7 @@ class BreakScanService {
                     } );
                 const saved = store.recordFor(this.breaksDir, entry.key, Object.assign( {}, file, { durationS, chapters, movie: entry.movie === true } ), result, this.now);
                 this.index.set(entry.path, { key: entry.key, record: saved });
+                this.showsRead.delete(entry.key);
                 this.verifiedAt.set(entry.path, this.now());
                 this.bumpCounts(entry);
                 this.log(`Breaks: scanned ${entry.title} (${result.points.length} points, ${Math.round(this.fileRunMs / 100) / 10}s of ffmpeg)`);
@@ -846,6 +852,7 @@ class BreakScanService {
     fail(entry, file, err) {
         const record = store.recordError(this.breaksDir, entry.key, file, err, this.now, this.now() + DAY_MS);
         this.index.set(entry.path, { key: entry.key, record });
+        this.showsRead.delete(entry.key);
         this.log(`Breaks: could not scan ${entry.title}: ${err && err.message ? err.message : err}; trying again tomorrow`);
     }
 
@@ -854,6 +861,72 @@ class BreakScanService {
         if (entry.inWeek) {
             this.counts.week.scanned = Math.min(this.counts.week.files, this.counts.week.scanned + 1);
         }
+    }
+
+    // ---- for midrolls (midroll-plan.js's env) ---------------------------------------------------
+
+    midrollsOn() {
+        return this.midrolls === true;
+    }
+
+    /*
+     * A program's airable points, for midroll-plan.js's env.pointsFor: { durationMs, points:
+     * [{ index, at, kind, by, strength }] } (break-airable.js's answer, with each point's
+     * strength), or null for a file with no usable record. Read through a per-show cache that
+     * every write here clears and that also notices the show's file changing on disk (its size
+     * and time), so an approval, a scan or a hand edit shows on the next read, and a stream
+     * never reads every show's file.
+     */
+    pointsFor(program) {
+        if (! scannable(program)) {
+            return null;
+        }
+        const found = this.index.get(program.file);
+        const read = (found != null) ? this.readShow(found.key) : null;
+        if (read === null) {
+            return null;
+        }
+        if (! read.airable.has(program.file)) {
+            const record = read.show.files[program.file];
+            let answer = null;
+            if ( (record != null) && (record.error == null) && Array.isArray(record.points) && (typeof(record.durationMs) === 'number') ) {
+                const isMovieKey = found.key.startsWith('movie.');
+                if (read.auto === null) {
+                    read.auto = patterns.autoApproval(read.show, { isMovie: isMovieKey });
+                }
+                answer = {
+                    durationMs: record.durationMs,
+                    points: airablePoints(read.show, program.file, { isMovie: isMovieKey, auto: read.auto })
+                        .map( (p) => ({ index: p.index, at: p.at, kind: p.kind, by: p.by, strength: record.points[p.index].strength }) ),
+                };
+            }
+            read.airable.set(program.file, answer);
+        }
+        return read.airable.get(program.file);
+    }
+
+    // One show's file, kept while its size and time stay the same: { sig, show, auto, airable }.
+    readShow(key) {
+        let sig;
+        try {
+            const st = fs.statSync(store.showFile(this.breaksDir, key));
+            sig = `${st.size}:${st.mtimeMs}`;
+        } catch (err) {
+            return null;
+        }
+        const held = this.showsRead.get(key);
+        if ( (held != null) && (held.sig === sig) ) {
+            return held;
+        }
+        let show;
+        try {
+            show = store.loadShow(this.breaksDir, key);
+        } catch (err) {
+            return null;
+        }
+        const read = { sig, show, auto: null, airable: new Map() };
+        this.showsRead.set(key, read);
+        return read;
     }
 
     // ---- for the page ------------------------------------------------------------------------
