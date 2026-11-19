@@ -547,16 +547,25 @@ function video( channelService, fillerService, db, programmingService, activeCha
          */
         let shared = null;
         let sharedKey = null;
+        /*
+         * In a midroll (midroll-cursor.js) a tune-in picks as a stream already
+         * watching does: it joins the commercial on the air, or with none makes
+         * the next shared pick from its start. A tune-in's own clip, partway,
+         * would leave it and whoever reaches the commercials next with
+         * different ones (seen live Nov 19: a tune-in during the out step, the
+         * viewer watching still in it). A break's tune-in is as it was.
+         */
+        let pickAsFirst = isFirst && ! ( (typeof(prog.midroll) === 'object') && (prog.midroll !== null) );
         if ( (brandChannel === channel) && sharedBreaks.shareable(channel, prog) ) {
             sharedKey = sharedBreaks.keyOf(prog, t0);
             shared = sharedBreaks.decide(channelCache.getFlexLog(channel.number, sharedKey),
-                prog.pick, helperFuncs.timeLeft(prog), t0, isFirst);
+                prog.pick, helperFuncs.timeLeft(prog), t0, pickAsFirst);
         }
         if ( (shared !== null) && ( (shared.kind === 'replay') || (shared.kind === 'join') ) ) {
             lineupItem = shared.item;
         } else {
             try {
-                let lineup = helperFuncs.createLineup(programPlayTimeDB, prog, brandChannel, fillers, isFirst, t0)
+                let lineup = helperFuncs.createLineup(programPlayTimeDB, prog, brandChannel, fillers, pickAsFirst, t0)
                 lineupItem = lineup.shift();
             } catch (err) {
                 console.log("Error when attempting to pick video: " +err.stack);

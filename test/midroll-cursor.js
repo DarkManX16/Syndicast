@@ -119,8 +119,9 @@ function landing(channel, obj, at, store) {
  *   end break 12:57:33-1:00:00, commercials only
  *   Robot Chicken at 1:00:00
  * A tune-in in a part's last 10 s (SLACK) is handed what follows, as the clock hands over a
- * program; in a midroll its out steps are in the past, and within its in steps plus 10 s it
- * plays the in step; the first 30 s of part 1 play from 0:00, the first 10 s (SLACK) of a
+ * program; in a midroll, within its out steps it plays the out step (Nov 19, after a live
+ * tune-in during the WBRB got commercials ahead of the viewer watching), and within its in
+ * steps plus 10 s the in step; the first 30 s of part 1 play from 0:00, the first 10 s (SLACK) of a
  * later part from its start, and nowhere else does a part rewind.
  */
 function oracle(r) {
@@ -141,12 +142,18 @@ function oracle(r) {
         return (r < 30000) ? prog('Death Is a Bitch', 0, 328000) : part(0, 328000, 0, { kind: 'step', title: 'WBRB' });
     }
     if (r < 476000) {
+        if (r < 333000) {
+            return { kind: 'step', title: 'WBRB' };
+        }
         return (r >= 460000) ? { kind: 'step', title: 'BTTS' } : flex(470000 - r);
     }
     if (r < 1096000) {
         return part(328000, 948000, 476000, { kind: 'step', title: 'WBRB' });
     }
     if (r < 1244000) {
+        if (r < 1101000) {
+            return { kind: 'step', title: 'WBRB' };
+        }
         return (r >= 1228000) ? { kind: 'step', title: 'BTTS' } : flex(1238000 - r);
     }
     if (r < 1653000) {
@@ -210,7 +217,7 @@ module.exports = async () => {
         const mctx = contextOf(env);
         const planFor = breakPlanner(channel, env);
         const store = freshStore();
-        const boundaries = [ 0, 30000, 318001, 328000, 333000, 460000, 470000, 476000, 1086001, 1096000, 1228000, 1238000, 1244000,
+        const boundaries = [ 0, 30000, 318001, 328000, 333000, 460000, 470000, 476000, 1086001, 1096000, 1101000, 1228000, 1238000, 1244000,
             1347000, 1357000, 1643001, 1653000, 1789999, 1790001, 1800000 ];
         const moments = [];
         for (let r = -30000; r <= 1830000; r += SEC) {

@@ -339,6 +339,65 @@ module.exports = async function run() {
             const rc = M.items.find( (i) => i.title === 'Robot Chicken' );
             suite.check('...Robot Chicken from its start, within 30 s early and 10 s late, as after any break today', (rc != null) && (rc.start === 0) && (rc.at >= S + ms(30) - 30 * SEC) && (rc.at <= S + ms(30) + SLACK), rc ? `${(rc.at - S - ms(30)) / 1000}s` : 'never');
         }
+
+        // ---- a tune-in during a midroll's out step, before any commercial of it is picked ----------
+        // (seen live Nov 19: the tune-in took a commercial of its own, partway, and A then picked another)
+        {
+            const S = S1 + ms(315);
+            channelCache.clear();
+            channelCache.forgetFrozenLayouts();
+            // A tunes in 1 s into part 1, which the 30 s rewind plays from 0: its WBRB at 5:29, a
+            // second behind the layout's midroll (5:28). C tunes in at 5:30, by the clock in the
+            // midroll's out step, while A is in its WBRB and no commercial has been picked yet.
+            const A = { id: 'watching', at: S + 1 * SEC, items: [], first: true };
+            let wb = null;
+            while (wb === null) {
+                await run( [ A ], A.at + 1 );
+                const last = A.items[A.items.length - 1];
+                if (last.title === 'WBRB') {
+                    wb = last;
+                }
+            }
+            const C = { id: 'tunedFirst', at: S + 330 * SEC, items: [], first: true };
+            await run( [ A, C ], S + 500 * SEC );
+            const ma = commercialsIn(A, wb.at, S + 476 * SEC);
+            const mc = commercialsIn(C, wb.at, S + 476 * SEC);
+            const cFirst = C.items[0];
+            suite.check('a tune-in 2 s into midroll 1, A still in its WBRB: the WBRB from its start, not commercials ahead of A',
+                (wb.at === S + 329 * SEC) && (cFirst != null) && (cFirst.title === 'WBRB') && (cFirst.start === 0),
+                `A's WBRB at ${(wb.at - S) / 1000}s; C ${describe(cFirst)}`);
+            // C is about a second behind A: the commercials end where the in step begins by the clock,
+            // so C may stop one short of A at the end (the spec's "a late stream gets fewer")
+            const cCommercial = C.items.find( (i) => i.type === 'commercial' );
+            suite.check('...then the midroll\'s commercials from the first, A\'s in the same order (at most one fewer at the end)',
+                (mc.length > 0) && (cCommercial != null) && (cCommercial.start === 0) && (JSON.stringify(mc) === JSON.stringify(ma.slice(0, mc.length)))
+                    && (ma.length - mc.length <= 1),
+                `A ${ma.join(',')} / C ${mc.join(',')}`);
+            suite.check('...then BTTS and part 2, as A', JSON.stringify(names(C)) === JSON.stringify(names(A).slice(1, names(C).length + 1))
+                && names(C).includes('Death Is a Bitch 328000+620000'), `A ${names(A).join(', ')} / C ${names(C).join(', ')}`);
+        }
+
+        // ---- a tune-in in a midroll's commercials before the viewer watching (9 s late) reaches them ----
+        {
+            const S = S1 + ms(360);
+            channelCache.clear();
+            channelCache.forgetFrozenLayouts();
+            // A tunes in 9 s into part 1, played from 0: its WBRB at 5:37, its commercials from 5:42.
+            // C tunes in at 5:34, by the clock 1 s into the midroll's commercials, none picked yet.
+            const A = { id: 'lateViewer', at: S + 9 * SEC, items: [], first: true };
+            const C = { id: 'tunedEarly', at: S + 334 * SEC, items: [], first: true };
+            await run( [ A, C ], S + 500 * SEC );
+            const wb = A.items.find( (i) => i.title === 'WBRB' );
+            const ma = commercialsIn(A, S + 328 * SEC, S + 476 * SEC);
+            const mc = commercialsIn(C, S + 328 * SEC, S + 476 * SEC);
+            const cFirst = C.items[0];
+            suite.check('a tune-in 1 s into midroll 1\'s commercials, the viewer watching 9 s behind: a commercial from its start, which A then plays',
+                (wb != null) && (wb.at === S + 337 * SEC) && (cFirst != null) && (cFirst.type === 'commercial') && (cFirst.start === 0) && (cFirst.title === ma[0]),
+                `A's WBRB at ${wb ? (wb.at - S) / 1000 : '-'}s; C ${describe(cFirst)}; A's first ${ma[0]}`);
+            suite.check('...and A plays C\'s commercials in the same order (at most one fewer at the end, 8 s behind)',
+                (ma.length > 0) && (JSON.stringify(ma) === JSON.stringify(mc.slice(0, ma.length))) && (mc.length - ma.length <= 1),
+                `A ${ma.join(',')} / C ${mc.join(',')}`);
+        }
     } catch (err) {
         suite.check('the router test ran', false, err && err.stack);
     } finally {

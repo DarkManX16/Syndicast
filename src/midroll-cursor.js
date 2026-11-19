@@ -280,7 +280,7 @@ function cursorAfter(channel, obj, t0) {
     return cursor;
 }
 
-// Where the layout puts the clock, as an entry: a part, or a midroll's commercials or in step.
+// Where the layout puts the clock, as an entry: a part, or a midroll's out step, commercials or in step.
 function inLayout(channel, layout, where, t0, planFor, mctx) {
     if (where.phase === 'part') {
         const part = layout.parts[where.k];
@@ -300,6 +300,17 @@ function inLayout(channel, layout, where, t0, planFor, mctx) {
             j++;
         }
         return midStep(layout, mid, 'in', j);
+    }
+    if ( (mid.out.length > 0) && (t0 < mid.start + mid.outMs) ) {
+        // within its out steps, the out step on the air from its start, as with the in steps:
+        // the tune-in then reaches the commercials with whoever is watching, not ahead of them
+        let j = 0;
+        let stepStart = mid.start;
+        while ( (j < mid.out.length - 1) && (t0 >= stepStart + mid.out[j].durationMs) ) {
+            stepStart += mid.out[j].durationMs;
+            j++;
+        }
+        return midStep(layout, mid, 'out', j);
     }
     return midFlex(channel, layout, mid, t0);
 }
