@@ -7750,6 +7750,42 @@ button (`test/weaker-line-pick.js`, written first). Fresh copy 7:42am: `npm test
 of `breaks-page` died with `fetch failed` (ECONNRESET on the scanner PUT, 4 times in 6 runs
 on those two); later runs and the fresh copy's did not.
 
+**The `breaks-page` failure on Nov 15, about 8:15 to 8:30pm, was the script's pick and a
+click that closes, not the page (Nov 16).** Step 5 took the first custom show in
+`/api/breaks/shows`, which is in next-airing order, so the show depended on the time of
+day. Measured on a fresh copy with the server's clock set to 8:15pm Nov 15 (a `-r` preload,
+nothing else shifted): Sunday Disney Movies airs at 7:00pm, so it was first of the five
+custom shows with a movie, and "on now". At 11:48pm the same five have no airing left
+(`nextAt` null), so the order falls to name and AfterToon Movies comes first: why it
+passed at 8:33pm (not measured at 5:31 and 5:47pm, when an earlier show on D: may have taken step 3's place). Step 3 takes the first show in that list with at
+least seven points waiting on an unskipped drive, and Sunday Disney Movies has 13 (toCheck
+4, on D:), so step 3 and step 4 opened it and left it open. Step 5 searched for it and
+clicked its name, and a click on the name of an open show closes it (`toggleOpen`), so
+`.bk-movies` never came: the run failed with the exact message, and its screenshot has the
+show closed. The copy afterwards held 3 owner-approved points and 1 rejected in that show,
+which is what step 3 does. On the page itself, with that show's detail in that state, the
+Movies list showed 5 rows after the first click, none after the second, 5 after the third.
+So no custom show's Movies list fails to show on a real page: the toggle is meant, and the
+detail (`kind` custom, 5 episodes, all `movie`) was the same at both times of day. No page
+change and no page test.
+
+The fix is in the script. `scripts/lib/custom-movie-show.js` picks the custom show by name
+(the first with a movie it can use, and the movie by name, never scanned first), and step 5
+opens the page afresh before it clicks the show's name, so a show left open by step 3 can't
+close. `test/custom-movie-pick.js`, written first (it failed on the missing module), checks
+the same pick from the 8:15pm order and the 11:48pm order. Its report line says which show it
+picked and why (AfterToon Movies, its first movie by name, "never scanned" where it was).
+The other steps that read the list's order: step 2's plain pattern (line ~1333) clicks only
+buttons in a line and opens nothing; step 3's candidates are meant to follow the order, and
+leave a show open, which is why step 5 reopens the page; the movie's own line (~1554) opens
+nothing; Scan next (~1567) tries up to ten shows and takes the first that works. None of them
+can fail this way, so they are left as they were. `special-day` also picked Sunday Disney
+Movies in those runs; it passed in all of them and is not changed.
+
+Checked on the merge of this branch with blocks 69d9e78 (fresh copy 11:57pm Nov 15, port
+18102): `npm test` 3720/3720, 12/12 workflows. And `breaks-page` alone with the server's clock
+at 8:15pm Nov 15 on another fresh copy (port 18103), where it failed before: passed.
+
 ### Chapter and segment detector, and stage 6 midrolls
 
 Investigated Oct 15, 2026 and designed Oct 15-26 (Opus 5.5), agreed with DarkManX16's
