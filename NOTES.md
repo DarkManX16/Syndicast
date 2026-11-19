@@ -8462,7 +8462,7 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   Nov 22, 10:44:50pm), 1,679,179 ms, 2,495 bytes, sha1 ed96f9c07fc6 both times. 5e changes `src/`,
   so 18000 needs a restart to run it.
 
-#### Step 5f: the midroll layout (built Nov 19, branch `claude/midroll-plan`; not merged)
+#### Step 5f: the midroll layout (built Nov 19; merged and pushed)
 
 - **DarkManX16's answers, Nov 19:** the end break's steps held back at their longest clip (fixed
   times everyone agrees on); no midroll over 4 minutes, the rest staying in the end break, no
