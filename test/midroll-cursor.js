@@ -120,7 +120,8 @@ function landing(channel, obj, at, store) {
  *   Robot Chicken at 1:00:00
  * A tune-in in a part's last 10 s (SLACK) is handed what follows, as the clock hands over a
  * program; in a midroll its out steps are in the past, and within its in steps plus 10 s it
- * plays the in step; the first 30 s of part 1 play from 0:00, and no other part rewinds.
+ * plays the in step; the first 30 s of part 1 play from 0:00, the first 10 s (SLACK) of a
+ * later part from its start, and nowhere else does a part rewind.
  */
 function oracle(r) {
     const prog = (title, start, end) => ({ kind: 'program', title, start, streamDuration: end - start, bound: 'exact' });
@@ -130,7 +131,8 @@ function oracle(r) {
         if (into > (to - from) - SLACK) {
             return next;
         }
-        return prog('Death Is a Bitch', from + into, to);
+        // a later part's first SLACK plays from its start
+        return prog('Death Is a Bitch', (into < SLACK) ? from : from + into, to);
     };
     if (r < 0) {
         return (-r <= SLACK + 1) ? prog('Death Is a Bitch', 0, 328000) : flex(-r);

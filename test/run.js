@@ -98,6 +98,8 @@ const suites = [
     './breaks-saves-first',
     './midroll-situation',
     './midroll-plan',
+    './midroll-cursor',
+    './midroll-stream',
     './time-slots-no-jump',
     './break-frames',
     './break-saved-frames',

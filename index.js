@@ -366,7 +366,7 @@ app.use('/api/cache/images', cacheImageService.apiRouters())
 app.use('/' + fontAwesome, express.static(path.join(process.env.DATABASE, fontAwesome)))
 app.use('/' + bootstrap, express.static(path.join(process.env.DATABASE, bootstrap)))
 
-app.use(video.router( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB, cardService  ))
+app.use(video.router( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB, cardService, breakScanService ))
 app.use(hdhr.router)
 app.listen(process.env.PORT, () => {
     console.log(`HTTP server running on port: http://*:${process.env.PORT}`)

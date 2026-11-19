@@ -254,10 +254,18 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
         /*
          * A part of a program with midrolls (midroll-cursor.js): from timeElapsed, a
          * second of the file, to where the part stops. The 30-second rule is the first
-         * part's only, as it is a program's: a tune-in inside a later part starts at the
-         * second the clock is at, so every viewer stays together for the midroll after it.
+         * part's only, as it is a program's. A later part starts at the second the clock
+         * is at, so every viewer stays together for the midroll after it - except in its
+         * first SLACK, which plays from the part's start: a stream with no cursor (/m3u8)
+         * reaches it up to that late after an in step it played from its start, and would
+         * otherwise lose the episode's first seconds back, which shared picks still allow.
          */
-        let start = ( (obj.part.k === 0) && (timeElapsed < 30000) ) ? 0 : timeElapsed;
+        let start = timeElapsed;
+        if ( (obj.part.k === 0) && (timeElapsed < 30000) ) {
+            start = 0;
+        } else if ( (obj.part.k > 0) && (timeElapsed - obj.part.fromMs < SLACK) ) {
+            start = obj.part.fromMs;
+        }
         return [ {
             type: 'program',
             title: activeProgram.title,

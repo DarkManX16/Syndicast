@@ -8,7 +8,7 @@ const ProgramPlayer = require('./program-player');
 const channelCache  = require('./channel-cache')
 const dayParts = require('./day-parts');
 const wereThereTooManyAttempts = require('./throttler');
-const lineupCursor = require('./lineup-cursor');
+const midrollCursor = require('./midroll-cursor');
 const transitions = require('./transitions');
 const sharedBreaks = require('./shared-breaks');
 const playable = require('./playable');
@@ -65,7 +65,7 @@ function newStreamId() {
     return crypto.randomBytes(8).toString('hex');
 }
 
-function video( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB, cardService ) {
+function video( channelService, fillerService, db, programmingService, activeChannelService, programPlayTimeDB, cardService, breakScanService ) {
     var router = express.Router()
 
     router.get('/setup', (req, res) => {
@@ -199,7 +199,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
      * for a channel with no steps, which then takes exactly the path it took
      * before transitions existed.
      */
-    let plannerFor = async (channel, t0) => {
+    let stepEnvFor = async (channel) => {
         if (! transitions.hasSteps(channel)) {
             return null;
         }
@@ -211,13 +211,18 @@ function video( channelService, fillerService, db, programmingService, activeCha
             lists[ loaded[i].id ] = loaded[i].content;
             featuring[ loaded[i].id ] = (loaded[i].clipsFeatureShows === true);
         }
-        let env = {
+        return {
             getList: (id) => (Array.isArray(lists[id]) ? lists[id] : null),
             featuresShows: (id) => (featuring[id] === true),
             lastPlayed: (clip) => channelCache.getProgramLastPlayTime(programPlayTimeDB, channel.number, clip),
             // a generated card already rendered (card-service.js), or null: never rendered here
             card: (want) => ( (cardService != null) ? cardService.cardFor(want, channel) : null ),
         };
+    };
+    let plannerFor = (channel, t0, env) => {
+        if (env === null) {
+            return null;
+        }
         return (brk) => {
             let plan = channelCache.getPlan(channel.number, brk);
             if (plan === null) {
@@ -232,6 +237,48 @@ function video( channelService, fillerService, db, programmingService, activeCha
             }
             return plan;
         };
+    };
+
+    /*
+     * What midroll-cursor.js plays a program with midrolls from (docs/blocks-spec.md,
+     * Stage 6, "Playing it"): midroll-plan.js's layout with the Midrolls switch, the
+     * break store's points (none for a file that can't be opened), the step lists and
+     * card lengths the layout reserves time for, and the layouts frozen for the
+     * programs on air (channel-cache.js); and each midroll's step plan, built once per
+     * channel and kept like a break's. Asked for with the switch off as well: a layout
+     * frozen while it was on still plays to its end, and a stream reaching a program
+     * freezes "none" for it, so turning the switch on during an episode changes the
+     * next airing, not this one. null for an on-demand channel, which has no layouts.
+     */
+    let midrollsFor = (channel, t0, stepEnv, plexSettings) => {
+        if ( (channel.onDemand != null) && (channel.onDemand.isOnDemand === true) ) {
+            return null;
+        }
+        let scan = breakScanService;
+        let env = Object.assign( { getList: () => null, lastPlayed: () => 0 }, stepEnv || {}, {
+            on: (scan != null) && (scan.midrollsOn() === true),
+            pointsFor: (program) => ( (scan == null) || playable.isKnownUnopenable(program, plexSettings, t0) ) ? null : scan.pointsFor(program),
+            cardMs: (id) => ( (cardService != null) && (typeof(cardService.cardMsOf) === 'function') ) ? cardService.cardMsOf(id) : null,
+            frozen: channelCache.frozenLayouts,
+        } );
+        let clock = (t) => new Date(t).toLocaleTimeString();
+        let mmss = (ms) => `${Math.floor(ms / 60000)}:${String(Math.round( (ms % 60000) / 1000 )).padStart(2, '0')}`;
+        let titles = (steps) => (steps.length === 0) ? '(none)' : steps.map( (s) => s.clip.title ).join(', ');
+        return midrollCursor.context(env, { getPlan: channelCache.getPlan, setPlan: channelCache.setPlan }, {
+            onLayout: (ch, layout) => {
+                console.log(`Midroll layout, channel ${ch.number}, ${ch.programs[layout.index].title} at ${clock(layout.start)}: `
+                    + layout.parts.map( (p) => `part ${mmss(p.fromMs)}-${mmss(p.toMs)} at ${clock(p.start)}` ).join(', ')
+                    + `; midrolls ${layout.midrolls.map( (m) => `${mmss(m.lengthMs)} at ${clock(m.start)}` ).join(', ')}`
+                    + `; end break ${mmss(layout.endBreak.lengthMs)} at ${clock(layout.endBreak.start)}, next row at ${clock(layout.end)}`);
+            },
+            onPlan: (ch, layout, k, plan) => {
+                console.log(`Midroll plan, channel ${ch.number}, ${ch.programs[layout.index].title} midroll ${k + 1} of ${layout.midrolls.length} at ${clock(layout.midrolls[k].start)}: `
+                    + `${titles(plan.out)} -> commercials -> ${titles(plan.in)}`);
+                for (let i = 0; i < plan.notes.length; i++) {
+                    console.log(`  Midroll plan note: ${plan.notes[i]}`);
+                }
+            },
+        } );
     };
 
     // Stream individual video to ffmpeg concat above. This is used by the server, NOT the client
@@ -310,6 +357,8 @@ function video( channelService, fillerService, db, programmingService, activeCha
       let cursorProg = null;
       // builds a break's transition plan; null for a channel with no steps
       let planFor = null;
+      // plays a program with midrolls (midroll-cursor.js); null on an on-demand channel
+      let mctx = null;
       let brandChannel = channel;
       let redirectChannels = [];
       let upperBounds = [];
@@ -339,12 +388,15 @@ function video( channelService, fillerService, db, programmingService, activeCha
         // A stream that has played something already plays the next entry in
         // the lineup (lineup-cursor.js), not whatever the clock lands on; the
         // clock, and the channel's replay cache, only decide when it can't.
-        planFor = await plannerFor(channel, t0);
+        let stepEnv = await stepEnvFor(channel);
+        planFor = plannerFor(channel, t0, stepEnv);
+        // inside a program with midrolls, its parts and midrolls (midroll-cursor.js)
+        mctx = midrollsFor(channel, t0, stepEnv, plexSettings);
         if ( (skip != null) && (skip.cursor != null) ) {
             // past an item that couldn't be opened, to what follows it
-            cursorProg = lineupCursor.nextEntry(channel, skip.cursor, t0, planFor);
+            cursorProg = midrollCursor.nextEntry(channel, skip.cursor, t0, planFor, mctx);
         } else if (streamId !== null) {
-            cursorProg = lineupCursor.nextEntry(channel, channelCache.getCursor(streamId), t0, planFor);
+            cursorProg = midrollCursor.nextEntry(channel, channelCache.getCursor(streamId), t0, planFor, mctx);
         }
         if (cursorProg === null) {
             lineupItem = channelCache.getCurrentLineupItem( channel.number, t0);
@@ -356,16 +408,18 @@ function video( channelService, fillerService, db, programmingService, activeCha
           brandChannel = redirectChannels[ redirectChannels.length -1];
       } else {
         prog = (cursorProg !== null) ? cursorProg : programmingService.getCurrentProgramAndTimeElapsed(t0, channel);
-        if ( (cursorProg === null) && (planFor !== null) ) {
-            // from the clock, in or next to a break with steps: which phase of it
-            prog = lineupCursor.placeByClock(channel, prog, t0, planFor);
+        if ( (cursorProg === null) && ( (planFor !== null) || (mctx !== null) ) ) {
+            // from the clock: which part or midroll of a program with midrolls, or which
+            // phase of a break with steps, the clock is in
+            prog = midrollCursor.placeByClock(channel, prog, t0, planFor, mctx);
         }
         if ( (prog.program.isOffline !== true) && playable.isKnownUnopenable(prog.program, plexSettings, t0) ) {
-            // a program whose file can't be opened: its slot plays Flex instead
+            // a program whose file can't be opened: its slot plays Flex instead (a part's, the part's)
+            let part = prog.part;
             prog = {
-                program: { isOffline: true, duration: prog.program.duration },
+                program: { isOffline: true, duration: (part != null) ? part.toMs - part.fromMs : prog.program.duration },
                 programIndex: -1,
-                timeElapsed: prog.timeElapsed,
+                timeElapsed: (part != null) ? prog.timeElapsed - part.fromMs : prog.timeElapsed,
                 startsIn: prog.startsIn,
             };
         }
@@ -460,13 +514,20 @@ function video( channelService, fillerService, db, programmingService, activeCha
             t0,
             prog.program.isOffline === true ? null : prog.program
         );
+        if ( (resumeAt != null) && (prog.part != null) && ! ( (resumeAt >= prog.part.fromMs) && (resumeAt < prog.part.toMs) ) ) {
+            // a part resumes only inside itself: anywhere else the layout decides
+            resumeAt = null;
+        }
         if (resumeAt != null) {
             console.log(
                 `Resuming after a channel update at ${resumeAt}ms`
                 + ` instead of ${prog.timeElapsed}ms.`
             );
             // the cursor keeps to the lineup's own schedule, not the resumed position
-            prog.lineupStart = t0 + (prog.startsIn || 0) - prog.timeElapsed;
+            // (a part's timeElapsed is a second of its file, and it carries its airing's start)
+            if (prog.part == null) {
+                prog.lineupStart = t0 + (prog.startsIn || 0) - prog.timeElapsed;
+            }
             prog.timeElapsed = resumeAt;
             prog.startsIn = 0;
             // the bound pushed for this program above was measured from the
@@ -547,7 +608,7 @@ function video( channelService, fillerService, db, programmingService, activeCha
             let cursor = null;
             if (prog !== null) {
                 if ( (brandChannel === channel) && (typeof(lineupItem.err) === 'undefined') ) {
-                    cursor = lineupCursor.cursorAfter(channel, prog, t0);
+                    cursor = midrollCursor.cursorAfter(channel, prog, t0);
                 }
             } else if ( (typeof(lineupItem.cursor) === 'object') && (redirectChannels.length === 1) ) {
                 cursor = lineupItem.cursor;
@@ -617,6 +678,9 @@ function video( channelService, fillerService, db, programmingService, activeCha
             lineupItem.title = 'Unknown';
         }
         console.log(`! Title: ${lineupItem.title}`);
+        if ( (lineupItem.part != null) && (typeof(lineupItem.part) === 'object') ) {
+            console.log(`! Part : ${lineupItem.part.k + 1} of ${lineupItem.part.of}`);
+        }
         if ( typeof(lineupItem.streamDuration) === 'undefined') {
             console.log(`! From : ${lineupItem.start}`);
         } else {

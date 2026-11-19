@@ -344,12 +344,25 @@ function placeByClock(channel, obj, t0, planFor, mctx) {
  * What video.js hands the functions above: an airing's layout through midroll-plan.js's
  * layoutAt with `env` (its frozen store included), and midroll k's step plan, built once
  * per channel and kept in `cache` (channel-cache.js's getPlan / setPlan, as a break's is)
- * so every viewer plays the same steps. `onPlan(channel, layout, k, plan)` is told of each
- * plan built.
+ * so every viewer plays the same steps. `hooks.onLayout(channel, layout)` is told of each
+ * layout with midrolls as it is frozen, and `hooks.onPlan(channel, layout, k, plan)` of each
+ * plan built: video.js logs them.
  */
-function context(env, cache, onPlan) {
+function context(env, cache, hooks = {}) {
+    const onPlan = hooks.onPlan;
     return {
-        layoutAt: (channel, index, start, now) => midrollPlan.layoutAt(channel, index, start, env, now),
+        layoutAt: (channel, index, start, now) => {
+            const frozen = (env != null) ? env.frozen : null;
+            const before = (frozen != null) ? frozen.get(channel.number, index, start) : null;
+            const layout = midrollPlan.layoutAt(channel, index, start, env, now);
+            if ( (typeof(hooks.onLayout) === 'function') && (frozen != null) && (layout != null) && (layout.midrolls.length > 0) ) {
+                const after = frozen.get(channel.number, index, start);
+                if ( (after != null) && (after !== before) && (after.layout === layout) ) {
+                    hooks.onLayout(channel, layout);
+                }
+            }
+            return layout;
+        },
         planFor: (channel, layout, k, now) => {
             const brk = midrollPlan.midrollBreak(channel, layout, k);
             let plan = (cache != null) ? cache.getPlan(channel.number, brk) : null;
