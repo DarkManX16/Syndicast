@@ -63,6 +63,10 @@ class PlexPlayer {
             let watermark = this.context.watermark;
             let ffmpeg = new FFMPEG(ffmpegSettings, channel);  // Set the transcoder options
             ffmpeg.setAudioOnly( this.context.audioOnly );
+            if ( (lineupItem.part != null) && (typeof(lineupItem.part) === 'object') ) {
+                // a part of a program with midrolls: its cuts move to keyframes if its video is copied
+                ffmpeg.setPartCuts( { cutIn: lineupItem.part.cutIn || null, cutOut: lineupItem.part.cutOut || null } );
+            }
             ffmpeg.setMeterInfo( {
                 title: (lineupItem.showTitle && (lineupItem.type === 'episode')) ? `${lineupItem.showTitle} - ${lineupItem.title}` : lineupItem.title,
                 file: lineupItem.file,

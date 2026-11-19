@@ -278,7 +278,7 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
             beginningOffset: Math.max(0, timeElapsed - start),
             duration: activeProgram.duration,
             serverKey: activeProgram.serverKey,
-            part: { k: obj.part.k, of: obj.part.of },
+            part: { k: obj.part.k, of: obj.part.of, cutIn: obj.part.cutIn || null, cutOut: obj.part.cutOut || null },
         } ];
     }
     let originalTimeElapsed = timeElapsed;

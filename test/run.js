@@ -100,6 +100,7 @@ const suites = [
     './midroll-plan',
     './midroll-cursor',
     './midroll-stream',
+    './part-cuts',
     './time-slots-no-jump',
     './break-frames',
     './break-saved-frames',

@@ -64,7 +64,7 @@ function channelWith(extra = {}) {
 function envWith(on, points = [ 328, 948 ]) {
     return {
         on,
-        pointsFor: (p) => (p.file === FG.file) ? { durationMs: FG.duration, points: points.map( (at, index) => ({ index, at, kind: 'act', by: 'auto', strength: 0.8 }) ) } : null,
+        pointsFor: (p) => (p.file === FG.file) ? { durationMs: FG.duration, points: points.map( (at, index) => ({ index, at, kind: 'act', by: 'auto', strength: 0.8, black: [ at - 1.2, at + 0.8 ] }) ) } : null,
         getList: (id) => LISTS[id] || null,
         cardMs: () => null,
         lastPlayed: () => 0,
@@ -244,6 +244,11 @@ module.exports = async () => {
         suite.check('12:38:10, 14 s into part 2: 5:42 exactly, no rewind inside a later part', (p2.kind === 'program') && (p2.start === ms(5, 42)), show(p2));
         const p1 = at(ms(0, 20));
         suite.check('12:30:20, 20 s into part 1: from 0:00, today\'s 30 s rule', (p1.kind === 'program') && (p1.start === 0) && (p1.streamDuration === ms(5, 28)), show(p1));
+        const { obj } = byClock(channel, S + ms(9), planFor, mctx);
+        const item = helperFuncs.createLineup(freshStore(), obj, channel, FILLERS, false, S + ms(9))[0];
+        suite.check('part 2\'s item carries the points it starts and stops at, with their black, for a copied file\'s cuts',
+            JSON.stringify(item.part) === JSON.stringify( { k: 1, of: 3, cutIn: { at: 328, black: [ 326.8, 328.8 ] }, cutOut: { at: 948, black: [ 946.8, 948.8 ] } } ),
+            JSON.stringify(item.part));
     }
 
     // ---- a viewer following its cursor, no jitter ---------------------------------------------

@@ -71,13 +71,16 @@ function partEnd(part) {
 function partEntry(channel, layout, k, fileMs, t0) {
     const part = layout.parts[k];
     const at = part.start + (fileMs - part.fromMs);
+    // the break points it starts and stops at, for a copied item's cuts (part-cuts.js)
+    const pointOf = (m) => (m == null) ? null : { at: m.atMs / 1000, black: Array.isArray(m.black) ? m.black : null };
     return {
         program: channel.programs[layout.index],
         programIndex: layout.index,
         timeElapsed: fileMs,
         startsIn: Math.max(0, at - t0),
         lineupStart: layout.start,
-        part: { k, of: layout.parts.length, fromMs: part.fromMs, toMs: part.toMs, end: partEnd(part), airing: layout.start },
+        part: { k, of: layout.parts.length, fromMs: part.fromMs, toMs: part.toMs, end: partEnd(part), airing: layout.start,
+            cutIn: pointOf(layout.midrolls[k - 1]), cutOut: pointOf(layout.midrolls[k]) },
     };
 }
 

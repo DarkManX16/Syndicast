@@ -871,8 +871,8 @@ class BreakScanService {
 
     /*
      * A program's airable points, for midroll-plan.js's env.pointsFor: { durationMs, points:
-     * [{ index, at, kind, by, strength }] } (break-airable.js's answer, with each point's
-     * strength), or null for a file with no usable record. Read through a per-show cache that
+     * [{ index, at, kind, by, strength, black }] } (break-airable.js's answer, with each point's
+     * strength and black, which a copied part's cut needs: part-cuts.js), or null for a file with no usable record. Read through a per-show cache that
      * every write here clears and that also notices the show's file changing on disk (its size
      * and time), so an approval, a scan or a hand edit shows on the next read, and a stream
      * never reads every show's file.
@@ -897,7 +897,7 @@ class BreakScanService {
                 answer = {
                     durationMs: record.durationMs,
                     points: airablePoints(read.show, program.file, { isMovie: isMovieKey, auto: read.auto })
-                        .map( (p) => ({ index: p.index, at: p.at, kind: p.kind, by: p.by, strength: record.points[p.index].strength }) ),
+                        .map( (p) => ({ index: p.index, at: p.at, kind: p.kind, by: p.by, strength: record.points[p.index].strength, black: record.points[p.index].black || null }) ),
                 };
             }
             read.airable.set(program.file, answer);
