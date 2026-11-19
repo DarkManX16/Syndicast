@@ -462,5 +462,48 @@ module.exports = async () => {
         suite.check('...and none with the switch off', midrolls.midrollsBetween(channel, start, start + ms(45, 0), Object.assign( {}, env, { on: false } )).length === 0);
     }
 
+    // ---- the store, through the scan service ---------------------------------------------------
+    {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const store = require('../src/breaks-store');
+        const BreakScanService = require('../src/services/break-scan-service');
+        const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'midroll-plan-'));
+        const breaks = path.join(folder, 'breaks');
+        const pt = (at, kind, strength = 0.85, extra = {}) => Object.assign( { at, black: [ at - 0.5, at + 0.5 ], silence: [ at - 0.5, at + 0.5 ], kind,
+            sources: [ 'blackSilence' ], strength, keyframe: null, status: 'found', approvedBy: null }, extra );
+        const rec = (points, extra = {}) => Object.assign( { ratingKey: '1', size: 1000, mtimeMs: 5, durationMs: ms(22, 0), scannedAt: 1,
+            scanner: store.CURRENT_SCANNER_VERSION, chapters: [], points, noBreaks: false, error: null }, extra );
+        const files = {};
+        for (let i = 0; i < 6; i++) {
+            files[`G:/Show/e${i}.mkv`] = rec( [ pt(70, 'opening', 0.7), pt(400 + i * 20, 'act'), pt(800 + i * 20, 'act'), pt(1250, 'credits', 0.8) ] );
+        }
+        store.saveShow(breaks, 'tv.Show', { theatrical: false, pattern: null, files });
+        store.saveShow(breaks, 'custom.c1', { theatrical: false, pattern: null, files: {
+            'G:/Films/Movie.mkv': rec( [ pt(1500, 'act', 0.9, { status: 'hand' }), pt(3000, 'act', 0.9) ], { durationMs: ms(90, 0), movie: true } ) } } );
+        fs.writeFileSync(path.join(folder, 'break-scanner.json'), JSON.stringify( { midrolls: true, paused: true } ));
+        const service = new BreakScanService( { folder, channelService: { getAllChannels: async () => [] }, getFfmpegSettings: () => ({}), log: () => {} } );
+        await service.load();
+        const e0 = episode('Show', 'e0', ms(22, 0), { file: 'G:/Show/e0.mkv' });
+        const read = service.pointsFor(e0);
+        const said = (r) => JSON.stringify( (r === null) ? null : r.points.map( (p) => [ p.at, p.kind, p.by, p.strength ] ) );
+        suite.check('the scan service reads a file\'s airable points, with their strength: its two acts, approved automatically',
+            (read !== null) && (read.durationMs === ms(22, 0)) && (said(read) === JSON.stringify( [ [ 400, 'act', 'auto', 0.85 ], [ 800, 'act', 'auto', 0.85 ] ] )), said(read));
+        suite.check('...and the Midrolls switch as saved', service.midrollsOn() === true);
+        const movie = { type: 'movie', title: 'Movie', customShowId: 'c1', file: 'G:/Films/Movie.mkv', duration: ms(90, 0) };
+        suite.check('a movie inside a custom show: only his hand point', said(service.pointsFor(movie)) === JSON.stringify( [ [ 1500, 'act', 'hand', 0.9 ] ] ), said(service.pointsFor(movie)));
+        suite.check('a file never scanned: null', service.pointsFor(episode('Show', 'x', ms(22, 0), { file: 'G:/Show/new.mkv' })) === null);
+        service.updateShow('tv.Show', (show) => {
+            show.files['G:/Show/e0.mkv'].points[1].status = 'rejected';
+        } );
+        suite.check('a point rejected on the Breaks page is gone on the next read', said(service.pointsFor(e0)) === JSON.stringify( [ [ 800, 'act', 'auto', 0.85 ] ] ), said(service.pointsFor(e0)));
+        const edited = store.loadShow(breaks, 'tv.Show');
+        edited.withdrawn = { at: 1 };
+        store.saveShow(breaks, 'tv.Show', edited);
+        suite.check('...and a change written to the store by anything else (the show withdrawn) too', said(service.pointsFor(e0)) === '[]', said(service.pointsFor(e0)));
+        fs.rmSync(folder, { recursive: true, force: true });
+    }
+
     return suite;
 };
