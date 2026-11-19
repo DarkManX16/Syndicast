@@ -77,11 +77,15 @@ function getCurrentProgramAndTimeElapsed(date, channel) {
  * handed over before it really starts. For a break this is how much filler it
  * really has room for: a break with transition steps keeps reserveMs back for
  * its in steps (lineup-cursor.js), so the Flex shrinks and the steps never do.
- * A step is played whole, so its own length is its time left.
+ * A step is played whole, so its own length is its time left. A part of a
+ * program with midrolls (midroll-cursor.js) runs to where the part stops.
  */
 function timeLeft(obj) {
     if ( (typeof(obj.transition) === 'object') && (obj.transition !== null) ) {
         return obj.transition.durationMs;
+    }
+    if ( (typeof(obj.part) === 'object') && (obj.part !== null) ) {
+        return obj.part.toMs - obj.timeElapsed + (obj.startsIn || 0);
     }
     return obj.program.duration - obj.timeElapsed + (obj.startsIn || 0) - (obj.reserveMs || 0);
 }
@@ -179,7 +183,10 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
              * day-parts behaves as it did before.
              */
             let mix = fillers;
-            let collections = dayParts.resolveCollections(channel, t0, obj);
+            // A midroll's commercials (midroll-cursor.js) are its program's own context's.
+            let collections = ( (typeof(obj.midroll) === 'object') && (obj.midroll !== null) )
+                ? dayParts.resolveMidrollCollections(channel, obj.midroll.airing)
+                : dayParts.resolveCollections(channel, t0, obj);
             // A Mix entry with dates is in the mix only on them (day-parts.js's
             // mixOn); with none dated, each hands back the array it was given.
             let breakStart = dayParts.breakStartOf(t0, obj);
@@ -242,6 +249,29 @@ function createLineup(programPlayTime, obj, channel, fillers, isFirst, t0) {
             start: 0
         })
         return lineup;
+    }
+    if ( (typeof(obj.part) === 'object') && (obj.part !== null) ) {
+        /*
+         * A part of a program with midrolls (midroll-cursor.js): from timeElapsed, a
+         * second of the file, to where the part stops. The 30-second rule is the first
+         * part's only, as it is a program's: a tune-in inside a later part starts at the
+         * second the clock is at, so every viewer stays together for the midroll after it.
+         */
+        let start = ( (obj.part.k === 0) && (timeElapsed < 30000) ) ? 0 : timeElapsed;
+        return [ {
+            type: 'program',
+            title: activeProgram.title,
+            key: activeProgram.key,
+            plexFile: activeProgram.plexFile,
+            file: activeProgram.file,
+            ratingKey: activeProgram.ratingKey,
+            start: start,
+            streamDuration: obj.part.toMs - start,
+            beginningOffset: Math.max(0, timeElapsed - start),
+            duration: activeProgram.duration,
+            serverKey: activeProgram.serverKey,
+            part: { k: obj.part.k, of: obj.part.of },
+        } ];
     }
     let originalTimeElapsed = timeElapsed;
     if (timeElapsed < 30000) {

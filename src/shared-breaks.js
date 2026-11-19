@@ -40,7 +40,9 @@ function isOnDemand(channel) {
 /*
  * Whether obj (getCurrentProgramAndTimeElapsed's or the cursor's answer) is
  * Flex of this channel's own lineup that can share its picks: not a
- * transition step, an error, a redirect or an on-demand channel.
+ * transition step, an error, a redirect or an on-demand channel. A midroll's
+ * commercials (midroll-cursor.js) stand on a Flex of their own, keyed by the
+ * program and where the midroll starts, so each midroll has its own list.
  */
 function shareable(channel, obj) {
     if ( (obj == null) || (typeof(obj) !== 'object') || isOnDemand(channel) ) {
@@ -52,7 +54,9 @@ function shareable(channel, obj) {
         return false;
     }
     let program = obj.program;
-    return (program === programs[index]) && (program.isOffline === true) && (program.type !== 'redirect')
+    let own = (program === programs[index])
+        || ( (typeof(obj.midroll) === 'object') && (obj.midroll !== null) && (programs[index].isOffline !== true) );
+    return own && (program.isOffline === true) && (program.type !== 'redirect')
         && (typeof(program.err) === 'undefined')
         && ( (typeof(obj.transition) !== 'object') || (obj.transition === null) );
 }

@@ -616,6 +616,22 @@ function resolveCollections(channel, t0, obj) {
 }
 
 /*
+ * The mix a midroll plays (docs/blocks-spec.md, Stage 6, "The Midroll situation"): the
+ * program's own context, resolved at its start, as a break inside that context would
+ * use - both sides of a midroll are the program on air. null for the channel's own Flex.
+ */
+function resolveMidrollCollections(channel, airingStart) {
+    if (! hasOverlay(channel)) {
+        return null;
+    }
+    let context = resolveContext(channel, airingStart);
+    if ( (context == null) || ! Array.isArray(context.fillerCollections) ) {
+        return null;
+    }
+    return context.fillerCollections;
+}
+
+/*
  * Dates on a Mix entry (NOTES.md, "Event tools"): an entry with
  * `dates: { from, to }` is in its mix only for a break that starts on one of
  * those dates (src/date-range.js); one whose dates cannot be honoured is left
@@ -767,6 +783,7 @@ module.exports = {
     breakStartOf: breakStartOf,
     copyMixEntry: copyMixEntry,
     resolveCollections: resolveCollections,
+    resolveMidrollCollections: resolveMidrollCollections,
     weeklySegments: weeklySegments,
     airingSpans: airingSpans,
     spanCovers: spanCovers,
