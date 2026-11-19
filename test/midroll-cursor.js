@@ -104,7 +104,9 @@ function landing(channel, obj, at, store) {
     if (obj.program.isOffline === true) {
         return { kind: 'flex', left: helperFuncs.timeLeft(obj), fits: (item.type === 'commercial') && (item.streamDuration <= helperFuncs.timeLeft(obj) + SLACK) };
     }
-    return { kind: 'program', title: item.title, start: item.start, streamDuration: item.streamDuration };
+    // video.js caps the item at timeLeft plus how far it rewound: that must be exactly the item
+    const bound = helperFuncs.timeLeft(obj) + item.beginningOffset - (obj.startsIn || 0);
+    return { kind: 'program', title: item.title, start: item.start, streamDuration: item.streamDuration, bound: (bound === item.streamDuration) ? 'exact' : bound };
 }
 
 /*
@@ -121,7 +123,7 @@ function landing(channel, obj, at, store) {
  * plays the in step; the first 30 s of part 1 play from 0:00, and no other part rewinds.
  */
 function oracle(r) {
-    const prog = (title, start, end) => ({ kind: 'program', title, start, streamDuration: end - start });
+    const prog = (title, start, end) => ({ kind: 'program', title, start, streamDuration: end - start, bound: 'exact' });
     const flex = (left) => ({ kind: 'flex', left });
     const part = (from, to, startsAt, next) => {
         const into = r - startsAt;
@@ -379,6 +381,25 @@ module.exports = async () => {
         channelCache.forgetFrozenLayouts();
         const after = landing(channel, byClock(channel, S + ms(25), planFor, mctx).obj, S + ms(25), freshStore());
         suite.check('a restart during the airing: the layout worked out again lands the same', same(before, after), `${show(before)} / ${show(after)}`);
+    }
+
+    // ---- two in steps: the one on the air ------------------------------------------------------------
+    {
+        fresh();
+        LISTS.BU = [ { title: 'Bumper', key: '/t/bu', duration: 4 * SEC, serverKey: 'srv' } ];
+        const two = channelWith();
+        two.dayParts[0].transitions.midroll.in = [ step('u', 'BU'), step('b', 'BT') ];
+        const env = envWith(true);
+        const mctx = contextOf(env);
+        const planFor = breakPlanner(two, env);
+        const at = (r) => byClock(two, S + r, planFor, mctx).obj;
+        const third = at(476000 - 3000);   // 3 s before part 2: inside BTTS, the second in step
+        const first = at(476000 - 8000);   // 8 s before: inside Bumper
+        const before = at(476000 - 15000); // 15 s before: 5 s before the in steps, under SLACK of commercials left
+        const name = (o) => (o.transition != null) ? o.transition.clip.title : (o.program.isOffline ? 'flex' : o.program.title);
+        suite.check('a midroll with two in steps, tuned into 3 s before its end: the second, BTTS; 8 s before: Bumper; 15 s before: Bumper',
+            (name(third) === 'BTTS') && (name(first) === 'Bumper') && (name(before) === 'Bumper'), `${name(third)}, ${name(first)}, ${name(before)}`);
+        delete LISTS.BU;
     }
 
     // ---- a midroll's commercials come from the program's own context --------------------------------
