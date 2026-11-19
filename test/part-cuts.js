@@ -74,6 +74,8 @@ module.exports = async function () {
     const realProbe = FFMPEG.keyframesFor;
     try {
         s.check('the first keyframe inside the black: 327.4', partCuts.keyframeAt(KEYS[328], IN) === 327.4);
+        s.check('the black\'s keyframe even when it comes after the point: 328.6, not 321.5 before it',
+            partCuts.keyframeAt( [ 321.5, 328.6, 335.0 ], { at: 328, black: [ 327.0, 329.5 ] } ) === 328.6);
         s.check('none inside the black: the last at or before the point, 944.0', partCuts.keyframeAt(KEYS[948], OUT) === 944.0);
         s.check('no black known: the last at or before the point', partCuts.keyframeAt( [ 320, 327.9, 328.0, 331 ], { at: 328, black: null } ) === 328.0);
         s.check('no keyframe at all: none', (partCuts.keyframeAt( [], IN ) === null) && (partCuts.keyframeAt( [ 340 ], { at: 328, black: null } ) === null));
