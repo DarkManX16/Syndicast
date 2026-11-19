@@ -1671,6 +1671,16 @@ never on the live data folder and never through the server on port 18000.
      show withdrawn by hand, and the week planned again: the approved point
      airs, the rejected one does not, the withdrawn show has none, nothing else
      changes.
+     **Built Nov 19** (`src/midroll-plan.js`): DarkManX16's three answers (the steps
+     held back at their longest clip, the 4-minute cap, the program on air finishing
+     its midrolls) and the layout in place of a plan built at the program's start (see
+     "Keeping the schedule on time"). The proof, `scripts/midroll-week.js`, runs 14
+     days, compares every row with the switch off and on, and its `--edits` makes the
+     three hand changes. **What 6 and 7 take from it:** `layoutAt` (parts, midrolls and
+     the end break, frozen for the program on air; with the switch off, a frozen layout
+     still plays, so step 6's gate is "the switch on, or a frozen layout"); `whereAt`
+     for the clock path; `buildMidrollPlan` for a midroll's steps (keyed like a break's
+     plan, with its own shared picks); `midrollsBetween` for the editor's tag and preview.
 6. **Playing it.** The cursor's parts and midroll phases, the clock path, the
    shared plan, the keyframe start for copied files, the guide. The simulated
    viewer in `test/lineup-cursor.js` and the real router in
