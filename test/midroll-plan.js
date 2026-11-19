@@ -137,6 +137,11 @@ module.exports = async () => {
             (layout.midrolls.length === 2) && (layout.midrolls[0].lengthMs === ms(1, 30)), JSON.stringify(layout.midrolls));
     }
     {
+        const { layout } = half(ms(4, 31) + 500, three.slice(0, 2));
+        suite.check('4:31.5 of Flex: shares round to 1:31, which would leave the end break 1:29.5, under 90 s; so one midroll',
+            (layout.midrolls.length === 1) && (layout.endBreak.lengthMs >= 90 * SEC), JSON.stringify(layout.midrolls.map( (m) => m.lengthMs )) + ' end ' + layout.endBreak.lengthMs);
+    }
+    {
         const { layout } = half(60 * SEC, three);
         suite.check('a break cut to 60 s before a kept row: none, and the end break keeps the whole 60 s',
             (layout.midrolls.length === 0) && (layout.endBreak.lengthMs === 60 * SEC) && (layout.parts.length === 1));
