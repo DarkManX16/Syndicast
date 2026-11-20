@@ -8648,9 +8648,9 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
   Delete had rightly named none. Not this branch: the page bundles one file step 6 touches,
   `src/day-parts.js`, which only gains `resolveMidrollCollections`. On `copy-i` and `copy-j`
   (one copy, 5:04:19pm) this branch and `blocks` (a detached worktree, 18464) ran at the same
-  moment: **12/12 each**, tonight's swaps left where they were. The move at 4:53pm is not
-  explained; it may be the one the "Create Lineup moves a kept swap on channel 3" session
-  looked at. 18000 during the workflows: one reading at 5:08:08pm with every item at about
+  moment: **12/12 each**, tonight's swaps left where they were. The move at 4:53pm is explained
+  under Resolved, "Create Lineup moved a special day's swaps that had aired": the checklist's
+  library add shifted what had aired. 18000 during the workflows: one reading at 5:08:08pm with every item at about
   0.42 (all drives at once, the next reading normal), while both runs went at once.
 
 ### Random Slots' Create Lineup restarts the program on air
@@ -9407,8 +9407,9 @@ a copy of the data folder, never on `.dizquetv-dev` itself.
   - `--save <out.json>` writes the regenerated channel and `--from <out.json>`
     reads one back - how "twice in a row" and "three months in" are run.
   - `--show <regex>`, `--airings <regex> --days <n>` and `--all` list more.
-  - `--add-custom <id>` adds a custom show's whole item list first, as adding
-    it from the library does - the lineup alone holds only what it aired (see
+  - `--add-custom <id>` adds a custom show's whole item list at the end of the
+    list as the editor has it (after rotating, marked `addedAt`), as adding it
+    from the library does - the lineup alone holds only what it aired (see
     "Full catalogs, and a never-air list").
   - `--today` skips the planner. With no records Play Next falls back to the
     founder rule, as blocks did, but Shuffle starts rounds of its own, so it
@@ -9579,6 +9580,67 @@ investigation that Opus 5 already handles well.
 
 Kept here rather than deleted because every file involved is in the conflict
 set for the pending 1.7.0 merge, and this will need re-applying.
+
+### Create Lineup moved a special day's swaps that had aired
+
+- **Found Nov 19, 2026** by the checklist's `add-delete-create` (step 6's build record): a Create Lineup at
+  about 4:53pm on a copy laid DarkManX16's House of Mouse marathon swaps 1-8, aired 1:00-4:30pm, again at
+  5:00-8:30pm; his swaps 9-16 were gone. Reruns at 5:05pm passed.
+- **Not kept rows, and not the Nov 15 cause.** The swaps are the special day's own changes (Event tools,
+  feature 4), each to the row's nth airing in the day (`n`, 1-16). The Nov 15 "kept swap" fixes (64bdd03,
+  69d9e78) were the generator's Slide and rule 3 on kept rows ahead.
+- **The cause.** The editor's list starts at the program on air, so what aired sits at the end of the
+  array, and the library's add on a Time Slots channel (Add Flex and Add Redirect too) goes after it. Read
+  through the loop, the 52 episodes the checklist added (19.5 hours) sat where today's airings did.
+  - The special-day planner (`slot-progress.js`) counted none of the day's airings, so the day's numbering
+    began again at 1 from now.
+  - It came out right whenever the list's first row was one of the day's airings, whose `specialN` gives
+    the count. The 4:52pm run opened the editor at about 4:53:35, in the break before Daisy's Debut; the
+    5:05pm reruns opened it during Daisy's Debut.
+  - The same shift made `pins.carryAt` carry an added episode, and `repeatHistory` read the adds: four
+    Repeat airings on Nov 20-21 changed.
+  - `progress-check --add-custom` added before rotating, the other way round from the editor, so it never
+    showed this.
+- **Reproduced** on a copy taken 6:39pm, with the editor's own path and a frozen clock. Every 2 minutes
+  from 1:24pm to 9:04pm (231 moments): with nothing added, nothing moved; with 52 added, 45 moved, every
+  one a moment the editor was opened in a break.
+- **DarkManX16's questions, Nov 19.**
+  - A marked row that airs counts: the mark says when the row was added, and only a marked row still to
+    come whose airing before now would have begun before then is left out.
+  - Reading the past from the saved lineup instead fixes only adds not yet saved: the editor saves its
+    rotated list, with the adds after what aired. So the mark.
+- **What shipped.**
+  - On a Time Slots channel with a list, the library's add, Add Flex and Add Redirect at the end mark each
+    row `addedAt` with when. Other channels are as before.
+  - `lineupOnAir` hands the Time Slots dialog the lineup as it aired (`pins.asAired`): a marked row still
+    to come (it starts after now) whose airing before now would have begun before it was added is left
+    out. One on air, or aired since it was added, stays. With nothing marked it is the list itself.
+  - The mark never leaves the list: `stripped` (Swap, Insert, Put back, the ripple), Move's dragged row,
+    `dayEdits.plainItem`, `slotPool` (the dialog's pool and pickers) and both generators drop it. The guide
+    and XMLTV build entries from named fields.
+  - `progress-check --add-custom` adds after rotating, marked, and reads through `asAired`.
+- **Tests, failing first** (`test/added-at-end.js`, 25 checks): the editor's pieces lifted from
+  `channel-config.js`, a day of 16 swaps, Create Lineup at 27 moments (during each airing, in each break,
+  a second before the next) and after an add saved and reopened; a marked row on air or aired since stays;
+  the three adds mark, and on other channels leave exactly what they did; no mark after Swap, Move, a day's
+  item, the pool, either generator, or in the guide. Each part of the fix taken out on purpose fails a
+  check (`scratchpad/mutate-added.js`).
+- **Proof.**
+  - Suite 3,869/3,869.
+  - On a copy taken 7:34pm, the editor's path with a frozen clock and 52 added: every 2 minutes from
+    1:24pm to 9:04pm (231 moments) the day stays where the list has it, and the whole three weeks are the
+    lineup made with nothing added (2,149 entries). Added at 2:23pm, saved and reopened: every 10 minutes
+    from 2:26pm (40 moments), the same.
+  - With nothing added, Create Lineup on channels 1-3 is byte for byte `blocks`' own (`progress-check`,
+    7:40pm).
+  - Workflows 12/12 on a copy taken 7:41pm (port 18471); afterwards no saved file carries the mark.
+  - **The 4:53pm run.** A copy taken 7:51pm, server and page clocks set to Nov 19 4:50:30pm (port 18472,
+    proxy 18473), `library-add`, `delete` and `add-delete-create` from 4:52:30pm. `library-add` saved its 52
+    at 4:53:14; `add-delete-create` opened the editor in the break before Daisy's Debut and saved its
+    Create Lineup at 4:54:25. 3/3 passed; tonight is Daisy's Debut at 5:00pm to Jiminy Cricket at 8:30pm,
+    as DarkManX16's list has it, and no mark was saved.
+- **Found on the way, not changed:** Move of the very last row of the list throws (`rows[kf + 1]` in
+  `kept-rows.js` `move`).
 
 ### Deleted episodes kept coming back
 
