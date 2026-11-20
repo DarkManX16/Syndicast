@@ -1352,10 +1352,13 @@ function move({ lineup, from, to, now, sure, schedule }) {
         ? programs.slice(0, rt.index).concat(block, middle, programs.slice(rf.last + 1))
         : programs.slice(0, rf.index).concat(middle, block, programs.slice(rt.index));
     let lands = earlier ? rt.start : rt.start - length;
+    // Dragged up from the very end of the list, nothing follows its old place: the rows between
+    // end where the list always did, so there is no "back on time" to say.
     let onTime = earlier ? rows[kf + 1] : rt;
+    let back = (typeof(onTime) === 'undefined') ? '' : `, back on time at ${clockAm(onTime.start)}`;
     return {
         programs: out,
-        text: `${title(rf.program)} moves to ${pins.dayClock(lands)}; ${plural(between.length, 'airing')} shift ${amount(length)} ${earlier ? 'later' : 'earlier'}, back on time at ${clockAm(onTime.start)}.`,
+        text: `${title(rf.program)} moves to ${pins.dayClock(lands)}; ${plural(between.length, 'airing')} shift ${amount(length)} ${earlier ? 'later' : 'earlier'}${back}.`,
         edit: id,
     };
 }
@@ -1437,7 +1440,12 @@ function undoMove(lineup, index, edit) {
     let rest = programs.slice(0, row.index).concat(programs.slice(row.last + 1));
     let target = rowsOf({ programs: rest, startTime: lineup.startTime }).find( (r) => r.start >= edit.from - SAME );
     if (typeof(target) === 'undefined') {
-        return null;
+        // The row was the list's last: its old place is the end of what is left.
+        let end = rest.reduce( (t, p) => t + p.duration, lineup.startTime );
+        if (Math.abs(end - edit.from) > SAME) {
+            return null;
+        }
+        return rest.concat(block).map( (p) => withoutEdit(p, edit.id) );
     }
     let out = rest.slice(0, target.index).concat(block, rest.slice(target.index));
     return out.map( (p) => withoutEdit(p, edit.id) );

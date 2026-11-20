@@ -59,6 +59,7 @@ const suites = [
     './whole-list-kept',
     './delete-still-airs',
     './added-at-end',
+    './move-last-row',
     './first-open-silent',
     './editor-footer',
     './pins',
