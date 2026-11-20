@@ -204,7 +204,7 @@ function findChange(schedule, id) {
 
 // An item as a change keeps it: none of a list row's own marks.
 const MARKS = [ 'kept', 'pin', 'specialDay', 'specialRow', 'specialChange', 'specialInsert', 'specialN', 'specialHoliday', 'slotPosition', 'shuffleOrder',
-    'start', 'stop', '$index', '$$hashKey' ];
+    'start', 'stop', '$index', '$$hashKey', 'addedAt' ];
 function plainItem(p) {
     let copy = JSON.parse(JSON.stringify(p));
     MARKS.forEach( (k) => delete copy[k] );

@@ -191,6 +191,43 @@ function slotAround({ schedule, at }) {
     return { start: start, end: end, showId: slot.showId };
 }
 
+/*
+ * The lineup as it aired, for what Create Lineup reads of the past (NOTES.md,
+ * Resolved, "Create Lineup moved a special day's swaps that had aired"). The
+ * editor's list starts at the program on air, so what aired sits at the end of
+ * the array, and what goes at the end of the list on a Time Slots channel - the
+ * library's add, Add Flex, Add Redirect - goes after it, marked `addedAt` with
+ * when. Read through the loop, an add would sit where that much of what aired
+ * did. So a marked row still to come in the list (it starts after `now`) whose
+ * airing before now would have begun before it was added is left out; a marked
+ * row the loop has brought round since it was added - on air now, or aired -
+ * stays, as any airing. With nothing marked it is the lineup itself.
+ */
+function asAired({ programs, startTime, now }) {
+    if (! programs.some( (p) => (p != null) && (typeof(p.addedAt) === 'number') )) {
+        return { programs, startTime };
+    }
+    let start = new Date(startTime).getTime();
+    // Rows up to the one on air at `now`, from the list's start, have begun.
+    let begun = -1;
+    for (let i = 0, t = start; (i < programs.length) && (t <= now); i++) {
+        begun = i;
+        t += programs[i].duration;
+    }
+    // Back from the list's start: each row ends where the next row kept begins.
+    let kept = [];
+    let t = start;
+    for (let i = programs.length - 1; i >= 0; i--) {
+        let p = programs[i];
+        if ( (i > begun) && (typeof(p.addedAt) === 'number') && (t - p.duration < p.addedAt) ) {
+            continue;
+        }
+        t -= p.duration;
+        kept.push(p);
+    }
+    return { programs: kept.reverse(), startTime };
+}
+
 // Where a lineup's loop really ends. Callers stop two weeks before it: a
 // lineup's last days sit off the slots and end in Flex, so they'd read as
 // hand-placed, and they're a year out, beyond what a re-lay keeps. Since the
@@ -363,6 +400,7 @@ module.exports = {
     slotAround: slotAround,
     handPlaced: handPlaced,
     addedAtEnd: addedAtEnd,
+    asAired: asAired,
     removeAiring: removeAiring,
     escapeAction: escapeAction,
     length: length,

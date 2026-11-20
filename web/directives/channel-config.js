@@ -464,6 +464,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                     duration: duration,
                     isOffline: true
                 }
+                // At the end of a Time Slots lineup: marked with when (pins.asAired).
+                if (scope.hasTimeSlots() && (scope.channel.programs.length > 0)) {
+                    program.addedAt = Date.now();
+                }
                 scope.channel.programs.splice(scope.channel.programs.length, 0, program);
                 scope._selectedOffline = null
                 scope._addingOffline = null;
@@ -1364,7 +1368,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
                 }
                 if (timeSlotsLineup) {
                     insertPoint = "end";
-                    scope.lastChange = `${selectedPrograms.length} added to the channel at the end of the list, for Time Slots and Create Lineup to use; nothing in the lineup moved.`;
+                    // Marked with when, so what aired stays where it aired (pins.asAired).
+                    let addedAt = Date.now();
+                    selectedPrograms.forEach( (p) => { p.addedAt = addedAt; } );
+                    scope.lastChange =`${selectedPrograms.length} added to the channel at the end of the list, for Time Slots and Create Lineup to use; nothing in the lineup moved.`;
                 }
 
                 var programListElement = document.getElementById("channelConfigProgramList");
@@ -1393,6 +1400,10 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             }
             scope.finishRedirect = (program) => {
                 if (scope.selectedProgram == -1) {
+                    // At the end of a Time Slots lineup: marked with when (pins.asAired).
+                    if (scope.hasTimeSlots() && (scope.channel.programs.length > 0)) {
+                        program.addedAt = Date.now();
+                    }
                     scope.channel.programs.splice(scope.channel.programs.length, 0, program);
                     scrollToLast();
 
@@ -2806,10 +2817,12 @@ module.exports = function ($timeout, $location, dizquetv, resolutionOptions, get
             /*
              * The lineup on air as the editor has it, for the slot editors to
              * read each position's place from when Create Lineup runs - read
-             * then, not when the dialog opens, so edits made meanwhile count.
+             * then, not when the dialog opens, so edits made meanwhile count -
+             * and as it aired: what was added at the end since is left out where
+             * the loop would have it in place of what aired (pins.asAired).
              */
             let lineupOnAir = () => {
-                return { programs: scope.channel.programs, startTime: scope.channel.startTime };
+                return pinTools.asAired({ programs: scope.channel.programs, startTime: scope.channel.startTime, now: Date.now() });
             };
 
             scope.onTimeSlotsButtonClick = async () => {

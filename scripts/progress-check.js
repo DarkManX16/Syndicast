@@ -16,8 +16,9 @@
  *       [--today]                 skip the planner: no records, so Play Next falls back to the founder
  *                                 rule as blocks did; Shuffle starts rounds of its own, so blocks'
  *                                 Shuffle losses need blocks' code
- *       [--add-custom <id>]       add a custom show's items to the programs first, as the library's
- *                                 "add custom show" does (the lineup alone holds only what it aired)
+ *       [--add-custom <id>]       add a custom show's items at the end of the list as the editor has
+ *                                 it, marked, as the library's "add custom show" does (the lineup
+ *                                 alone holds only what it aired)
  *       [--catalog <snapshot.json>] full catalogs, from scripts/catalog-snapshot.js: the pool is built
  *                                 as the editor builds it (src/show-catalog.js poolFor), with the
  *                                 channel's own catalog state, and --save keeps that state
@@ -255,15 +256,19 @@ async function main() {
     let unmatched = before.filter( (a) => (a.key === null) && (a.program.slotPosition !== 'repeat') );
 
     // The editor's path: rotate, removeDuplicates, edit, generate.
-    // The library's "add custom show": its items in list order, appended to the programs.
+    let rotated = rotate(channel.programs, savedStart, at);
+    // The library's "add custom show": its items in list order, at the end of the list as the
+    // editor has it - after what aired - marked with when, as the editor marks them (pins.asAired).
     if (args.addCustom) {
         let show = JSON.parse(fs.readFileSync(path.join(args.data || path.dirname(path.dirname(file)), 'custom-shows', args.addCustom + '.json'), 'utf8'));
         show.content.forEach( (item, i) => {
-            channel.programs.push(Object.assign({}, item, { customShowId: args.addCustom, customShowName: show.name, customOrder: i }));
+            rotated.programs.push(Object.assign({}, item, { customShowId: args.addCustom, customShowName: show.name, customOrder: i, addedAt: at }));
         } );
         console.log('added ' + show.content.length + ' items of ' + show.name);
     }
-    let rotated = rotate(channel.programs, savedStart, at);
+    // What Create Lineup reads of the past and the kept rows: the lineup as the editor hands it.
+    let onAir = args.addCustom ? pinTools.asAired({ programs: rotated.programs, startTime: rotated.startTime, now: at })
+        : { programs: channel.programs, startTime: savedStart };
     // A pinned airing never joins the pool.
     let pool = commonProgramTools.slotPool(rotated.programs);
     let schedule = JSON.parse(JSON.stringify(channel.scheduleBackup));
@@ -325,10 +330,10 @@ async function main() {
     } );
     // The editor's doIt: every position's place, read from the lineup on air at this moment.
     // The editor's carry: the program on air, or the one whose break is on air, stays where it is.
-    let carry = args.restartOnAir ? null : pinTools.carryAt({ programs: channel.programs, startTime: savedStart, now: at, schedule: channel.scheduleBackup });
+    let carry = args.restartOnAir ? null : pinTools.carryAt({ programs: onAir.programs, startTime: onAir.startTime, now: at, schedule: channel.scheduleBackup });
     if (! args.today) {
         schedule.progress = slotProgress.planProgress({
-            programs: channel.programs, startTime: savedStart, now: at,
+            programs: onAir.programs, startTime: onAir.startTime, now: at,
             placesFrom: carry ? Math.max(at, carry.start + carry.program.duration) : undefined,
             openedSchedule: channel.scheduleBackup, schedule: schedule, pool: lineupPool, catalog: pool,
             starts: Object.keys(starts).length ? starts : undefined, getShowData,
@@ -337,7 +342,7 @@ async function main() {
     // and, as the editor does, what aired in the last period, for Repeat slots:
     // from the lineup on air and what the last run kept, kept again for the next.
     let h = slotProgress.repeatHistory({
-        programs: channel.programs, startTime: savedStart, now: at,
+        programs: onAir.programs, startTime: onAir.startTime, now: at,
         spanMs: (schedule.period || DAY) + 60 * MIN,
         opened: channel.scheduleBackup, schedule, getShowData,
     });
@@ -346,8 +351,8 @@ async function main() {
         schedule.progress.history = h.keep;
     }
     // Every row kept in the list, at its instant there, as Create Lineup keeps them; and any pin asked for.
-    let total0 = channel.programs.reduce( (a, p) => a + p.duration, 0 );
-    let pins = keptRows.keptAhead({ programs: channel.programs, startTime: savedStart, now: at,
+    let total0 = onAir.programs.reduce( (a, p) => a + p.duration, 0 );
+    let pins = keptRows.keptAhead({ programs: onAir.programs, startTime: onAir.startTime, now: at,
         neverAir: args.catalog ? ( (p) => showCatalog.isNeverAir(state, p) ) : undefined });
     console.log(`kept: ${pins.length} rows ahead - ${keptRows.sayKept(pins) || "none of them a swap, insert or dragged row"}`);
     let catalogItems = args.catalog ? (JSON.parse(fs.readFileSync(args.catalog, 'utf8'))[String(channel.number)] || {}) : {};
