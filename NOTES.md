@@ -9583,6 +9583,8 @@ set for the pending 1.7.0 merge, and this will need re-applying.
 
 ### Create Lineup moved a special day's swaps that had aired
 
+- **Merged into `blocks` Nov 19 and pushed** (branch `claude/aired-day-swaps`). The editor's part reaches
+  18000's page at once; the generators' part waits for DarkManX16's restart of 18000.
 - **Found Nov 19, 2026** by the checklist's `add-delete-create` (step 6's build record): a Create Lineup at
   about 4:53pm on a copy laid DarkManX16's House of Mouse marathon swaps 1-8, aired 1:00-4:30pm, again at
   5:00-8:30pm; his swaps 9-16 were gone. Reruns at 5:05pm passed.
