@@ -500,7 +500,15 @@ module.exports = function (getShowData) {
         // What the slot editors draw on: one copy of each episode in the
         // lineup, never a pinned swap or insert (src/pins.js) or a row kept as
         // it is (src/kept-rows.js).
-        slotPool: (progs) => removeDuplicates( progs.filter( (p) => ! p.pin && ! slotProgress.keptAsItIs(p) ) ),
+        // What the end-of-list add marks (pins.asAired) stays on the list: the pool gets a copy without it.
+        slotPool: (progs) => removeDuplicates( progs.filter( (p) => ! p.pin && ! slotProgress.keptAsItIs(p) ) ).map( (p) => {
+            if (typeof(p.addedAt) === 'undefined') {
+                return p;
+            }
+            let copy = Object.assign( {}, p );
+            delete copy.addedAt;
+            return copy;
+        } ),
         removeSpecials: removeSpecials,
         sortByDate: sortByDate,
         getProgramDisplayTitle: getProgramDisplayTitle,

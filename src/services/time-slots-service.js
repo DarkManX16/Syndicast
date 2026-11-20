@@ -1543,7 +1543,15 @@ module.exports = async( programs, schedule, history, pinsIn, carryIn, fillerPool
 
 
     let res = {
-        programs: p,
+        // What the end-of-list add marks (pins.asAired) never reaches a lineup.
+        programs: p.map( (x) => {
+            if (typeof(x.addedAt) === 'undefined') {
+                return x;
+            }
+            let copy = Object.assign( {}, x );
+            delete copy.addedAt;
+            return copy;
+        } ),
         startTime: (new Date(t0)).toISOString(),
     };
     if (waited.length > 0) {

@@ -118,7 +118,7 @@ function withoutEdit(program, id) {
 // day's own copy, picked from the list, included.
 function stripped(item) {
     let copy = JSON.parse(JSON.stringify(item));
-    [ 'slotPosition', 'shuffleOrder', 'start', 'stop', '$index', 'pin', 'kept', 'specialDay', 'specialRow' ].forEach( (k) => delete copy[k] );
+    [ 'slotPosition', 'shuffleOrder', 'start', 'stop', '$index', 'pin', 'kept', 'specialDay', 'specialRow', 'addedAt' ].forEach( (k) => delete copy[k] );
     return copy;
 }
 
@@ -1342,7 +1342,10 @@ function move({ lineup, from, to, now, sure, schedule }) {
     let programs = lineup.programs;
     let id = newId(programs, now);
     let length = blockOf(rf);
-    let block = [ withEdit(rf.program, { id: id, kind: 'moved', from: rf.start, made: iso(now) }) ].concat(programs.slice(rf.index + 1, rf.last + 1));
+    let dragged = withEdit(rf.program, { id: id, kind: 'moved', from: rf.start, made: iso(now) });
+    // A row added at the end, dragged into the lineup, is in it now (pins.asAired).
+    delete dragged.addedAt;
+    let block = [ dragged ].concat(programs.slice(rf.index + 1, rf.last + 1));
     let mark = (r) => [ withEdit(r.program, { id: id, kind: 'shifted', made: iso(now) }) ].concat(programs.slice(r.index + 1, r.last + 1));
     let middle = [].concat(...between.map(mark));
     let out = earlier

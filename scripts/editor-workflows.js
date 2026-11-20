@@ -619,6 +619,11 @@ function makeRunner(opts, page) {
             if (keptCount(after) > keptCount(before)) {
                 throw new Check(`kept rows went from ${keptCount(before)} to ${keptCount(after)}`);
             }
+            // What the add marks at the end of the list (pins.asAired) never reaches the saved lineup.
+            const marked = after.programs.filter((p) => p && Object.prototype.hasOwnProperty.call(p, 'addedAt'));
+            if (marked.length > 0) {
+                throw new Check(`${marked.length} saved rows still carry the add mark after Create Lineup, e.g. ${marked[0].title}`);
+            }
             return `${n} episodes of ${opts.show} added; 5 deleted, each gone from the list at once with nothing asked (${gone.join('; ')})`
                 + `${said ? `, said "${said}"` : ', nothing said'}; the Time Slots dialog said ${notes.length === 0 ? 'nothing about kept rows' : `"${notes[0]}"`}; `
                 + `Create Lineup and Update Channel saved ${after.programs.length} entries, none of the 5 anywhere in the lineup`
