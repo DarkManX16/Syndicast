@@ -21,6 +21,18 @@
  *                               a show with midrolls; plan again and print every program whose
  *                               midrolls changed. WRITES the copy's breaks folder.
  *
+ * Playing them (step 6; scripts/midroll-playback.js, through the code /stream runs):
+ *       [--frozen]              B again through layoutAt and a frozen store, each airing first
+ *                               asked for at its start, as a stream asks: the same rows as A
+ *       [--clock]               every row tuned into by the clock at its start (from 0:00), and
+ *                               11 s before it (the airing before, never its parts)
+ *       [--sweep]               every second of every airing with midrolls tuned into by the
+ *                               clock: the second of the file the layout says, and the same
+ *                               part or midroll as a viewer following its cursor from before it
+ *       [--viewer]              a viewer per channel through all the days, the switch off and
+ *                               on, with jitter: when it starts every row, against the lineup
+ *       [--play]                all four
+ *
  * Read-only without --edits. Point it at a copy, never at the live data folder.
  */
 const fs = require('fs');
@@ -37,7 +49,7 @@ const BreakScanService = require('../src/services/break-scan-service');
 const DAY = 24 * 60 * 60 * 1000;
 
 function parseArgs(argv) {
-    const args = { data: null, out: null, from: null, days: 14, list: false, edits: false };
+    const args = { data: null, out: null, from: null, days: 14, list: false, edits: false, frozen: false, clock: false, sweep: false, viewer: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--data') {
@@ -52,6 +64,10 @@ function parseArgs(argv) {
             args.list = true;
         } else if (a === '--edits') {
             args.edits = true;
+        } else if ( [ '--frozen', '--clock', '--sweep', '--viewer' ].includes(a) ) {
+            args[a.slice(2)] = true;
+        } else if (a === '--play') {
+            args.frozen = args.clock = args.sweep = args.viewer = true;
         }
     }
     return args;
@@ -305,6 +321,10 @@ async function main() {
                 these.slice(0, (why === 'withdrawn') ? 3 : 20).forEach( (c) => console.log(`    ${c.line}`) );
             }
         }
+    }
+
+    if (args.frozen || args.clock || args.sweep || args.viewer) {
+        await require('./midroll-playback').run( { args, channels, service, envFor, rowsOf, label, when, from, to, dataDir: args.data } );
     }
 
     const after = channelFiles.filter( (f) => sha1(f) !== before.get(f) );

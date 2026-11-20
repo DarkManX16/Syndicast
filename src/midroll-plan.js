@@ -18,7 +18,7 @@
  *
  * `env` is the outside world, so this stays pure:
  *   env.on                 the Midrolls switch; off, there is no layout at all
- *   env.pointsFor(program) { durationMs, points: [{ index, at (s), kind, by, strength }] }
+ *   env.pointsFor(program) { durationMs, points: [{ index, at (s), kind, by, strength, black }] }
  *                          for the program's file, or null (never scanned)
  *   env.getList(id)        a filler list's clips, or null (for the steps' longest clips)
  *   env.cardMs(templateId) a card template's length in ms, or null
@@ -70,7 +70,8 @@ function usablePoints(points, durationMs, setting) {
     const seen = new Set();
     return (Array.isArray(points) ? points : [])
         .filter( (p) => (p != null) && (typeof(p.at) === 'number') && Number.isFinite(p.at) && kinds.has(p.kind) )
-        .map( (p) => ({ index: p.index, atMs: Math.round(p.at * SECOND), kind: p.kind, by: p.by, strength: (typeof(p.strength) === 'number') ? p.strength : 0 }) )
+        .map( (p) => ({ index: p.index, atMs: Math.round(p.at * SECOND), kind: p.kind, by: p.by, strength: (typeof(p.strength) === 'number') ? p.strength : 0,
+            black: (Array.isArray(p.black) && (p.black.length === 2)) ? p.black : null }) )
         .filter( (p) => (p.atMs >= EDGE_MS) && (p.atMs <= durationMs - EDGE_MS) )
         .sort( (a, b) => (a.atMs - b.atMs) || ( (a.index || 0) - (b.index || 0) ) )
         .filter( (p) => {
@@ -271,7 +272,7 @@ function layoutFor( { start, durationMs, flexMs, points, setting, endReserveMs =
         chosen.forEach( (p, k) => {
             parts.push( { fromMs: from, toMs: p.atMs, start: at } );
             at += p.atMs - from;
-            midrolls.push( { k, atMs: p.atMs, index: p.index, kind: p.kind, by: p.by, strength: p.strength, start: at, lengthMs: len } );
+            midrolls.push( { k, atMs: p.atMs, index: p.index, kind: p.kind, by: p.by, strength: p.strength, black: p.black, start: at, lengthMs: len } );
             at += len;
             from = p.atMs;
         } );

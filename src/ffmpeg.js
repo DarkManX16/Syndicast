@@ -4,6 +4,7 @@ const { PassThrough } = require('stream')
 const imageUrl = require('./image-url')
 const { markHighQos } = require('./ffmpeg-qos')
 const paceMeter = require('./pace-meter')
+const partCuts = require('./part-cuts')
 
 const MAXIMUM_ERROR_DURATION_MS = 60000;
 const REALLY_RIDICULOUSLY_HIGH_FPS_FOR_DIZQUETVS_USECASE = 120;
@@ -137,6 +138,14 @@ class FFMPEG extends events.EventEmitter {
     setAudioOnly(audioOnly) {
         this.audioOnly = audioOnly;
     }
+    /*
+     * A part of a program with midrolls: { cutIn, cutOut }, the break points it starts and
+     * stops at (part-cuts.js). Used only if this item's video turns out to be copied, when
+     * the cuts move to keyframes; an encoded item starts and stops at the exact frame.
+     */
+    setPartCuts(cuts) {
+        this.partCuts = cuts || null;
+    }
     async spawnConcat(streamUrl) {
         return await this.spawn(streamUrl, undefined, undefined, undefined, true, false, undefined, true)
     }
@@ -199,8 +208,12 @@ class FFMPEG extends events.EventEmitter {
         }
         
 
-        if (typeof startTime !== 'undefined')
+        // where -ss's value sits, for a copied part's cut moved to a keyframe below
+        let startTimeAt = -1;
+        if (typeof startTime !== 'undefined') {
             ffmpegArgs.push(`-ss`, startTime)
+            startTimeAt = ffmpegArgs.length - 1;
+        }
         
         if (isConcatPlaylist == true)
             ffmpegArgs.push(`-f`, `concat`, 
@@ -580,6 +593,24 @@ class FFMPEG extends events.EventEmitter {
                 currentAudio = `${audioFile}:${audioIndex}`;
             }
 
+            // A part of a program with midrolls whose video is copied: its cuts on keyframes.
+            if ( (this.partCuts != null) && (this.audioOnly !== true) && ! transcodeVideo && (startTimeAt >= 0)
+                && (typeof(streamUrl) === 'string') ) {
+                let moved = null;
+                try {
+                    moved = await partCuts.moveCuts( { startS: Number(startTime), durationS: (typeof(duration) === 'number') ? duration : undefined, cuts: this.partCuts },
+                        (point) => FFMPEG.keyframesFor(this.opts.ffmpegPath, streamUrl, point) );
+                } catch (err) {
+                    console.error("Couldn't find the keyframes for a part's cut, so it plays as asked", err);
+                }
+                if (moved !== null) {
+                    console.log(`Copied video: the part plays from ${moved.startS}s (asked ${startTime}s)`
+                        + `${ (typeof(moved.durationS) === 'number') ? ` for ${moved.durationS}s (asked ${duration}s)` : ''}, on keyframes`);
+                    ffmpegArgs[startTimeAt] = moved.startS;
+                    duration = moved.durationS;
+                }
+            }
+
             //If there is a filter complex, add it.
             if (filterComplex != '') {
                 ffmpegArgs.push(`-filter_complex` , filterComplex.slice(1) );
@@ -917,6 +948,9 @@ FFMPEG.isFullyNormalized = isFullyNormalized;
 // Where item progress goes; null runs every item exactly as before the meter.
 FFMPEG.meter = paceMeter.meter;
 FFMPEG.libx264FallbackArgs = libx264FallbackArgs;
+// The keyframes around a break point, for a copied part's cut (part-cuts.js); tests replace it.
+FFMPEG.keyframesFor = (ffmpegPath, input, point) => partCuts.keyframesAround(
+    String(ffmpegPath || 'ffmpeg').replace(/ffmpeg(.exe)?$/i, (m, ext) => 'ffprobe' + (ext || '')), input, point);
 FFMPEG.NVENC_RETRY_AFTER_MS = NVENC_RETRY_AFTER_MS;
 // What the nvenc fallback remembers, for tests to set and clear.
 FFMPEG.nvencFailure = {

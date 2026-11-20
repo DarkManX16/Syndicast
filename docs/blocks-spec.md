@@ -1466,17 +1466,57 @@ Robot Chicken, approved acts at 5:28 and 15:48, `count: 2`:
 
 #### Playing it
 
+As built in step 6 (Nov 19, `src/midroll-cursor.js`, wrapping `lineup-cursor.js`):
+
 - Each part is the program's lineup item with a start and a length, the shape
   a tune-in partway through a program already uses (`start`, `streamDuration`
   in `plex-player.js`), so nothing in the players changes.
-- The cursor carries the program's plan the way it carries a break's phases:
-  part, then the midroll's out steps, commercials and in steps, then the next
-  part.
-- **Tuning in by the clock** lands in the part or the midroll phase the clock
-  is in; a tune-in partway through a part starts there, as now.
-- **The guide** shows the episode running to its real end (its start, plus its
-  length, plus its midrolls) and the Flex after it shortened, worked out by the
-  same planner, so guide and playback agree.
+- The cursor carries where the stream is in the airing the way it carries a
+  break's phases: part k, then midroll k's out steps, commercials and in
+  steps, then part k+1 from where part k stopped. Steps play whole; the
+  commercials end where the in steps begin, measured from the clock, so a late
+  stream gets fewer and an early one more, and what is left carries to the next
+  part. After the last part the end break is the Flex run behind the program,
+  played at its own place in the lineup, so it ends where the next row starts.
+  A stream more than a minute off goes back to the clock, which lands on the
+  layout.
+- **Every viewer the same.** A midroll's steps are chosen once per channel and
+  kept as a break's are; its commercials have a list of their own, shared as a
+  break's are (a viewer more than 10 s behind the one who picked a commercial
+  picks its own for the rest, as in a break). Unlike a break, a tune-in into a
+  midroll's commercials never takes a clip of its own partway: it joins the one
+  on the air, or with none makes the next shared pick from its start (Nov 19,
+  after the scratch watch showed a tune-in and the viewer watching with
+  different commercials).
+- **Tuning in by the clock** lands where the layout says, even when the lineup
+  already says Flex (the parts run on into it): in a part, at the second of the
+  file the clock is at; in a midroll, within its out steps the out step on the
+  air from its start (Nov 19), then its commercials, or within its in steps
+  plus 10 s the in step on the air from its start; in a part's last 10 s, what
+  follows it, as the clock hands a program over; in the end break, as today.
+- **Rewinds.** Part 1 keeps a program's 30-second rule. A later part starts at
+  the exact second, except in its first 10 s, which play from its start: a
+  stream with no cursor (`/m3u8`) reaches it up to that late after an in step
+  it played from its start, and would otherwise lose the episode's first
+  seconds back (found by the router test; within the 10 s shared commercials
+  already allow).
+- **Frozen even with the switch off** (DarkManX16, Nov 19): a stream reaching a
+  program asks for its layout whatever the switch says, which freezes "none"
+  for the airing, so turning the switch on during an episode changes the next
+  airing, not this one, and two viewers never split.
+- **Copied video** (DarkManX16, Nov 19): only when an item's video is copied,
+  not encoded, `ffmpeg.js` moves the part's start and end to keyframes found
+  when it plays (`src/part-cuts.js`: the first keyframe inside the point's
+  black, else the one before the point, by one ffprobe of packet flags); the
+  part before a midroll stops where the part after starts. An H.264 encoder
+  encodes every item, so on such an install nothing is probed. The store's
+  `keyframe` field stays unused.
+- **The guide is unchanged** (DarkManX16, Nov 19): it already folds the Flex
+  after a program into the program's row, so the episode's row runs to the next
+  row's start, midrolls included.
+- The server log says what each midroll is: "Midroll layout" when an airing's
+  layout is frozen, "Midroll plan" when a midroll's steps are chosen, "! Part"
+  and "! Stream" on each item.
 - `channel.programs` never changes; the lineup, the stored progress, swaps and
   Time Slots are untouched.
 
@@ -1688,11 +1728,25 @@ never on the live data folder and never through the server on port 18000.
    copy, stage 4's compressed channels given midrolls, two viewers tuned in at
    different moments; then a **TiviMate preview** from DarkManX16 of two real
    midrolls (Family Guy and Happy Days).
+   **Built Nov 19** (see "Playing it" above and NOTES.md, "Step 6 build record"):
+   `src/midroll-cursor.js`, `src/part-cuts.js`, `video.js` wired with the break scan
+   service; `test/midroll-cursor.js` (the Family Guy table tuned into at every second
+   against a hand-written oracle), `test/midroll-stream.js` (the real router),
+   `test/part-cuts.js`; `scripts/midroll-week.js --play` (`--frozen`, `--clock`,
+   `--sweep`, `--viewer`, in `scripts/midroll-playback.js`). The guide is unchanged.
+   DarkManX16 holds 18000's restart until step 7 is merged, so midrolls never air
+   with no steps.
 7. **The editor.** The Midroll row in the Transitions section of each day-part
    and block card, the midroll setting beside it, "Copy transitions to..."
    carrying it, the preview on this week's lineup listing midrolls, and a tag
    on program rows ("2 midrolls"). **Proof:** by hand on the copy, with
    screenshots.
+   **Also (DarkManX16, Nov 19):** a midroll step that must name the show and
+   finds no clip naming it leaves the midroll with no steps (step 6's scratch
+   watch: both Bounce steps found nothing for All Dogs Go to Heaven). Step 7
+   makes such a step fall back to any clip in its own list. (`match: 'any'`
+   does not: it takes a clip naming nothing or naming the show. A list marked
+   "clips feature shows" already does, for every step drawing from it.)
 8. **End to end.** A new install's path first: a fresh data folder, the switch
    turned on, the scanner finding breaks, and the shows it is confident in
    getting midrolls with no click. Then DarkManX16 approves real shows on a copy; a day of a channel walked

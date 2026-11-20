@@ -279,6 +279,18 @@ function nextEntry(channel, cursor, t0, planFor) {
     } else if (Math.abs(t0 - end) > TOLERANCE) {
         return null;
     }
+    return afterEntry(channel, index, end, t0, planFor);
+}
+
+/*
+ * What follows entry `index`, whose end on the lineup is `end`, at t0: the next
+ * entry from its start, a break entered (its plan built now), or a break with too
+ * little left passed over. Every time is measured from the lineup, so a stream
+ * reaching it late gets a shorter break. midroll-cursor.js calls this after a
+ * program's last part, which ends later than the program does on the lineup.
+ */
+function afterEntry(channel, index, end, t0, planFor) {
+    let programs = channel.programs;
     // The stream is at `end`, where the entry after `index` starts.
     for (let k = 0; k < programs.length; k++) {
         index = (index + 1) % programs.length;
@@ -413,6 +425,7 @@ function placeByClock(channel, obj, t0, planFor) {
 module.exports = {
     TOLERANCE: TOLERANCE,
     nextEntry: nextEntry,
+    afterEntry: afterEntry,
     cursorAfter: cursorAfter,
     placeByClock: placeByClock,
     fingerprint: fingerprint,
