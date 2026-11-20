@@ -33,6 +33,10 @@ below says what we do and why. **Syndicast innovates.**
   in Gentle (`BREAK_SCAN_FORCE_MODE=gentle`) with a guard watching 18000's
   paces. DarkManX16 added this Nov 11, 2026, after two scratch servers' scanners
   dipped 18000's viewers to 0.856 on Nov 10.
+- **Never run two workflow servers, or two workflow runs, at once.** One scratch
+  server and one run of the workflow checklist at a time, even to compare two
+  branches. DarkManX16 added this Nov 19, 2026, after two runs side by side
+  stalled 18000 to 0.42 on every item.
 - **Keep it simple.** No walls of text: at most one short line per change. Show a
   change in the list itself rather than describing it, and never add a message DarkManX16
   didn't ask for. DarkManX16 added this Oct 30, 2026, after the kept-rows editor answered
@@ -8508,8 +8512,10 @@ and whether the click did its job. A scratch server on 18260 from the worktree, 
 - **For DarkManX16:** the live `break-scanner.json` already has `midrolls: true`, so once step 6
   is merged and 18000 restarts, midrolls play at once.
 
-#### Step 6 build record: playing midrolls (built Nov 19, branch `claude/midroll-play`)
+#### Step 6 build record: playing midrolls (built Nov 19; merged and pushed)
 
+- **Merged into `blocks` Nov 19** (e2260b4) and pushed, on DarkManX16's OK after the
+  workflow failure below. 18000 keeps running the old code until he restarts it, after step 7.
 - **DarkManX16's answers, Nov 19:** merge step 6 when it passes, but 18000's restart waits for step 7,
   so midrolls with no steps (no channel has a midroll step yet) never air live; part 1 keeps the 30 s
   rewind; the layout is frozen even with the switch off; keyframes are found at play time.
