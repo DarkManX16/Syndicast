@@ -9642,7 +9642,27 @@ set for the pending 1.7.0 merge, and this will need re-applying.
     Create Lineup at 4:54:25. 3/3 passed; tonight is Daisy's Debut at 5:00pm to Jiminy Cricket at 8:30pm,
     as DarkManX16's list has it, and no mark was saved.
 - **Found on the way, not changed:** Move of the very last row of the list throws (`rows[kf + 1]` in
-  `kept-rows.js` `move`).
+  `kept-rows.js` `move`). Fixed afterwards: see the next entry.
+
+### Dragging the last row of the list threw
+
+Found Nov 19, 2026 while writing `test/added-at-end.js`, fixed the same day (`test/move-last-row.js`).
+The list is rotated to start at the program on air, so its last row is usually something aired today
+rotated round, or an item added at the end from the library. Dragging it to an earlier place threw
+`TypeError: Cannot read properties of undefined (reading 'start')`, and the editor never got its list back.
+
+- **Two places, not one.** `move` read `rows[kf + 1]` for "back on time at", and there is no row after the
+  last. And once that was fixed, Put back of the same drag refused ("the list no longer reaches it"):
+  `undoMove` looks for the first row starting at or after the dragged row's old time, and with the dragged
+  row gone from the end there is none. Counting the writers of the old place found the second.
+- **The sentence.** Nothing follows the old place, so the rows between end where the list always did and
+  there is no "back on time" to say: `Show 4 moves to Thu Oct 29, 12:30am; 2 airings shift 30 minutes
+  later.` One clause shorter, nothing added.
+- **Put back** puts the row back at the end of what is left when its old time is where that ends. A row
+  added at the end loses its add mark when dragged into the lineup (`pins.asAired`), so Put back of that
+  one gives the list back without the mark; every other drag gives it back exactly.
+- **Proof.** `test/move-last-row.js` (a last row with its Flex, and an added row with none) failed with the
+  throw first, then with the refusal, then passed. Full suite and the twelve workflows pass.
 
 ### Deleted episodes kept coming back
 
